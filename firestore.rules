@@ -1,15 +1,9 @@
-// firestore.rules — GÜNCELLENMİŞ (STAR + SAVED)
-// - Mevcut kurallar korunur
-// - YENİ: users/{uid}/saved/{docId} (sadece sahibi okuyup/yazar)
-// - YENİ: content/{contentId} create izni stub için herkes (auth) -- owner dışındaki update yine yasak
-// - userStats yalnızca sunucu (Admin SDK) yazar
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---------- Yardımcı fonksiyonlar ----------
+    /* ---------------- Yardımcılar ---------------- */
     function getUserData(userId) {
       return get(/databases/$(database)/documents/users/$(userId)).data;
     }
@@ -29,28 +23,28 @@ service cloud.firestore {
           && canRequesterSeeLocation(getUserData(userId), requesterId);
     }
 
-    // ---------- USERS ----------
+    /* ---------------- USERS ---------------- */
     match /users/{userId} {
       allow read: if request.auth != null;
       allow create, update, delete: if request.auth != null && request.auth.uid == userId;
 
-      // ---------- SAVED (Bookmark) ----------
-      // DocID'yi contentId ile aynı tutuyoruz (client böyle yazıyor).
+      /* ----- SAVED (Bookmark) ----- */
+      // Doc id'yi contentId ile aynı yazıyoruz (client öyle gönderiyor).
       match /saved/{docId} {
         // Sadece sahibi görebilir/listeleyebilir
         allow read: if request.auth != null && request.auth.uid == userId;
 
-        // Oluşturma: sadece sahibi; temel alan tip/kısıtları
+        // Oluşturma: sadece sahibi; alan kısıtları + varlık kontrolü
         allow create: if request.auth != null
           && request.auth.uid == userId
-          && request.resource.id == request.resource.data.contentId
+          && docId == request.resource.data.contentId
           && request.resource.data.contentId is string
           && request.resource.data.type in ['post','clip','story']
           && request.resource.data.authorId is string
           && ( !('mediaUrl' in request.resource.data) || request.resource.data.mediaUrl is string || request.resource.data.mediaUrl == null )
           && ( !('caption' in request.resource.data) || request.resource.data.caption is string )
           && ( !('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp )
-          // İçerik dokümanı, en az bir ana koleksiyonda mevcut olmalı
+          // İçerik dokümanı ana koleksiyonlardan birinde varsa
           && (
                exists(/databases/$(database)/documents/content/$(request.resource.data.contentId)) ||
                exists(/databases/$(database)/documents/posts/$(request.resource.data.contentId)) ||
@@ -58,7 +52,7 @@ service cloud.firestore {
                exists(/databases/$(database)/documents/hikayeler/$(request.resource.data.contentId))
              );
 
-        // Güncelleme gerekmiyor (client delete/create yapıyor); kapalı tutuyoruz
+        // Update yok (toggle = delete/create)
         allow update: if false;
 
         // Silme: sahibi
@@ -71,29 +65,54 @@ service cloud.firestore {
       allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
     }
 
-    // ---------- LOCATIONS ----------
+    /* ---------------- LOCATIONS ---------------- */
     match /locations/{userId} {
       allow write: if request.auth != null && request.auth.uid == userId;
       allow read: if request.auth != null &&
                    (request.auth.uid == userId || canReadLocation(userId, request.auth.uid));
     }
 
-    // ---------- POSTS ----------
+    /* ---------------- POSTS ---------------- */
     match /posts/{postId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+
+      allow create: if request.auth != null
+        && request.resource.data.authorId == request.auth.uid;
+
+      // Güncelleme:
+      // - Sahibi her alanı güncelleyebilir AMA authorId değiştirilemez
+      // - Sahibi olmayanlar sadece yorum ekleyebilir (yorumlar boyu ↓ azalamaz)
+      allow update: if request.auth != null && (
+        (
+          // sahip
+          resource.data.authorId == request.auth.uid
+          && request.resource.data.authorId == resource.data.authorId
+        ) || (
+          // sahibi değil → sadece yorumlar alanına ekleme
+          !(request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "authorId","mediaUrl","mediaType","storagePath",
+            "tarih","createdAt","aciklama","mesaj","caption","location","begenenler"
+          ]))
+          && request.resource.data.yorumlar.size() >= resource.data.yorumlar.size()
+        )
+      );
+
+      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
     }
 
-    // ---------- HİKAYELER ----------
+    /* ---------------- HİKAYELER ---------------- */
     match /hikayeler/{storyId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
 
-      // Sahip full update; başkası sadece görüntüleme sayaçları/izleyen listesi
+      allow create: if request.auth != null
+        && request.resource.data.authorId == request.auth.uid;
+
+      // Sahip full update (authorId sabit); başkası sadece sayaç/izleyen
       allow update: if request.auth != null && (
-        resource.data.authorId == request.auth.uid ||
         (
+          resource.data.authorId == request.auth.uid
+          && request.resource.data.authorId == resource.data.authorId
+        ) || (
           !(request.resource.data.diff(resource.data).affectedKeys().hasAny([
             "authorId","mediaUrl","mediaType","contentType","storagePath",
             "dosyaBoyutu","tarih","createdAt","authorUsername","authorProfilePic"
@@ -105,14 +124,32 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
     }
 
-    // ---------- CLIPS ----------
+    /* ---------------- CLIPS ---------------- */
     match /clips/{clipId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+
+      allow create: if request.auth != null
+        && request.resource.data.authorId == request.auth.uid;
+
+      // Sahip: serbest ama authorId sabit.
+      // Sahibi olmayan: yalnızca yorum ekleyebilir.
+      allow update: if request.auth != null && (
+        (
+          resource.data.authorId == request.auth.uid
+          && request.resource.data.authorId == resource.data.authorId
+        ) || (
+          !(request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "authorId","mediaUrl","mediaType","storagePath",
+            "tarih","createdAt","aciklama","mesaj","caption","location","begenenler"
+          ]))
+          && request.resource.data.yorumlar.size() >= resource.data.yorumlar.size()
+        )
+      );
+
+      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
     }
 
-    // ---------- CHECKINS ----------
+    /* ---------------- CHECKINS ---------------- */
     match /checkins/{checkinId} {
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
       allow read: if request.auth != null && (
@@ -123,13 +160,16 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
-    // ---------- NOTIFICATIONS ----------
+    /* ---------------- NOTIFICATIONS ---------------- */
     match /notifications/{notificationId} {
       allow read, create: if request.auth != null;
-      allow update: if request.auth != null && request.auth.uid == resource.data.to;
+      // Sadece alıcı güncelleyebilir ve 'to' değiştirilemez
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.to
+        && request.resource.data.to == resource.data.to;
     }
 
-    // ---------- CONTENT + RATINGS ----------
+    /* ---------------- CONTENT + RATINGS ---------------- */
     match /content/{contentId} {
       // Okuma: giriş yapmış herkes
       allow read: if request.auth != null;
@@ -139,9 +179,10 @@ service cloud.firestore {
         && request.resource.data.authorId is string
         && request.resource.data.type in ['post', 'story', 'clip'];
 
-      // UPDATE/DELETE: sadece içerik sahibi (Admin SDK zaten kuralları bypass eder)
+      // UPDATE/DELETE: sadece içerik sahibi, authorId sabit
       allow update, delete: if request.auth != null
-        && resource.data.authorId == request.auth.uid;
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.authorId == resource.data.authorId;
 
       // Tekil oylar
       match /ratings/{raterId} {
@@ -157,25 +198,26 @@ service cloud.firestore {
           && request.resource.data.value <= 5
           && exists(/databases/$(database)/documents/content/$(contentId));
 
-        // Kendi oyunu güncelle
+        // Kendi oyunu güncelle (authorId sabit olmalı)
         allow update: if request.auth != null
           && raterId == request.auth.uid
           && request.resource.data.raterId == request.auth.uid
           && request.resource.data.value is int
           && request.resource.data.value >= 1
-          && request.resource.data.value <= 5;
+          && request.resource.data.value <= 5
+          && request.resource.data.authorId == resource.data.authorId;
 
         allow delete: if false;
       }
     }
 
-    // ---------- USER STATS (yalnızca Admin SDK) ----------
+    /* ---------------- USER STATS (yalnızca Admin SDK) ---------------- */
     match /userStats/{uid} {
       allow read: if request.auth != null;
       allow write: if false;
     }
 
-    // ---------- catch-all ----------
+    /* ---------------- Catch-all ---------------- */
     match /{document=**} {
       allow read, write: if false;
     }

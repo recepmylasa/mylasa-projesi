@@ -52,6 +52,7 @@ const MobileSkeleton = () => (
 function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
   const [authorProfile, setAuthorProfile] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [isMediaLoaded, setIsMediaLoaded] = useState(false);
   const [showFullCaption, setShowFullCaption] = useState(false);
@@ -80,12 +81,21 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     return () => unsub();
   }, [post?.id]);
 
-  /* Kaydet durumunu oku */
+  /* Kaydet durumunu oku (auth + try/catch) */
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const saved = await fsIsSaved(post?.id);
-      if (!cancelled) setIsSaved(saved);
+      if (!post?.id || !auth.currentUser) {
+        if (!cancelled) setIsSaved(false);
+        return;
+      }
+      try {
+        const saved = await fsIsSaved(post.id);
+        if (!cancelled) setIsSaved(saved);
+      } catch (e) {
+        console.error('Kaydet durumu okunamadı:', e);
+        if (!cancelled) setIsSaved(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [post?.id]);
@@ -117,7 +127,14 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     }
   };
 
+  /* Kaydet toggle (auth guard + busy kilidi + iyimser güncelleme) */
   const handleToggleSave = async () => {
+    if (saveBusy) return;
+    if (!auth.currentUser) {
+      // Giriş yoksa sessizce vazgeç (UI’da login akışı tetiklemek istersen burada ele alabilirsin)
+      return;
+    }
+    setSaveBusy(true);
     setIsSaved((s) => !s);
     try {
       const { saved } = await fsToggleSave({
@@ -129,8 +146,10 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
       });
       setIsSaved(saved);
     } catch (e) {
-      setIsSaved((s) => !s);
+      setIsSaved((s) => !s); // geri al
       console.error('Kaydet sırasında hata:', e);
+    } finally {
+      setSaveBusy(false);
     }
   };
 
@@ -268,6 +287,8 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             className="m-action-btn save"
             aria-label={isSaved ? 'Kaydedildi' : 'Kaydet'}
             title={isSaved ? 'Kaydedildi' : 'Kaydet'}
+            disabled={saveBusy}
+            aria-busy={saveBusy}
           >
             {isSaved ? <BsBookmarkFill className="m-action-icon" /> : <BsBookmark className="m-action-icon" />}
           </button>

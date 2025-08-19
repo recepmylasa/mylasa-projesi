@@ -7,6 +7,7 @@ import PostDetailModal from "./PostDetailModal";
 import TakipListesi from "./TakipListesi";
 import ProfilDuzenle from "./ProfilDuzenle";
 import UserCheckIns from "./UserCheckIns";
+import SavedGrid from "./SavedGrid";
 import "./Profile.css";
 
 const GridIcon = () => (
@@ -34,20 +35,29 @@ const CheckInIcon = () => (
   </svg>
 );
 
+const SavedIcon = () => (
+  <svg aria-label="Kaydedilenler" height="24" role="img" viewBox="0 0 24 24" width="24">
+    <polygon fill="currentColor" points="20 21 12 13.44 4 21 4 3 20 3 20 21" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></polygon>
+  </svg>
+);
+
 function Profile({ userId, onUserClick, onPlaceClick }) {
   const [userData, setUserData] = useState(null);
   const [posts, setPosts] = useState([]);
   const [clips, setClips] = useState([]);
   const [checkIns, setCheckIns] = useState([]);
+  const [savedItems, setSavedItems] = useState([]); // NEW
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const [listModal, setListModal] = useState({ open: false, type: "" });
   const [activeTab, setActiveTab] = useState("posts");
 
+  const isCurrentUser = !!auth.currentUser && auth.currentUser.uid === userId;
+
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
-    setLoading(true); setPosts([]); setClips([]); setCheckIns([]);
+    setLoading(true); setPosts([]); setClips([]); setCheckIns([]); setSavedItems([]);
 
     const userDocRef = doc(db, "users", userId);
     const unsubUser = onSnapshot(userDocRef, snap => {
@@ -64,12 +74,26 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
     const checkInsQuery = query(collection(db, "checkins"), where("userId", "==", userId), orderBy("timestamp", "desc"));
     const unsubCheck = onSnapshot(checkInsQuery, s => setCheckIns(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 
-    return () => { unsubUser(); unsubPosts(); unsubClips(); unsubCheck(); };
-  }, [userId]);
+    // NEW: Kaydedilenler (yalnızca kendi profilinde)
+    let unsubSaved = () => {};
+    if (isCurrentUser) {
+      try {
+        const savedQ = query(collection(db, "users", userId, "saved"), orderBy("createdAt", "desc"));
+        unsubSaved = onSnapshot(savedQ, (s) => {
+          setSavedItems(s.docs.map(d => ({
+            id: d.id,              // contentId
+            ...d.data(),           // {type, authorId, mediaUrl, caption, createdAt}
+          })));
+        });
+      } catch (e) {
+        console.error("Kaydedilenler okunamadı:", e);
+      }
+    }
+
+    return () => { unsubUser(); unsubPosts(); unsubClips(); unsubCheck(); unsubSaved(); };
+  }, [userId, isCurrentUser]);
 
   const handleLogout = () => { signOut(auth).catch(e => console.error("Çıkış hatası", e)); };
-
-  const isCurrentUser = !!auth.currentUser && auth.currentUser.uid === userId;
 
   const fromDataVisible = Number(userData?.reputation?.visible);
   const fromDataSample  = Number(userData?.reputation?.sample);
@@ -153,6 +177,9 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
           <button className={`profile-tab-btn ${activeTab === "posts" ? "active" : ""}`} onClick={() => setActiveTab("posts")}><GridIcon /> GÖNDERİLER</button>
           <button className={`profile-tab-btn ${activeTab === "clips" ? "active" : ""}`} onClick={() => setActiveTab("clips")}><ClipsIcon /> CLIPS</button>
           <button className={`profile-tab-btn ${activeTab === "checkins" ? "active" : ""}`} onClick={() => setActiveTab("checkins")}><CheckInIcon /> CHECK-IN'LER</button>
+          {isCurrentUser && (
+            <button className={`profile-tab-btn ${activeTab === "saved" ? "active" : ""}`} onClick={() => setActiveTab("saved")}><SavedIcon /> KAYDEDİLENLER</button>
+          )}
         </div>
 
         {(() => {
@@ -160,6 +187,7 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
             case "posts": return <UserPosts content={posts} onPostClick={p => setSelectedPost(p)} />;
             case "clips": return <UserPosts content={clips} onPostClick={p => setSelectedPost(p)} />;
             case "checkins": return <UserCheckIns checkIns={checkIns} onPlaceClick={onPlaceClick} />;
+            case "saved": return <SavedGrid items={savedItems} onOpen={(p) => setSelectedPost(p)} />;
             default: return null;
           }
         })()}
