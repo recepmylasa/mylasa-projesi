@@ -1,0 +1,68 @@
+.saved-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 0 2px 2px 2px;
+}
+
+.saved-tile {
+  position: relative;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.saved-img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+  background: #f2f2f2;
+  transition: transform .2s ease;
+}
+
+.saved-tile:hover .saved-img { transform: scale(1.01); }
+
+.saved-badge {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: rgba(0,0,0,.45);
+  border-radius: 6px;
+  backdrop-filter: blur(2px);
+}
+
+/* Empty state */
+.saved-empty {
+  display: grid;
+  place-items: center;
+  padding: 48px 16px;
+}
+.saved-empty-card {
+  text-align: center;
+  max-width: 420px;
+  color: #262626;
+}
+.saved-empty-lock {
+  font-size: 36px;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.saved-empty h3 {
+  margin: 6px 0 4px 0;
+  font-size: 18px;
+}
+.saved-empty p {
+  margin: 0;
+  color: #8e8e8e;
+  font-size: 14px;
+}

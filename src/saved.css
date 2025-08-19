@@ -1,0 +1,88 @@
+.svd-wrap {
+  max-width: 935px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.svd-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.svd-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 16px;
+}
+.svd-sub {
+  color: #8e8e8e;
+  font-size: 12px;
+}
+
+/* Grid */
+.svd-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+}
+
+.svd-tile {
+  position: relative;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  background: #000;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+}
+
+.svd-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Clip rozeti */
+.svd-badge {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0,0,0,.55);
+}
+.svd-badge-play { font-size: 14px; }
+
+/* Boş durum */
+.svd-empty {
+  padding: 48px 12px 80px;
+  text-align: center;
+  color: #262626;
+}
+.svd-empty-ico {
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+
+/* Skeleton */
+.svd-tile.skel {
+  background: linear-gradient(90deg, #ededed, #f8f8f8, #ededed);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Responsive */
+@media (max-width: 736px) {
+  .svd-wrap { padding: 12px 0 32px; }
+}

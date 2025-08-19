@@ -26,7 +26,7 @@ const SaveIcon = ({ isSaved }) => (
   </svg>
 );
 
-// Zaman formatlayıcı
+// Utils
 const formatTimeAgo = (ts) => {
   if (!ts) return '';
   const date = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
@@ -36,14 +36,33 @@ const formatTimeAgo = (ts) => {
   if (diff < 86400) return `${Math.floor(diff / 3600)}sa`;
   return `${Math.floor(diff / 86400)}g`;
 };
-
-// 1.2K / 3.4M
 const formatCount = (n) => {
   if (typeof n !== 'number') return '';
   if (n < 1000) return String(n);
   if (n < 1_000_000) return (n / 1000).toFixed(n % 1000 >= 100 ? 1 : 0) + 'K';
   if (n < 1_000_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 >= 100_000 ? 1 : 0) + 'M';
   return (n / 1_000_000_000).toFixed(1) + 'B';
+};
+const buildPermalink = (id, type = 'post') => {
+  const origin = window.location.origin;
+  return `${origin}/p/${id}${type && type !== 'post' ? `?type=${encodeURIComponent(type)}` : ''}`;
+};
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('Bağlantı kopyalandı');
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      alert('Bağlantı kopyalandı');
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
 };
 
 function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
@@ -52,21 +71,15 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
   const [yeniYorum, setYeniYorum] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
-  const [saveBusy, setSaveBusy] = useState(false);
   const [agg, setAgg] = useState(null); // {avg, count}
 
   const currentUser = auth.currentUser;
 
-  // Body scroll kilidi + ESC kapatma
+  // Body scroll kilidi
   useEffect(() => {
-    const onDown = (e) => { if (e.key === 'Escape') onClose?.(); };
-    document.addEventListener('keydown', onDown);
     document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = 'unset';
-      document.removeEventListener('keydown', onDown);
-    };
-  }, [onClose]);
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
 
   // İçerik canlı takip (post/clip)
   useEffect(() => {
@@ -98,21 +111,12 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
     return () => unsub();
   }, [contentData?.id]);
 
-  // Kaydet durumunu oku (auth guard + try/catch)
+  // Kaydet durumunu oku
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!contentData?.id || !auth.currentUser) {
-        if (!cancelled) setIsSaved(false);
-        return;
-      }
-      try {
-        const saved = await fsIsSaved(contentData.id);
-        if (!cancelled) setIsSaved(saved);
-      } catch (e) {
-        console.error('Kaydet durumu okunamadı:', e);
-        if (!cancelled) setIsSaved(false);
-      }
+      const saved = await fsIsSaved(contentData?.id);
+      if (!cancelled) setIsSaved(saved);
     })();
     return () => { cancelled = true; };
   }, [contentData?.id]);
@@ -155,11 +159,8 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
     });
   };
 
-  // Kaydet toggle (auth guard + busy kilidi + iyimser güncelleme)
+  // Kaydet toggle
   const handleToggleSave = async () => {
-    if (saveBusy) return;
-    if (!auth.currentUser || !contentData?.id) return;
-    setSaveBusy(true);
     setIsSaved((s) => !s);
     try {
       const { saved } = await fsToggleSave({
@@ -173,9 +174,20 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
     } catch (e) {
       setIsSaved((s) => !s);
       console.error('Kaydet sırasında hata:', e);
-    } finally {
-      setSaveBusy(false);
     }
+  };
+
+  const handleShare = async () => {
+    const url = buildPermalink(contentData.id, contentData.type || 'post');
+    const data = {
+      title: 'Gönderi',
+      text: contentData?.mesaj ? String(contentData.mesaj).slice(0, 120) : '',
+      url
+    };
+    if (navigator.share) {
+      try { await navigator.share(data); return; } catch { /* cancel */ }
+    }
+    await copyToClipboard(url);
   };
 
   if (!contentData) {
@@ -212,30 +224,30 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
 
         {/* Bilgi / Yorumlar */}
         <div className="pdm-info">
-          <header className="info-header">
+          <header className="pdm-infoHeader">
             <img
               src={authorProfile?.profilFoto || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
               alt={authorProfile?.kullaniciAdi}
-              className="info-avatar"
+              className="pdm-infoAvatar"
               onClick={() => onUserClick?.(contentData.authorId)}
             />
             <span
-              className="info-username"
+              className="pdm-infoUsername"
               onClick={() => onUserClick?.(contentData.authorId)}
             >
               {authorProfile?.kullaniciAdi}
             </span>
           </header>
 
-          <div className="pdm-comments-section">
+          <div className="pdm-comments">
             {aciklama && (
-              <div className="comment-item">
+              <div className="pdm-commentItem">
                 <img
                   src={authorProfile?.profilFoto || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
                   alt={authorProfile?.kullaniciAdi}
-                  className="comment-avatar"
+                  className="pdm-commentAvatar"
                 />
-                <div className="comment-body">
+                <div className="pdm-commentBody">
                   <p>
                     <strong onClick={() => onUserClick?.(contentData.authorId)}>
                       {authorProfile?.kullaniciAdi}
@@ -247,18 +259,18 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
             )}
 
             {yorumlar.map((y, i) => (
-              <div key={i} className="comment-item">
+              <div key={i} className="pdm-commentItem">
                 <img
                   src={y.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
                   alt={y.username}
-                  className="comment-avatar"
+                  className="pdm-commentAvatar"
                 />
-                <div className="comment-body">
+                <div className="pdm-commentBody">
                   <p>
                     <strong onClick={() => onUserClick?.(y.userId)}>{y.username}</strong>{' '}
                     {y.text}
                   </p>
-                  <span className="comment-time">{formatTimeAgo(y.timestamp)}</span>
+                  <span className="pdm-commentTime">{formatTimeAgo(y.timestamp)}</span>
                 </div>
               </div>
             ))}
@@ -266,7 +278,7 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
 
           {/* Footer */}
           <div className="pdm-footer">
-            <div className="post-actions">
+            <div className="pdm-actions">
               {/* Kalp YOK → StarRatingV2 */}
               <div className="pdm-starWrap">
                 <StarRatingV2 size={28} onRate={handleRate} readOnly={isOwner} />
@@ -277,31 +289,29 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
                 )}
               </div>
 
-              <button className="action-btn" aria-label="Yorumlar">
+              <button className="pdm-actionBtn" aria-label="Yorumlar">
                 <CommentIcon />
               </button>
-              <button className="action-btn" aria-label="Paylaş">
+              <button className="pdm-actionBtn" aria-label="Paylaş" onClick={handleShare}>
                 <ShareIcon />
               </button>
 
               <button
-                className="action-btn save"
+                className="pdm-actionBtn save"
                 aria-label={isSaved ? 'Kaydedildi' : 'Kaydet'}
                 onClick={handleToggleSave}
-                disabled={saveBusy}
-                aria-busy={saveBusy}
               >
                 <SaveIcon isSaved={isSaved} />
               </button>
             </div>
 
-            <p className="post-date">{formatTimeAgo(contentData?.tarih)}</p>
+            <p className="pdm-date">{formatTimeAgo(contentData?.tarih)}</p>
 
-            <form onSubmit={handleYorumGonder} className="comment-form">
+            <form onSubmit={handleYorumGonder} className="pdm-commentForm">
               <img
                 src={currentUser?.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
                 alt="Profil"
-                className="comment-form-avatar"
+                className="pdm-commentFormAvatar"
               />
               <input
                 type="text"

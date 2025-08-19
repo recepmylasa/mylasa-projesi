@@ -34,6 +34,29 @@ const formatCount = (n) => {
   return (n / 1_000_000_000).toFixed(1) + 'B';
 };
 
+const buildPermalink = (id, type = 'post') => {
+  const origin = window.location.origin;
+  return `${origin}/p/${id}${type && type !== 'post' ? `?type=${encodeURIComponent(type)}` : ''}`;
+};
+
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('Bağlantı kopyalandı');
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      alert('Bağlantı kopyalandı');
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
+};
+
 /* --------------- SKELETON --------------- */
 const MobileSkeleton = () => (
   <article className="m-post-article skeleton" aria-busy="true" aria-live="polite">
@@ -52,7 +75,6 @@ const MobileSkeleton = () => (
 function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
   const [authorProfile, setAuthorProfile] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
-  const [saveBusy, setSaveBusy] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [isMediaLoaded, setIsMediaLoaded] = useState(false);
   const [showFullCaption, setShowFullCaption] = useState(false);
@@ -81,21 +103,12 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     return () => unsub();
   }, [post?.id]);
 
-  /* Kaydet durumunu oku (auth + try/catch) */
+  /* Kaydet durumunu oku */
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!post?.id || !auth.currentUser) {
-        if (!cancelled) setIsSaved(false);
-        return;
-      }
-      try {
-        const saved = await fsIsSaved(post.id);
-        if (!cancelled) setIsSaved(saved);
-      } catch (e) {
-        console.error('Kaydet durumu okunamadı:', e);
-        if (!cancelled) setIsSaved(false);
-      }
+      const saved = await fsIsSaved(post?.id);
+      if (!cancelled) setIsSaved(saved);
     })();
     return () => { cancelled = true; };
   }, [post?.id]);
@@ -127,30 +140,43 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     }
   };
 
-  /* Kaydet toggle (auth guard + busy kilidi + iyimser güncelleme) */
   const handleToggleSave = async () => {
-    if (saveBusy) return;
-    if (!auth.currentUser) {
-      // Giriş yoksa sessizce vazgeç (UI’da login akışı tetiklemek istersen burada ele alabilirsin)
-      return;
-    }
-    setSaveBusy(true);
     setIsSaved((s) => !s);
     try {
       const { saved } = await fsToggleSave({
         contentId: post.id,
-        type: 'post',
+        type: post.type || 'post',
         authorId: post.authorId,
         mediaUrl: post.mediaUrl,
         caption: post.mesaj || '',
       });
       setIsSaved(saved);
     } catch (e) {
-      setIsSaved((s) => !s); // geri al
+      setIsSaved((s) => !s);
       console.error('Kaydet sırasında hata:', e);
-    } finally {
-      setSaveBusy(false);
     }
+  };
+
+  const handleShare = async () => {
+    const url = buildPermalink(post.id, post.type || 'post');
+    const data = {
+      title: 'Gönderi',
+      text: post?.mesaj ? String(post.mesaj).slice(0, 120) : '',
+      url
+    };
+    if (navigator.share) {
+      try { await navigator.share(data); return; } catch { /* cancel */ }
+    }
+    await copyToClipboard(url);
+  };
+
+  const handleCopyLink = async () => {
+    const url = buildPermalink(post.id, post.type || 'post');
+    await copyToClipboard(url);
+  };
+
+  const openInModal = () => {
+    onCommentClick?.(post);
   };
 
   if (!authorProfile) return <MobileSkeleton />;
@@ -221,6 +247,16 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
           </button>
           {optionsOpen && (
             <div className="m-post-options-menu" role="menu">
+              <button onClick={handleShare} className="m-option-item" role="menuitem">
+                Paylaş…
+              </button>
+              <button onClick={handleCopyLink} className="m-option-item" role="menuitem">
+                Bağlantıyı kopyala
+              </button>
+              <button onClick={openInModal} className="m-option-item" role="menuitem">
+                Gönderiyi aç
+              </button>
+
               {isOwner && (
                 <button onClick={handleDelete} className="m-option-item delete" role="menuitem">
                   Sil
@@ -278,7 +314,12 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             <BsChat className="m-action-icon" />
           </button>
 
-          <button className="m-action-btn" aria-label="Paylaş" title="Paylaş">
+          <button
+            className="m-action-btn"
+            aria-label="Paylaş"
+            title="Paylaş"
+            onClick={handleShare}
+          >
             <FiSend className="m-action-icon" />
           </button>
 
@@ -287,8 +328,6 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             className="m-action-btn save"
             aria-label={isSaved ? 'Kaydedildi' : 'Kaydet'}
             title={isSaved ? 'Kaydedildi' : 'Kaydet'}
-            disabled={saveBusy}
-            aria-busy={saveBusy}
           >
             {isSaved ? <BsBookmarkFill className="m-action-icon" /> : <BsBookmark className="m-action-icon" />}
           </button>

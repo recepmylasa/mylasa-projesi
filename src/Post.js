@@ -34,6 +34,30 @@ const formatCount = (n) => {
   return (n / 1_000_000_000).toFixed(1) + 'B';
 };
 
+const buildPermalink = (id, type = 'post') => {
+  const origin = window.location.origin;
+  // IG benzeri: /p/:id — (type gerekirse query’e eklenir)
+  return `${origin}/p/${id}${type && type !== 'post' ? `?type=${encodeURIComponent(type)}` : ''}`;
+};
+
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('Bağlantı kopyalandı');
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      alert('Bağlantı kopyalandı');
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
+};
+
 /* --------------- SKELETON --------------- */
 const PostSkeleton = () => (
   <article className="postDk-article skeleton" aria-busy="true" aria-live="polite">
@@ -52,7 +76,6 @@ const PostSkeleton = () => (
 function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
   const [authorProfile, setAuthorProfile] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
-  const [saveBusy, setSaveBusy] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [isMediaLoaded, setIsMediaLoaded] = useState(false);
   const [showFullCaption, setShowFullCaption] = useState(false);
@@ -83,17 +106,8 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!post?.id || !auth.currentUser) {
-        if (!cancelled) setIsSaved(false);
-        return;
-      }
-      try {
-        const saved = await fsIsSaved(post.id);
-        if (!cancelled) setIsSaved(saved);
-      } catch (e) {
-        console.error('Kaydet durumu okunamadı:', e);
-        if (!cancelled) setIsSaved(false);
-      }
+      const saved = await fsIsSaved(post?.id);
+      if (!cancelled) setIsSaved(saved);
     })();
     return () => { cancelled = true; };
   }, [post?.id]);
@@ -125,30 +139,43 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
   };
 
   const handleToggleSave = async () => {
-    if (saveBusy) return;
-    if (!auth.currentUser) {
-      // giriş yoksa geri al ve sessizce çık
-      return;
-    }
-    setSaveBusy(true);
     // iyimser
     setIsSaved((s) => !s);
     try {
       const { saved } = await fsToggleSave({
         contentId: post.id,
-        type: 'post',
+        type: post.type || 'post',
         authorId: post.authorId,
         mediaUrl: post.mediaUrl,
         caption: post.mesaj || '',
       });
       setIsSaved(saved);
     } catch (e) {
-      // geri al
       setIsSaved((s) => !s);
       console.error('Kaydet sırasında hata:', e);
-    } finally {
-      setSaveBusy(false);
     }
+  };
+
+  const handleShare = async () => {
+    const url = buildPermalink(post.id, post.type || 'post');
+    const data = {
+      title: 'Gönderi',
+      text: post?.mesaj ? String(post.mesaj).slice(0, 120) : '',
+      url
+    };
+    if (navigator.share) {
+      try { await navigator.share(data); return; } catch { /* user cancel */ }
+    }
+    await copyToClipboard(url);
+  };
+
+  const handleCopyLink = async () => {
+    const url = buildPermalink(post.id, post.type || 'post');
+    await copyToClipboard(url);
+  };
+
+  const openInModal = () => {
+    onCommentClick?.(post); // IG “Gönderiye git”e benzer davranış (route’suz modal)
   };
 
   if (!authorProfile) return <PostSkeleton />;
@@ -215,11 +242,24 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
           </button>
           {optionsOpen && (
             <div id="post-menu" className="postDk-optionsMenu" role="menu">
+              {/* PAYLAŞ/BAĞLANTI */}
+              <button onClick={handleShare} className="option-item" role="menuitem">
+                Paylaş…
+              </button>
+              <button onClick={handleCopyLink} className="option-item" role="menuitem">
+                Bağlantıyı kopyala
+              </button>
+              <button onClick={openInModal} className="option-item" role="menuitem">
+                Gönderiyi aç
+              </button>
+
+              {/* SAHİP İSE SİL */}
               {isOwner && (
                 <button onClick={handleDelete} className="option-item delete" role="menuitem">
                   Sil
                 </button>
               )}
+
               <button onClick={() => setOptionsOpen(false)} className="option-item" role="menuitem">
                 Vazgeç
               </button>
@@ -272,7 +312,12 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             <BsChat className="postDk-actionIcon" />
           </button>
 
-          <button className="postDk-actionBtn" aria-label="Paylaş" title="Paylaş">
+          <button
+            className="postDk-actionBtn"
+            aria-label="Paylaş"
+            title="Paylaş"
+            onClick={handleShare}
+          >
             <FiSend className="postDk-actionIcon" />
           </button>
 
@@ -281,8 +326,6 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             className="postDk-actionBtn save"
             aria-label={isSaved ? 'Kaydedildi' : 'Kaydet'}
             title={isSaved ? 'Kaydedildi' : 'Kaydet'}
-            disabled={saveBusy}
-            aria-busy={saveBusy}
           >
             {isSaved ? <BsBookmarkFill className="postDk-actionIcon" /> : <BsBookmark className="postDk-actionIcon" />}
           </button>

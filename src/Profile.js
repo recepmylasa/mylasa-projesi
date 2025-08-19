@@ -1,15 +1,23 @@
 import { useState, useEffect } from "react";
 import { auth, db } from "./firebase";
 import { signOut } from "firebase/auth";
-import { doc, onSnapshot, collection, query, where, orderBy } from "firebase/firestore";
+import {
+  doc,
+  onSnapshot,
+  collection,
+  query,
+  where,
+  orderBy,
+  getDoc,
+} from "firebase/firestore";
 import UserPosts from "./UserPosts";
 import PostDetailModal from "./PostDetailModal";
 import TakipListesi from "./TakipListesi";
 import ProfilDuzenle from "./ProfilDuzenle";
 import UserCheckIns from "./UserCheckIns";
-import SavedGrid from "./SavedGrid";
 import "./Profile.css";
 
+/* ================== ICONS ================== */
 const GridIcon = () => (
   <svg aria-label="Gönderiler" height="24" role="img" viewBox="0 0 24 24" width="24">
     <rect fill="none" height="18" rx="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" width="18" x="3" y="3"></rect>
@@ -37,27 +45,70 @@ const CheckInIcon = () => (
 
 const SavedIcon = () => (
   <svg aria-label="Kaydedilenler" height="24" role="img" viewBox="0 0 24 24" width="24">
-    <polygon fill="currentColor" points="20 21 12 13.44 4 21 4 3 20 3 20 21" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></polygon>
+    <polygon fill="none" points="20 21 12 13.44 4 21 4 3 20 3 20 21" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></polygon>
+    <path d="M16 9V6a4 4 0 10-8 0v3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
   </svg>
 );
+
+/* ============== SAVED GRID (inline) ============== */
+function SavedGrid({ items, onOpen }) {
+  if (!items) {
+    return (
+      <div className="saved-grid">
+        {Array.from({ length: 9 }).map((_, i) => <div key={i} className="saved-item skel" />)}
+      </div>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <div className="saved-empty">
+        <div className="saved-empty-ico">🔖</div>
+        <h3>Henüz kaydın yok</h3>
+        <p>Gönderilerdeki yer imine dokunarak burada topla.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="saved-grid">
+      {items.map((it) => (
+        <button
+          key={it.id}
+          className="saved-item"
+          title={it.caption || ""}
+          onClick={() => onOpen({ id: it.contentId, type: it.type })}
+        >
+          {it.type === "clip" ? (
+            <video className="saved-media" src={it.mediaUrl || ""} preload="metadata" muted playsInline />
+          ) : (
+            <img
+              className="saved-media"
+              src={it.mediaUrl || "https://placehold.co/600x600/EFEFEF/AAAAAA?text=Saved"}
+              alt=""
+              loading="lazy"
+            />
+          )}
+          {it.type === "clip" && <span className="saved-badge">▶</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function Profile({ userId, onUserClick, onPlaceClick }) {
   const [userData, setUserData] = useState(null);
   const [posts, setPosts] = useState([]);
   const [clips, setClips] = useState([]);
   const [checkIns, setCheckIns] = useState([]);
-  const [savedItems, setSavedItems] = useState([]); // NEW
+  const [savedItems, setSavedItems] = useState(null); // null=loading
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const [listModal, setListModal] = useState({ open: false, type: "" });
   const [activeTab, setActiveTab] = useState("posts");
 
-  const isCurrentUser = !!auth.currentUser && auth.currentUser.uid === userId;
-
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
-    setLoading(true); setPosts([]); setClips([]); setCheckIns([]); setSavedItems([]);
+    setLoading(true); setPosts([]); setClips([]); setCheckIns([]); setSavedItems(null);
 
     const userDocRef = doc(db, "users", userId);
     const unsubUser = onSnapshot(userDocRef, snap => {
@@ -74,26 +125,39 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
     const checkInsQuery = query(collection(db, "checkins"), where("userId", "==", userId), orderBy("timestamp", "desc"));
     const unsubCheck = onSnapshot(checkInsQuery, s => setCheckIns(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 
-    // NEW: Kaydedilenler (yalnızca kendi profilinde)
-    let unsubSaved = () => {};
+    // Saved sadece profil sahibi için (IG davranışı)
+    const isCurrentUser = !!auth.currentUser && auth.currentUser.uid === userId;
+    let unsubSaved = null;
     if (isCurrentUser) {
-      try {
-        const savedQ = query(collection(db, "users", userId, "saved"), orderBy("createdAt", "desc"));
-        unsubSaved = onSnapshot(savedQ, (s) => {
-          setSavedItems(s.docs.map(d => ({
-            id: d.id,              // contentId
-            ...d.data(),           // {type, authorId, mediaUrl, caption, createdAt}
-          })));
-        });
-      } catch (e) {
-        console.error("Kaydedilenler okunamadı:", e);
-      }
+      const savedCol = collection(db, "users", userId, "saved");
+      const savedQuery = query(savedCol, orderBy("createdAt", "desc"));
+      unsubSaved = onSnapshot(savedQuery, async (snap) => {
+        const base = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Eksik mediaUrl'leri tamamla (eski kayıtlar için)
+        const filled = await Promise.all(base.map(async it => {
+          if (it.mediaUrl) return it;
+          try {
+            const coll = it.type === "clip" ? "clips" : "posts";
+            const ds = await getDoc(doc(db, coll, it.contentId));
+            if (ds.exists()) {
+              const d = ds.data();
+              return { ...it, mediaUrl: d.mediaUrl || it.mediaUrl || null };
+            }
+          } catch (_) {}
+          return it;
+        }));
+        setSavedItems(filled);
+      });
+    } else {
+      setSavedItems([]); // başkalarının profilinde sekme görünmeyecek ama state boş olsun
     }
 
-    return () => { unsubUser(); unsubPosts(); unsubClips(); unsubCheck(); unsubSaved(); };
-  }, [userId, isCurrentUser]);
+    return () => { unsubUser(); unsubPosts(); unsubClips(); unsubCheck(); unsubSaved && unsubSaved(); };
+  }, [userId]);
 
   const handleLogout = () => { signOut(auth).catch(e => console.error("Çıkış hatası", e)); };
+
+  const isCurrentUser = !!auth.currentUser && auth.currentUser.uid === userId;
 
   const fromDataVisible = Number(userData?.reputation?.visible);
   const fromDataSample  = Number(userData?.reputation?.sample);
@@ -177,8 +241,12 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
           <button className={`profile-tab-btn ${activeTab === "posts" ? "active" : ""}`} onClick={() => setActiveTab("posts")}><GridIcon /> GÖNDERİLER</button>
           <button className={`profile-tab-btn ${activeTab === "clips" ? "active" : ""}`} onClick={() => setActiveTab("clips")}><ClipsIcon /> CLIPS</button>
           <button className={`profile-tab-btn ${activeTab === "checkins" ? "active" : ""}`} onClick={() => setActiveTab("checkins")}><CheckInIcon /> CHECK-IN'LER</button>
+
+          {/* IG davranışı: Kaydedilenler sadece sahibi görür */}
           {isCurrentUser && (
-            <button className={`profile-tab-btn ${activeTab === "saved" ? "active" : ""}`} onClick={() => setActiveTab("saved")}><SavedIcon /> KAYDEDİLENLER</button>
+            <button className={`profile-tab-btn ${activeTab === "saved" ? "active" : ""}`} onClick={() => setActiveTab("saved")}>
+              <SavedIcon /> KAYDEDİLENLER
+            </button>
           )}
         </div>
 
@@ -187,7 +255,7 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
             case "posts": return <UserPosts content={posts} onPostClick={p => setSelectedPost(p)} />;
             case "clips": return <UserPosts content={clips} onPostClick={p => setSelectedPost(p)} />;
             case "checkins": return <UserCheckIns checkIns={checkIns} onPlaceClick={onPlaceClick} />;
-            case "saved": return <SavedGrid items={savedItems} onOpen={(p) => setSelectedPost(p)} />;
+            case "saved": return <SavedGrid items={savedItems} onOpen={(stub) => setSelectedPost(stub)} />;
             default: return null;
           }
         })()}
@@ -204,7 +272,7 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
 
       {selectedPost && (
         <PostDetailModal
-          post={selectedPost}
+          post={selectedPost}               // { id, type } yeterli — modal doc'u canlı çeker
           onClose={() => setSelectedPost(null)}
           onUserClick={onUserClick}
           aktifKullaniciId={auth.currentUser ? auth.currentUser.uid : null}
