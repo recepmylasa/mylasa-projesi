@@ -1,0 +1,72 @@
+.logobar-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid #dbdbdb;
+    z-index: 1000;
+    height: 60px;
+}
+
+.logobar-logo-container {
+    cursor: pointer;
+    display: flex; 
+    align-items: center;
+    gap: 8px;
+}
+
+.logobar-logo-icon {
+    height: 28px;
+    width: auto;
+}
+
+.logobar-logo-text {
+    font-family: 'Cookie', cursive;
+    font-size: 30px;
+    color: #262626;
+    font-weight: 400;
+    line-height: 1;
+    position: relative;
+    top: 3px;
+}
+
+.logobar-icons-container {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.logobar-icon-wrapper {
+    position: relative;
+    display: flex;
+}
+
+.logobar-icon-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #262626;
+    padding: 4px;
+}
+
+.logobar-icon {
+    font-size: 28px;
+}
+
+.notification-dot {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 9px;
+    height: 9px;
+    background-color: #ff3252;
+    border-radius: 50%;
+    border: 1.5px solid white;
+}

@@ -1,0 +1,136 @@
+/* Arka plan overlay'i hem mobil hem masaüstü için ortaktır */
+.bildirimler-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+/* ==========================================================================
+   1. MASAÜSTÜ STİLLERİ (601px ve üstü)
+   ========================================================================== */
+@media (min-width: 601px) {
+    /* DÜZELTME: Masaüstünde tıklanabilir, görünmez bir arka plan */
+    .bildirimler-overlay {
+        background-color: transparent;
+        align-items: flex-start; /* Paneli yukarıya hizala */
+        justify-content: flex-end; /* Paneli sağa hizala */
+    }
+    .bildirimler-content {
+        position: relative; /* Absolute yerine relative */
+        top: 55px;
+        right: 20px;
+        background: white;
+        border-radius: 6px;
+        width: 500px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        border: 1px solid #dbdbdb;
+        animation: fadeIn 0.2s ease-out;
+    }
+    .bildirimler-content::before {
+        content: '';
+        position: absolute;
+        top: -10px;
+        right: 18px;
+        width: 0; height: 0;
+        border-left: 10px solid transparent;
+        border-right: 10px solid transparent;
+        border-bottom: 10px solid white;
+        filter: drop-shadow(0 -1px 1px rgba(0,0,0,0.05));
+    }
+    .bildirimler-header-container { padding: 0; }
+    .bildirimler-header { padding: 16px; font-size: 24px; font-weight: 700; text-align: left; }
+    .bildirimler-close-btn { display: none; }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   2. MOBİL STİLLER (600px ve altı)
+   ========================================================================== */
+@media (max-width: 600px) {
+    .bildirimler-overlay {
+        background-color: rgba(0, 0, 0, 0.5);
+        -webkit-backdrop-filter: blur(4px);
+        backdrop-filter: blur(4px);
+    }
+    .bildirimler-content {
+        width: 88vw;
+        max-width: 360px;
+        height: auto;
+        max-height: 60vh;
+        background-color: #ffffff;
+        border-radius: 18px;
+        box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+        display: flex;
+        flex-direction: column;
+        animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        border: 1px solid rgba(0, 0, 0, 0.09);
+        transition: transform 0.3s ease-out;
+    }
+
+    @keyframes popIn {
+        from { opacity: 0; transform: scale(0.8) translateY(20px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .bildirimler-content::before { display: none; }
+
+    .bildirimler-header-container {
+        padding: 14px 16px;
+        border-bottom: 1px solid #efefef;
+        cursor: grab;
+        touch-action: none;
+    }
+
+    .bildirimler-header {
+        padding: 0;
+        text-align: center; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        color: #262626;
+    }
+
+    .bildirimler-close-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 28px;
+        height: 28px;
+        background-color: #e4e6eb;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        color: #333;
+        z-index: 10;
+    }
+    .bildirimler-close-btn:hover { background-color: #d8dbdf; }
+}
+
+/* ==========================================================================
+   3. ORTAK STİLLER
+   ========================================================================== */
+.bildirimler-body { flex-grow: 1; overflow-y: auto; }
+.bildirimler-list { list-style: none; padding: 0; margin: 0; }
+.bildirim-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.bildirim-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.bildirimler-text-content { flex-grow: 1; font-size: 14px; }
+.bildirimler-text-content p { margin: 0; line-height: 1.4; }
+.bildirimler-text-content strong { font-weight: 600; }
+.bildirim-time { color: #8e8e8e; font-size: 12px; margin-left: 6px; }
+.bildirimler-message { padding: 40px 20px; text-align: center; color: #8e8e8e; }

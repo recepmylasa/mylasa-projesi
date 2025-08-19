@@ -1,0 +1,148 @@
+.new-clip-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    animation: fadeInOverlay 0.3s ease;
+}
+
+@keyframes fadeInOverlay {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.new-clip-modal-content {
+    background-color: white;
+    border-radius: 12px;
+    width: 90vw;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: popInModal 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transition: max-width 0.3s ease, max-height 0.3s ease;
+    
+    /* Adım 1 için varsayılan boyut */
+    max-width: 500px;
+    max-height: 500px;
+}
+
+/* Adım 2'de pencereyi Instagram gibi daha büyük ve dikey yapıyoruz */
+.new-clip-modal-content.step-2 {
+    max-width: 850px;
+    max-height: 80vh;
+}
+
+
+@keyframes popInModal {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.new-clip-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-bottom: 1px solid #dbdbdb;
+    padding: 8px 16px;
+    position: relative;
+    flex-shrink: 0; /* Header'ın küçülmesini engelle */
+}
+
+.new-clip-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.header-btn {
+    position: absolute;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    font-weight: 600;
+    font-size: 14px;
+}
+.header-btn.back { left: 8px; color: #262626; }
+.header-btn.share { right: 8px; color: #0095f6; }
+
+
+.new-clip-body {
+    flex-grow: 1;
+    display: flex;
+    padding: 0; 
+    overflow: hidden;
+}
+
+.file-select-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    text-align: center;
+    width: 100%;
+}
+.file-select-container p {
+    font-size: 20px;
+    color: #262626;
+    margin: 16px 0;
+}
+.file-select-btn {
+    background-color: #0095f6;
+    color: white;
+    padding: 7px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.clip-editor-container {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+.clip-video-preview-wrapper {
+    flex-basis: 55%;
+    background-color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #dbdbdb;
+    padding: 20px;
+}
+
+.clip-video-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.clip-form-section {
+    flex-basis: 45%;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.clip-caption-textarea {
+    width: 100%;
+    height: 150px;
+    border: none;
+    resize: none;
+    font-size: 16px;
+    padding: 0;
+    margin-top: 16px;
+}
+.clip-caption-textarea:focus {
+    outline: none;
+}

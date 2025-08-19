@@ -1,0 +1,263 @@
+/* GENEL KAPSAYICI */
+.pe-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 20px;
+}
+
+.pe-container {
+    width: 100%;
+    max-width: 935px;
+    height: 80vh;
+    max-height: 700px;
+    background-color: #fff;
+    border-radius: 12px;
+    display: flex;
+    overflow: hidden;
+    border: 1px solid #dbdbdb;
+}
+
+/* SOL MENÜ (SIDEBAR) - MASAÜSTÜ */
+.pe-sidebar {
+    width: 235px;
+    border-right: 1px solid #dbdbdb;
+    padding: 8px 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.pe-menu-item {
+    width: 100%;
+    padding: 16px 16px 16px 30px;
+    border: none;
+    background: none;
+    text-align: left;
+    font-size: 16px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background-color 0.2s, border-color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #262626;
+}
+
+.pe-menu-item:hover {
+    background-color: #fafafa;
+}
+
+.pe-menu-item.active {
+    border-left-color: #262626;
+    font-weight: 600;
+}
+
+.pe-menu-item svg {
+    color: #555;
+}
+
+/* SAĞ İÇERİK ALANI */
+.pe-content {
+    flex-grow: 1;
+    padding: 32px;
+    overflow-y: auto;
+}
+
+/* FORM STİLLERİ */
+.pe-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.pe-form-group {
+    display: flex;
+    margin-bottom: 24px;
+}
+
+.pe-label {
+    width: 120px;
+    padding-right: 32px;
+    text-align: right;
+    font-size: 16px;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-top: 6px;
+}
+
+.pe-input {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.pe-input input,
+.pe-input textarea {
+    width: 100%;
+    padding: 6px 12px;
+    font-size: 16px;
+    border: 1px solid #dbdbdb;
+    border-radius: 3px;
+    background-color: #fafafa;
+}
+.pe-input input:focus,
+.pe-input textarea:focus {
+    outline: none;
+    border-color: #a8a8a8;
+}
+
+.pe-input textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.pe-helper-text {
+    font-size: 12px;
+    color: #8e8e8e;
+    margin-top: 8px;
+}
+
+.photo-group .pe-label {
+    margin-top: 0;
+}
+.pe-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.pe-username {
+    font-size: 20px;
+    font-weight: 400;
+    margin-bottom: 4px;
+}
+.pe-photo-change-btn {
+    background: none;
+    border: none;
+    color: #0095f6;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+}
+
+.submit-group {
+    align-items: center;
+}
+.pe-submit-btn {
+    background-color: #0095f6;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    width: fit-content;
+}
+.pe-submit-btn:disabled {
+    background-color: #b2dffc;
+    cursor: default;
+}
+
+.pe-save-message {
+    margin-left: 16px;
+    font-size: 14px;
+    color: #28a745;
+}
+
+.pe-placeholder-content {
+    padding: 20px;
+    text-align: center;
+    color: #8e8e8e;
+}
+
+/* YENİ: MOBİL HEADER STİLLERİ */
+.pe-mobile-header {
+    display: none; /* Masaüstünde gizli */
+}
+
+
+/* MOBİL UYUMLULUK */
+@media (max-width: 768px) {
+    .pe-overlay {
+        padding: 0;
+        align-items: stretch;
+    }
+    .pe-container {
+        flex-direction: column;
+        height: 100%;
+        max-height: none;
+        border-radius: 0;
+        border: none;
+    }
+    
+    /* YENİ: MOBİL HEADER GÖRÜNÜR YAPILDI */
+    .pe-mobile-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 16px;
+        border-bottom: 1px solid #dbdbdb;
+        flex-shrink: 0;
+    }
+    .pe-mobile-header-title {
+        font-size: 16px;
+        font-weight: 600;
+    }
+    .pe-mobile-header-btn {
+        background: none;
+        border: none;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 8px;
+    }
+    .pe-mobile-header-btn.cancel {
+        color: #262626;
+    }
+    .pe-mobile-header-btn.done {
+        color: #0095f6;
+        font-weight: 600;
+    }
+    .pe-mobile-header-btn:disabled {
+        color: #b2dffc;
+    }
+
+    /* MOBİLDE ESKİ MENÜ GİZLENDİ */
+    .pe-sidebar {
+        display: none;
+    }
+    
+    .pe-content {
+        padding: 16px;
+    }
+    .pe-form-group {
+        flex-direction: column;
+        margin-bottom: 16px;
+    }
+    .pe-label {
+        width: auto;
+        text-align: left;
+        margin-bottom: 6px;
+        font-size: 14px;
+    }
+    .photo-group {
+        flex-direction: row;
+        align-items: center;
+        gap: 16px;
+    }
+    .photo-group .pe-label {
+        width: auto;
+        margin: 0;
+    }
+    /* Mobilde gönder butonu gizlendi, çünkü header'da "Bitti" var */
+    .submit-group {
+        display: none;
+    }
+}

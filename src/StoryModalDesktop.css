@@ -1,0 +1,225 @@
+/* =============================================
+ * StoryModalDesktop.css — rev.fixed.size + ★ yerleşimi
+ * ============================================= */
+
+.storyDk-overlay{
+  position: fixed; inset:0; background: rgba(0,0,0,.8);
+  display:flex; align-items:center; justify-content:center;
+  z-index: 4000;
+  padding: 0 24px;
+}
+
+/* dış oklar */
+.storyDk-arrow{
+  position: fixed; top: 50%; transform: translateY(-50%);
+  width: 52px; height: 52px; border:0; border-radius: 50%;
+  background: rgba(255,255,255,.14); color:#fff; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  z-index: 4010;
+}
+.storyDk-arrow:hover{ background: rgba(255,255,255,.22); }
+.storyDk-arrow:focus-visible{ outline: 2px solid rgba(255,255,255,.7); outline-offset: 2px; }
+.storyDk-arrow.prev{ left: 24px; }
+.storyDk-arrow.next{ right: 24px; }
+
+/* kart */
+.storyDk-content{
+  position: relative;
+  width: min(420px, 90vw, calc(90vh * 9 / 16));
+  max-height: 90vh;
+  aspect-ratio: 9/16;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0,0,0,.6);
+  z-index: 4020;
+}
+
+/* medya */
+.storyDk-media{
+  position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  background:#000;
+}
+.storyDk-media img,
+.storyDk-media video{
+  width:100%; height:100%; object-fit: contain;
+  max-width:100%; max-height:100%;
+  opacity: 0; transition: opacity .2s ease;
+  -webkit-user-drag:none; backface-visibility:hidden; transform:translateZ(0);
+}
+.storyDk-media .is-ready{ opacity: 1 !important; }
+
+/* spinner */
+.storyDk-buffer{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  opacity:0; pointer-events:none; transition: opacity .15s linear;
+}
+.storyDk-buffer.show{ opacity:1; }
+.storyDk-spin{
+  width:32px; height:32px; border-radius:50%;
+  border:4px solid rgba(255,255,255,.25); border-top-color:#fff;
+  animation: storySpin 1s linear infinite;
+}
+@keyframes storySpin{ to{ transform: rotate(360deg); } }
+
+/* header */
+.storyDk-header{
+  position:absolute; left:0; right:0; top:0;
+  padding:10px 12px;
+  background: linear-gradient(to bottom, rgba(0,0,0,.45), transparent);
+  z-index: 1;
+}
+
+/* progress */
+.storyDk-progress{ display:flex; gap:4px; margin-bottom:8px; }
+.pbar-bg{
+  flex:1; height:3px; border-radius:99px; overflow:hidden;
+  background: rgba(255,255,255,.35);
+}
+.pbar-fg{
+  width:0%; height:100%; background:#fff; border-radius:99px;
+  transition: width .06s linear;
+}
+
+.storyDk-headrow{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+}
+.storyDk-headrow .user{ display:flex; align-items:center; gap:10px; min-width:0; }
+.storyDk-headrow .user img{ width:32px; height:32px; border-radius:50%; object-fit:cover; }
+.storyDk-headrow .user .uname{ color:#fff; font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.actions{ display:flex; align-items:center; gap:8px; }
+.icon{
+  width:40px; height:40px; border:0; border-radius:50%;
+  background: transparent; color:#fff; display:inline-flex; align-items:center; justify-content:center;
+  cursor:pointer;
+}
+.icon:active{ background: rgba(255,255,255,.18); }
+.icon:focus-visible{ outline: 2px solid rgba(255,255,255,.6); outline-offset: 2px; }
+
+/* bottom */
+.storyDk-bottom{
+  position:absolute; left:0; right:0; bottom:0; z-index:1;
+  padding:14px;
+  background: linear-gradient(to top, rgba(0,0,0,.5), transparent);
+  color:#fff;
+}
+
+/* ★ yıldız yerleşimi */
+.storyDk-stars{
+  margin-bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.storyDk-stars .mr-meta{
+  color:#e6e6e6;
+  font-size: 12px;
+}
+/* Uzun bas panelindeki butonlarda erişilebilir odak halkası */
+.storyDk-stars .mr-starbtn:focus-visible{
+  outline: 2px solid rgba(255, 213, 74, .75);
+  outline-offset: 2px;
+}
+
+.owner-actions{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.seen-by{ display:flex; align-items:center; gap:8px; font-weight:600; }
+.owner-buttons{ display:flex; gap:10px; }
+.icon-btn{
+  background: rgba(255,255,255,.12); border:0; color:#fff; padding:8px 12px;
+  border-radius:999px; font-weight:600; cursor:pointer;
+}
+.icon-btn:active{ background: rgba(255,255,255,.2); }
+
+/* reply */
+.replyrow{ display:flex; align-items:center; gap:12px; }
+.inputwrap{ position:relative; flex:1; }
+.inputwrap input{
+  width:100%; height:44px; border-radius:22px; padding:0 44px 0 16px;
+  background: rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25);
+  color:#fff; outline:none;
+}
+.inputwrap .send{
+  position:absolute; right:6px; top:50%; transform:translateY(-50%);
+  width:36px; height:36px; border-radius:50%; border:0; background: transparent; color:#fff; cursor:pointer;
+}
+.inputwrap .send:focus-visible{ outline: 2px solid rgba(255,255,255,.6); outline-offset: 2px; }
+.emojis{ display:flex; gap:6px; }
+.emoji{
+  width:36px; height:36px; border-radius:50%; border:0; cursor:pointer;
+  background: rgba(255,255,255,.1); color:#fff; font-size:16px;
+}
+
+/* tap-zones */
+.storyDk-nav{
+  position:absolute; top:0; bottom:0; width:34%;
+  border:0; background: transparent; cursor:pointer; z-index:2;
+}
+.storyDk-nav.prev{ left:0; }
+.storyDk-nav.next{ right:0; }
+
+/* üst üç nokta menüsü */
+.storyDk-kebablayer{
+  position: fixed; inset:0; z-index: 4030; display:flex; align-items:center; justify-content:center;
+  background: rgba(0,0,0,.35); opacity:0; pointer-events:none; transition: opacity .2s ease;
+}
+.storyDk-kebablayer.show{ opacity:1; pointer-events:auto; }
+.storyDk-kebab{
+  width: min(420px, 86vw); background:#262626; color:#fff; border-radius:16px; overflow:hidden;
+}
+.storyDk-kebab .mtitle{ padding:16px; font-weight:700; text-align:center; border-bottom:1px solid rgba(255,255,255,.12); }
+.storyDk-kebab .mitem{
+  width:100%; padding:14px; background:transparent; border:0; color:#fff; cursor:pointer;
+  border-top:1px solid rgba(255,255,255,.12);
+}
+
+/* alt menü */
+.storyDk-menulayer{
+  position: fixed; inset:0; z-index: 4030; display:flex; align-items:flex-end; justify-content:center;
+  background: rgba(0,0,0,.35); opacity:0; pointer-events:none; transition: opacity .25s ease;
+}
+.storyDk-menulayer.visible{ opacity:1; pointer-events:auto; }
+.storyDk-menu{
+  width: min(480px, 100%); background:#262626; color:#fff;
+  border-top-left-radius:16px; border-top-right-radius:16px; transform: translateY(100%);
+  transition: transform .25s ease-out;
+  padding-bottom: 12px;
+}
+.storyDk-menulayer.visible .storyDk-menu{ transform: translateY(0); }
+.storyDk-menu .dragbar{ width:44px; height:5px; border-radius:999px; background: rgba(255,255,255,.25); margin:8px auto 6px; }
+.storyDk-menu .mitem{
+  width:100%; text-align:center; padding:16px; background:transparent; border:0; color:#fff; cursor:pointer;
+  border-top:1px solid rgba(255,255,255,.1);
+}
+.storyDk-menu .mitem.danger{ color:#ed4956; }
+
+/* sil onayı */
+.storyDk-confirmlayer{
+  position: fixed; inset:0; z-index: 4040; background: rgba(0,0,0,.55);
+  display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition: opacity .2s ease;
+}
+.storyDk-confirmlayer.show{ opacity:1; pointer-events:auto; }
+.storyDk-confirm{
+  width: 320px; background:#262626; color:#fff; border-radius:16px; overflow:hidden;
+  transform: scale(.96); transition: transform .2s ease;
+}
+.storyDk-confirmlayer.show .storyDk-confirm{ transform: scale(1); }
+.storyDk-confirm .title{ padding:18px; font-weight:700; text-align:center; }
+.storyDk-confirm .actions{ display:flex; border-top:1px solid rgba(255,255,255,.12); }
+.storyDk-confirm .btn{
+  flex:1; padding:14px; background:transparent; border:0; color:#fff; cursor:pointer;
+  border-right:1px solid rgba(255,255,255,.12);
+}
+.storyDk-confirm .btn:last-child{ border-right:0; }
+.storyDk-confirm .btn.danger{ color:#ed4956; font-weight:700; }
+
+/* ====== HİKÂYE AÇIKKEN (global flag) ====== */
+body.mylasa-stories-open .mr-feedback-anim,
+body.mylasa-stories-open .StarFeedbackAnimation,
+body.mylasa-stories-open #star-feedback {
+  display: none !important;
+  pointer-events: none !important;
+}

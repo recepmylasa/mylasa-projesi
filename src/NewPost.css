@@ -1,0 +1,179 @@
+/* --- Ana Pencere Stilleri --- */
+.new-post-modal-content {
+    background-color: white;
+    border-radius: 12px;
+    width: 90vw;
+    max-width: 500px; /* Adım 1 için genişlik */
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: max-width 0.3s ease-in-out;
+}
+
+/* Adım 2'de pencereyi genişlet */
+.new-post-modal-content.step-2 {
+    max-width: 850px;
+}
+
+/* --- Header Stilleri --- */
+.new-post-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-bottom: 1px solid #dbdbdb;
+    padding: 8px 16px;
+    position: relative; /* Butonları konumlandırmak için */
+}
+
+.new-post-title-container {
+    text-align: center;
+    flex-grow: 1;
+}
+
+.new-post-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.header-btn {
+    position: absolute;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    color: #0095f6;
+    font-weight: 600;
+    font-size: 14px;
+}
+.header-btn.back { left: 8px; color: #262626; }
+.header-btn.share { right: 8px; }
+.header-btn:disabled { color: #b2dffc; }
+
+
+/* --- Body Stilleri --- */
+.new-post-body {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Adım 1: Dosya Seçim Ekranı */
+.file-select-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+}
+.file-select-container p {
+    font-size: 20px;
+    color: #262626;
+    margin: 16px 0;
+}
+.file-select-btn {
+    background-color: #0095f6;
+    color: white;
+    padding: 7px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Adım 2: Açıklama Yazma Ekranı */
+.caption-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch; /* YENİ: İçeriklerin yüksekliğini eşitler */
+}
+
+.caption-image-preview {
+    flex-shrink: 0;
+    width: 60%;
+    background-color: #000;
+    border-right: 1px solid #dbdbdb;
+    position: relative;
+    
+    /* YENİ: Önizleme alanını her zaman KARE (1:1) olmaya zorluyoruz. */
+    aspect-ratio: 1 / 1;
+    
+    /* YENİ: Form alanı uzasa bile bu alanın yüksekliğinin sabit kalmasını sağlıyoruz. */
+    align-self: center; 
+}
+
+.caption-image-preview img,
+.caption-image-preview video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Bu kural artık doğru çalışacak */
+}
+
+.caption-form-section {
+    width: 40%;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.caption-user-info {
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.caption-user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    margin-right: 12px;
+}
+
+.caption-user-name {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.caption-textarea {
+    flex-grow: 1;
+    border: none;
+    resize: none;
+    font-size: 16px;
+    width: 100%;
+    padding: 0;
+}
+.caption-textarea:focus {
+    outline: none;
+}
+
+.caption-char-counter {
+    font-size: 12px;
+    color: #c7c7c7;
+    text-align: right;
+    margin-top: 8px;
+}
+
+.error-message {
+    color: red;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.progress-bar-container {
+    height: 4px;
+    background-color: #efefef;
+    border-radius: 2px;
+    margin-top: 10px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: #0095f6;
+    transition: width 0.2s ease;
+}

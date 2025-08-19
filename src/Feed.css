@@ -1,0 +1,101 @@
+/* =========================================================
+   1) Feed genel
+   ========================================================= */
+.feed-container {
+  width: 100%;
+  background: transparent;      /* olası arka planı kaldır */
+  border: 0;
+  box-shadow: none;
+  overflow: visible;            /* hikaye halo’ları taşabilsin */
+}
+
+/* =========================================================
+   2) Klipler (mevcut stillerin korunması)
+   ========================================================= */
+.clip-media-container {
+  position: relative;
+  cursor: pointer;
+}
+
+.volume-control-feed {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  background-color: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  z-index: 5;
+}
+
+/* =========================================================
+   3) HİKAYELER İÇİN GÜVENCE RESETLER
+   (Ring/halo sadece Hikayeler.css’te çizilir)
+   ========================================================= */
+
+/* Stories kapsayıcıları kesinlikle şeffaf kalsın */
+.stories-container,
+.stories-scroll-area {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+/* Ek wrapper’lar da şeffaf olsun */
+.feed-container .stories-container,
+.feed-container .stories-scroll-area,
+.feed-container .story-item {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Wrapper asla düz arka plan almasın; ring görüntüsü burada verilmez */
+.story-circle-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
+/* ÖNEMLİ: Bu dosya HALO’YU KAPATMAZ.
+   Neon sadece Hikayeler.css’te `with-neon` ile yönetilir. */
+.story-circle-wrapper.with-neon::before { display: block !important; }
+
+/* Ringi üst katmana bırak (Hikayeler.css -> ::after), görsel alt katmanda */
+.story-circle-wrapper::after  { z-index: 2; }   /* ring üstte */
+.story-circle-image           { z-index: 1; }
+
+/* Görsel ve torunları temiz kalsın */
+.story-circle-image,
+.story-circle-image::before,
+.story-circle-image::after,
+.story-circle-image * {
+  background: transparent !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.story-circle-image img,
+.story-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}

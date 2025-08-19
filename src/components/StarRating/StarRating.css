@@ -1,0 +1,114 @@
+/* src/components/StarRating/StarRating.css */
+.mr-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.mr-row {
+  display: inline-flex;
+  gap: 6px;
+}
+.mr-row.read-only {
+  opacity: .85;
+  pointer-events: none;
+}
+
+.mr-sm .mr-starbtn { width: 24px; height: 24px; }
+.mr-md .mr-starbtn { width: 30px; height: 30px; }
+.mr-lg .mr-starbtn { width: 38px; height: 38px; }
+
+.mr-starbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffd54a; /* yıldız rengi */
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 2px;
+  transition: transform .08s ease;
+  outline: none;
+  touch-action: manipulation;
+}
+.mr-starbtn:active { transform: scale(.95); }
+.mr-starbtn:focus-visible {
+  box-shadow: 0 0 0 2px rgba(255,213,74,.85);
+}
+
+.mr-star {
+  display: block;
+}
+
+.mr-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: .9;
+  color: #fff;
+}
+
+/* Büyük seçici (basılı tut) */
+.mr-chooser {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+.mr-chooser-box {
+  width: min(92vw, 360px);
+  background: #262626;
+  color: #fff;
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.4);
+}
+.mr-chooser-title {
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.mr-chooser-stars {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mr-chooser-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0;
+  border-radius: 12px;
+  background: #1f1f1f;
+  border: 1px solid rgba(255,255,255,.08);
+  color: #ffd54a;
+  cursor: pointer;
+}
+.mr-chooser-btn:active { transform: scale(.98); }
+.mr-chooser-label {
+  font-size: 12px;
+  color: #ddd;
+}
+.mr-chooser-close {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 0;
+  background: #3a3a3a;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* Erişilebilirlik */
+@media (prefers-reduced-motion: reduce) {
+  .mr-starbtn { transition: none !important; }
+}

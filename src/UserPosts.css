@@ -1,0 +1,73 @@
+.user-posts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr; 
+    gap: 3px;
+}
+
+.post-grid-item {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    cursor: pointer;
+    background-color: #efefef;
+}
+
+.post-grid-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.post-grid-icon-wrapper {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    pointer-events: none;
+}
+
+.post-grid-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    color: white;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.post-grid-item:hover .post-grid-overlay {
+    opacity: 1;
+}
+
+.overlay-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.overlay-stat svg {
+    width: 20px;
+    height: 20px;
+    stroke: white;
+    fill: white;
+}
+
+.user-posts-message {
+    text-align: center;
+    margin-top: 40px;
+    color: #8e8e8e;
+    font-size: 14px;
+}
+
+.user-posts-message .icon {
+    font-size: 2.5em;
+    margin-bottom: 16px;
+    display: block;
+}

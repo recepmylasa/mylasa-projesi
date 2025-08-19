@@ -1,0 +1,91 @@
+/* 'Cookie' fontu public/index.html dosyasindan yukleniyor. */
+
+.sidenav-container {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    width: 244px;
+    background-color: #ffffff;
+    border-right: 1px solid #dbdbdb;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    z-index: 1500;
+}
+
+.sidenav-logo-container {
+    display: flex;
+    align-items: center;
+    padding: 25px 12px 35px 12px;
+    cursor: pointer;
+    gap: 8px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.sidenav-logo-icon {
+    height: 28px;
+    width: auto;
+}
+
+.sidenav-logo-text {
+    font-family: 'Cookie', cursive;
+    font-size: 30px;
+    color: #262626;
+    font-weight: 400;
+    line-height: 1;
+    position: relative;
+    top: 3px;
+}
+
+.sidenav-links {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    flex-grow: 1;
+}
+
+.sidenav-link {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    margin: 4px 0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+    color: #262626;
+    text-decoration: none;
+}
+
+.sidenav-link:hover {
+    background-color: #fafafa;
+}
+
+.sidenav-link.active {
+    font-weight: 700;
+}
+
+.sidenav-icon {
+    font-size: 28px;
+    margin-right: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+}
+
+.sidenav-text {
+    font-size: 16px;
+}
+
+.bottom-nav-profile-pic {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

@@ -1,0 +1,183 @@
+// firestore.rules — GÜNCELLENMİŞ (STAR + SAVED)
+// - Mevcut kurallar korunur
+// - YENİ: users/{uid}/saved/{docId} (sadece sahibi okuyup/yazar)
+// - YENİ: content/{contentId} create izni stub için herkes (auth) -- owner dışındaki update yine yasak
+// - userStats yalnızca sunucu (Admin SDK) yazar
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Yardımcı fonksiyonlar ----------
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+    function isSharingLocation(userData) {
+      return userData.isSharing == true;
+    }
+    function canRequesterSeeLocation(userData, requesterId) {
+      return (userData.sharingMode == 'all_friends' &&
+              userData.takipEdilenler != null &&
+              requesterId in userData.takipEdilenler)
+          || (userData.sharingMode == 'selected_friends' &&
+              userData.sharingWhitelist != null &&
+              requesterId in userData.sharingWhitelist);
+    }
+    function canReadLocation(userId, requesterId) {
+      return isSharingLocation(getUserData(userId))
+          && canRequesterSeeLocation(getUserData(userId), requesterId);
+    }
+
+    // ---------- USERS ----------
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+
+      // ---------- SAVED (Bookmark) ----------
+      // DocID'yi contentId ile aynı tutuyoruz (client böyle yazıyor).
+      match /saved/{docId} {
+        // Sadece sahibi görebilir/listeleyebilir
+        allow read: if request.auth != null && request.auth.uid == userId;
+
+        // Oluşturma: sadece sahibi; temel alan tip/kısıtları
+        allow create: if request.auth != null
+          && request.auth.uid == userId
+          && request.resource.id == request.resource.data.contentId
+          && request.resource.data.contentId is string
+          && request.resource.data.type in ['post','clip','story']
+          && request.resource.data.authorId is string
+          && ( !('mediaUrl' in request.resource.data) || request.resource.data.mediaUrl is string || request.resource.data.mediaUrl == null )
+          && ( !('caption' in request.resource.data) || request.resource.data.caption is string )
+          && ( !('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp )
+          // İçerik dokümanı, en az bir ana koleksiyonda mevcut olmalı
+          && (
+               exists(/databases/$(database)/documents/content/$(request.resource.data.contentId)) ||
+               exists(/databases/$(database)/documents/posts/$(request.resource.data.contentId)) ||
+               exists(/databases/$(database)/documents/clips/$(request.resource.data.contentId)) ||
+               exists(/databases/$(database)/documents/hikayeler/$(request.resource.data.contentId))
+             );
+
+        // Güncelleme gerekmiyor (client delete/create yapıyor); kapalı tutuyoruz
+        allow update: if false;
+
+        // Silme: sahibi
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    match /usernames/{username} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+    }
+
+    // ---------- LOCATIONS ----------
+    match /locations/{userId} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null &&
+                   (request.auth.uid == userId || canReadLocation(userId, request.auth.uid));
+    }
+
+    // ---------- POSTS ----------
+    match /posts/{postId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+    }
+
+    // ---------- HİKAYELER ----------
+    match /hikayeler/{storyId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+
+      // Sahip full update; başkası sadece görüntüleme sayaçları/izleyen listesi
+      allow update: if request.auth != null && (
+        resource.data.authorId == request.auth.uid ||
+        (
+          !(request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "authorId","mediaUrl","mediaType","contentType","storagePath",
+            "dosyaBoyutu","tarih","createdAt","authorUsername","authorProfilePic"
+          ]))
+          && request.resource.data.viewersCount >= resource.data.viewersCount
+        )
+      );
+
+      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+    }
+
+    // ---------- CLIPS ----------
+    match /clips/{clipId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+    }
+
+    // ---------- CHECKINS ----------
+    match /checkins/{checkinId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.userId ||
+        canReadLocation(resource.data.userId, request.auth.uid)
+      );
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // ---------- NOTIFICATIONS ----------
+    match /notifications/{notificationId} {
+      allow read, create: if request.auth != null;
+      allow update: if request.auth != null && request.auth.uid == resource.data.to;
+    }
+
+    // ---------- CONTENT + RATINGS ----------
+    match /content/{contentId} {
+      // Okuma: giriş yapmış herkes
+      allow read: if request.auth != null;
+
+      // CREATE: Herkes (auth) stub açabilir (type/authorId doğrulanır)
+      allow create: if request.auth != null
+        && request.resource.data.authorId is string
+        && request.resource.data.type in ['post', 'story', 'clip'];
+
+      // UPDATE/DELETE: sadece içerik sahibi (Admin SDK zaten kuralları bypass eder)
+      allow update, delete: if request.auth != null
+        && resource.data.authorId == request.auth.uid;
+
+      // Tekil oylar
+      match /ratings/{raterId} {
+        allow read: if request.auth != null;
+
+        // Yeni oy
+        allow create: if request.auth != null
+          && raterId == request.auth.uid
+          && request.resource.data.raterId == request.auth.uid
+          && request.resource.data.authorId != request.auth.uid
+          && request.resource.data.value is int
+          && request.resource.data.value >= 1
+          && request.resource.data.value <= 5
+          && exists(/databases/$(database)/documents/content/$(contentId));
+
+        // Kendi oyunu güncelle
+        allow update: if request.auth != null
+          && raterId == request.auth.uid
+          && request.resource.data.raterId == request.auth.uid
+          && request.resource.data.value is int
+          && request.resource.data.value >= 1
+          && request.resource.data.value <= 5;
+
+        allow delete: if false;
+      }
+    }
+
+    // ---------- USER STATS (yalnızca Admin SDK) ----------
+    match /userStats/{uid} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // ---------- catch-all ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

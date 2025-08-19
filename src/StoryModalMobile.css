@@ -1,0 +1,287 @@
+/* ==================================================
+ * StoryModalMobile.css — Fade-in + Spinner + ★ yerleşimi (scoped class fix)
+ * ================================================== */
+
+.storyMb-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.storyMb-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.storyMb-media {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  touch-action: manipulation;
+}
+
+.storyMb-media img,
+.storyMb-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  opacity: 0;                 /* flash yok */
+  transition: opacity .18s ease;
+}
+
+.storyMb-buffer {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 12;
+}
+
+.storyMb-spin {
+  width: 32px;
+  height: 32px;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, .2);
+  border-top-color: #fff;
+  animation: spin 1s linear infinite;
+  will-change: transform;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.storyMb-tap-zones {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+}
+.storyMb-tap-zones .zone {
+  height: 100%;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.2s ease;
+}
+.storyMb-tap-zones .zone:active {
+  background: rgba(255,255,255,0.08);
+}
+.storyMb-tap-zones .zone.prev { width: 30%; }
+.storyMb-tap-zones .zone.next { width: 70%; }
+
+.storyMb-header {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 8px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+  background: linear-gradient(to bottom, rgba(0,0,0,.5), transparent);
+  z-index: 10;
+  pointer-events: none;
+}
+.storyMb-header * { pointer-events: auto; }
+
+.storyMb-progress {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.pbar-bg {
+  flex: 1;
+  height: 3px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.35);
+  overflow: hidden;
+}
+.pbar-fg {
+  height: 100%;
+  width: 0%;
+  background: #fff;
+  border-radius: 99px;
+  transition: width 0.05s linear;
+  will-change: width;
+}
+
+.storyMb-headrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+/* GLOBAL ÇAKIŞMA FİX: .user/.actions yerine scoped */
+.storyMb-headrow .storyMb-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.storyMb-headrow .storyMb-user img {
+  width: 32px; height: 32px; border-radius: 50%;
+  object-fit: cover;
+}
+.storyMb-headrow .storyMb-user .uname {
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.storyMb-headrow .storyMb-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* GLOBAL ÇAKIŞMA FİX: .icon yerine .storyMb-icon */
+.storyMb-icon {
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; color: #fff; cursor: pointer;
+  padding: 0;
+  border-radius: 50%;
+  touch-action: manipulation;
+}
+.storyMb-icon:active { background: rgba(255,255,255,.2); }
+.storyMb-icon:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 2px; }
+
+.storyMb-bottom {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 9;
+  color: #fff;
+  background: linear-gradient(to top, rgba(0,0,0,.5), transparent);
+}
+
+/* ★ yıldız yerleşimi */
+.storyMb-stars{
+  margin: 6px 0 10px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.storyMb-stars .mr-meta{
+  color:#e6e6e6;
+  font-size: 12px;
+}
+
+/* Erişilebilirlik: buton odak */
+.storyMb-stars .mr-starbtn:focus-visible {
+  outline: 2px solid rgba(255, 213, 74, .75);
+  outline-offset: 2px;
+}
+
+/* reply (scoped) */
+.storyMb-replyrow { display: flex; align-items: center; gap: 12px; }
+.storyMb-inputwrap { flex: 1; position: relative; }
+.storyMb-replyrow input {
+  width: 100%;
+  height: 44px;
+  background: transparent; color: #fff;
+  border: 1px solid rgba(255,255,255,.5);
+  border-radius: 22px; padding: 0 18px; font-size: 15px;
+}
+.storyMb-replyrow input::placeholder { color: rgba(255,255,255,.75); }
+
+.storyMb-owner-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.storyMb-seen-by {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 600;
+}
+.storyMb-owner-buttons { display: flex; gap: 8px; }
+.storyMb-owner-buttons .storyMb-iconbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: #fff;
+  padding: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.storyMb-menulayer {
+  position: absolute; inset: 0; z-index: 15;
+  background: rgba(0,0,0,.35);
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .25s ease;
+}
+.storyMb-menulayer.visible { opacity: 1; pointer-events: auto; }
+.storyMb-menu {
+  width: 100%; max-width: 500px;
+  border-top-left-radius: 16px; border-top-right-radius: 16px;
+  background: #262626; color: #fff;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  transform: translateY(100%); transition: transform .25s ease-out;
+  will-change: transform;
+}
+.storyMb-menulayer.visible .storyMb-menu { transform: translateY(0); }
+.storyMb-menu .dragbar {
+  width: 44px; height: 5px; border-radius: 999px;
+  background: rgba(255,255,255,.25); margin: 8px auto 6px;
+}
+.storyMb-menu .mitem {
+  width: 100%; text-align: center;
+  padding: 16px; font-size: 15px;
+  background: transparent; border: 0; color: #fff; cursor: pointer;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.storyMb-menu .mitem:hover { background: rgba(255,255,255,.06); }
+.storyMb-menu .mitem.danger { color: #ed4956; }
+
+.storyMb-confirmlayer {
+  position:absolute; inset:0; z-index:20; background: rgba(0,0,0,.6);
+  display:flex; align-items:center; justify-content:center;
+  opacity: 0; pointer-events: none; transition: opacity .2s ease;
+}
+.storyMb-confirmlayer.show { opacity: 1; pointer-events: auto; }
+.storyMb-confirm {
+  width:280px; background:#262626; color:#fff; border-radius:14px; text-align:center;
+  transform: scale(.96); transition: transform .2s ease;
+  will-change: transform;
+}
+.storyMb-confirmlayer.show .storyMb-confirm { transform: scale(1); }
+.storyMb-confirm .title { font-weight:600; padding: 24px 16px; font-size: 18px; }
+.storyMb-confirm .actions { display:flex; flex-direction: column; }
+.storyMb-confirm .actions .btn {
+  background:transparent; color:#fff; border:0; padding:14px;
+  border-top: 1px solid rgba(255,255,255,0.15); cursor:pointer; font-size: 14px;
+}
+.storyMb-confirm .actions .btn.danger { color:#ed4956; }
+
+/* ====== HİKÂYE AÇIKKEN (global flag) ======
+   Eğer farklı bir yıldız animasyonu (eski nesil) portalla ekleniyorsa gizlemek için */
+body.mylasa-stories-open .mr-feedback-anim,
+body.mylasa-stories-open .StarFeedbackAnimation,
+body.mylasa-stories-open #star-feedback {
+  display: none !important;
+  pointer-events: none !important;
+}

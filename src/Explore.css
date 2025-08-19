@@ -1,0 +1,179 @@
+/* Explore.css */
+
+/* --- ANA YAPI --- */
+.explore-container {
+    width: 100%;
+    max-width: 935px;
+    margin: 60px auto 0 auto; /* LogoBar'ın altında başlaması için üst boşluk */
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+/* --- ARAMA BÖLÜMÜ --- */
+.search-bar-wrapper {
+    padding-bottom: 24px;
+    margin-bottom: 24px;
+}
+
+.search-bar-container {
+    width: 100%;
+    max-width: 350px; /* Arama çubuğu genişliği */
+    margin: 0 auto;
+}
+
+.search-input {
+    width: 100%;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: none;
+    background-color: #efefef;
+    font-size: 16px;
+    outline: none;
+    box-sizing: border-box;
+    transition: background-color 0.2s ease;
+}
+
+.search-input:focus {
+    background-color: #e0e0e0;
+}
+
+.search-results-container {
+    width: 100%;
+    max-width: 550px;
+    margin: 0 auto;
+}
+
+.search-result-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.search-result-item:hover {
+    background-color: #fafafa;
+}
+
+.search-result-item img {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    margin-right: 12px;
+    object-fit: cover;
+}
+
+.search-result-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.search-result-info .username {
+    font-weight: 600;
+    font-size: 14px;
+    color: #262626;
+}
+
+.search-result-info .fullname {
+    font-size: 14px;
+    color: #8e8e8e;
+}
+
+.search-message {
+    text-align: center;
+    color: #8e8e8e;
+    padding: 40px 20px;
+}
+
+/* --- KEŞFET IZGARASI --- */
+.explore-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+}
+
+.explore-grid-item {
+    position: relative;
+    width: 100%;
+    padding-top: 100%; /* 1:1 kare oranını korur */
+    cursor: pointer;
+    background-color: #efefef;
+}
+
+.explore-grid-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.explore-grid-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+    color: white;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.explore-grid-item:hover .explore-grid-overlay {
+    opacity: 1;
+}
+
+.explore-overlay-stat {
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.explore-overlay-stat svg {
+    margin-right: 8px;
+}
+
+/* --- DAHA FAZLA YÜKLE BUTONU --- */
+.load-more-container {
+    display: flex;
+    justify-content: center;
+    padding: 40px 0;
+}
+
+.load-more-btn {
+    background-color: #0095f6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.load-more-btn:disabled {
+    background-color: #b2dffc;
+    cursor: not-allowed;
+}
+
+/* Mobil için düzenlemeler */
+@media (max-width: 768px) {
+    .explore-grid {
+        gap: 3px;
+    }
+    .explore-container {
+        padding: 0;
+    }
+    .search-bar-wrapper {
+        padding: 16px;
+        margin-bottom: 0;
+        border-bottom: none;
+    }
+}

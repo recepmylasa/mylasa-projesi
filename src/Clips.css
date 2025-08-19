@@ -1,0 +1,125 @@
+/* ==========================================================================
+   MASAÜSTÜ İÇİN ORİJİNAL, STABİL STİLLER
+   ========================================================================== */
+.clips-container {
+    width: 100%;
+    height: calc(100vh - 60px - 52px - 15px); /* Üst/alt bar boşlukları */
+    margin: 0 auto;
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+    border-radius: 8px;
+    background-color: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.clip-video-container {
+    width: 100%;
+    max-width: 470px; /* Videolar dar bir alanda gösterilir */
+    height: 100%;
+    position: relative;
+    scroll-snap-align: start;
+    background-color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.clip-video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain; 
+}
+/* Masaüstünde yeni arayüz elemanları varsayılan olarak gizli */
+.clip-header, .clip-ui-overlay {
+    display: none;
+}
+
+/* ==========================================================================
+   SADECE MOBİL İÇİN GEÇERLİ TAM EKRAN STİLLERİ
+   ========================================================================== */
+@media (max-width: 768px) {
+    /* Mobil'de ana App barlarını gizle */
+    body:has(.clips-page-wrapper) .logo-bar,
+    body:has(.clips-page-wrapper) .bottom-nav {
+        display: none;
+    }
+
+    .clips-page-wrapper {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2000;
+    }
+
+    .clips-container {
+        height: 100%;
+        border-radius: 0;
+    }
+
+    .clip-video-container {
+        max-width: 100%;
+    }
+
+    .clip-video {
+        object-fit: cover; /* Videonun ekranı kaplaması için */
+    }
+
+    /* Mobil'de yeni arayüz elemanlarını göster */
+    .clip-header, .clip-ui-overlay {
+        display: flex;
+    }
+
+    .clip-header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        padding: 16px;
+        align-items: center;
+        z-index: 10;
+        background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+    }
+    .clip-header h1 { color: #fff; font-size: 20px; font-weight: 700; margin: 0; }
+    .clip-back-btn { background: none; border: none; padding: 0; margin-right: 16px; cursor: pointer; }
+
+    .clip-ui-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        top: 0;
+        justify-content: space-between;
+        align-items: flex-end;
+        color: white;
+        padding: 16px;
+        pointer-events: none;
+        background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
+    }
+    
+    .clip-info, .clip-actions, .clip-action-btn, .clip-author-info, .clip-follow-btn {
+        pointer-events: auto;
+    }
+    .clip-info { max-width: 70%; }
+    .clip-author-info { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .clip-author-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+    .clip-author-username { font-weight: 700; font-size: 15px; }
+    .clip-follow-btn { background: none; border: 1px solid #fff; color: #fff; padding: 4px 12px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; }
+    .clip-description { font-size: 14px; line-height: 1.3; }
+    .clip-actions { flex-direction: column; align-items: center; gap: 20px; }
+    .clip-action-btn { background: none; border: none; cursor: pointer; color: white; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; }
+    .clip-action-btn svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+}
+
+.clips-loading, .clips-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8e8e8e;
+  text-align: center;
+}
