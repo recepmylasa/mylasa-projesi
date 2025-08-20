@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, storage, auth } from './firebase';
-import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import './Post.css';
 
@@ -32,30 +32,6 @@ const formatCount = (n) => {
   if (n < 1_000_000) return (n / 1000).toFixed(n % 1000 >= 100 ? 1 : 0) + 'K';
   if (n < 1_000_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 >= 100_000 ? 1 : 0) + 'M';
   return (n / 1_000_000_000).toFixed(1) + 'B';
-};
-
-const buildPermalink = (id, type = 'post') => {
-  const origin = window.location.origin;
-  // IG benzeri: /p/:id — (type gerekirse query’e eklenir)
-  return `${origin}/p/${id}${type && type !== 'post' ? `?type=${encodeURIComponent(type)}` : ''}`;
-};
-
-const copyToClipboard = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    alert('Bağlantı kopyalandı');
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-      alert('Bağlantı kopyalandı');
-    } finally {
-      document.body.removeChild(ta);
-    }
-  }
 };
 
 /* --------------- SKELETON --------------- */
@@ -128,6 +104,8 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     };
   }, [optionsOpen]);
 
+  const isOwner = post?.authorId === aktifKullaniciId;
+
   const handleDelete = async () => {
     if (!window.confirm('Bu gönderiyi silmek istediğinizden emin misiniz?')) return;
     try {
@@ -139,12 +117,11 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
   };
 
   const handleToggleSave = async () => {
-    // iyimser
     setIsSaved((s) => !s);
     try {
       const { saved } = await fsToggleSave({
         contentId: post.id,
-        type: post.type || 'post',
+        type: 'post',
         authorId: post.authorId,
         mediaUrl: post.mediaUrl,
         caption: post.mesaj || '',
@@ -156,34 +133,42 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     }
   };
 
+  const permalink = `${window.location.origin}/p/${post?.id}`;
+
   const handleShare = async () => {
-    const url = buildPermalink(post.id, post.type || 'post');
-    const data = {
-      title: 'Gönderi',
-      text: post?.mesaj ? String(post.mesaj).slice(0, 120) : '',
-      url
-    };
-    if (navigator.share) {
-      try { await navigator.share(data); return; } catch { /* user cancel */ }
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: authorProfile?.kullaniciAdi || 'Gönderi',
+          text: post?.mesaj || 'Gönderi',
+          url: permalink,
+        });
+      } else {
+        await navigator.clipboard.writeText(permalink);
+        alert('Bağlantı kopyalandı.');
+      }
+    } catch (e) {
+      console.error('Paylaşım hatası:', e);
     }
-    await copyToClipboard(url);
   };
 
-  const handleCopyLink = async () => {
-    const url = buildPermalink(post.id, post.type || 'post');
-    await copyToClipboard(url);
+  const goToPermalink = () => {
+    // Tek akış: URL değişsin ve üst bileşen aynı modalı açsın
+    window.history.pushState({}, '', `/p/${post.id}`);
+    onCommentClick?.(post);
   };
 
-  const openInModal = () => {
-    onCommentClick?.(post); // IG “Gönderiye git”e benzer davranış (route’suz modal)
+  const handleToggleComments = async () => {
+    if (!isOwner) return;
+    try {
+      const refPost = doc(db, 'posts', post.id);
+      await updateDoc(refPost, { yorumlarKapali: !post?.yorumlarKapali });
+    } catch (e) {
+      console.error('Yorum durumu güncellenemedi:', e);
+    } finally {
+      setOptionsOpen(false);
+    }
   };
-
-  if (!authorProfile) return <PostSkeleton />;
-
-  const mediaUrl = post.mediaUrl;
-  const mediaType = post.mediaType || 'image';
-  const username = authorProfile?.kullaniciAdi || 'bilinmeyen';
-  const avatarUrl = authorProfile?.profilFoto || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P';
 
   /* REP / GOLD */
   const rep = authorProfile?.reputation || {};
@@ -193,19 +178,28 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
   const showGold = badges?.gold === true || (visibleScore >= 4.5 && sample >= 1000);
 
   const handleRate = async (value) => {
-    const user = auth.currentUser;
-    if (!user || !post?.id || !post?.authorId) return;
-    await ensureContentDoc(post.id, post.authorId, 'post');
-    await sendRating({ contentId: post.id, authorId: post.authorId, value, type: 'post' });
+    try {
+      const user = auth.currentUser;
+      if (!user || !post?.id || !post?.authorId) return;
+      await ensureContentDoc(post.id, post.authorId, 'post');
+      await sendRating({ contentId: post.id, authorId: post.authorId, value, type: 'post' });
+    } catch (err) {
+      console.error('Puanlama hatası:', err);
+    }
   };
-
-  const isOwner = post?.authorId === aktifKullaniciId;
 
   /* Caption kırpma */
   const captionText = post?.mesaj || '';
   const CAPTION_LIMIT = 140;
   const needsClamp = captionText.length > CAPTION_LIMIT;
   const captionPreview = needsClamp ? captionText.slice(0, CAPTION_LIMIT).trim() : captionText;
+
+  if (!authorProfile) return <PostSkeleton />;
+
+  const mediaUrl = post.mediaUrl;
+  const mediaType = post.mediaType || 'image';
+  const username = authorProfile?.kullaniciAdi || 'bilinmeyen';
+  const avatarUrl = authorProfile?.profilFoto || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P';
 
   return (
     <article className="postDk-article">
@@ -242,24 +236,19 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
           </button>
           {optionsOpen && (
             <div id="post-menu" className="postDk-optionsMenu" role="menu">
-              {/* PAYLAŞ/BAĞLANTI */}
-              <button onClick={handleShare} className="option-item" role="menuitem">
-                Paylaş…
+              <button onClick={goToPermalink} className="option-item" role="menuitem">
+                Gönderiye git
               </button>
-              <button onClick={handleCopyLink} className="option-item" role="menuitem">
-                Bağlantıyı kopyala
-              </button>
-              <button onClick={openInModal} className="option-item" role="menuitem">
-                Gönderiyi aç
-              </button>
-
-              {/* SAHİP İSE SİL */}
+              {isOwner && (
+                <button onClick={handleToggleComments} className="option-item" role="menuitem">
+                  {post?.yorumlarKapali ? 'Yorumları aç' : 'Yorumları kapat'}
+                </button>
+              )}
               {isOwner && (
                 <button onClick={handleDelete} className="option-item delete" role="menuitem">
                   Sil
                 </button>
               )}
-
               <button onClick={() => setOptionsOpen(false)} className="option-item" role="menuitem">
                 Vazgeç
               </button>
@@ -268,7 +257,12 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
         </div>
       </header>
 
-      <div className="postDk-media">
+      <div
+        className="postDk-media"
+        onClick={goToPermalink}
+        role="button"
+        aria-label="Gönderiyi aç"
+      >
         {!isMediaLoaded && <div className="media-placeholder skeleton-media" aria-hidden="true" />}
         {mediaUrl && (
           mediaType.startsWith('image') ? (
@@ -312,12 +306,7 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             <BsChat className="postDk-actionIcon" />
           </button>
 
-          <button
-            className="postDk-actionBtn"
-            aria-label="Paylaş"
-            title="Paylaş"
-            onClick={handleShare}
-          >
+          <button className="postDk-actionBtn" aria-label="Paylaş" title="Paylaş" onClick={handleShare}>
             <FiSend className="postDk-actionIcon" />
           </button>
 

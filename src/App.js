@@ -1,9 +1,9 @@
-// App.js (GÜNCEL)
+// App.js (GÜNCEL – permalink + modal-driven route)
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
 
 import Auth from "./Auth";
 import LogoBar from "./LogoBar";
@@ -22,10 +22,7 @@ import Clips from "./Clips";
 import CreateMenu from "./CreateMenu";
 import NewClip from "./NewClip";
 
-// ❌ Eski tek harita importu
-// import Map from "./Map";
-
-// ✅ Ayrıştırılmış haritalar
+// Ayrıştırılmış haritalar
 import MapDesktop from "./MapDesktop";
 import MapMobile from "./MapMobile";
 
@@ -56,6 +53,9 @@ function App() {
   const [modalData, setModalData] = useState(null);
   const [width] = useWindowSize();
   const isMobile = width <= 768;
+
+  // Bu modalı biz pushState ile mi açtık?
+  const pushedByAppRef = useRef(false);
 
   useEffect(() => {
     let unsubscribeProfile = () => {};
@@ -90,12 +90,79 @@ function App() {
     };
   }, []);
 
+  // URL doğrudan /p/:id ile gelirse post modalını aç
+  useEffect(() => {
+    if (loading || !user) return;
+    const match = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+    if (!match) return;
+
+    const openFromUrl = async () => {
+      const id = match[1];
+      try {
+        const postSnap = await getDoc(doc(db, 'posts', id));
+        if (postSnap.exists()) {
+          setModalData({ id: postSnap.id, type: 'post', ...postSnap.data() });
+          setModalContent('viewingComments');
+          pushedByAppRef.current = false; // biz pushlamadık, doğrudan geldi
+        } else {
+          // Bulunamadıysa anasayfaya dön
+          window.history.replaceState({}, '', '/');
+        }
+      } catch (e) {
+        console.error('Permalink yüklenirken hata:', e);
+        window.history.replaceState({}, '', '/');
+      }
+    };
+    openFromUrl();
+    // user değişince tekrar denemeye gerek yok, 1 kez çalışması yeter
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user]);
+
+  // Geri tuşu / URL değişimleri
+  useEffect(() => {
+    const onPop = async () => {
+      const match = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+      if (match) {
+        // URL /p/:id ise ve modal kapalıysa aç
+        if (modalContent !== 'viewingComments') {
+          try {
+            const id = match[1];
+            const postSnap = await getDoc(doc(db, 'posts', id));
+            if (postSnap.exists()) {
+              setModalData({ id: postSnap.id, type: 'post', ...postSnap.data() });
+              setModalContent('viewingComments');
+              pushedByAppRef.current = false;
+            } else {
+              window.history.replaceState({}, '', '/');
+            }
+          } catch (e) {
+            console.error('Popstate yüklenirken hata:', e);
+            window.history.replaceState({}, '', '/');
+          }
+        }
+      } else {
+        // URL /p/ değilse ve modal açıksa kapat
+        if (modalContent === 'viewingComments') {
+          setModalContent(null);
+          setModalData(null);
+        }
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [modalContent]);
+
   const handleNavChange = (tab) => {
     if (['createMenu', 'messages', 'notifications', 'checkin'].includes(tab)) {
       setModalContent(tab);
     } else {
       setModalContent(null);
+      setModalData(null);
       setActivePage(tab);
+      // sayfa değişince temel rota
+      if (!/^\/(p|c)\//.test(window.location.pathname)) {
+        window.history.replaceState({}, '', '/');
+      }
     }
   };
 
@@ -104,9 +171,13 @@ function App() {
     setModalContent('viewingProfile');
   };
 
+  // YORUM/MODAL aç – burada pushState ile /p/:id yap
   const handleViewComments = (post) => {
+    if (!post?.id) return;
     setModalData(post);
     setModalContent('viewingComments');
+    window.history.pushState({ modal: 'post', id: post.id }, '', `/p/${post.id}`);
+    pushedByAppRef.current = true;
   };
 
   const handleViewClip = () => {
@@ -220,7 +291,23 @@ function App() {
 
   const renderModal = () => {
     if (!modalContent) return null;
-    const closeModal = () => { setModalContent(null); setModalData(null); };
+
+    const closeModal = () => {
+      // Eğer /p/:id üzerindeysek URL’i temizle
+      if (/^\/p\/[A-Za-z0-9_-]+$/.test(window.location.pathname)) {
+        if (pushedByAppRef.current) {
+          // Biz pushState ile açtıysak: back → önceki sayfaya dön
+          window.history.back();
+        } else {
+          // Doğrudan URL ile geldiyse: replace → /
+          window.history.replaceState({}, '', '/');
+        }
+      }
+      setModalContent(null);
+      setModalData(null);
+      pushedByAppRef.current = false;
+    };
+
     const handleCreateSelect = (creationType) => { setModalContent(creationType); };
 
     if (modalContent === 'createMenu') return <CreateMenu onClose={closeModal} onSelect={handleCreateSelect} />;

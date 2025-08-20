@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, auth } from './firebase';
 import { doc, onSnapshot, updateDoc, arrayUnion } from 'firebase/firestore';
 import './PostDetailModal.css';
@@ -8,7 +8,7 @@ import StarRatingV2 from './components/StarRatingV2/StarRatingV2';
 import { ensureContentDoc, rateContent as sendRating } from './reputationClient';
 import { isSaved as fsIsSaved, toggleSave as fsToggleSave } from './savesClient';
 
-// Basit ikonlar (yorum, paylaş, kaydet)
+// Basit ikonlar
 const CommentIcon = () => (
   <svg aria-label="Yorum Yap" height="24" role="img" viewBox="0 0 24 24" width="24">
     <path d="M20.656 17.008a9.993 9.993 0 1 0-3.59 3.615L22 22Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></path>
@@ -26,7 +26,7 @@ const SaveIcon = ({ isSaved }) => (
   </svg>
 );
 
-// Utils
+// Zaman formatlayıcı
 const formatTimeAgo = (ts) => {
   if (!ts) return '';
   const date = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
@@ -36,33 +36,14 @@ const formatTimeAgo = (ts) => {
   if (diff < 86400) return `${Math.floor(diff / 3600)}sa`;
   return `${Math.floor(diff / 86400)}g`;
 };
+
+// 1.2K / 3.4M
 const formatCount = (n) => {
   if (typeof n !== 'number') return '';
   if (n < 1000) return String(n);
   if (n < 1_000_000) return (n / 1000).toFixed(n % 1000 >= 100 ? 1 : 0) + 'K';
   if (n < 1_000_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 >= 100_000 ? 1 : 0) + 'M';
   return (n / 1_000_000_000).toFixed(1) + 'B';
-};
-const buildPermalink = (id, type = 'post') => {
-  const origin = window.location.origin;
-  return `${origin}/p/${id}${type && type !== 'post' ? `?type=${encodeURIComponent(type)}` : ''}`;
-};
-const copyToClipboard = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    alert('Bağlantı kopyalandı');
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-      alert('Bağlantı kopyalandı');
-    } finally {
-      document.body.removeChild(ta);
-    }
-  }
 };
 
 function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
@@ -73,6 +54,7 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
   const [isSaved, setIsSaved] = useState(false);
   const [agg, setAgg] = useState(null); // {avg, count}
 
+  const inputRef = useRef(null);
   const currentUser = auth.currentUser;
 
   // Body scroll kilidi
@@ -121,6 +103,13 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
     return () => { cancelled = true; };
   }, [contentData?.id]);
 
+  // Yorum listesi (stabil)
+  const yorumlar = useMemo(() => {
+    if (!contentData?.yorumlar) return [];
+    // ISO timestamp ile eklenmiş; en yeni üste
+    return [...contentData.yorumlar].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [contentData?.yorumlar]);
+
   // Yorum gönder
   const handleYorumGonder = async (e) => {
     e.preventDefault();
@@ -148,15 +137,19 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
 
   // Yıldız oylama
   const handleRate = async (value) => {
-    if (!contentData?.id || !contentData?.authorId) return;
-    const type = contentData.type === 'clip' ? 'clip' : 'post';
-    await ensureContentDoc(contentData.id, contentData.authorId, type);
-    await sendRating({
-      contentId: contentData.id,
-      authorId: contentData.authorId,
-      value,
-      type,
-    });
+    try {
+      if (!contentData?.id || !contentData?.authorId) return;
+      const type = contentData.type === 'clip' ? 'clip' : 'post';
+      await ensureContentDoc(contentData.id, contentData.authorId, type);
+      await sendRating({
+        contentId: contentData.id,
+        authorId: contentData.authorId,
+        value,
+        type,
+      });
+    } catch (e) {
+      console.error('Puanlama hatası:', e);
+    }
   };
 
   // Kaydet toggle
@@ -177,18 +170,26 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
     }
   };
 
+  const permalink = `${window.location.origin}/p/${contentData?.id}`;
   const handleShare = async () => {
-    const url = buildPermalink(contentData.id, contentData.type || 'post');
-    const data = {
-      title: 'Gönderi',
-      text: contentData?.mesaj ? String(contentData.mesaj).slice(0, 120) : '',
-      url
-    };
-    if (navigator.share) {
-      try { await navigator.share(data); return; } catch { /* cancel */ }
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: authorProfile?.kullaniciAdi || 'Gönderi',
+          text: contentData?.mesaj || 'Gönderi',
+          url: permalink,
+        });
+      } else {
+        await navigator.clipboard.writeText(permalink);
+        alert('Bağlantı kopyalandı.');
+      }
+    } catch (e) {
+      console.error('Paylaşım hatası:', e);
     }
-    await copyToClipboard(url);
   };
+
+  const isOwner = contentData?.authorId === aktifKullaniciId;
+  const aciklama = contentData?.aciklama || contentData?.mesaj;
 
   if (!contentData) {
     return (
@@ -197,12 +198,6 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
       </div>
     );
   }
-
-  const aciklama = contentData?.aciklama || contentData?.mesaj;
-  const yorumlar = contentData?.yorumlar
-    ? [...contentData.yorumlar].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    : [];
-  const isOwner = contentData?.authorId === aktifKullaniciId;
 
   return (
     <div className="pdm-overlay" onClick={onClose}>
@@ -289,7 +284,7 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
                 )}
               </div>
 
-              <button className="pdm-actionBtn" aria-label="Yorumlar">
+              <button className="pdm-actionBtn" aria-label="Yorum yaz" onClick={() => inputRef.current?.focus()}>
                 <CommentIcon />
               </button>
               <button className="pdm-actionBtn" aria-label="Paylaş" onClick={handleShare}>
@@ -305,24 +300,33 @@ function PostDetailModal({ post, onClose, onUserClick, aktifKullaniciId }) {
               </button>
             </div>
 
+            {/* Yorumlar kapalı banner */}
+            {contentData?.yorumlarKapali && (
+              <div className="pdm-commentsClosed">Yorumlar kapalı.</div>
+            )}
+
             <p className="pdm-date">{formatTimeAgo(contentData?.tarih)}</p>
 
-            <form onSubmit={handleYorumGonder} className="pdm-commentForm">
-              <img
-                src={currentUser?.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
-                alt="Profil"
-                className="pdm-commentFormAvatar"
-              />
-              <input
-                type="text"
-                value={yeniYorum}
-                onChange={(e) => setYeniYorum(e.target.value)}
-                placeholder="Yorum ekle..."
-              />
-              <button type="submit" disabled={!yeniYorum.trim() || isSubmitting}>
-                Paylaş
-              </button>
-            </form>
+            {/* Kapalıysa formu gizle */}
+            {!contentData?.yorumlarKapali && (
+              <form onSubmit={handleYorumGonder} className="pdm-commentForm">
+                <img
+                  src={currentUser?.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
+                  alt="Profil"
+                  className="pdm-commentFormAvatar"
+                />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={yeniYorum}
+                  onChange={(e) => setYeniYorum(e.target.value)}
+                  placeholder="Yorum ekle..."
+                />
+                <button type="submit" disabled={!yeniYorum.trim() || isSubmitting}>
+                  Paylaş
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, storage, auth } from './firebase';
-import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import './PostMobile.css';
 
@@ -32,29 +32,6 @@ const formatCount = (n) => {
   if (n < 1_000_000) return (n / 1000).toFixed(n % 1000 >= 100 ? 1 : 0) + 'K';
   if (n < 1_000_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 >= 100_000 ? 1 : 0) + 'M';
   return (n / 1_000_000_000).toFixed(1) + 'B';
-};
-
-const buildPermalink = (id, type = 'post') => {
-  const origin = window.location.origin;
-  return `${origin}/p/${id}${type && type !== 'post' ? `?type=${encodeURIComponent(type)}` : ''}`;
-};
-
-const copyToClipboard = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    alert('Bağlantı kopyalandı');
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-      alert('Bağlantı kopyalandı');
-    } finally {
-      document.body.removeChild(ta);
-    }
-  }
 };
 
 /* --------------- SKELETON --------------- */
@@ -130,6 +107,8 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     };
   }, [optionsOpen]);
 
+  const isOwner = post?.authorId === aktifKullaniciId;
+
   const handleDelete = async () => {
     if (!window.confirm('Bu gönderiyi silmek istediğinizden emin misiniz?')) return;
     try {
@@ -145,7 +124,7 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     try {
       const { saved } = await fsToggleSave({
         contentId: post.id,
-        type: post.type || 'post',
+        type: 'post',
         authorId: post.authorId,
         mediaUrl: post.mediaUrl,
         caption: post.mesaj || '',
@@ -157,34 +136,41 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     }
   };
 
+  const permalink = `${window.location.origin}/p/${post?.id}`;
+
   const handleShare = async () => {
-    const url = buildPermalink(post.id, post.type || 'post');
-    const data = {
-      title: 'Gönderi',
-      text: post?.mesaj ? String(post.mesaj).slice(0, 120) : '',
-      url
-    };
-    if (navigator.share) {
-      try { await navigator.share(data); return; } catch { /* cancel */ }
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: authorProfile?.kullaniciAdi || 'Gönderi',
+          text: post?.mesaj || 'Gönderi',
+          url: permalink,
+        });
+      } else {
+        await navigator.clipboard.writeText(permalink);
+        alert('Bağlantı kopyalandı.');
+      }
+    } catch (e) {
+      console.error('Paylaşım hatası:', e);
     }
-    await copyToClipboard(url);
   };
 
-  const handleCopyLink = async () => {
-    const url = buildPermalink(post.id, post.type || 'post');
-    await copyToClipboard(url);
-  };
-
-  const openInModal = () => {
+  const goToPermalink = () => {
+    window.history.pushState({}, '', `/p/${post.id}`);
     onCommentClick?.(post);
   };
 
-  if (!authorProfile) return <MobileSkeleton />;
-
-  const mediaUrl = post.mediaUrl;
-  const mediaType = post.mediaType || 'image';
-  const username = authorProfile?.kullaniciAdi || 'bilinmeyen';
-  const avatarUrl = authorProfile?.profilFoto || 'https://placehold.co/40x40/EFEFEF/AAAAAA?text=P';
+  const handleToggleComments = async () => {
+    if (!isOwner) return;
+    try {
+      const refPost = doc(db, 'posts', post.id);
+      await updateDoc(refPost, { yorumlarKapali: !post?.yorumlarKapali });
+    } catch (e) {
+      console.error('Yorum durumu güncellenemedi:', e);
+    } finally {
+      setOptionsOpen(false);
+    }
+  };
 
   // REP / GOLD görünüm kararları (mobil)
   const rep = authorProfile?.reputation || {};
@@ -195,14 +181,16 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     ? rep.sample : (rep?.sample ? Number(rep.sample) : 0);
   const showGold = badges?.gold === true || (visibleScore >= 4.5 && sample >= 1000);
 
-  const isOwner = post?.authorId === aktifKullaniciId;
-
   // ★ Oy bittiğinde
   const handleRate = async (value) => {
-    const user = auth.currentUser;
-    if (!user || !post?.id || !post?.authorId) return;
-    await ensureContentDoc(post.id, post.authorId, 'post');
-    await sendRating({ contentId: post.id, authorId: post.authorId, value, type: 'post' });
+    try {
+      const user = auth.currentUser;
+      if (!user || !post?.id || !post?.authorId) return;
+      await ensureContentDoc(post.id, post.authorId, 'post');
+      await sendRating({ contentId: post.id, authorId: post.authorId, value, type: 'post' });
+    } catch (err) {
+      console.error('Puanlama hatası:', err);
+    }
   };
 
   // Caption kırpma
@@ -211,10 +199,17 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
   const needsClamp = captionText.length > CAPTION_LIMIT;
   const captionPreview = needsClamp ? captionText.slice(0, CAPTION_LIMIT).trim() : captionText;
 
+  if (!authorProfile) return <MobileSkeleton />;
+
+  const mediaUrl = post.mediaUrl;
+  const mediaType = post.mediaType || 'image';
+  const username = authorProfile?.kullaniciAdi || 'bilinmeyen';
+  const avatarUrl = authorProfile?.profilFoto || 'https://placehold.co/40x40/EFEFEF/AAAAAA?text=P';
+
   return (
     <article className="m-post-article">
       <header className="m-post-header">
-        {/* ALTIN HALKA + YILDIZ (yarı iç/yarı dış bindirme) */}
+        {/* ALTIN HALKA + YILDIZ */}
         <div
           className={`m-avatar-wrap ${showGold ? 'gold' : ''}`}
           onClick={() => onUserClick?.(post.authorId)}
@@ -247,16 +242,14 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
           </button>
           {optionsOpen && (
             <div className="m-post-options-menu" role="menu">
-              <button onClick={handleShare} className="m-option-item" role="menuitem">
-                Paylaş…
+              <button onClick={goToPermalink} className="m-option-item" role="menuitem">
+                Gönderiye git
               </button>
-              <button onClick={handleCopyLink} className="m-option-item" role="menuitem">
-                Bağlantıyı kopyala
-              </button>
-              <button onClick={openInModal} className="m-option-item" role="menuitem">
-                Gönderiyi aç
-              </button>
-
+              {isOwner && (
+                <button onClick={handleToggleComments} className="m-option-item" role="menuitem">
+                  {post?.yorumlarKapali ? 'Yorumları aç' : 'Yorumları kapat'}
+                </button>
+              )}
               {isOwner && (
                 <button onClick={handleDelete} className="m-option-item delete" role="menuitem">
                   Sil
@@ -270,7 +263,12 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
         </div>
       </header>
 
-      <div className="m-post-media">
+      <div
+        className="m-post-media"
+        onClick={goToPermalink}
+        role="button"
+        aria-label="Gönderiyi aç"
+      >
         {!isMediaLoaded && <div className="m-media-placeholder skeleton" aria-hidden="true" />}
         {mediaUrl && (
           mediaType.startsWith('image') ? (
@@ -314,12 +312,7 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             <BsChat className="m-action-icon" />
           </button>
 
-          <button
-            className="m-action-btn"
-            aria-label="Paylaş"
-            title="Paylaş"
-            onClick={handleShare}
-          >
+          <button className="m-action-btn" aria-label="Paylaş" title="Paylaş" onClick={handleShare}>
             <FiSend className="m-action-icon" />
           </button>
 

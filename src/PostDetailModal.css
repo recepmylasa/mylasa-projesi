@@ -1,157 +1,245 @@
 /* ==========================================================================
-   0) TAMAMEN NAMESPACED: pdm-*
+   1. ORTAK STİLLER
    ========================================================================== */
-
 .pdm-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 3000;
-  display: flex;
-  background-color: rgba(0, 0, 0, 0.65);
-  align-items: center;
-  justify-content: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3000;
+    display: flex;
+    background-color: rgba(0, 0, 0, 0.65);
+    align-items: center;
+    justify-content: center;
 }
 
 .pdm-content {
-  background-color: #fff;
-  display: flex;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    background-color: #fff;
+    display: flex;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
-/* ---------- Right column (info) ---------- */
 .pdm-info {
-  display: flex;
-  flex-direction: column;
+    display: flex;
+    flex-direction: column;
 }
 
-/* Header */
 .pdm-infoHeader {
-  display: flex;
-  align-items: center;
-  padding: 14px 16px;
-  border-bottom: 1px solid #dbdbdb;
-  flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid #dbdbdb;
+    flex-shrink: 0;
 }
+
 .pdm-infoAvatar {
-  width: 32px; height: 32px; border-radius: 50%;
-  margin-right: 14px; object-fit: cover; cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    margin-right: 14px;
+    object-fit: cover;
+    cursor: pointer;
 }
+
 .pdm-infoUsername {
-  font-weight: 600; font-size: 14px; cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
 }
 
-/* Comments list */
 .pdm-comments {
-  flex-grow: 1;
-  overflow-y: auto;
-  padding: 16px;
-  min-height: 0;
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 16px;
+    min-height: 0;
 }
+
 .pdm-commentItem {
-  display: flex; gap: 12px; margin-bottom: 16px; align-items: flex-start;
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    align-items: flex-start;
 }
+
 .pdm-commentAvatar {
-  width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
 }
+
 .pdm-commentBody p {
-  margin: 0; font-size: 14px; line-height: 1.4; word-break: break-word;
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.4;
+    word-break: break-word;
 }
+
 .pdm-commentBody strong {
-  font-weight: 600; margin-right: 6px; cursor: pointer;
+    font-weight: 600;
+    margin-right: 6px;
+    cursor: pointer;
 }
+
 .pdm-commentTime {
-  font-size: 12px; color: #8e8e8e; margin-top: 4px; display: inline-block;
+    font-size: 12px;
+    color: #8e8e8e;
+    margin-top: 4px;
 }
 
-/* Footer */
 .pdm-footer {
-  border-top: 1px solid #dbdbdb;
-  background-color: #fff;
-  padding: 0 16px;
-  flex-shrink: 0;
+    border-top: 1px solid #dbdbdb;
+    background-color: #fff;
+    padding: 0 16px;
+    flex-shrink: 0;
 }
 
-/* Actions row */
+.pdm-commentForm {
+    display: flex;
+    align-items: center;
+    padding: 12px 0;
+    border-top: 1px solid #dbdbdb;
+}
+
+.pdm-commentFormAvatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    margin-right: 12px;
+}
+
+.pdm-commentForm input {
+    flex-grow: 1;
+    border: none;
+    outline: none;
+    font-size: 14px;
+    background: transparent;
+}
+
+.pdm-commentForm button {
+    background: none;
+    border: none;
+    color: #0095f6;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.pdm-commentForm button:disabled {
+    color: #b2dffc;
+    cursor: default;
+}
+
 .pdm-actions {
-  display: flex; align-items: center; padding: 4px 0 8px; gap: 2px;
+    display: flex;
+    align-items: center;
+    padding: 4px 0 8px;
 }
-.pdm-actionBtn {
-  background: none; border: none; cursor: pointer; padding: 8px;
-}
-.pdm-actionBtn.save { margin-left: auto; }
 
-/* Star rating group + meta */
-.pdm-starWrap {
-  display: inline-flex; align-items: center; gap: 6px;
-  margin-left: 8px; padding-bottom: 4px;
+.pdm-actionBtn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
 }
-.pdm-starMeta {
-  color: #8e8e8e; font-size: 12px; user-select: none;
+
+.pdm-actionBtn.save {
+    margin-left: auto;
 }
+
+.pdm-starWrap { display: inline-flex; align-items: center; gap: 6px; }
+.pdm-starMeta { color: #8e8e8e; font-size: 12px; }
 
 .pdm-date {
-  color: #8e8e8e; font-size: 10px; text-transform: uppercase; padding: 0 8px 8px;
+    color: #8e8e8e;
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 0 8px 8px;
 }
 
-/* Comment form */
-.pdm-commentForm {
-  display: flex; align-items: center; padding: 12px 0; border-top: 1px solid #dbdbdb;
-}
-.pdm-commentFormAvatar {
-  width: 32px; height: 32px; border-radius: 50%; margin-right: 12px;
-}
-.pdm-commentForm input {
-  flex-grow: 1; border: none; outline: none; font-size: 14px; background: transparent;
-}
-.pdm-commentForm button {
-  background: none; border: none; color: #0095f6; font-weight: 600; cursor: pointer; font-size: 14px;
-}
-.pdm-commentForm button:disabled {
-  color: #b2dffc; cursor: default;
+/* Kapalı yorumlar banner */
+.pdm-commentsClosed {
+    margin: 8px 8px 0;
+    padding: 8px 10px;
+    background: #fff8d6;
+    border: 1px solid #ffe08a;
+    color: #7a5b00;
+    font-size: 12px;
+    border-radius: 6px;
+    width: fit-content;
 }
 
 /* ==========================================================================
-   1) DESKTOP (≥769px)
+   2. MASAÜSTÜ GÖRÜNÜMÜ (769px ve üstü)
    ========================================================================== */
 @media (min-width: 769px) {
-  .pdm-content {
-    flex-direction: row;
-    width: 90vw;
-    max-width: 900px;
-    height: 90vh;
-    max-height: 600px;
-    border-radius: 4px;
-  }
-  .pdm-media {
-    flex: 1.5;
-    background-color: #000;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 4px 0 0 4px; overflow: hidden;
-  }
-  .pdm-media img,
-  .pdm-media .pdm-video {
-    max-width: 100%; max-height: 100%; object-fit: contain;
-  }
-  .pdm-info { flex: 1; max-width: 360px; }
+    .pdm-content {
+        flex-direction: row;
+        width: 90vw;
+        max-width: 900px;
+        height: 90vh;
+        max-height: 600px;
+        border-radius: 4px;
+    }
+
+    .pdm-media {
+        flex: 1.5;
+        background-color: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px 0 0 4px;
+        overflow: hidden;
+    }
+    
+    .pdm-media img,
+    .pdm-media .pdm-video {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+
+    .pdm-info {
+        flex: 1;
+        max-width: 360px;
+    }
 }
 
 /* ==========================================================================
-   2) MOBILE (≤768px)
+   3. MOBİL GÖRÜNÜMÜ (768px ve altı)
    ========================================================================== */
 @media (max-width: 768px) {
-  .pdm-overlay { padding-top: 40px; }
-  .pdm-content {
-    flex-direction: column;
-    width: 100%; height: 100%;
-    border-radius: 12px 12px 0 0; overflow: hidden;
-  }
-  .pdm-media {
-    width: 100%; background-color: #000;
-    display: flex; align-items: center; justify-content: center; min-height: 50vh;
-  }
-  .pdm-media img,
-  .pdm-media .pdm-video {
-    width: 100%; max-height: 50vh; object-fit: contain;
-  }
-  .pdm-info { width: 100%; flex-grow: 1; }
+    .pdm-overlay {
+        padding: 40px 0 0 0; 
+    }
+    .pdm-content {
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        border-radius: 12px 12px 0 0;
+        overflow: hidden;
+    }
+
+    .pdm-media {
+        width: 100%;
+        background-color: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 50vh;
+    }
+
+    .pdm-media img,
+    .pdm-media .pdm-video {
+        width: 100%;
+        max-height: 50vh;
+        object-fit: contain;
+    }
+
+    .pdm-info {
+        width: 100%;
+        flex-grow: 1;
+    }
 }

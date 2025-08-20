@@ -1,3 +1,5 @@
+/* Profile.css */
+
 /* Profil sayfasının ana sarmalayıcısı */
 .profile-container {
   padding-top: 24px;
@@ -122,7 +124,6 @@
 .profile-bio .fullname { font-weight: 600; font-size: 14px; }
 .profile-bio .bio-text { font-size: 14px; white-space: pre-wrap; line-height: 1.4; }
 
-/* ===================== TABS ===================== */
 .profile-tabs {
   border-top: 1px solid #dbdbdb;
   display: flex;
@@ -144,7 +145,6 @@
   text-transform: uppercase;
   color: #8e8e8e;
 }
-.profile-tab-btn svg { stroke: currentColor; }
 .profile-tab-btn.active { border-top-color: #262626; color: #262626; }
 .profile-tab-btn.active svg { stroke: #262626; }
 
@@ -211,58 +211,65 @@
 .settings-modal-list li button:hover { background-color: #fafafa; }
 .settings-modal-list li button.logout-btn { color: #ed4956; font-weight: 700; }
 
-/* ===================== SAVED GRID ===================== */
+/* =========================================================
+   KAYDEDİLENLER (sadece sahibi görür)
+   ========================================================= */
+.saved-section { padding: 16px; }
+.saved-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.saved-title { display: inline-flex; align-items: center; gap: 10px; }
+.saved-lock { font-size: 18px; }
+.saved-h1 { font-size: 16px; font-weight: 700; line-height: 1.1; }
+.saved-sub { color: #8e8e8e; font-size: 12px; }
+
+.saved-empty {
+  color: #8e8e8e;
+  font-size: 14px;
+  text-align: center;
+  padding: 32px 0;
+  border-top: 1px solid #dbdbdb;
+  border-bottom: 1px solid #dbdbdb;
+  background: #fff;
+}
+
 .saved-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
-  margin-top: 24px;
+  gap: 4px;
 }
-.saved-item {
+@media (min-width: 736px) {
+  .saved-grid { gap: 28px; }
+}
+
+.saved-card {
   position: relative;
+  width: 100%;
   padding: 0;
   border: none;
+  background: #f0f0f0;
   cursor: pointer;
-  background: #000;
-  aspect-ratio: 1/1;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
 }
-.saved-media {
+.saved-card img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
+.saved-placeholder {
+  width: 100%;
+  height: 100%;
+  background: #eaeaea;
+}
+
 .saved-badge {
   position: absolute;
   right: 6px;
-  top: 6px;
+  bottom: 6px;
+  background: rgba(0,0,0,.65);
+  color: #fff;
+  font-size: 11px;
   padding: 2px 6px;
   border-radius: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  background: rgba(0,0,0,.55);
-}
-
-/* Saved boş durum */
-.saved-empty {
-  text-align: center;
-  color: #262626;
-  padding: 40px 8px 60px;
-}
-.saved-empty-ico {
-  font-size: 40px;
-  margin-bottom: 8px;
-}
-
-/* Saved skeleton */
-.saved-item.skel {
-  background: linear-gradient(90deg, #ededed, #f8f8f8, #ededed);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  letter-spacing: .3px;
 }

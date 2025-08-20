@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
 import { signOut } from "firebase/auth";
 import {
@@ -8,7 +8,6 @@ import {
   query,
   where,
   orderBy,
-  getDoc,
 } from "firebase/firestore";
 import UserPosts from "./UserPosts";
 import PostDetailModal from "./PostDetailModal";
@@ -17,7 +16,7 @@ import ProfilDuzenle from "./ProfilDuzenle";
 import UserCheckIns from "./UserCheckIns";
 import "./Profile.css";
 
-/* ================== ICONS ================== */
+/* ====== Sekme ikonları ====== */
 const GridIcon = () => (
   <svg aria-label="Gönderiler" height="24" role="img" viewBox="0 0 24 24" width="24">
     <rect fill="none" height="18" rx="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" width="18" x="3" y="3"></rect>
@@ -43,116 +42,80 @@ const CheckInIcon = () => (
   </svg>
 );
 
+/* Yeni: Kaydedilenler sekmesi ikonu */
 const SavedIcon = () => (
   <svg aria-label="Kaydedilenler" height="24" role="img" viewBox="0 0 24 24" width="24">
     <polygon fill="none" points="20 21 12 13.44 4 21 4 3 20 3 20 21" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></polygon>
-    <path d="M16 9V6a4 4 0 10-8 0v3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
   </svg>
 );
-
-/* ============== SAVED GRID (inline) ============== */
-function SavedGrid({ items, onOpen }) {
-  if (!items) {
-    return (
-      <div className="saved-grid">
-        {Array.from({ length: 9 }).map((_, i) => <div key={i} className="saved-item skel" />)}
-      </div>
-    );
-  }
-  if (items.length === 0) {
-    return (
-      <div className="saved-empty">
-        <div className="saved-empty-ico">🔖</div>
-        <h3>Henüz kaydın yok</h3>
-        <p>Gönderilerdeki yer imine dokunarak burada topla.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="saved-grid">
-      {items.map((it) => (
-        <button
-          key={it.id}
-          className="saved-item"
-          title={it.caption || ""}
-          onClick={() => onOpen({ id: it.contentId, type: it.type })}
-        >
-          {it.type === "clip" ? (
-            <video className="saved-media" src={it.mediaUrl || ""} preload="metadata" muted playsInline />
-          ) : (
-            <img
-              className="saved-media"
-              src={it.mediaUrl || "https://placehold.co/600x600/EFEFEF/AAAAAA?text=Saved"}
-              alt=""
-              loading="lazy"
-            />
-          )}
-          {it.type === "clip" && <span className="saved-badge">▶</span>}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Profile({ userId, onUserClick, onPlaceClick }) {
   const [userData, setUserData] = useState(null);
   const [posts, setPosts] = useState([]);
   const [clips, setClips] = useState([]);
   const [checkIns, setCheckIns] = useState([]);
-  const [savedItems, setSavedItems] = useState(null); // null=loading
+
+  /* Yeni: Kaydedilenler */
+  const [saved, setSaved] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const [listModal, setListModal] = useState({ open: false, type: "" });
   const [activeTab, setActiveTab] = useState("posts");
 
+  /* abonelik ref’i (kaçak kapatmak için) */
+  const savedUnsubRef = useRef(null);
+
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
-    setLoading(true); setPosts([]); setClips([]); setCheckIns([]); setSavedItems(null);
+    setLoading(true); setPosts([]); setClips([]); setCheckIns([]); setSaved([]);
 
+    /* kullanıcı */
     const userDocRef = doc(db, "users", userId);
     const unsubUser = onSnapshot(userDocRef, snap => {
       setUserData(snap.exists() ? snap.data() : null);
       setLoading(false);
     });
 
+    /* gönderiler */
     const postsQuery = query(collection(db, "posts"), where("authorId", "==", userId), orderBy("tarih", "desc"));
     const unsubPosts = onSnapshot(postsQuery, s => setPosts(s.docs.map(d => ({ id: d.id, type: "post", ...d.data() }))));
 
+    /* clips */
     const clipsQuery = query(collection(db, "clips"), where("authorId", "==", userId), orderBy("tarih", "desc"));
     const unsubClips = onSnapshot(clipsQuery, s => setClips(s.docs.map(d => ({ id: d.id, type: "clip", ...d.data() }))));
 
+    /* check-ins */
     const checkInsQuery = query(collection(db, "checkins"), where("userId", "==", userId), orderBy("timestamp", "desc"));
     const unsubCheck = onSnapshot(checkInsQuery, s => setCheckIns(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 
-    // Saved sadece profil sahibi için (IG davranışı)
-    const isCurrentUser = !!auth.currentUser && auth.currentUser.uid === userId;
-    let unsubSaved = null;
-    if (isCurrentUser) {
-      const savedCol = collection(db, "users", userId, "saved");
-      const savedQuery = query(savedCol, orderBy("createdAt", "desc"));
-      unsubSaved = onSnapshot(savedQuery, async (snap) => {
-        const base = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Eksik mediaUrl'leri tamamla (eski kayıtlar için)
-        const filled = await Promise.all(base.map(async it => {
-          if (it.mediaUrl) return it;
-          try {
-            const coll = it.type === "clip" ? "clips" : "posts";
-            const ds = await getDoc(doc(db, coll, it.contentId));
-            if (ds.exists()) {
-              const d = ds.data();
-              return { ...it, mediaUrl: d.mediaUrl || it.mediaUrl || null };
-            }
-          } catch (_) {}
-          return it;
-        }));
-        setSavedItems(filled);
+    /* kaydedilenler — sadece profil sahibi görebilir */
+    if (auth.currentUser && auth.currentUser.uid === userId) {
+      const savedColl = collection(db, "users", userId, "saved");
+      const qSaved = query(savedColl, orderBy("createdAt", "desc"));
+      savedUnsubRef.current = onSnapshot(qSaved, (s) => {
+        const arr = s.docs.map(d => {
+          const x = d.data();
+          return {
+            /* d.id = contentId (kurallara göre) */
+            id: d.id,
+            contentId: x.contentId || d.id,
+            type: x.type || "post",
+            mediaUrl: x.mediaUrl || "",
+            authorId: x.authorId || null,
+            caption: x.caption || "",
+            createdAt: x.createdAt || null,
+          };
+        });
+        setSaved(arr);
       });
-    } else {
-      setSavedItems([]); // başkalarının profilinde sekme görünmeyecek ama state boş olsun
     }
 
-    return () => { unsubUser(); unsubPosts(); unsubClips(); unsubCheck(); unsubSaved && unsubSaved(); };
+    return () => {
+      unsubUser(); unsubPosts(); unsubClips(); unsubCheck();
+      if (savedUnsubRef.current) { savedUnsubRef.current(); savedUnsubRef.current = null; }
+    };
   }, [userId]);
 
   const handleLogout = () => { signOut(auth).catch(e => console.error("Çıkış hatası", e)); };
@@ -173,6 +136,12 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
   if (isEditing) return <ProfilDuzenle currentUserData={userData} onClose={() => setIsEditing(false)} />;
   if (loading) return <div className="loading-container">Profil Yükleniyor...</div>;
   if (!userData) return <div className="loading-container">Bu kullanıcı bulunamadı.</div>;
+
+  /* Kaydedilen kartına tıklayınca modal aç: sadece id+type yeter */
+  const openSavedItem = (item) => {
+    if (!item?.contentId) return;
+    setSelectedPost({ id: item.contentId, type: item.type });
+  };
 
   return (
     <>
@@ -242,7 +211,7 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
           <button className={`profile-tab-btn ${activeTab === "clips" ? "active" : ""}`} onClick={() => setActiveTab("clips")}><ClipsIcon /> CLIPS</button>
           <button className={`profile-tab-btn ${activeTab === "checkins" ? "active" : ""}`} onClick={() => setActiveTab("checkins")}><CheckInIcon /> CHECK-IN'LER</button>
 
-          {/* IG davranışı: Kaydedilenler sadece sahibi görür */}
+          {/* Yeni: Kaydedilenler — sadece profil sahibi görür */}
           {isCurrentUser && (
             <button className={`profile-tab-btn ${activeTab === "saved" ? "active" : ""}`} onClick={() => setActiveTab("saved")}>
               <SavedIcon /> KAYDEDİLENLER
@@ -250,15 +219,47 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
           )}
         </div>
 
-        {(() => {
-          switch (activeTab) {
-            case "posts": return <UserPosts content={posts} onPostClick={p => setSelectedPost(p)} />;
-            case "clips": return <UserPosts content={clips} onPostClick={p => setSelectedPost(p)} />;
-            case "checkins": return <UserCheckIns checkIns={checkIns} onPlaceClick={onPlaceClick} />;
-            case "saved": return <SavedGrid items={savedItems} onOpen={(stub) => setSelectedPost(stub)} />;
-            default: return null;
-          }
-        })()}
+        {/* Sekmeler */}
+        {activeTab === "posts" && <UserPosts content={posts} onPostClick={p => setSelectedPost(p)} />}
+        {activeTab === "clips" && <UserPosts content={clips} onPostClick={p => setSelectedPost(p)} />}
+        {activeTab === "checkins" && <UserCheckIns checkIns={checkIns} onPlaceClick={onPlaceClick} />}
+
+        {activeTab === "saved" && isCurrentUser && (
+          <section className="saved-section">
+            <header className="saved-header">
+              <div className="saved-title">
+                <span className="saved-lock" aria-hidden="true">🔒</span>
+                <div>
+                  <div className="saved-h1">Kaydedilenler</div>
+                  <div className="saved-sub">Sadece sen görebilirsin</div>
+                </div>
+              </div>
+            </header>
+
+            {saved.length === 0 ? (
+              <div className="saved-empty">Henüz kaydedilen yok.</div>
+            ) : (
+              <div className="saved-grid">
+                {saved.map((it) => (
+                  <button
+                    key={`${it.contentId}:${it.type}`}
+                    className="saved-card"
+                    onClick={() => openSavedItem(it)}
+                    title={it.caption || ''}
+                    aria-label="Kaydedilen içeriği aç"
+                  >
+                    {it.mediaUrl ? (
+                      <img src={it.mediaUrl} alt="Kaydedilen" />
+                    ) : (
+                      <div className="saved-placeholder" />
+                    )}
+                    {it.type === 'clip' && <span className="saved-badge">CLIP</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
 
       {listModal.open && (
@@ -272,7 +273,7 @@ function Profile({ userId, onUserClick, onPlaceClick }) {
 
       {selectedPost && (
         <PostDetailModal
-          post={selectedPost}               // { id, type } yeterli — modal doc'u canlı çeker
+          post={selectedPost}           /* { id, type } yeterli */
           onClose={() => setSelectedPost(null)}
           onUserClick={onUserClick}
           aktifKullaniciId={auth.currentUser ? auth.currentUser.uid : null}
