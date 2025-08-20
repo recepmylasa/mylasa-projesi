@@ -1,5 +1,5 @@
 /* ===========================
-   Mobile Post (namespaced m-)
+   Mobile Post (m-*)
    =========================== */
 
 .m-post-article {
@@ -22,7 +22,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;           /* mobilde biraz daha büyük */
+  width: 40px;
   height: 40px;
   padding: 2px;
   border-radius: 50%;
@@ -67,7 +67,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;         /* ellipsis için */
+  min-width: 0;
   cursor: pointer;
 }
 .m-post-username {
@@ -79,52 +79,28 @@
   white-space: nowrap;
 }
 .m-rep-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  border: 1px solid #eee;
-  background: #fafafa;
-  color: #262626;
-  font-size: 12px;
-  line-height: 1;
-  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 6px; border-radius: 999px; border: 1px solid #eee;
+  background: #fafafa; color: #262626; font-size: 12px; line-height: 1; flex: 0 0 auto;
 }
-.m-rep-pill .m-rep-star {
-  font-size: 12px;
-  color: #f2c94c;
-  text-shadow: 0 0 6px rgba(242, 201, 76, .35);
-}
-.m-rep-pill .m-rep-value {
-  font-variant-numeric: tabular-nums;
-}
+.m-rep-pill .m-rep-star { font-size: 12px; color: #f2c94c; text-shadow: 0 0 6px rgba(242,201,76,.35); }
+.m-rep-pill .m-rep-value { font-variant-numeric: tabular-nums; }
 
 /* Menü */
 .m-post-options { margin-left: auto; position: relative; }
 .m-post-options-btn { background: none; border: none; cursor: pointer; padding: 8px; }
 .m-post-options-btn svg { width: 26px; height: 26px; color: #262626; }
 .m-post-options-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  background-color: #fff;
-  border-radius: 6px;
+  position: absolute; right: 0; top: 100%;
+  background-color: #fff; border-radius: 6px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.12);
-  z-index: 10;
-  overflow: hidden;
-  width: 160px;
+  z-index: 10; overflow: hidden; width: 160px;
   animation: m-pop .12s ease-out;
 }
 @keyframes m-pop { from { transform: translateY(-4px); opacity: 0; } to { transform: none; opacity: 1; } }
 .m-post-options-menu .m-option-item {
-  background: none;
-  border: none;
-  width: 100%;
-  text-align: left;
-  padding: 12px 16px;
-  cursor: pointer;
-  font-size: 14px;
+  background: none; border: none; width: 100%; text-align: left;
+  padding: 12px 16px; cursor: pointer; font-size: 14px;
 }
 .m-post-options-menu .m-option-item:hover { background-color: #fafafa; }
 .m-post-options-menu .m-option-item.delete { color: #ed4956; font-weight: 700; }
@@ -132,42 +108,19 @@
 /* Medya */
 .m-post-media { width: 100%; position: relative; background-color: #000; }
 .m-post-image, .m-post-video {
-  width: 100%;
-  height: auto;
-  display: block;
-  max-height: 588px;
-  object-fit: cover;
-  opacity: 0;
-  transition: opacity 0.3s ease-in-out;
-  touch-action: manipulation;
+  width: 100%; height: auto; display: block; max-height: 588px;
+  object-fit: cover; opacity: 0; transition: opacity .3s ease-in-out; touch-action: manipulation;
 }
 .m-post-image.loaded, .m-post-video.loaded { opacity: 1; }
-.m-media-placeholder,
-.m-skeleton-media { position: absolute; inset: 0; z-index: 1; }
+.m-media-placeholder, .m-skeleton-media { position: absolute; inset: 0; z-index: 1; }
 
 /* İçerik altı */
 .m-post-content { padding: 0 12px; }
 
 /* Actions */
-.m-post-actions {
-  display: flex;
-  align-items: center;
-  padding: 4px 0;
-  margin-left: -6px;
-  gap: 2px;
-}
-.m-star-wrap {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 6px;
-  padding-bottom: 4px;
-  gap: 6px;
-}
-.m-star-meta {
-  color: #8e8e8e;
-  font-size: 12px;
-  user-select: none;
-}
+.m-post-actions { display: flex; align-items: center; padding: 4px 0; margin-left: -6px; gap: 2px; }
+.m-star-wrap { display: inline-flex; align-items: center; margin-left: 6px; padding-bottom: 4px; gap: 6px; }
+.m-star-meta { color: #8e8e8e; font-size: 12px; user-select: none; }
 .m-action-btn { background: none; border: none; cursor: pointer; padding: 8px; touch-action: manipulation; }
 .m-action-btn.save { margin-left: auto; }
 .m-action-icon { width: 26px; height: 26px; color: #262626; transition: transform .1s, color .12s; }
@@ -178,17 +131,14 @@
 .m-post-caption { font-size: 14px; line-height: 1.4; margin-bottom: 4px; }
 .m-post-caption strong { font-weight: 600; cursor: pointer; margin-right: 5px; }
 .m-more-btn { background: none; border: none; color: #8e8e8e; cursor: pointer; padding: 0; font-size: 14px; }
-.m-post-comments-link {
-  font-size: 14px; color: #8e8e8e; cursor: pointer;
-  display: inline-block; margin-bottom: 4px; background: none; border: none; padding: 0;
-}
+.m-post-comments-link { font-size: 14px; color: #8e8e8e; cursor: pointer; display: inline-block; margin-bottom: 4px; background: none; border: none; padding: 0; }
 .m-post-date { font-size: 10px; color: #8e8e8e; text-transform: uppercase; padding-bottom: 12px; }
 
+/* Yorumlar kapalı bandı */
+.m-comments-locked { font-size: 12px; color: #8e8e8e; padding: 4px 0 2px; }
+
 /* Skeleton */
-@keyframes m-skeleton-loading {
-  from { background-color: hsl(200, 20%, 85%); }
-  to   { background-color: hsl(200, 20%, 95%); }
-}
+@keyframes m-skeleton-loading { from { background-color: hsl(200,20%,85%);} to { background-color: hsl(200,20%,95%);} }
 .m-post-article.skeleton { border: none; border-bottom: 1px solid #dbdbdb; }
 .skeleton .m-post-header { padding: 12px 12px; }
 .skeleton .m-skeleton-avatar { width: 40px; height: 40px; border-radius: 50%; margin-right: 10px; animation: m-skeleton-loading 1s linear infinite alternate; }

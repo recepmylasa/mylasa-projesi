@@ -1,4 +1,4 @@
-// App.js (GÜNCEL – permalink + modal-driven route)
+// App.js (GÜNCEL – tek overlay App’te, mouseDown close, permalink uyumlu)
 
 import { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
@@ -29,17 +29,17 @@ import MapMobile from "./MapMobile";
 import CheckInModal from "./CheckInModal";
 import NewCheckInDetail from "./NewCheckInDetail";
 import PlaceDetailModal from "./PlaceDetailModal";
-import StoryModal from './StoryModal';
-import MapSettingsModal from './MapSettingsModal';
-import FriendPickerModal from './FriendPickerModal';
+import StoryModal from "./StoryModal";
+import MapSettingsModal from "./MapSettingsModal";
+import FriendPickerModal from "./FriendPickerModal";
 import "./App.css";
 
 const useWindowSize = () => {
   const [size, setSize] = useState([window.innerWidth, window.innerHeight]);
   useEffect(() => {
     const handleResize = () => setSize([window.innerWidth, window.innerHeight]);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
   return size;
 };
@@ -48,14 +48,25 @@ function App() {
   const [user, setUser] = useState(null);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activePage, setActivePage] = useState('home');
+  const [activePage, setActivePage] = useState("home");
   const [modalContent, setModalContent] = useState(null);
   const [modalData, setModalData] = useState(null);
   const [width] = useWindowSize();
   const isMobile = width <= 768;
 
-  // Bu modalı biz pushState ile mi açtık?
+  // Post modalını biz pushState ile mi açtık?
   const pushedByAppRef = useRef(false);
+
+  // Modal varken body scroll kilidi
+  useEffect(() => {
+    if (modalContent) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [modalContent]);
 
   useEffect(() => {
     let unsubscribeProfile = () => {};
@@ -90,7 +101,7 @@ function App() {
     };
   }, []);
 
-  // URL doğrudan /p/:id ile gelirse post modalını aç
+  // URL doğrudan /p/:id ise post modalı aç
   useEffect(() => {
     if (loading || !user) return;
     const match = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]+)$/);
@@ -99,22 +110,20 @@ function App() {
     const openFromUrl = async () => {
       const id = match[1];
       try {
-        const postSnap = await getDoc(doc(db, 'posts', id));
+        const postSnap = await getDoc(doc(db, "posts", id));
         if (postSnap.exists()) {
-          setModalData({ id: postSnap.id, type: 'post', ...postSnap.data() });
-          setModalContent('viewingComments');
-          pushedByAppRef.current = false; // biz pushlamadık, doğrudan geldi
+          setModalData({ id: postSnap.id, type: "post", ...postSnap.data() });
+          setModalContent("viewingComments");
+          pushedByAppRef.current = false; // doğrudan geldi
         } else {
-          // Bulunamadıysa anasayfaya dön
-          window.history.replaceState({}, '', '/');
+          window.history.replaceState({}, "", "/");
         }
       } catch (e) {
-        console.error('Permalink yüklenirken hata:', e);
-        window.history.replaceState({}, '', '/');
+        console.error("Permalink yüklenirken hata:", e);
+        window.history.replaceState({}, "", "/");
       }
     };
     openFromUrl();
-    // user değişince tekrar denemeye gerek yok, 1 kez çalışması yeter
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user]);
 
@@ -123,119 +132,117 @@ function App() {
     const onPop = async () => {
       const match = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]+)$/);
       if (match) {
-        // URL /p/:id ise ve modal kapalıysa aç
-        if (modalContent !== 'viewingComments') {
+        if (modalContent !== "viewingComments") {
           try {
             const id = match[1];
-            const postSnap = await getDoc(doc(db, 'posts', id));
+            const postSnap = await getDoc(doc(db, "posts", id));
             if (postSnap.exists()) {
-              setModalData({ id: postSnap.id, type: 'post', ...postSnap.data() });
-              setModalContent('viewingComments');
+              setModalData({ id: postSnap.id, type: "post", ...postSnap.data() });
+              setModalContent("viewingComments");
               pushedByAppRef.current = false;
             } else {
-              window.history.replaceState({}, '', '/');
+              window.history.replaceState({}, "", "/");
             }
           } catch (e) {
-            console.error('Popstate yüklenirken hata:', e);
-            window.history.replaceState({}, '', '/');
+            console.error("Popstate yüklenirken hata:", e);
+            window.history.replaceState({}, "", "/");
           }
         }
       } else {
-        // URL /p/ değilse ve modal açıksa kapat
-        if (modalContent === 'viewingComments') {
+        if (modalContent === "viewingComments") {
           setModalContent(null);
           setModalData(null);
+          pushedByAppRef.current = false;
         }
       }
     };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, [modalContent]);
 
+  // ► Nav değişiminde URL’yi normalize et
   const handleNavChange = (tab) => {
-    if (['createMenu', 'messages', 'notifications', 'checkin'].includes(tab)) {
-      setModalContent(tab);
-    } else {
-      setModalContent(null);
-      setModalData(null);
-      setActivePage(tab);
-      // sayfa değişince temel rota
-      if (!/^\/(p|c)\//.test(window.location.pathname)) {
-        window.history.replaceState({}, '', '/');
+    const isPermalink = /^\/p\/[A-Za-z0-9_-]+$/.test(window.location.pathname);
+    if (isPermalink) {
+      if (pushedByAppRef.current) {
+        window.history.back();
+      } else {
+        window.history.replaceState({}, "", "/");
       }
+      pushedByAppRef.current = false;
+    }
+
+    if (["createMenu", "messages", "notifications", "checkin"].includes(tab)) {
+      setModalContent(tab);
+      return;
+    }
+
+    setModalContent(null);
+    setModalData(null);
+    setActivePage(tab);
+
+    if (!/^\/(p|c)\//.test(window.location.pathname)) {
+      window.history.replaceState({}, "", "/");
     }
   };
 
   const handleViewProfile = (userId) => {
     setModalData(userId);
-    setModalContent('viewingProfile');
+    setModalContent("viewingProfile");
   };
 
-  // YORUM/MODAL aç – burada pushState ile /p/:id yap
+  // Yorum modalını aç → pushState /p/:id
   const handleViewComments = (post) => {
     if (!post?.id) return;
     setModalData(post);
-    setModalContent('viewingComments');
-    window.history.pushState({ modal: 'post', id: post.id }, '', `/p/${post.id}`);
+    setModalContent("viewingComments");
+    window.history.pushState({ modal: "post", id: post.id }, "", `/p/${post.id}`);
     pushedByAppRef.current = true;
   };
 
-  const handleViewClip = () => {
-    setActivePage('clips');
-  };
+  const handleViewClip = () => setActivePage("clips");
 
   const handleStartMessage = (targetUserId) => {
     setModalData(targetUserId);
-    setModalContent('messages');
+    setModalContent("messages");
   };
 
   const handlePlaceSelectForCheckIn = (place) => {
     setModalData(place);
-    setModalContent('newCheckInDetail');
+    setModalContent("newCheckInDetail");
   };
 
   const handleViewPlaceDetail = (checkinData) => {
     setModalData(checkinData);
-    setModalContent('placeDetail');
+    setModalContent("placeDetail");
   };
 
   const handleViewUserFromPlace = (userId) => {
     setModalContent(null);
     setModalData(null);
-    setTimeout(() => {
-      handleViewProfile(userId);
-    }, 50);
+    setTimeout(() => handleViewProfile(userId), 50);
   };
 
   const handleViewStory = (userWithStories) => {
     setModalData(userWithStories);
-    setModalContent('viewingStory');
+    setModalContent("viewingStory");
   };
 
-  const handleOpenMapSettings = () => {
-    setModalContent('mapSettings');
-  };
-
-  const handleOpenFriendPicker = () => {
-    setModalContent('friendPicker');
-  };
+  const handleOpenMapSettings = () => setModalContent("mapSettings");
+  const handleOpenFriendPicker = () => setModalContent("friendPicker");
 
   const handleSaveFriendSelection = async (selectedFriendIds) => {
-    if (!user) {
-      console.error("Kullanıcı bulunamadı!");
-      return;
-    }
-    const userDocRef = doc(db, 'users', user.uid);
+    if (!user) return console.error("Kullanıcı bulunamadı!");
+    const userDocRef = doc(db, "users", user.uid);
     try {
       await updateDoc(userDocRef, {
         sharingWhitelist: selectedFriendIds,
-        sharingMode: 'selected_friends',
-        isSharing: true
+        sharingMode: "selected_friends",
+        isSharing: true,
       });
-      console.log("Paylaşım listesi başarıyla güncellendi.");
-      setModalContent('mapSettings');
+      setModalContent("mapSettings");
     } catch (error) {
-      console.error("Hata: Arkadaş seçim listesi güncellenemedi.", error);
+      console.error("Arkadaş seçim listesi güncellenemedi:", error);
     }
   };
 
@@ -293,14 +300,12 @@ function App() {
     if (!modalContent) return null;
 
     const closeModal = () => {
-      // Eğer /p/:id üzerindeysek URL’i temizle
+      // /p/:id üzerindeysek URL’i temizle
       if (/^\/p\/[A-Za-z0-9_-]+$/.test(window.location.pathname)) {
         if (pushedByAppRef.current) {
-          // Biz pushState ile açtıysak: back → önceki sayfaya dön
           window.history.back();
         } else {
-          // Doğrudan URL ile geldiyse: replace → /
-          window.history.replaceState({}, '', '/');
+          window.history.replaceState({}, "", "/");
         }
       }
       setModalContent(null);
@@ -308,20 +313,56 @@ function App() {
       pushedByAppRef.current = false;
     };
 
-    const handleCreateSelect = (creationType) => { setModalContent(creationType); };
+    const handleCreateSelect = (creationType) => setModalContent(creationType);
 
-    if (modalContent === 'createMenu') return <CreateMenu onClose={closeModal} onSelect={handleCreateSelect} />;
-    if (modalContent === 'newclip') return <NewClip onClose={closeModal} />;
-    if (modalContent === 'notifications') return <Bildirimler aktifKullaniciId={user.uid} onClose={closeModal} />;
-    if (modalContent === 'checkin') return <CheckInModal onClose={closeModal} currentUser={user} onPlaceSelect={handlePlaceSelectForCheckIn} />;
-    if (modalContent === 'newCheckInDetail') return <NewCheckInDetail selectedPlace={modalData} currentUser={user} onClose={closeModal} />;
-    if (modalContent === 'placeDetail') return <PlaceDetailModal placeData={modalData} onClose={closeModal} onUserClick={handleViewUserFromPlace} />;
+    if (modalContent === "createMenu")
+      return <CreateMenu onClose={closeModal} onSelect={handleCreateSelect} />;
+    if (modalContent === "newclip") return <NewClip onClose={closeModal} />;
+    if (modalContent === "notifications")
+      return <Bildirimler aktifKullaniciId={user.uid} onClose={closeModal} />;
+    if (modalContent === "checkin")
+      return (
+        <CheckInModal
+          onClose={closeModal}
+          currentUser={user}
+          onPlaceSelect={handlePlaceSelectForCheckIn}
+        />
+      );
+    if (modalContent === "newCheckInDetail")
+      return (
+        <NewCheckInDetail
+          selectedPlace={modalData}
+          currentUser={user}
+          onClose={closeModal}
+        />
+      );
+    if (modalContent === "placeDetail")
+      return (
+        <PlaceDetailModal
+          placeData={modalData}
+          onClose={closeModal}
+          onUserClick={handleViewUserFromPlace}
+        />
+      );
 
-    if (modalContent === 'mapSettings') return <MapSettingsModal onClose={closeModal} onOpenFriendPicker={handleOpenFriendPicker} />;
-    if (modalContent === 'friendPicker') return <FriendPickerModal currentUser={currentUserProfile} onSave={handleSaveFriendSelection} onClose={() => setModalContent('mapSettings')} />;
+    if (modalContent === "mapSettings")
+      return (
+        <MapSettingsModal
+          onClose={closeModal}
+          onOpenFriendPicker={handleOpenFriendPicker}
+        />
+      );
+    if (modalContent === "friendPicker")
+      return (
+        <FriendPickerModal
+          currentUser={currentUserProfile}
+          onSave={handleSaveFriendSelection}
+          onClose={() => setModalContent("mapSettings")}
+        />
+      );
 
-    if (modalContent === 'viewingStory') {
-      const storiesWithAuthorInfo = modalData.stories.map(story => ({
+    if (modalContent === "viewingStory") {
+      const storiesWithAuthorInfo = modalData.stories.map((story) => ({
         ...story,
         authorUsername: modalData.kullaniciAdi,
         authorProfilePic: modalData.profilFoto,
@@ -330,20 +371,37 @@ function App() {
     }
 
     const modalStyle = {
-      display: 'flex', position: 'fixed', top: 0, left: 0, width: '100%',
-      height: '100%', alignItems: 'center', justifyContent: 'center',
-      backgroundColor: 'rgba(0, 0, 0, 0.65)', zIndex: 2000
+      display: "flex",
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0, 0, 0, 0.65)",
+      zIndex: 2000,
     };
-    const commentsModalStyle = { ...modalStyle, alignItems: 'flex-end', backgroundColor: 'rgba(0, 0, 0, 0.5)' };
-    const isCommentModal = modalContent === 'viewingComments';
+    const commentsModalStyle = {
+      ...modalStyle,
+      alignItems: "flex-end",
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+    };
+    const isCommentModal = modalContent === "viewingComments";
     const currentStyle = isCommentModal ? commentsModalStyle : modalStyle;
 
     return (
-      <div style={currentStyle} onClick={closeModal}>
-        <div onClick={e => e.stopPropagation()}>
-          {modalContent === 'newpost' && <NewPost onClose={closeModal} />}
-          {modalContent === 'messages' && <Messages aktifKullaniciInfo={currentUserProfile} initialUserId={modalData} onClose={closeModal} />}
-          {modalContent === 'viewingProfile' && (
+      <div style={currentStyle} onMouseDown={closeModal}>
+        <div onMouseDown={(e) => e.stopPropagation()}>
+          {modalContent === "newpost" && <NewPost onClose={closeModal} />}
+          {modalContent === "messages" && (
+            <Messages
+              aktifKullaniciInfo={currentUserProfile}
+              initialUserId={modalData}
+              onClose={closeModal}
+            />
+          )}
+          {modalContent === "viewingProfile" && (
             <KullaniciProfili
               userId={modalData}
               aktifKullaniciId={user.uid}
@@ -352,12 +410,15 @@ function App() {
               onSendMessage={handleStartMessage}
             />
           )}
-          {modalContent === 'viewingComments' && (
+          {modalContent === "viewingComments" && (
             <PostDetailModal
               post={modalData}
               onClose={closeModal}
               aktifKullaniciId={user.uid}
-              onUserClick={(uid) => { closeModal(); handleViewProfile(uid); }}
+              onUserClick={(uid) => {
+                closeModal();
+                handleViewProfile(uid);
+              }}
             />
           )}
         </div>
@@ -365,21 +426,21 @@ function App() {
     );
   };
 
-  if (loading) { return <div className="loading-container">Yükleniyor...</div>; }
-  if (!user) { return <Auth />; }
+  if (loading) return <div className="loading-container">Yükleniyor...</div>;
+  if (!user) return <Auth />;
 
   const mainContentClass =
-    (activePage === 'explore' || activePage === 'clips' || activePage === 'map')
-      ? 'main-content-wide'
-      : 'main-content-narrow';
+    activePage === "explore" || activePage === "clips" || activePage === "map"
+      ? "main-content-wide"
+      : "main-content-narrow";
 
   return (
-    <div className={`app-container ${!isMobile ? 'desktop-layout' : ''}`}>
+    <div className={`app-container ${!isMobile ? "desktop-layout" : ""}`}>
       {isMobile && (
         <LogoBar
-          onNotificationClick={() => handleNavChange('notifications')}
-          onMessageClick={() => handleNavChange('messages')}
-          onLocationClick={() => handleNavChange('map')}
+          onNotificationClick={() => handleNavChange("notifications")}
+          onMessageClick={() => handleNavChange("messages")}
+          onLocationClick={() => handleNavChange("map")}
         />
       )}
       {isMobile ? (
@@ -396,8 +457,7 @@ function App() {
         />
       )}
       <main className={mainContentClass}>
-        {/* HİKAYELER: HEM MOBİL HEM MASAÜSTÜ */}
-        {activePage === 'home' && (
+        {activePage === "home" && (
           <Hikayeler currentUserProfile={currentUserProfile} />
         )}
         {renderPageContent()}
