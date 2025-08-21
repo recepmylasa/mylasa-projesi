@@ -1,6 +1,21 @@
+// src/KullaniciProfili.js
 import { useEffect, useState } from 'react';
-import { db, auth } from './firebase';
-import { doc, onSnapshot, collection, query, where, updateDoc, arrayUnion, arrayRemove, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { db } from './firebase';
+import {
+  doc,
+  onSnapshot,
+  collection,
+  query,
+  where,
+  updateDoc,
+  arrayUnion,
+  arrayRemove,
+  addDoc,
+  serverTimestamp,
+  getDocs,
+  orderBy,
+  onSnapshot as listen,
+} from 'firebase/firestore';
 import UserPosts from './UserPosts';
 import PostDetailModal from './PostDetailModal';
 import TakipListesi from './TakipListesi';
@@ -24,16 +39,22 @@ function KullaniciProfili({ userId, onClose, aktifKullaniciId, onUserClick, onSe
   const [listModal, setListModal] = useState({ open: false, type: '' });
   const [aktifKullaniciData, setAktifKullaniciData] = useState(null);
 
+  // 🔧 Yeni: Grid’i doldurmak için gerçek içerik listesi
+  const [posts, setPosts] = useState([]);
+
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
 
+    // Kullanıcı bilgisi
     const userRef = doc(db, "users", userId);
     const unsubscribeUser = onSnapshot(userRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setUserData(data);
-        const postsQuery = query(collection(db, "posts"), where("authorId", "==", userId));
-        const postsSnapshot = await getDocs(postsQuery);
+
+        // Sayı (tek seferlik)
+        const postsQueryOnce = query(collection(db, "posts"), where("authorId", "==", userId));
+        const postsSnapshot = await getDocs(postsQueryOnce);
         setPostCount(postsSnapshot.size);
       } else {
         setUserData(null);
@@ -41,6 +62,7 @@ function KullaniciProfili({ userId, onClose, aktifKullaniciId, onUserClick, onSe
       setLoading(false);
     });
 
+    // Aktif kullanıcı takibi
     let unsubscribeCurrentUser = () => {};
     if (aktifKullaniciId) {
       const currentUserRef = doc(db, "users", aktifKullaniciId);
@@ -53,9 +75,21 @@ function KullaniciProfili({ userId, onClose, aktifKullaniciId, onUserClick, onSe
       });
     }
 
+    // 🔴 Grid içeriklerini canlı dinle
+    const postsQueryLive = query(
+      collection(db, "posts"),
+      where("authorId", "==", userId),
+      orderBy("tarih", "desc")
+    );
+    const unsubscribePosts = listen(postsQueryLive, (s) => {
+      const arr = s.docs.map(d => ({ id: d.id, type: 'post', ...d.data() }));
+      setPosts(arr);
+    });
+
     return () => {
       unsubscribeUser();
       unsubscribeCurrentUser();
+      unsubscribePosts();
     };
   }, [userId, aktifKullaniciId]);
 
@@ -131,18 +165,28 @@ function KullaniciProfili({ userId, onClose, aktifKullaniciId, onUserClick, onSe
             <section className="profile-info">
               <div className="profile-info-top">
                 <h2 className="profile-username">{userData.kullaniciAdi}</h2>
-                <button onClick={handleTakip} className={`profile-action-btn follow-btn ${isFollowing ? 'following' : ''}`}>
+                <button
+                  onClick={handleTakip}
+                  className={`profile-action-btn follow-btn ${isFollowing ? 'following' : ''}`}
+                >
                   {isFollowing ? 'Takibi Bırak' : 'Takip Et'}
                 </button>
-                <button className="profile-action-btn message-btn" onClick={() => onSendMessage(userId)}>
+                <button
+                  className="profile-action-btn message-btn"
+                  onClick={() => onSendMessage && onSendMessage(userId)}
+                >
                   Mesaj Gönder
                 </button>
               </div>
 
               <ul className="profile-stats">
                 <li><span>{postCount}</span> gönderi</li>
-                <li onClick={() => setListModal({ open: true, type: 'takipciler' })}><span>{userData.takipciler?.length || 0}</span> takipçi</li>
-                <li onClick={() => setListModal({ open: true, type: 'takipEdilenler' })}><span>{userData.takipEdilenler?.length || 0}</span> takip</li>
+                <li onClick={() => setListModal({ open: true, type: 'takipciler' })}>
+                  <span>{userData.takipciler?.length || 0}</span> takipçi
+                </li>
+                <li onClick={() => setListModal({ open: true, type: 'takipEdilenler' })}>
+                  <span>{userData.takipEdilenler?.length || 0}</span> takip
+                </li>
               </ul>
 
               <div className="profile-bio">
@@ -156,11 +200,12 @@ function KullaniciProfili({ userId, onClose, aktifKullaniciId, onUserClick, onSe
             <button className="profile-tab-btn active"><GridIcon /> Gönderiler</button>
           </div>
 
-          <UserPosts userId={userId} onPostClick={(post) => setSelectedPost(post)} />
+          {/* 🔧 Fix: Grid şimdi gerçek içerik ile çalışıyor */}
+          <UserPosts content={posts} onPostClick={(post) => setSelectedPost(post)} />
         </div>
       </div>
 
-      <button onClick={onClose} className="kullanici-profili-close-btn">&times;</button>
+      <button onClick={onClose} className="kullanici-profili-close-btn" aria-label="Kapat">&times;</button>
 
       {listModal.open && (
         <TakipListesi

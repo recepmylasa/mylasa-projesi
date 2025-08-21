@@ -1,3 +1,5 @@
+/* src/KullaniciProfili.css */
+
 /* Modalın ana içerik kutusu */
 .kullanici-profili-content {
   background: white;
@@ -29,12 +31,12 @@
   z-index: 2001;
 }
 
-/* Profil iskeleti */
-.profile-container { padding-top: 24px; width: 100%; }
-.profile-header { display: flex; margin-bottom: 24px; }
+/* ---- PROFİL İSKELETİ (tamamı scope'lu) ---- */
+.kullanici-profili-content .profile-container { padding-top: 24px; width: 100%; }
+.kullanici-profili-content .profile-header { display: flex; margin-bottom: 24px; }
 
 /* ================= ALTIN HALKA + YARIM YILDIZ ================= */
-.profile-avatar-wrapper{
+.kullanici-profili-content .profile-avatar-wrapper{
   --avatar-size: 77px;
   --ring: 3px;
   --star-size: 28px;
@@ -54,7 +56,7 @@
   flex-shrink: 0;
   overflow: visible;
 }
-.profile-avatar-wrapper.gold-ring{
+.kullanici-profili-content .profile-avatar-wrapper.gold-ring{
   border-radius: 50%;
   background:
     radial-gradient(140% 140% at 30% 30%, rgba(255,255,255,.55), rgba(255,255,255,0) 40%),
@@ -64,14 +66,14 @@
     inset 0 1px 0 rgba(255,255,255,.8),
     inset 0 -2px 4px rgba(0,0,0,.15);
 }
-.avatar-inner{
+.kullanici-profili-content .avatar-inner{
   position: relative;
   width: var(--avatar-size);
   height: var(--avatar-size);
   border-radius: 50%;
   overflow: visible;
 }
-.profile-avatar{
+.kullanici-profili-content .profile-avatar{
   width: 100%;
   height: 100%;
   border-radius: 50%;
@@ -83,7 +85,7 @@
 }
 
 /* Yıldız: merkez halka üzerinde (45°) */
-.gold-star{
+.kullanici-profili-content .gold-star{
   position: absolute;
   left: calc(
     50% + (var(--avatar-size) * 0.353553) + (var(--ring) * 0.353553) + var(--star-shift-x)
@@ -103,15 +105,15 @@
   pointer-events: none;
   z-index: 3;
 }
-.gold-star-svg{ width:100%; height:100%; border-radius:50%; }
+.kullanici-profili-content .gold-star-svg{ width:100%; height:100%; border-radius:50%; }
 
 /* Bilgi sütunu */
-.profile-info { flex-grow: 1; }
-.profile-info-top { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:12px; }
-.profile-username { font-size: 20px; font-weight: 400; }
+.kullanici-profili-content .profile-info { flex-grow: 1; }
+.kullanici-profili-content .profile-info-top { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:12px; }
+.kullanici-profili-content .profile-username { font-size: 20px; font-weight: 400; }
 
 /* Butonlar */
-.profile-action-btn {
+.kullanici-profili-content .profile-action-btn {
   border: 1px solid transparent;
   border-radius: 8px;
   padding: 7px 16px;
@@ -120,35 +122,35 @@
   cursor: pointer;
   transition: background-color 0.2s ease;
 }
-.follow-btn { background-color: #0095f6; color: white; }
-.follow-btn.following { background-color: #efefef; color: #262626; }
-.follow-btn:hover { opacity: .8; }
-.message-btn { background-color:#efefef; color:#262626; }
-.message-btn:hover { background-color:#e0e0e0; }
+.kullanici-profili-content .follow-btn { background-color: #0095f6; color: white; }
+.kullanici-profili-content .follow-btn.following { background-color: #efefef; color: #262626; }
+.kullanici-profili-content .follow-btn:hover { opacity: .8; }
+.kullanici-profili-content .message-btn { background-color:#efefef; color:#262626; }
+.kullanici-profili-content .message-btn:hover { background-color:#e0e0e0; }
 
 /* İstatistikler */
-.profile-stats { display:flex; gap:24px; margin-bottom:12px; font-size:14px; }
-.profile-stats li { list-style:none; cursor:pointer; }
-.profile-stats span { font-weight:600; }
+.kullanici-profili-content .profile-stats { display:flex; gap:24px; margin-bottom:12px; font-size:14px; }
+.kullanici-profili-content .profile-stats li { list-style:none; cursor:pointer; }
+.kullanici-profili-content .profile-stats span { font-weight:600; }
 
 /* Bio */
-.profile-bio .fullname { font-weight:600; font-size:14px; }
-.profile-bio .bio-text { font-size:14px; white-space:pre-wrap; line-height:1.4; }
+.kullanici-profili-content .profile-bio .fullname { font-weight:600; font-size:14px; }
+.kullanici-profili-content .profile-bio .bio-text { font-size:14px; white-space:pre-wrap; line-height:1.4; }
 
 /* Sekme */
-.profile-tabs { border-top:1px solid #dbdbdb; display:flex; justify-content:center; }
-.profile-tab-btn {
+.kullanici-profili-content .profile-tabs { border-top:1px solid #dbdbdb; display:flex; justify-content:center; }
+.kullanici-profili-content .profile-tab-btn {
   background:none; border:none; border-top:1px solid #262626; margin-top:-1px;
   padding:16px 0; display:flex; align-items:center; gap:6px; cursor:pointer;
   font-weight:600; font-size:12px; text-transform:uppercase; color:#262626;
 }
-.profile-tab-btn svg { fill:#262626; }
+.kullanici-profili-content .profile-tab-btn svg { fill:#262626; }
 
 /* Geniş ekranlar */
 @media (min-width: 768px){
   .kullanici-profili-body { padding: 24px 48px; }
-  .profile-header { margin-bottom: 44px; }
-  .profile-avatar-wrapper {
+  .kullanici-profili-content .profile-header { margin-bottom: 44px; }
+  .kullanici-profili-content .profile-avatar-wrapper {
     --avatar-size: 150px;
     --ring: 3px;
     --star-size: 36px;
@@ -156,5 +158,5 @@
     --star-shift-y: 0px;
     margin-right: 60px;
   }
-  .profile-stats { font-size:16px; gap:40px; margin-bottom:20px; }
+  .kullanici-profili-content .profile-stats { font-size:16px; gap:40px; margin-bottom:20px; }
 }
