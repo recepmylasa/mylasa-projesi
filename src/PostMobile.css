@@ -94,7 +94,7 @@
   position: absolute; right: 0; top: 100%;
   background-color: #fff; border-radius: 6px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.12);
-  z-index: 10; overflow: hidden; width: 160px;
+  z-index: 10; overflow: hidden; width: 180px;
   animation: m-pop .12s ease-out;
 }
 @keyframes m-pop { from { transform: translateY(-4px); opacity: 0; } to { transform: none; opacity: 1; } }

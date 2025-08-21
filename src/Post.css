@@ -93,7 +93,7 @@
   position: absolute; right: 0; top: 100%;
   background-color: #fff; border-radius: 6px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.12);
-  z-index: 10; overflow: hidden; width: 160px;
+  z-index: 10; overflow: hidden; width: 180px;
   animation: pop .12s ease-out;
 }
 @keyframes pop { from { transform: translateY(-4px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -109,6 +109,7 @@
 .postDk-image, .postDk-video {
   width: 100%; height: auto; display: block; max-height: 588px;
   object-fit: cover; opacity: 0; transition: opacity .3s ease-in-out; touch-action: manipulation;
+  cursor: pointer; /* ► masaüstünde medya tıklanabilir */
 }
 .postDk-image.loaded, .postDk-video.loaded { opacity: 1; }
 

@@ -370,6 +370,7 @@ function App() {
       return <StoryModal stories={storiesWithAuthorInfo} onClose={closeModal} />;
     }
 
+    // ► Overlay stilleri
     const modalStyle = {
       display: "flex",
       position: "fixed",
@@ -387,8 +388,10 @@ function App() {
       alignItems: "flex-end",
       backgroundColor: "rgba(0, 0, 0, 0.5)",
     };
+
+    // SADECE MOBİLDE alt-sheet, MASAÜSTÜNDE merkez:
     const isCommentModal = modalContent === "viewingComments";
-    const currentStyle = isCommentModal ? commentsModalStyle : modalStyle;
+    const currentStyle = isCommentModal && isMobile ? commentsModalStyle : modalStyle;
 
     return (
       <div style={currentStyle} onMouseDown={closeModal}>
