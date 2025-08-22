@@ -5,7 +5,8 @@ import ProfileMobile from "./ProfileMobile";
 
 /** Basit ekran genişliği dinleyicisi (IG eşik ~736px) */
 function useIsMobile(breakpoint = 736) {
-  const get = () => (typeof window !== "undefined" ? window.innerWidth <= breakpoint : false);
+  const get = () =>
+    (typeof window !== "undefined" ? window.innerWidth <= breakpoint : false);
   const [isMobile, setIsMobile] = useState(get());
   useEffect(() => {
     const onResize = () => setIsMobile(get());

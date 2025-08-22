@@ -1,73 +1,41 @@
-.user-posts-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr; 
-    gap: 3px;
+.user-posts-message{
+  color:#8e8e8e; text-align:center; padding:40px 0;
+  display:flex; flex-direction:column; gap:8px; align-items:center;
+}
+.user-posts-message .icon{ font-size:28px; }
+
+/* 3 sütun grid; desktop gap 28px → karo ~293px (935px container) */
+.user-posts-grid{
+  display:grid; grid-template-columns:repeat(3,1fr);
+  gap:4px;
+}
+@media (min-width:736px){
+  .user-posts-grid{ gap:28px; }
 }
 
-.post-grid-item {
-    position: relative;
-    aspect-ratio: 1 / 1;
-    cursor: pointer;
-    background-color: #efefef;
+/* Reels modu: 9:16 dikey karolar */
+.user-posts-grid.reels-mode .post-grid-item{ aspect-ratio:9/16; }
+.user-posts-grid:not(.reels-mode) .post-grid-item{ aspect-ratio:1/1; }
+
+.post-grid-item{
+  position:relative; border:0; padding:0; background:#f0f0f0;
+  cursor:pointer; overflow:hidden; display:block;
+}
+.post-grid-image{ width:100%; height:100%; object-fit:cover; display:block; }
+
+/* sol-üst reels rozeti */
+.post-grid-icon-wrapper{
+  position:absolute; left:8px; top:8px; background:rgba(0,0,0,.45);
+  border-radius:8px; padding:4px; display:inline-flex;
 }
 
-.post-grid-image {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+/* hover overlay */
+.post-grid-overlay{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  gap:18px; opacity:0; background:rgba(0,0,0,.25); transition:opacity .2s ease;
 }
+.post-grid-item:hover .post-grid-overlay{ opacity:1; }
 
-.post-grid-icon-wrapper {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    pointer-events: none;
-}
-
-.post-grid-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.3);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 24px;
-    color: white;
-    opacity: 0;
-    transition: opacity 0.2s ease-in-out;
-}
-
-.post-grid-item:hover .post-grid-overlay {
-    opacity: 1;
-}
-
-.overlay-stat {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 16px;
-    font-weight: bold;
-}
-
-.overlay-stat svg {
-    width: 20px;
-    height: 20px;
-    stroke: white;
-    fill: white;
-}
-
-.user-posts-message {
-    text-align: center;
-    margin-top: 40px;
-    color: #8e8e8e;
-    font-size: 14px;
-}
-
-.user-posts-message .icon {
-    font-size: 2.5em;
-    margin-bottom: 16px;
-    display: block;
+.overlay-stat{
+  display:flex; align-items:center; gap:6px; color:#fff; font-weight:600; font-size:14px;
 }

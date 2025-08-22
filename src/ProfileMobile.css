@@ -1,223 +1,71 @@
-/* src/ProfileMobile.css */
+.profile-mobile .profile-container{ padding-top:24px; max-width:935px; margin:0 auto; }
+.profile-mobile .profile-header{ display:flex; margin-bottom:24px; padding:0 16px; }
 
-.profile-mobile .profile-container {
-  padding-top: 24px;
-  max-width: 600px;
-  margin: 0 auto;
+/* Avatar + gold ring + star */
+.profile-avatar-wrapper{
+  --avatar-size:77px; --ring:3px; --star-size:28px; --star-shift:0px;
+  position:relative; display:grid; place-items:center; width:var(--avatar-size); height:var(--avatar-size);
+  padding:var(--ring); border-radius:50%; margin-right:28px; overflow:visible; flex-shrink:0;
 }
-
-.profile-mobile .profile-header {
-  display: flex;
-  margin-bottom: 24px;
-  padding: 0 16px;
-}
-
-/* ===== Avatar + Altın Halka + Yıldız ===== */
-.profile-mobile .profile-avatar-wrapper {
-  --avatar-size: 77px;
-  --ring: 3px;
-  --star-size: 28px;
-  --star-shift: 0px;
-
-  position: relative;
-  display: grid;
-  place-items: center;
-
-  width: var(--avatar-size);
-  height: var(--avatar-size);
-  padding: var(--ring);
-  box-sizing: content-box;
-  border-radius: 50%;
-  margin-right: 28px;
-  flex-shrink: 0;
-  overflow: visible;
-}
-.profile-mobile .profile-avatar-wrapper.gold-ring {
+.profile-avatar-wrapper.gold-ring{
   background:
     radial-gradient(140% 140% at 30% 30%, rgba(255,255,255,.55), rgba(255,255,255,0) 40%),
-    conic-gradient(
-      from 200deg,
-      #f9e07d, #f1c54d 20%, #dfa825 40%,
-      #a8740f 55%, #d7a62b 70%, #ffdf7a 85%, #f6d25c 100%
-    );
-  box-shadow:
-    0 2px 10px rgba(0,0,0,.12),
-    inset 0 1px 0 rgba(255,255,255,.8),
-    inset 0 -2px 4px rgba(0,0,0,.15);
+    conic-gradient(from 200deg,#f9e07d,#f1c54d 20%,#dfa825 40%,#a8740f 55%,#d7a62b 70%,#ffdf7a 85%,#f6d25c 100%);
+  box-shadow:0 2px 10px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.8), inset 0 -2px 4px rgba(0,0,0,.15);
 }
-.profile-mobile .avatar-inner {
-  position: relative;
-  width: var(--avatar-size);
-  height: var(--avatar-size);
-  border-radius: 50%;
-  overflow: visible;
-}
-.profile-mobile .profile-avatar {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-  display: block;
-  background: #f2f2f2;
-  position: relative;
-  z-index: 1;
-}
-.profile-mobile .gold-star {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: var(--star-size);
-  height: var(--star-size);
-  transform: translate(calc(50% + var(--star-shift)), calc(50% + var(--star-shift)));
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  filter:
-    drop-shadow(0 2px 2px rgba(0,0,0,.25))
-    drop-shadow(0 6px 10px rgba(0,0,0,.22));
-  pointer-events: none;
-  z-index: 2;
-}
-.profile-mobile .gold-star-svg { width: 100%; height: 100%; border-radius: 50%; }
+.avatar-inner{ position:relative; width:var(--avatar-size); height:var(--avatar-size); border-radius:50%; overflow:visible; }
+.profile-avatar{ width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; background:#f2f2f2; position:relative; z-index:1; }
+.profile-mobile .gold-star{ position:absolute; right:0; bottom:0; width:var(--star-size); height:var(--star-size); transform:translate(calc(50% + var(--star-shift)), calc(50% + var(--star-shift))); filter:drop-shadow(0 2px 2px rgba(0,0,0,.25)) drop-shadow(0 6px 10px rgba(0,0,0,.22)); pointer-events:none; z-index:2; }
+.gold-star-svg{ width:100%; height:100%; border-radius:50%; }
 
-/* ===== Sağ kolon ===== */
-.profile-mobile .profile-info { flex-grow: 1; }
+/* Info */
+.profile-info{ flex-grow:1; }
+.profile-info-top{ display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:12px; }
+.profile-username{ font-size:20px; font-weight:400; color:#262626; }
+.profile-actions{ display:inline-flex; align-items:center; gap:8px; }
+.profile-edit-btn,.profile-logout-btn{ background:#efefef; border:1px solid transparent; border-radius:8px; padding:7px 16px; font-weight:600; font-size:14px; cursor:pointer; }
+.profile-edit-btn:hover,.profile-logout-btn:hover{ background:#e0e0e0; }
 
-.profile-mobile .profile-info-top {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.profile-mobile .profile-username { font-size: 20px; font-weight: 400; color: #262626; }
+.profile-stats{ display:flex; gap:24px; margin-bottom:12px; font-size:14px; }
+.profile-stats li{ list-style:none; cursor:pointer; }
+.profile-stats span{ font-weight:600; }
 
-/* Aksiyonlar */
-.profile-mobile .profile-actions { display: inline-flex; align-items: center; gap: 8px; }
-.profile-mobile .profile-edit-btn,
-.profile-mobile .profile-logout-btn {
-  background-color: #efefef;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 7px 16px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-}
-.profile-mobile .profile-edit-btn:hover,
-.profile-mobile .profile-logout-btn:hover { background-color: #e0e0e0; }
+.profile-bio .fullname{ font-weight:600; font-size:14px; }
+.profile-bio .bio-text{ font-size:14px; white-space:pre-wrap; line-height:1.4; }
 
-/* Sayaçlar */
-.profile-mobile .profile-stats {
-  display: flex; gap: 24px; margin-bottom: 12px; font-size: 14px;
-}
-.profile-mobile .profile-stats li { list-style: none; cursor: pointer; }
-.profile-mobile .profile-stats span { font-weight: 600; }
+/* Tabs — icon only */
+.profile-tabs{ border-top:1px solid #dbdbdb; display:flex; justify-content:center; gap:34px; }
+.profile-tab-btn{ background:none; border:none; border-top:1px solid transparent; margin-top:-1px; padding:14px 0; display:flex; align-items:center; cursor:pointer; font-size:0; color:#8e8e8e; }
+.profile-tab-btn svg{ stroke:#8e8e8e; }
+.profile-tab-btn.active{ border-top-color:#262626; color:#262626; }
+.profile-tab-btn.active svg{ stroke:#262626; }
 
-/* Bio */
-.profile-mobile .profile-bio .fullname { font-weight: 600; font-size: 14px; }
-.profile-mobile .profile-bio .bio-text { font-size: 14px; white-space: pre-wrap; line-height: 1.4; }
+/* Rep pill */
+.profile-mobile .rep-pill{
+  display:inline-flex; align-items:center; gap:6px; padding:4px 10px; line-height:1; border-radius:999px;
+  font-weight:700; font-size:13px; color:#1e1e1e; background:#ffeaa7; border:1px solid #ffd166; box-shadow:0 1px 0 rgba(0,0,0,.04);
+}
+.profile-mobile .rep-pill .star{ font-size:14px; color:#f4b400; }
+.profile-mobile .rep-pill.high{ background:linear-gradient(135deg,#ffe07a,#ffd34f); border-color:#f0b429; box-shadow:0 2px 6px rgba(240,180,41,.25); }
 
-/* Sekmeler */
-.profile-mobile .profile-tabs {
-  border-top: 1px solid #dbdbdb;
-  display: flex;
-  justify-content: center;
-  gap: 36px;
-}
-.profile-mobile .profile-tab-btn {
-  background: none;
-  border: none;
-  border-top: 1px solid transparent;
-  margin-top: -1px;
-  padding: 16px 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  color: #8e8e8e;
-}
-.profile-mobile .profile-tab-btn.active { border-top-color: #262626; color: #262626; }
-.profile-mobile .profile-tab-btn.active svg { stroke: #262626; }
+/* Saved section (reused) */
+.saved-section{ padding:16px; }
+.saved-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.saved-title{ display:inline-flex; align-items:center; gap:10px; }
+.saved-lock{ font-size:18px; }
+.saved-h1{ font-size:16px; font-weight:700; line-height:1.1; }
+.saved-sub{ color:#8e8e8e; font-size:12px; }
+.saved-empty{ color:#8e8e8e; font-size:14px; text-align:center; padding:32px 0; border-top:1px solid #dbdbdb; border-bottom:1px solid #dbdbdb; background:#fff; }
+.saved-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
+@media (min-width:736px){ .saved-grid{ gap:28px; } }
+.saved-card{ position:relative; width:100%; padding:0; border:none; background:#f0f0f0; cursor:pointer; aspect-ratio:1/1; overflow:hidden; }
+.saved-card img{ width:100%; height:100%; object-fit:cover; display:block; }
+.saved-placeholder{ width:100%; height:100%; background:#eaeaea; }
+.saved-badge{ position:absolute; right:6px; bottom:6px; background:rgba(0,0,0,.65); color:#fff; font-size:11px; padding:2px 6px; border-radius:6px; letter-spacing:.3px; }
 
-/* Reputation pill */
-.profile-mobile .rep-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  line-height: 1;
-  border-radius: 999px;
-  font-weight: 700;
-  font-size: 13px;
-  color: #1e1e1e;
-  background: #ffeaa7;
-  border: 1px solid #ffd166;
-  box-shadow: 0 1px 0 rgba(0,0,0,.04);
-  transform: translateY(1px);
+/* Larger screens */
+@media (min-width:768px){
+  .profile-header{ margin-bottom:44px; }
+  .profile-avatar-wrapper{ --avatar-size:150px; --ring:3px; --star-size:36px; --star-shift:0px; margin-right:60px; }
+  .profile-stats{ font-size:16px; gap:40px; margin-bottom:20px; }
 }
-.profile-mobile .rep-pill .star { font-size: 14px; color: #f4b400; line-height: 1; }
-.profile-mobile .rep-pill.high {
-  background: linear-gradient(135deg,#ffe07a,#ffd34f);
-  border-color: #f0b429;
-  box-shadow: 0 2px 6px rgba(240,180,41,.25);
-}
-
-/* ===== Kaydedilenler ===== */
-.profile-mobile .saved-section { padding: 16px; }
-.profile-mobile .saved-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.profile-mobile .saved-title { display: inline-flex; align-items: center; gap: 10px; }
-.profile-mobile .saved-lock { font-size: 18px; }
-.profile-mobile .saved-h1 { font-size: 16px; font-weight: 700; line-height: 1.1; }
-.profile-mobile .saved-sub { color: #8e8e8e; font-size: 12px; }
-
-.profile-mobile .saved-empty {
-  color: #8e8e8e;
-  font-size: 14px;
-  text-align: center;
-  padding: 24px 0;
-  border-top: 1px solid #dbdbdb;
-  border-bottom: 1px solid #dbdbdb;
-  background: #fff;
-}
-
-.profile-mobile .saved-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-}
-
-.profile-mobile .saved-card {
-  position: relative;
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: #f0f0f0;
-  cursor: pointer;
-  aspect-ratio: 1 / 1;
-  overflow: hidden;
-}
-.profile-mobile .saved-card img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.profile-mobile .saved-placeholder { width: 100%; height: 100%; background: #eaeaea; }
-.profile-mobile .saved-badge {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  background: rgba(0,0,0,.65);
-  color: #fff;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  letter-spacing: .3px;
-}
-
-/* Yükleniyor mesajı için */
-.profile-mobile.loading-container { text-align:center; padding: 32px 0; color:#8e8e8e; }
