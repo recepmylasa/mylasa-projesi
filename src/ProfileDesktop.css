@@ -1,99 +1,142 @@
-/* Ana kapsayıcı */
-.profile-desktop .profile-container{ padding-top:24px; max-width:935px; margin:0 auto; }
-.profile-desktop .profile-header{ display:flex; margin-bottom:44px; padding:0 16px; }
+/* src/ProfileDesktop.css */
+/* Pırıl pırıl, modern ve piksel hassas profil header + sekme çubuğu */
 
-/* Avatar + ring + star (hassas hizalı) */
-.profile-desktop .profile-avatar-wrapper{
-  --avatar-size:150px; --ring:3px; --star-size:36px;
-  position:relative; display:grid; place-items:center; width:calc(var(--avatar-size) + var(--ring)*2); height:calc(var(--avatar-size) + var(--ring)*2);
-  padding:var(--ring); border-radius:50%; margin-right:60px; overflow:visible; flex-shrink:0;
+:root {
+  --profile-container-max: 935px;
+  --profile-grid-gap: 28px;
+  --text-muted: #999;
+  --border-light: #dbdbdb;
 }
-.profile-desktop .profile-avatar-wrapper.gold-ring{
+
+.profile-wrap {
+  max-width: var(--profile-container-max);
+  margin: 0 auto;
+  padding: 40px 20px 0 20px;
+  border-bottom: 1px solid #efefef;
+}
+
+.profile-header {
+  display: grid;
+  grid-template-columns: 0.38fr 1fr;
+  gap: 30px;
+  align-items: center;
+}
+
+.avatar-wrap {
+  display: grid;
+  place-items: center;
+}
+
+.avatar-ring {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  padding: 4px;
   background:
-    radial-gradient(140% 140% at 30% 30%, rgba(255,255,255,.55), rgba(255,255,255,0) 40%),
-    conic-gradient(from 200deg,#f9e07d,#f1c54d 20%,#dfa825 40%,#a8740f 55%,#d7a62b 70%,#ffdf7a 85%,#f6d25c 100%);
-  box-shadow:0 2px 10px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.8), inset 0 -2px 4px rgba(0,0,0,.15);
-}
-.profile-desktop .avatar-inner{ position:relative; width:var(--avatar-size); height:var(--avatar-size); border-radius:50%; overflow:visible; }
-.profile-desktop .profile-avatar{ width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; background:#f2f2f2; position:relative; z-index:1; }
-/* Yıldız: çember üstünde, alt-sağ 45° hizasında */
-.profile-desktop .gold-star{
-  position:absolute; right:calc(var(--ring) * -1); bottom:calc(var(--ring) * -1);
-  width:var(--star-size); height:var(--star-size);
-  transform:translate(20%, 20%); /* halkaya hafif biniş */
-  filter:drop-shadow(0 2px 2px rgba(0,0,0,.25)) drop-shadow(0 6px 10px rgba(0,0,0,.22));
-  pointer-events:none; z-index:2;
-}
-.gold-star-svg{ width:100%; height:100%; border-radius:50%; }
-
-/* Info + actions */
-.profile-desktop .profile-info{ flex-grow:1; }
-.profile-desktop .profile-info-top{ display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:12px; }
-.profile-desktop .profile-username{ font-size:28px; font-weight:400; color:#262626; }
-.profile-desktop .profile-actions{ display:inline-flex; align-items:center; gap:8px; }
-.profile-desktop .profile-edit-btn,.profile-desktop .profile-logout-btn{
-  background:#efefef; border:1px solid transparent; border-radius:8px; padding:7px 16px; font-weight:600; font-size:14px; cursor:pointer;
-}
-.profile-desktop .profile-edit-btn:hover,.profile-desktop .profile-logout-btn:hover{ background:#e0e0e0; }
-
-/* Stats */
-.profile-desktop .profile-stats{ display:flex; gap:40px; margin-bottom:20px; font-size:16px; }
-.profile-desktop .profile-stats .stat-item{ list-style:none; }
-.profile-desktop .profile-stats .stat-item.clickable{ cursor:pointer; }
-.profile-desktop .profile-stats span{ font-weight:600; }
-
-/* Bio */
-.profile-desktop .profile-bio .fullname{ font-weight:600; font-size:14px; }
-.profile-desktop .profile-bio .bio-text{ font-size:14px; white-space:pre-wrap; line-height:1.4; }
-
-/* Sekme çubuğu – ikon-yalın */
-.profile-desktop .profile-tabs{
-  border-top:1px solid #dbdbdb; display:flex; justify-content:center; gap:48px;
-}
-.profile-desktop .profile-tab-btn{
-  background:none; border:none; border-top:1px solid transparent; margin-top:-1px;
-  padding:16px 0 12px; display:inline-flex; align-items:center; justify-content:center;
-  cursor:pointer; color:#8e8e8e;
-}
-.profile-desktop .profile-tab-btn svg{ width:24px; height:24px; display:block; }
-.profile-desktop .profile-tab-btn:hover{ color:#404040; }
-.profile-desktop .profile-tab-btn.active{ border-top-color:#262626; color:#262626; }
-.profile-desktop .profile-tab-btn.active svg{ color:#262626; }
-
-/* Sekme sahnesi – yatay padding kaldırıldı ki 935px tam kullanılsın */
-.tab-stage{ padding:24px 0 48px; }
-.tab-placeholder{
-  color:#8e8e8e; font-size:14px; text-align:center; padding:72px 16px; border:1px dashed #dbdbdb; border-radius:12px; background:#fff;
+    conic-gradient(#ffd166, #ffd166) padding-box,
+    conic-gradient(from 0deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5) border-box;
+  border: 3px solid transparent;
+  position: relative;
 }
 
-/* Rep pill */
-.profile-desktop .rep-pill{
-  display:inline-flex; align-items:center; gap:6px; padding:4px 10px; line-height:1; border-radius:999px; font-weight:700; font-size:13px;
-  color:#1e1e1e; background:#ffeaa7; border:1px solid #ffd166; box-shadow:0 1px 0 rgba(0,0,0,.04); transform:translateY(1px);
-}
-.profile-desktop .rep-pill .star{ font-size:14px; color:#f4b400; }
-.profile-desktop .rep-pill.high{ background:linear-gradient(135deg,#ffe07a,#ffd34f); border-color:#f0b429; box-shadow:0 2px 6px rgba(240,180,41,.25); }
-
-/* Overlay wrapper – Takipçi/Takip listesi (geçici) */
-.profile-overlay-modal{
-  position:fixed; inset:0; z-index:2500; display:grid; place-items:center;
-}
-.profile-overlay-backdrop{
-  position:absolute; inset:0; background:rgba(0,0,0,.55);
-}
-.profile-overlay-panel{
-  position:relative; width:min(600px, 90vw); max-height:85vh; overflow:auto; background:#fff; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.35);
+.avatar-ring img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+  background: #fff;
+  object-fit: cover;
 }
 
-/* Yükleme durumu */
-.profile-desktop .loading-container{
-  max-width:935px; margin:0 auto; padding:80px 16px; text-align:center; color:#8e8e8e;
+/* Yıldız (itibar) rozeti için köşe sabitleme (yüzdesel) */
+.avatar-star {
+  position: absolute;
+  right: -2%;
+  bottom: -2%;
+  transform: translate(0, 0);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ffd166;
+  color: #000;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
 }
 
-/* Saved (küçük düzenleme) */
-.saved-section{ padding:0; }
-.saved-header{ display:flex; align-items:center; justify-content:space-between; margin:0 0 12px 0; padding:0 2px; }
-.saved-title{ display:inline-flex; align-items:center; gap:10px; }
-.saved-lock{ font-size:18px; }
-.saved-h1{ font-size:16px; font-weight:700; line-height:1.1; }
-.saved-sub{ color:#8e8e8e; font-size:12px; }
+.profile-main .username-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.username {
+  font-size: 28px;
+  font-weight: 300;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  border: 1px solid var(--border-light);
+  background: #fff;
+  color: #262626;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.btn-primary {
+  background: #0095f6;
+  border-color: #0095f6;
+  color: #fff;
+}
+
+.profile-stats {
+  display: flex;
+  gap: 40px;
+  margin: 12px 0 16px 0;
+}
+.profile-stats a,
+.profile-stats span {
+  color: #262626;
+  text-decoration: none;
+}
+.profile-stats .count {
+  font-weight: 700;
+}
+
+.profile-bio .name {
+  font-weight: 600;
+  margin-right: 6px;
+}
+.profile-bio .muted {
+  color: var(--text-muted);
+}
+
+/* Sekme çubuğu */
+.profile-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  border-top: 1px solid #efefef;
+}
+.profile-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 0;
+  color: #999;
+  font-weight: 600;
+  border-top: 1px solid transparent;
+  text-decoration: none;
+}
+.profile-tab.active {
+  color: #000;
+  border-top-color: #000;
+}

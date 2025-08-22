@@ -1,41 +1,67 @@
-.user-posts-message{
-  color:#8e8e8e; text-align:center; padding:40px 0;
-  display:flex; flex-direction:column; gap:8px; align-items:center;
-}
-.user-posts-message .icon{ font-size:28px; }
-
-/* 3 sütun grid; desktop gap 28px → karo ~293px (935px container) */
-.user-posts-grid{
-  display:grid; grid-template-columns:repeat(3,1fr);
-  gap:4px;
-}
-@media (min-width:736px){
-  .user-posts-grid{ gap:28px; }
+:root {
+  --profile-container-max: 935px;
+  --profile-grid-gap: 28px;
 }
 
-/* Reels modu: 9:16 dikey karolar */
-.user-posts-grid.reels-mode .post-grid-item{ aspect-ratio:9/16; }
-.user-posts-grid:not(.reels-mode) .post-grid-item{ aspect-ratio:1/1; }
-
-.post-grid-item{
-  position:relative; border:0; padding:0; background:#f0f0f0;
-  cursor:pointer; overflow:hidden; display:block;
-}
-.post-grid-image{ width:100%; height:100%; object-fit:cover; display:block; }
-
-/* sol-üst reels rozeti */
-.post-grid-icon-wrapper{
-  position:absolute; left:8px; top:8px; background:rgba(0,0,0,.45);
-  border-radius:8px; padding:4px; display:inline-flex;
+.userposts-container {
+  max-width: var(--profile-container-max);
+  margin: 0 auto;
+  padding: 0;
 }
 
-/* hover overlay */
-.post-grid-overlay{
-  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  gap:18px; opacity:0; background:rgba(0,0,0,.25); transition:opacity .2s ease;
+/* 3 sütun grid (IG ölçüsü) */
+.userposts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--profile-grid-gap);
 }
-.post-grid-item:hover .post-grid-overlay{ opacity:1; }
 
-.overlay-stat{
-  display:flex; align-items:center; gap:6px; color:#fff; font-weight:600; font-size:14px;
+@media (max-width: 735px) {
+  .userposts-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2px;
+  }
 }
+
+/* Kare kart */
+.userpost-tile {
+  position: relative;
+  aspect-ratio: 1/1;
+  overflow: hidden;
+  background: #f2f2f2;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.userpost-tile img,
+.userpost-tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Hover overlay */
+.userpost-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity .2s ease;
+  background: rgba(0,0,0,.25);
+  color: #fff;
+  font-weight: 600;
+}
+.userpost-tile:hover .userpost-overlay {
+  opacity: 1;
+}
+
+/* Boş/yükleniyor mesajı */
+.user-posts-message {
+  height: 200px;
+  display: grid;
+  place-items: center;
+  color: #777;
+}
+.user-posts-message .icon { font-size: 40px; }

@@ -1,4 +1,5 @@
-// App.js (GÜNCEL – tek overlay App’te, mouseDown close, permalink uyumlu)
+// src/App.js
+// Tek overlay App’te, /p/:id permalink uyumlu, profil sekmesi /u/<username> rotasına taşıyor.
 
 import { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
@@ -22,7 +23,6 @@ import Clips from "./Clips";
 import CreateMenu from "./CreateMenu";
 import NewClip from "./NewClip";
 
-// Ayrıştırılmış haritalar
 import MapDesktop from "./MapDesktop";
 import MapMobile from "./MapMobile";
 
@@ -68,6 +68,7 @@ function App() {
     }
   }, [modalContent]);
 
+  // Kimlik + kullanıcı profili dinleyicisi
   useEffect(() => {
     let unsubscribeProfile = () => {};
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -127,14 +128,25 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user]);
 
+  // App ilk açılışta /u/:username ise Profile sayfasını aktive et
+  useEffect(() => {
+    if (loading || !user) return;
+    const m = window.location.pathname.match(/^\/u\/([^/]+)\/?$/);
+    if (m) {
+      setActivePage("profile");
+    }
+  }, [loading, user]);
+
   // Geri tuşu / URL değişimleri
   useEffect(() => {
     const onPop = async () => {
-      const match = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]+)$/);
-      if (match) {
+      const matchPost = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+      const matchProfile = window.location.pathname.match(/^\/u\/([^/]+)\/?$/);
+
+      if (matchPost) {
         if (modalContent !== "viewingComments") {
           try {
-            const id = match[1];
+            const id = matchPost[1];
             const postSnap = await getDoc(doc(db, "posts", id));
             if (postSnap.exists()) {
               setModalData({ id: postSnap.id, type: "post", ...postSnap.data() });
@@ -148,14 +160,22 @@ function App() {
             window.history.replaceState({}, "", "/");
           }
         }
-      } else {
-        if (modalContent === "viewingComments") {
-          setModalContent(null);
-          setModalData(null);
-          pushedByAppRef.current = false;
-        }
+        return;
+      }
+
+      // Post değilse modalı kapat
+      if (modalContent === "viewingComments") {
+        setModalContent(null);
+        setModalData(null);
+        pushedByAppRef.current = false;
+      }
+
+      // Profil URL'sindeysek sol menü de Profile aktif kalsın
+      if (matchProfile) {
+        setActivePage("profile");
       }
     };
+
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [modalContent]);
@@ -172,18 +192,26 @@ function App() {
       pushedByAppRef.current = false;
     }
 
+    // Modal açılan sekmeler
     if (["createMenu", "messages", "notifications", "checkin"].includes(tab)) {
       setModalContent(tab);
       return;
     }
 
+    // PROFiL sekmesi → /u/<kullanıcı>
+    if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
+      const target = `/u/${encodeURIComponent(currentUserProfile.kullaniciAdi)}`;
+      if (window.location.pathname !== target) {
+        window.history.pushState({}, "", target);
+      }
+    } else if (!/^\/(p|u)\//.test(window.location.pathname)) {
+      // Diğer sekmelerde ana sayfa path'ine dön
+      window.history.replaceState({}, "", "/");
+    }
+
     setModalContent(null);
     setModalData(null);
     setActivePage(tab);
-
-    if (!/^\/(p|c)\//.test(window.location.pathname)) {
-      window.history.replaceState({}, "", "/");
-    }
   };
 
   const handleViewProfile = (userId) => {
@@ -370,7 +398,7 @@ function App() {
       return <StoryModal stories={storiesWithAuthorInfo} onClose={closeModal} />;
     }
 
-    // ► Overlay stilleri
+    // Overlay stilleri
     const modalStyle = {
       display: "flex",
       position: "fixed",
@@ -389,7 +417,6 @@ function App() {
       backgroundColor: "rgba(0, 0, 0, 0.5)",
     };
 
-    // SADECE MOBİLDE alt-sheet, MASAÜSTÜNDE merkez:
     const isCommentModal = modalContent === "viewingComments";
     const currentStyle = isCommentModal && isMobile ? commentsModalStyle : modalStyle;
 
