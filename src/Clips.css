@@ -1,125 +1,194 @@
-/* ==========================================================================
-   MASAÜSTÜ İÇİN ORİJİNAL, STABİL STİLLER
-   ========================================================================== */
-.clips-container {
-    width: 100%;
-    height: calc(100vh - 60px - 52px - 15px); /* Üst/alt bar boşlukları */
-    margin: 0 auto;
-    overflow-y: scroll;
-    scroll-snap-type: y mandatory;
-    border-radius: 8px;
-    background-color: #000;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+/* Reels (9:16) grid – IG/Pixelfed benzeri */
+.clips-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px; /* küçük gutter */
 }
-.clip-video-container {
-    width: 100%;
-    max-width: 470px; /* Videolar dar bir alanda gösterilir */
-    height: 100%;
-    position: relative;
-    scroll-snap-align: start;
-    background-color: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+@media (max-width: 1100px) {
+  .clips-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-.clip-video {
-    width: 100%;
-    height: 100%;
-    object-fit: contain; 
-}
-/* Masaüstünde yeni arayüz elemanları varsayılan olarak gizli */
-.clip-header, .clip-ui-overlay {
-    display: none;
-}
-
-/* ==========================================================================
-   SADECE MOBİL İÇİN GEÇERLİ TAM EKRAN STİLLERİ
-   ========================================================================== */
 @media (max-width: 768px) {
-    /* Mobil'de ana App barlarını gizle */
-    body:has(.clips-page-wrapper) .logo-bar,
-    body:has(.clips-page-wrapper) .bottom-nav {
-        display: none;
-    }
-
-    .clips-page-wrapper {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 2000;
-    }
-
-    .clips-container {
-        height: 100%;
-        border-radius: 0;
-    }
-
-    .clip-video-container {
-        max-width: 100%;
-    }
-
-    .clip-video {
-        object-fit: cover; /* Videonun ekranı kaplaması için */
-    }
-
-    /* Mobil'de yeni arayüz elemanlarını göster */
-    .clip-header, .clip-ui-overlay {
-        display: flex;
-    }
-
-    .clip-header {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        padding: 16px;
-        align-items: center;
-        z-index: 10;
-        background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
-    }
-    .clip-header h1 { color: #fff; font-size: 20px; font-weight: 700; margin: 0; }
-    .clip-back-btn { background: none; border: none; padding: 0; margin-right: 16px; cursor: pointer; }
-
-    .clip-ui-overlay {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        top: 0;
-        justify-content: space-between;
-        align-items: flex-end;
-        color: white;
-        padding: 16px;
-        pointer-events: none;
-        background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
-    }
-    
-    .clip-info, .clip-actions, .clip-action-btn, .clip-author-info, .clip-follow-btn {
-        pointer-events: auto;
-    }
-    .clip-info { max-width: 70%; }
-    .clip-author-info { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-    .clip-author-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
-    .clip-author-username { font-weight: 700; font-size: 15px; }
-    .clip-follow-btn { background: none; border: 1px solid #fff; color: #fff; padding: 4px 12px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; }
-    .clip-description { font-size: 14px; line-height: 1.3; }
-    .clip-actions { flex-direction: column; align-items: center; gap: 20px; }
-    .clip-action-btn { background: none; border: none; cursor: pointer; color: white; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; }
-    .clip-action-btn svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+  .clips-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
 }
 
-.clips-loading, .clips-placeholder {
+/* Karo */
+.clip-tile {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+  background: transparent; /* siyah zemin yok */
+}
+.clip-media,
+.clip-thumb,
+.clip-video {
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  object-fit: cover;    /* yatayı dikeye kırp/zoom */
+  object-position: center;
+  display: block;
+  background: transparent;
+}
+
+/* hover film */
+.clip-hover, .clip-shade {
+  position: absolute; inset: 0;
+  background: #000;
+  opacity: 0;
+  transition: opacity .15s linear;
+}
+.clip-tile:hover .clip-hover,
+.clip-tile:hover .clip-shade { opacity: .08; }
+
+/* sağ üst play rozeti */
+.clip-badge {
+  position: absolute;
+  right: 6px; top: 6px;
+  width: 22px; height: 22px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(2px);
+  color:#fff;
+  display:grid; place-items:center;
+  font-size:0;
+}
+.clip-badge svg { display:block; }
+
+/* -------- Lightbox -------- */
+.clip-lightbox {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.92);
+  z-index: 2500;
+  display: grid;
+  grid-template-rows: 56px 1fr 0;
+}
+@media (max-width: 768px) {
+  .clip-lightbox { grid-template-rows: 48px 1fr 0; }
+}
+
+/* üst bar */
+.clip-lightbox-topbar {
+  grid-row: 1 / 2;
+  display:flex; align-items:center; justify-content:flex-end;
+  gap: 8px; padding: 10px 14px;
+}
+.clip-icon-btn {
+  width: 36px; height: 36px; border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  color:#fff; border:none; cursor:pointer;
+  display:grid; place-items:center;
+}
+
+/* iki sütun gövde */
+.clip-lightbox-body {
+  grid-row: 2 / 3;
+  height: calc(100vh - 56px);
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) 360px;
+  gap: 24px;
   align-items: center;
   justify-content: center;
-  color: #8e8e8e;
-  text-align: center;
+  padding: 0 22px 22px;
 }
+@media (max-width: 1024px) {
+  .clip-lightbox-body {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 0 12px 16px;
+  }
+}
+
+/* sol taraf (video) */
+.clip-left {
+  display:grid; place-items:center;
+}
+.clip-left video {
+  max-height: 88vh;
+  max-width: min(56vw, 100%);
+  width: auto; height: auto;
+  background: #000;     /* sadece video yüzeyi */
+  outline: none;
+}
+
+/* sağ panel */
+.clip-side {
+  height: calc(88vh);
+  min-height: 420px;
+  background: rgba(255,255,255,.04);
+  border-radius: 16px;
+  padding: 12px 12px 10px;
+  color: #fff;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 10px;
+}
+@media (max-width: 1024px) {
+  .clip-side { height: auto; min-height: 0; }
+}
+
+.clip-side-header {
+  display:flex; align-items:center; justify-content:space-between;
+  gap: 8px;
+}
+.clip-side-user { display:flex; align-items:center; gap: 10px; }
+.clip-avatar {
+  width: 32px; height: 32px; border-radius: 999px; background:#222;
+}
+.clip-username {
+  color:#fff; text-decoration:none; font-weight:600;
+}
+.clip-side-actions-right { position: relative; }
+.clip-dot-btn {
+  width: 32px; height: 32px; border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  color:#fff; border:0; cursor:pointer;
+}
+
+/* sağ panel menü (IG sırası) */
+.clip-menu {
+  position: absolute;
+  top: 38px; right: 0;
+  min-width: 240px;
+  background: #111;
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.4);
+  padding: 6px;
+  z-index: 2600;
+}
+.clip-menu button {
+  display:block; width:100%;
+  background:transparent; border:0; color:#fff;
+  text-align:left; padding:12px 12px;
+  border-radius:10px; cursor:pointer; font-size:14px;
+}
+.clip-menu button:hover { background:#222; }
+
+/* caption + CTA */
+.clip-side-caption { white-space: pre-wrap; line-height: 1.4; }
+.clip-side-cta {
+  display:flex; align-items:center; gap: 10px;
+}
+.clip-cta-btn {
+  background: transparent; border: 0; cursor: pointer; padding: 4px;
+}
+
+/* meta ve yorumlar */
+.clip-side-meta { font-size: 13px; color:#ddd; }
+.clip-muted { color:#bbb; }
+.clip-comments {
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.clip-comment-row { font-size: 14px; margin-bottom: 8px; }
+.clip-comment-user { font-weight:600; }
+
+/* boş durum */
+.clips-empty {
+  display:grid; place-items:center;
+  padding: 48px 0; color:#888;
+}
+.clips-empty .icon { font-size: 32px; margin-bottom: 8px; }

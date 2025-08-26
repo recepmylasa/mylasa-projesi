@@ -1,5 +1,5 @@
 /* src/ProfileDesktop.css */
-/* Pırıl pırıl, modern ve piksel hassas profil header + sekme çubuğu */
+/* Pürüzsüz Pixelfed/Instagram stili: header, highlights, sekmeler */
 
 :root {
   --profile-container-max: 935px;
@@ -8,26 +8,24 @@
   --border-light: #dbdbdb;
 }
 
-.profile-wrap {
+.igp-wrap {
   max-width: var(--profile-container-max);
   margin: 0 auto;
   padding: 40px 20px 0 20px;
-  border-bottom: 1px solid #efefef;
 }
 
-.profile-header {
+.igp-header {
   display: grid;
   grid-template-columns: 0.38fr 1fr;
   gap: 30px;
   align-items: center;
+  border-bottom: 1px solid #efefef;
+  padding-bottom: 24px;
 }
 
-.avatar-wrap {
-  display: grid;
-  place-items: center;
-}
+.igp-avatar-col { display: grid; place-items: center; }
 
-.avatar-ring {
+.igp-avatar-ring {
   width: 150px;
   height: 150px;
   border-radius: 50%;
@@ -38,22 +36,18 @@
   border: 3px solid transparent;
   position: relative;
 }
-
-.avatar-ring img {
+.igp-avatar-ring img {
   width: 100%;
   height: 100%;
-  border-radius: 50%;
   display: block;
+  border-radius: 50%;
   background: #fff;
   object-fit: cover;
 }
-
-/* Yıldız (itibar) rozeti için köşe sabitleme (yüzdesel) */
-.avatar-star {
+.igp-avatar-star {
   position: absolute;
   right: -2%;
   bottom: -2%;
-  transform: translate(0, 0);
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -65,24 +59,20 @@
   box-shadow: 0 2px 8px rgba(0,0,0,.15);
 }
 
-.profile-main .username-row {
+.igp-main-col {}
+
+.igp-username-row {
   display: flex;
   align-items: center;
   gap: 16px;
   margin-bottom: 16px;
 }
-
-.username {
+.igp-username {
   font-size: 28px;
   font-weight: 300;
 }
-
-.profile-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.btn {
+.igp-actions { display: flex; gap: 8px; }
+.igp-btn {
   border: 1px solid var(--border-light);
   background: #fff;
   color: #262626;
@@ -91,42 +81,44 @@
   border-radius: 8px;
   cursor: pointer;
 }
-.btn-primary {
-  background: #0095f6;
-  border-color: #0095f6;
-  color: #fff;
-}
+.igp-btn-icon { width: 36px; text-align: center; }
 
-.profile-stats {
+.igp-stats {
   display: flex;
   gap: 40px;
   margin: 12px 0 16px 0;
+  list-style: none;
+  padding: 0;
 }
-.profile-stats a,
-.profile-stats span {
-  color: #262626;
-  text-decoration: none;
-}
-.profile-stats .count {
-  font-weight: 700;
-}
+.igp-stats li { color: #262626; }
+.count { font-weight: 700; }
 
-.profile-bio .name {
-  font-weight: 600;
-  margin-right: 6px;
-}
-.profile-bio .muted {
-  color: var(--text-muted);
-}
+.igp-bio .igp-name { font-weight: 600; margin-right: 6px; }
+.igp-bio .igp-bio-text { white-space: pre-line; }
 
-/* Sekme çubuğu */
-.profile-tabs {
+.igp-highlights {
+  display: flex;
+  gap: 18px;
+  padding: 18px 0 26px 0;
+  border-bottom: 1px solid #efefef;
+}
+.igp-hl-item { text-align: center; width: 92px; }
+.igp-hl-cover {
+  width: 92px; height: 92px; border-radius: 50%;
+  border: 1px solid #e5e5e5; display: grid; place-items: center; overflow: hidden;
+  background: #fafafa;
+}
+.igp-hl-cover img { width: 100%; height: 100%; object-fit: cover; }
+.igp-hl-new { font-size: 28px; color: #888; }
+.igp-hl-title { margin-top: 6px; font-size: 12px; color: #333; }
+
+.igp-tabs {
   display: flex;
   justify-content: center;
   gap: 32px;
   border-top: 1px solid #efefef;
 }
-.profile-tab {
+.igp-tab {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -134,9 +126,23 @@
   color: #999;
   font-weight: 600;
   border-top: 1px solid transparent;
-  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
-.profile-tab.active {
+.igp-tab.active {
   color: #000;
   border-top-color: #000;
+}
+
+.igp-placeholder {
+  padding: 24px;
+  color: var(--text-muted);
+}
+
+/* grid konteyner */
+.userposts-container {
+  max-width: var(--profile-container-max);
+  margin: 0 auto;
+  padding: 0;
 }

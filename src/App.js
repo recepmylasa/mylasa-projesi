@@ -1,5 +1,5 @@
 // src/App.js
-// Tek overlay App’te, /p/:id permalink uyumlu, profil sekmesi /u/<username> rotasına taşıyor.
+// Tek overlay App’te, /p/:id ve /c/:id permalink uyumlu, profil sekmesi /u/<username> rotasına taşıyor.
 
 import { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
@@ -32,6 +32,11 @@ import PlaceDetailModal from "./PlaceDetailModal";
 import StoryModal from "./StoryModal";
 import MapSettingsModal from "./MapSettingsModal";
 import FriendPickerModal from "./FriendPickerModal";
+
+// >>> NEW: Clips modal bileşenleri (Kural-6: ayrı dosyalar)
+import ClipDetailModalDesktop from "./ClipDetailModalDesktop";
+import ClipDetailModalMobile from "./ClipDetailModalMobile";
+
 import "./App.css";
 
 const useWindowSize = () => {
@@ -54,7 +59,7 @@ function App() {
   const [width] = useWindowSize();
   const isMobile = width <= 768;
 
-  // Post modalını biz pushState ile mi açtık?
+  // Post/Clip modallarında pushState bizim mi yaptı?
   const pushedByAppRef = useRef(false);
 
   // Modal varken body scroll kilidi
@@ -128,6 +133,32 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user]);
 
+  // >>> NEW: URL doğrudan /c/:id ise clip modalı aç
+  useEffect(() => {
+    if (loading || !user) return;
+    const match = window.location.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+    if (!match) return;
+
+    const openClipFromUrl = async () => {
+      const id = match[1];
+      try {
+        const clipSnap = await getDoc(doc(db, "clips", id));
+        if (clipSnap.exists()) {
+          setModalData({ id: clipSnap.id, type: "clip", ...clipSnap.data() });
+          setModalContent("viewingClip");
+          pushedByAppRef.current = false; // doğrudan geldi
+        } else {
+          window.history.replaceState({}, "", "/");
+        }
+      } catch (e) {
+        console.error("Clip permalink yüklenirken hata:", e);
+        window.history.replaceState({}, "", "/");
+      }
+    };
+    openClipFromUrl();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user]);
+
   // App ilk açılışta /u/:username ise Profile sayfasını aktive et
   useEffect(() => {
     if (loading || !user) return;
@@ -140,9 +171,12 @@ function App() {
   // Geri tuşu / URL değişimleri
   useEffect(() => {
     const onPop = async () => {
-      const matchPost = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]+)$/);
-      const matchProfile = window.location.pathname.match(/^\/u\/([^/]+)\/?$/);
+      const path = window.location.pathname;
+      const matchPost = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+      const matchClip = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+      const matchProfile = path.match(/^\/u\/([^/]+)\/?$/);
 
+      // Post permalink -> modal aç
       if (matchPost) {
         if (modalContent !== "viewingComments") {
           try {
@@ -156,15 +190,36 @@ function App() {
               window.history.replaceState({}, "", "/");
             }
           } catch (e) {
-            console.error("Popstate yüklenirken hata:", e);
+            console.error("Popstate yüklenirken hata (post):", e);
             window.history.replaceState({}, "", "/");
           }
         }
         return;
       }
 
-      // Post değilse modalı kapat
-      if (modalContent === "viewingComments") {
+      // >>> NEW: Clip permalink -> modal aç
+      if (matchClip) {
+        if (modalContent !== "viewingClip") {
+          try {
+            const id = matchClip[1];
+            const clipSnap = await getDoc(doc(db, "clips", id));
+            if (clipSnap.exists()) {
+              setModalData({ id: clipSnap.id, type: "clip", ...clipSnap.data() });
+              setModalContent("viewingClip");
+              pushedByAppRef.current = false;
+            } else {
+              window.history.replaceState({}, "", "/");
+            }
+          } catch (e) {
+            console.error("Popstate yüklenirken hata (clip):", e);
+            window.history.replaceState({}, "", "/");
+          }
+        }
+        return;
+      }
+
+      // Post/Clip değilse modalı kapat
+      if (modalContent === "viewingComments" || modalContent === "viewingClip") {
         setModalContent(null);
         setModalData(null);
         pushedByAppRef.current = false;
@@ -182,7 +237,8 @@ function App() {
 
   // ► Nav değişiminde URL’yi normalize et
   const handleNavChange = (tab) => {
-    const isPermalink = /^\/p\/[A-Za-z0-9_-]+$/.test(window.location.pathname);
+    const path = window.location.pathname;
+    const isPermalink = /^\/(p|c)\/[A-Za-z0-9_-]+$/.test(path);
     if (isPermalink) {
       if (pushedByAppRef.current) {
         window.history.back();
@@ -204,7 +260,7 @@ function App() {
       if (window.location.pathname !== target) {
         window.history.pushState({}, "", target);
       }
-    } else if (!/^\/(p|u)\//.test(window.location.pathname)) {
+    } else if (!/^\/(p|c|u)\//.test(window.location.pathname)) {
       // Diğer sekmelerde ana sayfa path'ine dön
       window.history.replaceState({}, "", "/");
     }
@@ -228,6 +284,7 @@ function App() {
     pushedByAppRef.current = true;
   };
 
+  // Feed’den Clips sekmesine geçiş (eski davranışı koruyoruz)
   const handleViewClip = () => setActivePage("clips");
 
   const handleStartMessage = (targetUserId) => {
@@ -328,8 +385,10 @@ function App() {
     if (!modalContent) return null;
 
     const closeModal = () => {
-      // /p/:id üzerindeysek URL’i temizle
-      if (/^\/p\/[A-Za-z0-9_-]+$/.test(window.location.pathname)) {
+      // /p/:id veya /c/:id üzerindeysek URL’i temizle
+      const path = window.location.pathname;
+      const isPermalink = /^\/(p|c)\/[A-Za-z0-9_-]+$/.test(path);
+      if (isPermalink) {
         if (pushedByAppRef.current) {
           window.history.back();
         } else {
@@ -418,7 +477,8 @@ function App() {
     };
 
     const isCommentModal = modalContent === "viewingComments";
-    const currentStyle = isCommentModal && isMobile ? commentsModalStyle : modalStyle;
+    const currentStyle =
+      isCommentModal && isMobile ? commentsModalStyle : modalStyle;
 
     return (
       <div style={currentStyle} onMouseDown={closeModal}>
@@ -450,6 +510,16 @@ function App() {
                 handleViewProfile(uid);
               }}
             />
+          )}
+          {/* >>> NEW: Clips modal (desktop/mobile ayrı dosya) */}
+          {modalContent === "viewingClip" && (
+            <>
+              {isMobile ? (
+                <ClipDetailModalMobile clip={modalData} onClose={closeModal} />
+              ) : (
+                <ClipDetailModalDesktop clip={modalData} onClose={closeModal} />
+              )}
+            </>
           )}
         </div>
       </div>

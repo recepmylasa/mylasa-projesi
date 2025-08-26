@@ -1,0 +1,58 @@
+/* src/ClipDetailModalDesktop.css */
+.clipdesk__panel{
+  background:#111;
+  color:#fff;
+  width:min(980px, 92vw);
+  max-height:88vh;
+  display:flex;
+  flex-direction:column;
+  border-radius:16px;
+  box-shadow:0 10px 40px rgba(0,0,0,.35);
+  overflow:hidden;
+}
+.clipdesk__close{
+  align-self:flex-end;
+  margin:8px 12px 0 0;
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  border:0;
+  width:36px;height:36px;
+  border-radius:999px;
+  font-size:18px;
+  cursor:pointer;
+}
+.clipdesk__content{
+  display:grid;
+  grid-template-columns: 1fr 320px;
+  gap:0;
+}
+@media (max-width: 1024px){
+  .clipdesk__content{ grid-template-columns:1fr; }
+}
+.clipdesk__videoWrap{
+  background:#000;
+  display:grid;
+  place-items:center;
+  max-height:72vh;
+}
+.clipdesk__video{
+  width:100%;
+  height:auto;
+  max-height:72vh;
+  outline:none;
+}
+.clipdesk__meta{
+  padding:16px;
+  background:#161616;
+  border-left:1px solid rgba(255,255,255,.06);
+}
+.clipdesk__caption{
+  font-size:14px;
+  line-height:1.5;
+  color:#e8e8e8;
+  white-space:pre-wrap;
+}
+.clipdesk__empty{
+  padding:32px;
+  color:#bbb;
+}

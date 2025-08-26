@@ -1,97 +1,163 @@
 // src/ProfileDesktop.js
-// Pixelfed davranışı ile uyumlu profil başlığı + sekmeler + grid kapsayıcı
+// Instagram/Pixelfed benzeri masaüstü profil + sekmeler (TR)
 
-import React, { useMemo, useState } from 'react';
-import './ProfileDesktop.css';
-import { GridIcon, ReelsIcon, SavedIcon, TaggedIcon } from './Icons';
-import UserPosts from './UserPosts';
+import React, { useMemo, useState } from "react";
+import "./ProfileDesktop.css";
+import { GridIcon, ClipsIcon, SavedIcon, TaggedIcon } from "./icons";
+import UserPosts from "./UserPosts";
+import ClipsDesktop from "./ClipsDesktop";
 
 export default function ProfileDesktop({ user }) {
-  const [mode, setMode] = useState('grid'); // grid | reels | saved | tagged
-  const name = user?.displayName || user?.fullName || user?.username;
-  const bio = user?.bio || '';
-  const website = user?.website || '';
-  const avatarUrl = user?.photoURL || user?.avatar || '/avatars/default.png';
-  const reputation = Math.round((user?.reputation?.score ?? user?.reputation ?? 0) * 10) / 10;
+  const [mode, setMode] = useState("grid"); // grid | clips | saved | tagged
 
-  const stats = useMemo(() => ({
-    posts: user?.postsCount ?? user?.statuses_count ?? 0,
-    followers: user?.followersCount ?? user?.followers_count ?? 0,
-    following: user?.followingCount ?? user?.following_count ?? 0,
-  }), [user]);
+  const username = user?.username || user?.kullaniciAdi || "";
+  const name = user?.displayName || user?.fullName || username;
+  const bio = user?.bio || "";
+  const website = user?.website || user?.web || "";
+  const avatarUrl =
+    user?.photoURL || user?.profilFoto || user?.avatar || "/avatars/default.png";
+  const reputation = Math.round(
+    (user?.reputation?.score ?? user?.reputation ?? 0) * 10
+  ) / 10;
 
-  const dmHref = `/account/direct/t/${user.id}`;
+  const stats = useMemo(
+    () => ({
+      posts: user?.postsCount ?? user?.statuses_count ?? 0,
+      followers: user?.followersCount ?? user?.followers_count ?? 0,
+      following: user?.followingCount ?? user?.following_count ?? 0,
+    }),
+    [user]
+  );
+
+  const highlights = Array.isArray(user?.highlights) ? user.highlights : [];
+  const isSelf = !!user?.isSelf;
 
   return (
-    <div>
-      <div className="profile-wrap">
-        <div className="profile-header">
-          <div className="avatar-wrap">
-            <div className="avatar-ring">
-              <img alt={`${user.username} avatar`} src={avatarUrl} />
-              <div className="avatar-star" title="İtibar">
-                ★{Number.isFinite(reputation) ? reputation : '0'}
-              </div>
-            </div>
-          </div>
-
-          <div className="profile-main">
-            <div className="username-row">
-              <div className="username">{user.username}</div>
-              <div className="profile-actions">
-                <button className="btn">Follow</button>
-                <a className="btn" href={dmHref}>Message</a>
-                <button className="btn">···</button>
-              </div>
-            </div>
-
-            <div className="profile-stats">
-              <span><b className="count">{stats.posts}</b> posts</span>
-              <a href="#" onClick={(e)=>{e.preventDefault();}}>
-                <b className="count">{stats.followers}</b> followers
-              </a>
-              <a href="#" onClick={(e)=>{e.preventDefault();}}>
-                <b className="count">{stats.following}</b> following
-              </a>
-            </div>
-
-            <div className="profile-bio">
-              <div><span className="name">{name}</span></div>
-              {bio ? <p dangerouslySetInnerHTML={{__html: bio}} /> : null}
-              {website ? <p><a href={website} rel="me noopener nofollow" target="_blank">{website}</a></p> : null}
+    <div className="igp-wrap">
+      {/* ÜST BAŞLIK */}
+      <header className="igp-header">
+        <div className="igp-avatar-col">
+          <div className="igp-avatar-ring">
+            <img src={avatarUrl} alt={`${username} profil`} />
+            <div className="igp-avatar-star" title="İtibar">
+              ★{Number.isFinite(reputation) ? reputation : "0"}
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="profile-tabs">
-        <a href="#" className={`profile-tab ${mode==='grid'?'active':''}`} onClick={(e)=>{e.preventDefault(); setMode('grid')}}>
-          <GridIcon active={mode==='grid'} /> <span>POSTS</span>
-        </a>
-        <a href="#" className={`profile-tab ${mode==='reels'?'active':''}`} onClick={(e)=>{e.preventDefault(); setMode('reels')}}>
-          <ReelsIcon active={mode==='reels'} /> <span>REELS</span>
-        </a>
-        <a href="#" className={`profile-tab ${mode==='saved'?'active':''}`} onClick={(e)=>{e.preventDefault(); setMode('saved')}}>
-          <SavedIcon active={mode==='saved'} /> <span>SAVED</span>
-        </a>
-        <a href="#" className={`profile-tab ${mode==='tagged'?'active':''}`} onClick={(e)=>{e.preventDefault(); setMode('tagged')}}>
-          <TaggedIcon active={mode==='tagged'} /> <span>TAGGED</span>
-        </a>
-      </div>
+        <div className="igp-main-col">
+          <div className="igp-username-row">
+            <h2 className="igp-username">{username}</h2>
+            <div className="igp-actions">
+              <button className="igp-btn">Takip Et</button>
+              <button className="igp-btn">Mesaj</button>
+              <button className="igp-btn igp-btn-icon" aria-label="Diğer">
+                ⋯
+              </button>
+            </div>
+          </div>
 
-      {mode === 'grid' && (
+          <ul className="igp-stats">
+            <li><b className="count">{stats.posts}</b> gönderi</li>
+            <li><b className="count">{stats.followers}</b> takipçi</li>
+            <li><b className="count">{stats.following}</b> takip</li>
+          </ul>
+
+          <div className="igp-bio">
+            <div className="igp-name">{name}</div>
+            {bio ? (
+              <p className="igp-bio-text" dangerouslySetInnerHTML={{ __html: bio }} />
+            ) : null}
+            {website ? (
+              <p>
+                <a href={website} target="_blank" rel="noopener nofollow noreferrer">
+                  {website.replace(/^https?:\/\//, "")}
+                </a>
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </header>
+
+      {/* HİKAYE ÖNE ÇIKANLAR (opsiyonel) */}
+      {highlights.length > 0 && (
+        <div className="igp-highlights">
+          {highlights.map((h, i) => (
+            <div key={i} className="igp-hl-item" title={h.title || ""}>
+              <div className="igp-hl-cover"><img src={h.coverUrl} alt={h.title || "öne çıkan"} /></div>
+              <div className="igp-hl-title">{h.title || "Öne çıkan"}</div>
+            </div>
+          ))}
+          {isSelf && (
+            <div className="igp-hl-item">
+              <div className="igp-hl-cover igp-hl-new">+</div>
+              <div className="igp-hl-title">Yeni</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SEKME ÇUBUĞU */}
+      <nav className="igp-tabs" role="tablist" aria-label="Profil sekmeleri">
+        <button
+          role="tab"
+          aria-selected={mode === "grid"}
+          className={`igp-tab ${mode === "grid" ? "active" : ""}`}
+          onClick={() => setMode("grid")}
+        >
+          <GridIcon active={mode === "grid"} />
+          <span>GÖNDERİLER</span>
+        </button>
+
+        <button
+          role="tab"
+          aria-selected={mode === "clips"}
+          className={`igp-tab ${mode === "clips" ? "active" : ""}`}
+          onClick={() => setMode("clips")}
+        >
+          <ClipsIcon active={mode === "clips"} />
+          <span>Clips</span>
+        </button>
+
+        <button
+          role="tab"
+          aria-selected={mode === "saved"}
+          className={`igp-tab ${mode === "saved" ? "active" : ""}`}
+          onClick={() => setMode("saved")}
+        >
+          <SavedIcon active={mode === "saved"} />
+          <span>KAYDEDİLENLER</span>
+        </button>
+
+        <button
+          role="tab"
+          aria-selected={mode === "tagged"}
+          className={`igp-tab ${mode === "tagged" ? "active" : ""}`}
+          onClick={() => setMode("tagged")}
+        >
+          <TaggedIcon active={mode === "tagged"} />
+          <span>ETİKETLENENLER</span>
+        </button>
+      </nav>
+
+      {/* İÇERİK */}
+      {mode === "grid" && (
         <div className="userposts-container">
           <UserPosts userId={user.id} />
         </div>
       )}
-      {mode === 'reels' && (
-        <div className="userposts-container" style={{padding: '24px', color: '#999'}}>Reels sekmesi (9:16 portre grid) — Sprint 2’de özel layout.</div>
+
+      {mode === "clips" && (
+        <ClipsDesktop userId={user.id} />
       )}
-      {mode === 'saved' && (
-        <div className="userposts-container" style={{padding: '24px', color: '#999'}}>Kaydedilenler — sadece sahibine görünür.</div>
+
+      {mode === "saved" && (
+        <div className="igp-placeholder">
+          Kaydedilenler — sadece hesap sahibine görünür.
+        </div>
       )}
-      {mode === 'tagged' && (
-        <div className="userposts-container" style={{padding: '24px', color: '#999'}}>Etiketlenenler — Sprint 2’de Firestore sorgusu eklenecek.</div>
+      {mode === "tagged" && (
+        <div className="igp-placeholder">Etiketlenenler — sonraki sprintte eklenecek.</div>
       )}
     </div>
   );

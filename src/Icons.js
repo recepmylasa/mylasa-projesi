@@ -1,33 +1,37 @@
-// src/Icons.js
+// src/icons.js
 import React from "react";
 
-const stroke = (active) => (active ? "#000" : "#999");
+const line = (active) => ({
+  fill: "none",
+  stroke: active ? "#000" : "#8e8e8e",
+  strokeWidth: 2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+});
 
 export const GridIcon = ({ active }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-    <g fill="none" stroke={stroke(active)} strokeWidth="2">
-      <rect x="3" y="3" width="7" height="7" />
-      <rect x="14" y="3" width="7" height="7" />
-      <rect x="3" y="14" width="7" height="7" />
-      <rect x="14" y="14" width="7" height="7" />
-    </g>
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" role="img">
+    <rect x="3" y="3" width="8" height="8" {...line(active)} />
+    <rect x="13" y="3" width="8" height="8" {...line(active)} />
+    <rect x="3" y="13" width="8" height="8" {...line(active)} />
+    <rect x="13" y="13" width="8" height="8" {...line(active)} />
   </svg>
 );
 
-export const ReelsIcon = ({ active }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke={stroke(active)} strokeWidth="2" />
-    <path d="M8 5L10 9M14 5l2 4" stroke={stroke(active)} strokeWidth="2" />
-    <path d="M11 10.5v3l3-1.5-3-1.5Z" fill={stroke(active)} />
+export const ClipsIcon = ({ active }) => (
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" role="img">
+    <rect x="3" y="4" width="18" height="16" rx="3" {...line(active)} />
+    <path d="M10 9 15 12 10 15Z" fill={active ? "#000" : "#8e8e8e"} />
+    <path d="M7 4 10 10M13 4l3 6" {...line(active)} />
   </svg>
 );
 
 export const SavedIcon = ({ active }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" role="img">
     <path
       d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"
-      fill="none"
-      stroke={stroke(active)}
+      fill={active ? "#000" : "none"}
+      stroke={active ? "#000" : "#8e8e8e"}
       strokeWidth="2"
       strokeLinejoin="round"
     />
@@ -35,8 +39,8 @@ export const SavedIcon = ({ active }) => (
 );
 
 export const TaggedIcon = ({ active }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="8" r="3" fill="none" stroke={stroke(active)} strokeWidth="2" />
-    <path d="M4 20a8 8 0 0 1 16 0" fill="none" stroke={stroke(active)} strokeWidth="2" strokeLinecap="round" />
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" role="img">
+    <path d="M20 12l-8 8-8-8 8-8 8 8Z" {...line(active)} />
+    <circle cx="12" cy="12" r="2.2" fill={active ? "#000" : "#8e8e8e"} />
   </svg>
 );

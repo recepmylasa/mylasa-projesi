@@ -1,236 +1,358 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { db, auth } from './firebase';
-import { collection, query, orderBy, onSnapshot, doc, onSnapshot as onDocSnapshot } from 'firebase/firestore';
-import './ClipsMobile.css';
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { db } from "./firebase";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+  deleteDoc,
+  updateDoc,
+  doc,
+} from "firebase/firestore";
+import { getStorage, ref as sRef, deleteObject } from "firebase/storage";
+import "./Clips.css";
 
-// İkonlar (kalp kaldırıldı)
-import { BsChat, BsThreeDots } from 'react-icons/bs';
-import { FiSend } from 'react-icons/fi';
-import { IoArrowBackOutline } from 'react-icons/io5';
-import { VscMute, VscUnmute } from 'react-icons/vsc';
+function ts(val) {
+  if (!val) return 0;
+  if (typeof val === "number") return val < 2e12 ? val * 1000 : val;
+  if (val.seconds) return val.seconds * 1000;
+  if (val._seconds) return val._seconds * 1000;
+  const t = Date.parse(val);
+  return Number.isFinite(t) ? t : 0;
+}
 
-// YENİ: Tek-yıldız tetikleyici + uzun bas/kaydır seçici
-import StarRatingV2 from './reputation/StarRatingV2';
+const PlayBadge = () => (
+  <div className="clip-badge" aria-hidden="true">
+    <svg width="18" height="18" viewBox="0 0 24 24" role="img">
+      <path d="M8 7v10l9-5-9-5z" fill="#fff" />
+    </svg>
+  </div>
+);
 
-const OptionsMenu = ({ isOwner, onClose }) => {
-  const handleAction = (action) => {
-    alert(`${action} özelliği yakında eklenecek.`);
-    onClose();
-  };
+export default function ClipsMobile({ userId }) {
+  const [items, setItems] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [brokenIds, setBrokenIds] = useState(() => new Set());
 
-  return (
-    <div className="options-menu-overlay-mobile" onClick={onClose}>
-      <div className="options-menu-mobile" onClick={e => e.stopPropagation()}>
-        {isOwner ? (
-          <>
-            <button onClick={() => handleAction('Sil')}>Sil</button>
-            <button onClick={() => handleAction('Kaydet')}>Kaydet</button>
-          </>
-        ) : (
-          <>
-            <button onClick={() => handleAction('Şikayet Et')} style={{color: 'red'}}>Şikayet Et</button>
-            <button onClick={() => handleAction('Kaydet')}>Kaydet</button>
-          </>
-        )}
-        <button onClick={onClose}>İptal</button>
-      </div>
-    </div>
-  );
-};
-
-function Clip({ clipData, isVisible, onNavChange }) {
-  const [author, setAuthor] = useState(null);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
-  const videoRef = useRef(null);
-  const currentUser = auth.currentUser;
-
-  // Yazar bilgisi
   useEffect(() => {
-    if (!clipData.authorId) return;
-    const userDocRef = doc(db, 'users', clipData.authorId);
-    const unsub = onDocSnapshot(userDocRef, (snap) => {
-      if (snap.exists()) setAuthor(snap.data());
+    if (!userId) return;
+    const qy = query(
+      collection(db, "clips"),
+      where("authorId", "==", userId),
+      orderBy("tarih", "desc"),
+      limit(60)
+    );
+    const unsub = onSnapshot(qy, (snap) => {
+      const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      arr.sort((a, b) => ts(b.tarih) - ts(a.tarih));
+      setItems(arr);
     });
     return () => unsub();
-  }, [clipData.authorId]);
+  }, [userId]);
 
-  // Görünürlük: görünür olan oynar, olmayan durur
-  useEffect(() => {
-    if (isVisible) {
-      videoRef.current?.play().catch(() => {});
-    } else {
-      videoRef.current?.pause();
-      if (videoRef.current) videoRef.current.currentTime = 0;
+  const grid = useMemo(() => {
+    return (items ?? []).filter((it) => {
+      const hasMedia = !!(it.mediaUrl || it.videoUrl);
+      return hasMedia && !brokenIds.has(it.id);
+    });
+  }, [items, brokenIds]);
+
+  const thumbOf = (it) =>
+    it.posterUrl || it.thumbUrl || it.previewUrl || it.coverUrl || "";
+
+  const open = useCallback((clip) => {
+    setSelected(clip);
+    setMenuOpen(false);
+  }, []);
+  const close = useCallback(() => {
+    setSelected(null);
+    setMenuOpen(false);
+  }, []);
+
+  const markBroken = useCallback((id) => {
+    setBrokenIds((prev) => new Set(prev).add(id));
+  }, []);
+
+  // Menu helpers
+  const clipRef = useCallback(
+    () => (selected ? doc(db, "clips", selected.id) : null),
+    [selected]
+  );
+
+  const canDelete = selected && selected.authorId === userId;
+
+  const handleDelete = useCallback(async () => {
+    if (!selected || !canDelete) return;
+    const ok = window.confirm("Bu clip’i silmek istiyor musun?");
+    if (!ok) return;
+    try {
+      await deleteDoc(doc(db, "clips", selected.id));
+      try {
+        if (selected.storagePath) {
+          const st = getStorage();
+          await deleteObject(sRef(st, selected.storagePath));
+        }
+      } catch (_) {}
+      setItems((prev) => prev.filter((x) => x.id !== selected.id));
+      close();
+    } catch (e) {
+      console.error("Silinemedi:", e);
+      alert("Silinemedi. Lütfen tekrar dene.");
     }
-  }, [isVisible]);
+  }, [selected, close, canDelete]);
 
-  // Video alanına dokunma = ses aç/kapa (basit kontrol)
-  const toggleMute = (e) => {
-    e?.stopPropagation?.();
-    setIsMuted(prev => !prev);
-  };
+  const handleEditCaption = useCallback(async () => {
+    if (!selected) return;
+    const ref = clipRef();
+    if (!ref) return;
+    const current = selected.caption || "";
+    const val = window.prompt("Altyazıyı düzenle:", current);
+    if (val == null) return;
+    try {
+      await updateDoc(ref, { caption: val });
+      setSelected((s) => (s ? { ...s, caption: val } : s));
+      setItems((prev) =>
+        prev.map((x) => (x.id === selected.id ? { ...x, caption: val } : x))
+      );
+      setMenuOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert("Güncellenemedi.");
+    }
+  }, [selected, clipRef]);
 
-  const handleCommentClick = (e) => { e.stopPropagation(); alert('Yorum yapma özelliği yakında eklenecek.'); };
-  const handleFollowClick = (e) => { e.stopPropagation(); alert('Takip etme özelliği yakında eklenecek.'); };
-  const handleMoreOptionsClick = (e) => { e.stopPropagation(); setIsMenuOpen(true); };
+  const toggleHideLikes = useCallback(async () => {
+    if (!selected) return;
+    const ref = clipRef();
+    if (!ref) return;
+    const next = !selected.hideLikes;
+    try {
+      await updateDoc(ref, { hideLikes: next });
+      setSelected((s) => (s ? { ...s, hideLikes: next } : s));
+      setItems((prev) =>
+        prev.map((x) => (x.id === selected.id ? { ...x, hideLikes: next } : x))
+      );
+      setMenuOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert("Güncellenemedi.");
+    }
+  }, [selected, clipRef]);
+
+  const toggleCommentsDisabled = useCallback(async () => {
+    if (!selected) return;
+    const ref = clipRef();
+    if (!ref) return;
+    const next = !selected.commentsDisabled;
+    try {
+      await updateDoc(ref, { commentsDisabled: next });
+      setSelected((s) => (s ? { ...s, commentsDisabled: next } : s));
+      setItems((prev) =>
+        prev.map((x) =>
+          x.id === selected.id ? { ...x, commentsDisabled: next } : x
+        )
+      );
+      setMenuOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert("Güncellenemedi.");
+    }
+  }, [selected, clipRef]);
+
+  const clipLink = (id) => `${window.location.origin}/c/${id}`;
+
+  const goToPost = useCallback(() => {
+    if (!selected) return;
+    const url = clipLink(selected.id);
+    try {
+      window.open(url, "_blank", "noopener");
+    } catch {
+      navigator.clipboard?.writeText(url);
+      alert("Bağlantı panoya kopyalandı.");
+    }
+    setMenuOpen(false);
+  }, [selected]);
+
+  const shareClip = useCallback(async () => {
+    if (!selected) return;
+    const url = clipLink(selected.id);
+    const title = "Clip";
+    const text = selected.caption || "Clip";
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        alert("Bağlantı kopyalandı.");
+      }
+    } catch {}
+    setMenuOpen(false);
+  }, [selected]);
+
+  const copyLink = useCallback(async () => {
+    if (!selected) return;
+    const url = clipLink(selected.id);
+    try {
+      await navigator.clipboard.writeText(url);
+      alert("Bağlantı panoya kopyalandı.");
+    } catch {
+      alert(url);
+    }
+    setMenuOpen(false);
+  }, [selected]);
+
+  const copyEmbed = useCallback(async () => {
+    if (!selected) return;
+    const url = clipLink(selected.id);
+    const html = `<iframe src="${url}" width="360" height="640" style="border:0;overflow:hidden" allowfullscreen loading="lazy"></iframe>`;
+    try {
+      await navigator.clipboard.writeText(html);
+      alert("Gömme kodu kopyalandı.");
+    } catch {
+      alert(html);
+    }
+    setMenuOpen(false);
+  }, [selected]);
+
+  const aboutAccount = useCallback(() => {
+    if (!selected) return;
+    const target =
+      selected.authorUsername
+        ? `/u/${encodeURIComponent(selected.authorUsername)}`
+        : `/u/${encodeURIComponent(selected.authorId || "")}`;
+    try {
+      window.open(target, "_blank", "noopener");
+    } catch {}
+    setMenuOpen(false);
+  }, [selected]);
+
+  // ---- Render ----
+  if (!grid || grid.length === 0) {
+    return (
+      <div className="clips-empty">
+        <span className="icon">📷</span>
+        <div>Henüz Clip Yok</div>
+      </div>
+    );
+  }
 
   return (
     <>
-      <div className="clip-video-container-mobile" onClick={toggleMute}>
-        <video
-          ref={videoRef}
-          className="clip-video-mobile"
-          src={clipData.mediaUrl}
-          loop
-          playsInline
-          muted={isMuted}
-        />
+      <div className="clips-grid" role="list">
+        {grid.map((it) => {
+          const media = it.mediaUrl || it.videoUrl || "";
+          const poster = thumbOf(it);
 
-        {/* Üst bar */}
-        <div className="clip-header-mobile">
+        return (
           <button
-            onClick={(e) => { e.stopPropagation(); onNavChange('home'); }}
-            className="clip-back-btn-mobile"
+            key={it.id}
+            type="button"
+            className="clip-tile"
+            role="listitem"
+            onClick={() => open(it)}
+            aria-label="Clipi aç"
           >
-            <IoArrowBackOutline className="clip-icon back-icon" />
-          </button>
-          <h1>Clips</h1>
-        </div>
-
-        {/* Ses göstergesi */}
-        <div className="clip-volume-indicator">
-          <button className="volume-btn-clips" onClick={toggleMute}>
-            {isMuted ? <VscMute /> : <VscUnmute />}
-          </button>
-        </div>
-
-        {/* UI overlay */}
-        <div className="clip-ui-overlay-mobile">
-          <div className="clip-info-mobile">
-            <div className="clip-author-info-mobile">
+            {/\.(jpe?g|png|webp|avif)$/i.test(poster) ? (
               <img
-                src={author?.profilFoto || 'https://placehold.co/40x40/e0e0e0/e0e0e0?text=?'}
-                alt={author?.kullaniciAdi}
-                className="clip-author-avatar-mobile"
+                className="clip-media"
+                src={poster}
+                alt={it.caption || "clip"}
+                loading="lazy"
+                onError={() => markBroken(it.id)}
               />
-              <span className="clip-author-username-mobile">{author?.kullaniciAdi || '...'}</span>
-              {currentUser?.uid !== clipData.authorId && (
-                <button onClick={handleFollowClick} className="clip-follow-btn-mobile">Takip Et</button>
-              )}
-            </div>
-            <p className="clip-description-mobile">{clipData.aciklama}</p>
-          </div>
-
-          {/* Sağ dikey aksiyonlar */}
-          <div className="clip-actions-mobile">
-            {/* YENİ: Tek yıldız tetikleyici (uzun bas/kaydır ile 1–5 seçer) */}
-            <div
-              className="clip-action-btn-mobile"
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
-            >
-              <StarRatingV2
-                contentId={clipData.id}
-                contentType="clip"
-                authorId={clipData.authorId}
-                size={28}               // kalp ile aynı boy
-                compact                 // yığın içinde minimal mod
-                align="center"          // ikon ortalı
+            ) : (
+              <video
+                className="clip-media"
+                src={media}
+                poster={poster || undefined}
+                muted
+                playsInline
+                preload="metadata"
+                onError={() => markBroken(it.id)}
               />
-            </div>
-
-            <button onClick={handleCommentClick} className="clip-action-btn-mobile">
-              <BsChat className="clip-icon" />
-              <span>{clipData.yorumlar?.length || 0}</span>
-            </button>
-
-            <button className="clip-action-btn-mobile">
-              <FiSend className="clip-icon" />
-            </button>
-
-            <button onClick={handleMoreOptionsClick} className="clip-action-btn-mobile">
-              <BsThreeDots className="clip-icon" />
-            </button>
-          </div>
-        </div>
+            )}
+            <div className="clip-hover" />
+            <PlayBadge />
+          </button>
+        );
+        })}
       </div>
 
-      {isMenuOpen && (
-        <OptionsMenu
-          isOwner={currentUser?.uid === clipData.authorId}
-          onClose={() => setIsMenuOpen(false)}
-        />
+      {selected && (
+        <div className="clip-lightbox" onMouseDown={close}>
+          <div
+            className="clip-lightbox-topbar"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              className="clip-icon-btn"
+              title="Diğer"
+              onClick={() => setMenuOpen((s) => !s)}
+            >
+              ⋯
+            </button>
+            <button
+              className="clip-icon-btn"
+              aria-label="Kapat"
+              onClick={close}
+              title="Kapat"
+            >
+              ✕
+            </button>
+
+            {menuOpen && (
+              <div
+                className="clip-menu"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {canDelete && <button onClick={handleDelete}>Sil</button>}
+                <button onClick={handleEditCaption}>Düzenle</button>
+                <button onClick={toggleHideLikes}>
+                  {selected?.hideLikes
+                    ? "Beğenme sayısını göster"
+                    : "Beğenme sayısını başkalarından gizle"}
+                </button>
+                <button onClick={toggleCommentsDisabled}>
+                  {selected?.commentsDisabled
+                    ? "Yorum yapmaya izin ver"
+                    : "Yorum yapmayı kapat"}
+                </button>
+                <button onClick={goToPost}>Gönderiye git</button>
+                <button onClick={shareClip}>Paylaş…</button>
+                <button onClick={copyLink}>Bağlantıyı Kopyala</button>
+                <button onClick={copyEmbed}>Sitene Göm</button>
+                <button onClick={aboutAccount}>Bu hesap hakkında</button>
+                <button onClick={() => setMenuOpen(false)}>İptal</button>
+              </div>
+            )}
+          </div>
+
+          <div
+            className="clip-lightbox-body"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <video
+              src={selected.mediaUrl || selected.videoUrl}
+              controls
+              autoPlay
+              playsInline
+              muted
+              controlsList="nodownload noplaybackrate"
+              disablePictureInPicture
+              style={{ maxWidth: "96vw", maxHeight: "70vh", background: "#000" }}
+              onContextMenu={(e) => e.preventDefault()}
+            />
+            {selected.caption ? (
+              <div className="clip-caption" style={{ color: "#fff", marginTop: 10 }}>
+                {selected.caption}
+              </div>
+            ) : null}
+          </div>
+        </div>
       )}
     </>
   );
 }
-
-function ClipsMobile({ onNavChange }) {
-  const [clips, setClips] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [visibleClipId, setVisibleClipId] = useState(null);
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    const q = query(collection(db, 'clips'), orderBy('tarih', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedClips = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setClips(fetchedClips);
-      if (fetchedClips.length > 0 && !visibleClipId) {
-        setVisibleClipId(fetchedClips[0].id);
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [visibleClipId]);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            setVisibleClipId(entry.target.dataset.clipId);
-          }
-        });
-      },
-      { root: containerRef.current, threshold: 0.7 }
-    );
-    const clipElements = containerRef.current?.children;
-    if (clipElements) {
-      Array.from(clipElements).forEach((el, index) => {
-        if (clips[index]) {
-          el.dataset.clipId = clips[index].id;
-          observer.observe(el);
-        }
-      });
-    }
-    return () => {
-      if (clipElements) {
-        Array.from(clipElements).forEach(el => observer.unobserve(el));
-      }
-    };
-  }, [clips, loading]);
-
-  if (loading) {
-    return <div className="clips-loading-mobile">Yükleniyor...</div>;
-  }
-
-  return (
-    <div className="clips-page-wrapper-mobile">
-      <div ref={containerRef} className="clips-container-mobile">
-        {clips.map(clip => (
-          <Clip
-            key={clip.id}
-            clipData={clip}
-            isVisible={clip.id === visibleClipId}
-            onNavChange={onNavChange}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export default ClipsMobile;

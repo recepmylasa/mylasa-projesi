@@ -1,0 +1,50 @@
+/* src/ClipsGrid.css */
+/* 9:16 portre grid – IG Reels / Pixelfed tarzı */
+
+.clips-placeholder {
+  padding: 24px;
+  color: #999;
+}
+
+.clips-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 12px 0;
+}
+
+@media (max-width: 735px) {
+  .clips-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2px;
+  }
+}
+
+.clips-card {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border: none;
+  padding: 0;
+  background: #f2f2f2;
+  cursor: pointer;
+}
+
+.clips-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.clips-badge {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  background: rgba(0,0,0,.45);
+  border-radius: 999px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+}

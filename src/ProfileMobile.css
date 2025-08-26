@@ -1,5 +1,4 @@
 /* src/ProfileMobile.css */
-/* Mobil görünüm: sade üst bar + ölçüler */
 
 .mobile-topbar {
   display: grid;
@@ -67,5 +66,6 @@
   padding: 10px 0;
   color: #999;
   font-weight: 600;
+  text-decoration: none;
 }
 .mobile-tab.active { color: #000; border-top: 1px solid #000; }

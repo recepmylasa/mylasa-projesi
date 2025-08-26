@@ -1,35 +1,24 @@
 // src/Profile.js
-// /u/:username güzergâhını çözer; URL’i kanonikleştirir (boşluk vs. atar)
-// Cihaza göre Desktop/Mobile bileşenini gösterir.
+// /u/:username rotasını çözer; ekranda ProfileDesktop veya ProfileMobile render eder.
 
 import React, { useEffect, useMemo, useState } from "react";
 import ProfileDesktop from "./ProfileDesktop";
 import ProfileMobile from "./ProfileMobile";
-import { getUserByUsername, slugifyUsername } from "./api/profileApi";
+import { getUserByUsername } from "./api/profileApi";
 
-const parseFromPath = () => {
+function parseUsernameFromPath() {
   const path = window.location.pathname || "";
   const m = path.match(/^\/u\/([^/]+)\/?$/);
   return m ? decodeURIComponent(m[1]) : null;
-};
+}
 
 const isMobileViewport = () => window.innerWidth <= 735;
 
 export default function Profile() {
-  const rawUsername = useMemo(parseFromPath, []);
+  const username = useMemo(parseUsernameFromPath, []);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mobile, setMobile] = useState(isMobileViewport());
-
-  // URL’i kanonik formata çevir (ör. /u/recep asik → /u/recepasik)
-  useEffect(() => {
-    if (!rawUsername) return;
-    const canon = slugifyUsername(rawUsername);
-    const wanted = `/u/${canon}`;
-    if (canon && window.location.pathname !== wanted) {
-      window.history.replaceState({}, "", wanted);
-    }
-  }, [rawUsername]);
 
   useEffect(() => {
     const onResize = () => setMobile(isMobileViewport());
@@ -38,27 +27,43 @@ export default function Profile() {
   }, []);
 
   useEffect(() => {
-    let alive = true;
+    let mounted = true;
     (async () => {
-      if (!rawUsername) { setLoading(false); return; }
-      const u = await getUserByUsername(rawUsername);
-      if (alive) { setUser(u); setLoading(false); }
+      if (!username) {
+        setLoading(false);
+        return;
+      }
+      const u = await getUserByUsername(username);
+      if (mounted) {
+        setUser(u);
+        setLoading(false);
+      }
     })();
-    return () => { alive = false; };
-  }, [rawUsername]);
+    return () => {
+      mounted = false;
+    };
+  }, [username]);
 
-  if (!rawUsername) {
-    return <div style={{ padding: 24 }}>
-      Profil yolu hatalı. Beklenen: <code>/u/&lt;kullanıcı_adı&gt;</code>
-    </div>;
+  if (!username) {
+    return (
+      <div style={{ padding: 24 }}>
+        Profil yolu hatalı. Beklenen: <code>/u/&lt;kullanıcı_adı&gt;</code>
+      </div>
+    );
   }
   if (loading) {
-    return <div style={{ height: "80vh", display: "grid", placeItems: "center" }}>Yükleniyor…</div>;
+    return (
+      <div style={{ height: "80vh", display: "grid", placeItems: "center" }}>
+        Yükleniyor…
+      </div>
+    );
   }
   if (!user) {
-    return <div style={{ padding: 24 }}>
-      Kullanıcı bulunamadı: <b>@{rawUsername}</b>
-    </div>;
+    return (
+      <div style={{ padding: 24 }}>
+        Kullanıcı bulunamadı: <b>@{username}</b>
+      </div>
+    );
   }
 
   return mobile ? <ProfileMobile user={user} /> : <ProfileDesktop user={user} />;
