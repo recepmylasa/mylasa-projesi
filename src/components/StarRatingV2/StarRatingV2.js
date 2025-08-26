@@ -103,10 +103,13 @@ export default function StarRatingV2({
         }
         // Gönder
         await onRate?.(value);
-      } finally {
+        // Başarılı ise geri bildirim animasyonu tetikle
         setFeedbackValue(value);
         setShowFeedback(true);
         setTimeout(() => setShowFeedback(false), 650); // animasyon süresi ile aynı
+      } catch (err) {
+        // Hata halinde animasyon gösterme
+        console.error("rating error", err);
       }
     },
     [disabled, onRate, soundSrc]
@@ -186,7 +189,7 @@ export default function StarRatingV2({
 
   return (
     <div
-      className={`sr2-root ${className}`}
+      className={`sr2-root ${disabled ? "disabled" : ""} ${className}`}
       ref={rootRef}
       onTouchStart={onPointerDown}
       onTouchEnd={onPointerUp}
@@ -196,6 +199,7 @@ export default function StarRatingV2({
       onMouseMove={onPointerMove}
       role="button"
       aria-label="Yıldız ver"
+      aria-disabled={disabled}
       tabIndex={0}
     >
       {/* Tek ikon (renksiz) */}

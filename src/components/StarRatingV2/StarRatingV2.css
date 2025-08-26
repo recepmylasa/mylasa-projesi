@@ -12,6 +12,12 @@
   user-select: none;
 }
 
+.sr2-root.disabled {
+  cursor: default;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* Tek ikon yıldız */
 .sr2-star {
   display: block;
