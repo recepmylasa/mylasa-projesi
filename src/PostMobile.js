@@ -35,6 +35,8 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     agg,
     menuRef,
     isOwner,
+    hasRated,
+    isRating,
     visibleScore,
     showGold,
     handleDelete,
@@ -143,7 +145,11 @@ function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
       <div className="m-post-content">
         <div className="m-post-actions">
           <div className="m-star-wrap">
-            <StarRatingV2 size={32} readOnly={isOwner} onRate={handleRate} />
+            <StarRatingV2
+              size={32}
+              disabled={isOwner || hasRated || isRating}
+              onRate={handleRate}
+            />
             {agg?.avg > 0 && agg?.count > 0 && (
               <span className="m-star-meta" aria-label="Bu gönderinin puanı">
                 {Number(agg.avg).toFixed(1)} ★ · {formatCount(agg.count)} oy

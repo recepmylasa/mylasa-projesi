@@ -35,6 +35,8 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     agg,
     menuRef,
     isOwner,
+    hasRated,
+    isRating,
     visibleScore,
     showGold,
     handleDelete,
@@ -150,7 +152,11 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
       <div className="postDk-content">
         <div className="postDk-actions">
           <div className="postDk-starWrap">
-            <StarRatingV2 size={28} readOnly={isOwner} onRate={handleRate} />
+            <StarRatingV2
+              size={28}
+              disabled={isOwner || hasRated || isRating}
+              onRate={handleRate}
+            />
             {agg?.avg > 0 && agg?.count > 0 && (
               <span className="postDk-starMeta" aria-label="Bu gönderinin puanı">
                 {Number(agg.avg).toFixed(1)} ★ · {formatCount(agg.count)} oy

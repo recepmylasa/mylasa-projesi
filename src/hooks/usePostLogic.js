@@ -4,7 +4,7 @@ import { db, storage, auth } from "../firebase";
 import { deleteDoc, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
 
-import { ensureContentDoc, rateContent as sendRating } from "../reputationClient";
+import { rateContent as sendRating } from "../reputationClient";
 import { isSaved as fsIsSaved, toggleSave as fsToggleSave } from "../savesClient";
 
 export function usePostLogic(post, aktifKullaniciId, onCommentClick) {
@@ -15,6 +15,8 @@ export function usePostLogic(post, aktifKullaniciId, onCommentClick) {
   const [isMediaLoaded, setIsMediaLoaded] = useState(false);
   const [showFullCaption, setShowFullCaption] = useState(false);
   const [agg, setAgg] = useState(null);
+  const [hasRated, setHasRated] = useState(false);
+  const [isRating, setIsRating] = useState(false);
 
   const menuRef = useRef(null);
   const isOwner = post?.authorId === aktifKullaniciId;
@@ -36,6 +38,14 @@ export function usePostLogic(post, aktifKullaniciId, onCommentClick) {
     });
     return () => unsub();
   }, [post?.id]);
+
+  // mevcut kullanıcının daha önce oy verip vermediğini izle
+  useEffect(() => {
+    if (!post?.id || !aktifKullaniciId) return;
+    const ratingRef = doc(db, "content", post.id, "ratings", aktifKullaniciId);
+    const unsub = onSnapshot(ratingRef, (snap) => setHasRated(snap.exists()));
+    return () => unsub();
+  }, [post?.id, aktifKullaniciId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,15 +147,28 @@ export function usePostLogic(post, aktifKullaniciId, onCommentClick) {
 
   const handleRate = async (value) => {
     const user = auth.currentUser;
+    if (isOwner || hasRated || isRating) return;
     if (!user || !post?.id || !post?.authorId) return;
-    await ensureContentDoc(post.id, post.authorId, post?.type || "post");
-    await sendRating({ contentId: post.id, authorId: post.authorId, value, type: post?.type || "post" });
+    setIsRating(true);
+    try {
+      await sendRating({
+        contentId: post.id,
+        authorId: post.authorId,
+        value,
+        type: post?.type || "post",
+      });
+      setHasRated(true);
+    } catch (e) {
+      console.error("Oy gönderilirken hata:", e);
+      setIsRating(false);
+    }
   };
 
   return {
     // state
     authorProfile, isSaved, optionsOpen, setOptionsOpen,
     isMediaLoaded, setIsMediaLoaded, showFullCaption, setShowFullCaption, agg,
+    hasRated, isRating,
     // refs
     menuRef,
     // derived
