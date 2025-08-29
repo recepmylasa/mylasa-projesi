@@ -1,8 +1,8 @@
-/* Reels (9:16) grid – IG/Pixelfed benzeri */
+/* ====== Masaüstü 4’lü Reels ızgarası ====== */
 .clips-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px; /* küçük gutter */
+  gap: 4px;
 }
 @media (max-width: 1100px) {
   .clips-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -19,176 +19,248 @@
   cursor: pointer;
   border: 0;
   padding: 0;
-  background: transparent; /* siyah zemin yok */
+  background: transparent;
 }
-.clip-media,
-.clip-thumb,
-.clip-video {
+.clip-media {
   width: 100%;
   height: 100%;
-  object-fit: cover;    /* yatayı dikeye kırp/zoom */
+  object-fit: cover;        /* grid kartında cover (zoom) */
   object-position: center;
   display: block;
   background: transparent;
 }
 
-/* hover film */
-.clip-hover, .clip-shade {
+/* Hover gölge */
+.clip-hover {
   position: absolute; inset: 0;
-  background: #000;
-  opacity: 0;
+  background: #000; opacity: 0;
   transition: opacity .15s linear;
 }
-.clip-tile:hover .clip-hover,
-.clip-tile:hover .clip-shade { opacity: .08; }
+.clip-tile:hover .clip-hover { opacity: .08; }
 
-/* sağ üst play rozeti */
+/* Sağ üst “play” rozeti */
 .clip-badge {
-  position: absolute;
-  right: 6px; top: 6px;
-  width: 22px; height: 22px;
-  border-radius: 999px;
+  position: absolute; right: 6px; top: 6px;
+  width: 22px; height: 22px; border-radius: 999px;
   background: rgba(0,0,0,.55);
+  color:#fff; display: grid; place-items: center;
   backdrop-filter: blur(2px);
-  color:#fff;
-  display:grid; place-items:center;
-  font-size:0;
 }
-.clip-badge svg { display:block; }
 
-/* -------- Lightbox -------- */
+/* ====== Modal overlay ====== */
 .clip-lightbox {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,.92);
-  z-index: 2500;
-  display: grid;
-  grid-template-rows: 56px 1fr 0;
-}
-@media (max-width: 768px) {
-  .clip-lightbox { grid-template-rows: 48px 1fr 0; }
+  position: fixed; inset: 0; z-index: 2500;
+  background: rgba(0,0,0,.9);
+  display: grid; place-items: center;
 }
 
-/* üst bar */
-.clip-lightbox-topbar {
-  grid-row: 1 / 2;
-  display:flex; align-items:center; justify-content:flex-end;
-  gap: 8px; padding: 10px 14px;
-}
-.clip-icon-btn {
-  width: 36px; height: 36px; border-radius: 999px;
-  background: rgba(255,255,255,.14);
-  color:#fff; border:none; cursor:pointer;
-  display:grid; place-items:center;
-}
-
-/* iki sütun gövde */
-.clip-lightbox-body {
-  grid-row: 2 / 3;
-  height: calc(100vh - 56px);
-  display: grid;
-  grid-template-columns: minmax(420px, 1fr) 360px;
-  gap: 24px;
-  align-items: center;
-  justify-content: center;
-  padding: 0 22px 22px;
-}
-@media (max-width: 1024px) {
-  .clip-lightbox-body {
-    grid-template-columns: 1fr;
-    gap: 16px;
-    padding: 0 12px 16px;
-  }
-}
-
-/* sol taraf (video) */
-.clip-left {
-  display:grid; place-items:center;
-}
-.clip-left video {
-  max-height: 88vh;
-  max-width: min(56vw, 100%);
-  width: auto; height: auto;
-  background: #000;     /* sadece video yüzeyi */
-  outline: none;
-}
-
-/* sağ panel */
-.clip-side {
-  height: calc(88vh);
-  min-height: 420px;
-  background: rgba(255,255,255,.04);
-  border-radius: 16px;
-  padding: 12px 12px 10px;
-  color: #fff;
-  overflow: hidden;
-  display: grid;
-  grid-template-rows: auto auto auto 1fr;
-  gap: 10px;
-}
-@media (max-width: 1024px) {
-  .clip-side { height: auto; min-height: 0; }
-}
-
-.clip-side-header {
-  display:flex; align-items:center; justify-content:space-between;
-  gap: 8px;
-}
-.clip-side-user { display:flex; align-items:center; gap: 10px; }
-.clip-avatar {
-  width: 32px; height: 32px; border-radius: 999px; background:#222;
-}
-.clip-username {
-  color:#fff; text-decoration:none; font-weight:600;
-}
-.clip-side-actions-right { position: relative; }
-.clip-dot-btn {
-  width: 32px; height: 32px; border-radius: 999px;
-  background: rgba(255,255,255,.14);
-  color:#fff; border:0; cursor:pointer;
-}
-
-/* sağ panel menü (IG sırası) */
-.clip-menu {
-  position: absolute;
-  top: 38px; right: 0;
-  min-width: 240px;
+/* IG masaüstü diyalog – shrink-to-fit, ortalanmış */
+.clip-dialog {
+  width: fit-content;
+  max-width: 96vw;
+  height: min(92vh, 860px);
   background: #111;
-  color: #fff;
+  display: grid;
+  grid-template-columns: auto 420px;
   border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0,0,0,.4);
-  padding: 6px;
-  z-index: 2600;
-}
-.clip-menu button {
-  display:block; width:100%;
-  background:transparent; border:0; color:#fff;
-  text-align:left; padding:12px 12px;
-  border-radius:10px; cursor:pointer; font-size:14px;
-}
-.clip-menu button:hover { background:#222; }
-
-/* caption + CTA */
-.clip-side-caption { white-space: pre-wrap; line-height: 1.4; }
-.clip-side-cta {
-  display:flex; align-items:center; gap: 10px;
-}
-.clip-cta-btn {
-  background: transparent; border: 0; cursor: pointer; padding: 4px;
+  overflow: hidden;
 }
 
-/* meta ve yorumlar */
-.clip-side-meta { font-size: 13px; color:#ddd; }
-.clip-muted { color:#bbb; }
+/* Sol video sahnesi */
+.clip-stage {
+  background: #000;
+  display: grid;
+  place-items: center;
+}
+
+/* 9:16 sabit çerçeve (sol kolon) — MUTLAK MERKEZLEME */
+.clip-frame {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 9 / 16;
+  max-height: 100%;
+  max-width: calc(96vw - 420px - 32px);
+  background: #000;
+}
+
+/* Video: letterbox + tam merkez (yatayda zoom yok, simetrik boşluk) */
+.clip-frame > video {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: center;
+  background: #000;
+}
+
+/* Sağ panel — BEYAZ tema */
+.clip-meta {
+  --icon: #262626;
+  --icon-hover-bg: rgba(0,0,0,.06);
+  --muted: #8e8e8e;
+
+  background: #fff;
+  color: #262626;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto auto; /* head / comments / composer / actions / footer */
+  height: 100%;
+}
+
+/* Üst başlık */
+.clip-meta-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+.clip-head-left { display: flex; align-items: center; gap: 10px; }
+.clip-avatar {
+  width: 40px; height: 40px; border-radius: 999px; object-fit: cover;
+  background: #e5e5e5;
+}
+.clip-avatar--fallback { display:grid; place-items:center; color:#666; }
+.clip-avatar--sm { width: 28px; height: 28px; }
+.clip-identity { display: flex; flex-direction: column; }
+.clip-username { font-weight: 700; line-height: 1.15; }
+.clip-follow { color: var(--muted); font-size: 12px; }
+
+.clip-head-icons { display: flex; gap: 6px; align-items: center; }
+.clip-ghost-btn {
+  width: 32px; height: 32px; border-radius: 999px;
+  border: 0; cursor: pointer;
+  background: transparent; color: var(--icon);
+  display: grid; place-items: center;
+}
+.clip-ghost-btn:hover { background: var(--icon-hover-bg); }
+
+/* Yorumlar alanı */
 .clip-comments {
-  overflow-y: auto;
-  padding-right: 4px;
+  padding: 12px 14px;
+  overflow: auto;
+  min-height: 0; /* 1fr child taşmasını engelle; composer hep görünür */
 }
-.clip-comment-row { font-size: 14px; margin-bottom: 8px; }
-.clip-comment-user { font-weight:600; }
+.clip-caption-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-bottom: 10px;
+}
+.clip-caption-bubble {
+  background: #efefef;
+  padding: 8px 10px; border-radius: 12px;
+  font-size: 14px; color: #262626;
+}
+.clip-username--inline { font-weight: 700; }
+.clip-comment-empty { font-size: 13px; color: var(--muted); }
 
-/* boş durum */
+/* Composer (beyaz) */
+.clip-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(0,0,0,.08);
+  background: #fff;
+}
+.clip-composer-input {
+  flex: 1;
+  min-height: 36px;
+  max-height: 120px;
+  resize: none;
+  overflow: hidden;
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+  color: #262626;
+  background: #f2f2f2;
+}
+.clip-composer-input::placeholder { color: #8b8b8b; }
+.clip-composer-input:disabled {
+  color: #8b8b8b;
+  background: #f4f4f4;
+}
+.clip-composer-send {
+  width: 36px; height: 36px;
+  border-radius: 999px; border: 0;
+  display: grid; place-items: center;
+  background: transparent; color: var(--icon);
+  cursor: pointer;
+  transition: background-color .12s ease, transform .06s ease;
+}
+.clip-composer-send:hover { background: var(--icon-hover-bg); }
+.clip-composer-send:active { transform: scale(.96); }
+.clip-composer--disabled { opacity: .6; pointer-events: none; }
+
+/* Alt aksiyon buton satırı – IG spacing */
+.clip-actions {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(0,0,0,.08);
+  background: #fff;
+}
+.clip-actions-left, .clip-actions-right {
+  display: flex; align-items: center; gap: 10px;
+}
+.clip-action-btn {
+  width: 36px; height: 36px; border-radius: 999px;
+  border: 0; cursor: pointer;
+  background: transparent; color: var(--icon);
+  display: grid; place-items: center;
+  transition: transform .06s ease, background-color .12s ease, color .12s ease;
+}
+.clip-action-btn:hover { background: var(--icon-hover-bg); }
+.clip-action-btn:active { transform: scale(.96); }
+
+/* Kaydet aktif */
+.save-active { color: #111; }
+
+/* Footer: metrik + zaman – hiyerarşi */
+.clip-meta-footer {
+  padding: 8px 12px 12px;
+  border-top: 1px solid rgba(0,0,0,.08);
+  background: #fff;
+  display: grid; gap: 6px;
+}
+.clip-stats { font-size: 14px; line-height: 1.2; }
+.clip-stats-strong { font-weight: 700; }
+.clip-time {
+  font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+/* ====== IG tarzı sheet menüsü ====== */
+.sheet-mask {
+  position: fixed; inset: 0; z-index: 2600;
+  background: rgba(0,0,0,.35);
+}
+.sheet {
+  position: fixed; inset: 0; z-index: 2610;
+  display: grid; place-items: center;
+}
+.sheet-list {
+  width: min(640px, 92vw);
+  background: #fff; color: #111;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.35);
+  overflow: hidden;
+  list-style: none; margin: 0; padding: 0;
+}
+.sheet-item {
+  text-align: center; padding: 16px 12px;
+  border-top: 1px solid rgba(0,0,0,.08);
+  cursor: pointer; font-weight: 600;
+}
+.sheet-item:first-child { border-top: none; }
+.sheet-item:hover { background: #f7f7f7; }
+.sheet-danger { color: #ed4956; }
+.sheet-cancel { font-weight: 700; }
+
+/* Boş durum */
 .clips-empty {
   display:grid; place-items:center;
-  padding: 48px 0; color:#888;
+  padding:48px 0; color:#888;
 }
-.clips-empty .icon { font-size: 32px; margin-bottom: 8px; }
+.clips-empty .icon { font-size:32px; margin-bottom:8px; }

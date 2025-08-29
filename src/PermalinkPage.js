@@ -1,7 +1,8 @@
+// src/PermalinkPage.js
 import React, { useEffect, useState } from 'react';
 import { db, auth } from './firebase';
 import { doc, onSnapshot, updateDoc, arrayUnion } from 'firebase/firestore';
-import './PostDetailModal.css';
+import './PermalinkPage.css';
 
 import StarRatingV2 from './components/StarRatingV2/StarRatingV2';
 import { ensureContentDoc, rateContent as sendRating } from './reputationClient';
@@ -174,9 +175,9 @@ export default function PermalinkPage() {
 
   if (!info) {
     return (
-      <div className="pdm-overlay" style={{ background: '#fff' }}>
-        <div className="pdm-content" style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
-          <div style={{ padding: 24 }}>Geçersiz bağlantı.</div>
+      <div className="pdm-overlay">
+        <div className="pdm-content pdm-col">
+          <div className="pdm-empty">Geçersiz bağlantı.</div>
         </div>
       </div>
     );
@@ -184,9 +185,9 @@ export default function PermalinkPage() {
 
   if (contentData === null) {
     return (
-      <div className="pdm-overlay" style={{ background: '#fff' }}>
-        <div className="pdm-content" style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
-          <div style={{ padding: 24 }}>İçerik bulunamadı.</div>
+      <div className="pdm-overlay">
+        <div className="pdm-content pdm-col">
+          <div className="pdm-empty">İçerik bulunamadı.</div>
         </div>
       </div>
     );
@@ -199,27 +200,33 @@ export default function PermalinkPage() {
   const isOwner = contentData?.authorId === auth.currentUser?.uid;
 
   return (
-    <div className="pdm-overlay" style={{ background: '#fff' }}>
-      <div className="pdm-content" style={{ width: '100%', height: '100%', maxWidth: 1100 }}>
+    <div className="pdm-overlay">
+      <div className="pdm-content">
         <div className="pdm-media">
           {contentData.type === 'clip' ? (
-            <video src={contentData?.mediaUrl} className="pdm-video" autoPlay controls playsInline />
+            <video
+              src={contentData?.mediaUrl}
+              className="pdm-video"
+              autoPlay
+              controls
+              playsInline
+            />
           ) : (
-            <img src={contentData?.mediaUrl} alt="Gönderi" />
+            <img src={contentData?.mediaUrl} alt="Gönderi" className="pdm-image" />
           )}
         </div>
 
         <div className="pdm-info">
-          <header className="pdm-infoHeader" style={{ justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+          <header className="pdm-infoHeader">
+            <div className="pdm-author">
               <img
                 src={authorProfile?.profilFoto || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
-                alt={authorProfile?.kullaniciAdi}
+                alt={authorProfile?.kullaniciAdi || 'profil'}
                 className="pdm-infoAvatar"
               />
-              <span className="pdm-infoUsername">{authorProfile?.kullaniciAdi}</span>
+              <span className="pdm-infoUsername">{authorProfile?.kullaniciAdi || 'kullanıcı'}</span>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="pdm-infoActions">
               <button className="pdm-actionBtn" onClick={() => window.history.back()} title="Geri">⟵</button>
               <button className="pdm-actionBtn" onClick={handleShare} title="Paylaş">↗</button>
             </div>
@@ -230,11 +237,11 @@ export default function PermalinkPage() {
               <div className="pdm-commentItem">
                 <img
                   src={authorProfile?.profilFoto || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
-                  alt={authorProfile?.kullaniciAdi}
+                  alt={authorProfile?.kullaniciAdi || 'profil'}
                   className="pdm-commentAvatar"
                 />
                 <div className="pdm-commentBody">
-                  <p><strong>{authorProfile?.kullaniciAdi}</strong> {aciklama}</p>
+                  <p><strong>{authorProfile?.kullaniciAdi || 'kullanıcı'}</strong> {aciklama}</p>
                 </div>
               </div>
             )}
@@ -243,11 +250,11 @@ export default function PermalinkPage() {
               <div key={i} className="pdm-commentItem">
                 <img
                   src={y.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
-                  alt={y.username}
+                  alt={y.username || 'yorumcu'}
                   className="pdm-commentAvatar"
                 />
                 <div className="pdm-commentBody">
-                  <p><strong>{y.username}</strong> {y.text}</p>
+                  <p><strong>{y.username || 'kullanıcı'}</strong> {y.text}</p>
                   <span className="pdm-commentTime">{formatTimeAgo(y.timestamp)}</span>
                 </div>
               </div>
@@ -257,7 +264,8 @@ export default function PermalinkPage() {
           <div className="pdm-footer">
             <div className="pdm-actions">
               <div className="pdm-starWrap">
-                <StarRatingV2 size={28} readOnly={isOwner} onRate={handleRate} />
+                {/* İçerik sahibinin kendine oy vermesi engellensin */}
+                <StarRatingV2 size={28} disabled={isOwner} onRate={handleRate} />
                 {agg?.avg > 0 && agg?.count > 0 && (
                   <span className="pdm-starMeta" aria-label="Bu içeriğin puanı">
                     {Number(agg.avg).toFixed(1)} ★ · {formatCount(agg.count)} oy
@@ -266,7 +274,11 @@ export default function PermalinkPage() {
               </div>
 
               <button className="pdm-actionBtn" onClick={handleShare} title="Paylaş">↗</button>
-              <button className="pdm-actionBtn save" aria-label={isSaved ? 'Kaydedildi' : 'Kaydet'} onClick={handleToggleSave}>
+              <button
+                className="pdm-actionBtn save"
+                aria-label={isSaved ? 'Kaydedildi' : 'Kaydet'}
+                onClick={handleToggleSave}
+              >
                 {isSaved ? 'Kaydedildi' : 'Kaydet'}
               </button>
             </div>

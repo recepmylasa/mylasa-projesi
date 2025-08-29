@@ -1,0 +1,151 @@
+/* src/PermalinkPage.css */
+
+/* Tam sayfa beyaz zemin, merkezli içerik */
+.pdm-overlay {
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  color: #262626;
+  display: grid;
+  place-items: center;
+  z-index: 3000;
+}
+
+/* İçerik: solda medya, sağda bilgi paneli (IG benzeri) */
+.pdm-content {
+  width: min(1100px, 96vw);
+  height: min(92vh, 860px);
+  display: grid;
+  grid-template-columns: minmax(420px, 56vw) 420px;
+  gap: 0;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+.pdm-col {
+  grid-template-columns: 1fr;
+}
+
+/* Sol: medya alanı (video/image) — ortalı, letterbox */
+.pdm-media {
+  background: #000;
+  display: grid;
+  place-items: center;
+}
+.pdm-video, .pdm-image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;     /* yatay videoda zoom yok, letterbox */
+  object-position: center;
+  background: #000;
+}
+
+/* Sağ: info paneli */
+.pdm-info {
+  background: #fff;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+/* Header */
+.pdm-infoHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+.pdm-author {
+  display: flex; align-items: center; gap: 8px;
+}
+.pdm-infoAvatar {
+  width: 32px; height: 32px; border-radius: 999px; object-fit: cover;
+  background: #eee;
+}
+.pdm-infoUsername { font-weight: 700; }
+
+/* Comments */
+.pdm-comments {
+  padding: 12px 14px;
+  overflow: auto;
+  min-height: 0;
+}
+.pdm-commentItem {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-bottom: 10px;
+}
+.pdm-commentAvatar {
+  width: 28px; height: 28px; border-radius: 999px; object-fit: cover;
+  background: #eee;
+}
+.pdm-commentBody p { margin: 0; font-size: 14px; }
+.pdm-commentTime { font-size: 11px; color: #8e8e8e; }
+
+/* Footer */
+.pdm-footer {
+  border-top: 1px solid rgba(0,0,0,.08);
+  background: #fff;
+  display: grid;
+  gap: 8px;
+  padding: 8px 12px 12px;
+}
+.pdm-actions {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.pdm-starWrap {
+  display: flex; align-items: center; gap: 8px;
+}
+.pdm-starMeta { font-size: 13px; color: #4b4b4b; }
+
+.pdm-actionBtn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+.pdm-actionBtn:hover { background: rgba(0,0,0,.06); }
+
+.pdm-date {
+  font-size: 11px;
+  color: #8e8e8e;
+  margin: 0;
+}
+
+/* Yorum formu */
+.pdm-commentForm {
+  display: flex; align-items: center; gap: 8px;
+  border-top: 1px solid rgba(0,0,0,.08);
+  padding-top: 8px;
+}
+.pdm-commentFormAvatar {
+  width: 28px; height: 28px; border-radius: 999px; object-fit: cover;
+  background: #eee;
+}
+.pdm-commentForm input {
+  flex: 1;
+  border: 0;
+  background: #f2f2f2;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+}
+.pdm-commentForm button {
+  border: 0;
+  background: transparent;
+  color: #262626;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+.pdm-commentForm button[disabled] {
+  opacity: .5; cursor: default;
+}
+
+/* Empty states */
+.pdm-empty {
+  padding: 24px;
+}
