@@ -1,9 +1,5 @@
-// src/reputationClient.js
 // -------------------------------------------------------------
 // Mylasa • Reputation Engine (İstemci Yardımcıları)
-// - Beğeni yok; içerik başına 1–5 yıldız oylama
-// - Firestore şeması: content/{contentId} + ratings alt koleksiyonu
-// - Cloud Functions: onRatingWrite (agg + userStats), recomputeUserReputation
 // -------------------------------------------------------------
 
 import { auth, db, functions } from "./firebase";
@@ -16,18 +12,16 @@ import {
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 
-// === Koleksiyon/Saha adları (Functions ile uyumlu) ===
-export const CONTENT_COL = "content";           // content/{contentId}
-export const RATINGS_SUBCOL = "ratings";        // content/{id}/ratings/{raterId}
-export const USERS_COL = "users";               // users/{uid}
-export const USERSTATS_COL = "userStats";       // userStats/{uid}
+// === Koleksiyon/Saha adları ===
+export const CONTENT_COL = "content";
+export const RATINGS_SUBCOL = "ratings";
+export const USERS_COL = "users";
+export const USERSTATS_COL = "userStats";
 
-// === Ayarlar (UI’da da kullanılabilir) ===
+// === Ayarlar ===
 export const GOLD_VISIBLE_MIN = 4.5;
 export const GOLD_SAMPLE_MIN = 1000;
 
-// -------------------------------------------------------------
-// Yardımcılar
 // -------------------------------------------------------------
 function currentUidOrThrow() {
   const uid = auth?.currentUser?.uid;
@@ -39,14 +33,13 @@ export function isValidStar(value) {
   return Number.isInteger(value) && value >= 1 && value <= 5;
 }
 
-// İçerik dokümanını (yoksa) oluşturur: agg alanlarıyla sıfırdan
+// İçerik dokümanını (yoksa) oluştur
 export async function ensureContentDoc(contentId, authorId, type = "post", extra = {}) {
   if (!contentId || !authorId) throw new Error("ensureContentDoc: contentId ve authorId zorunlu.");
   const ref = doc(db, CONTENT_COL, contentId);
   const snap = await getDoc(ref);
   if (snap.exists()) return ref;
 
-  // Functions beklentisiyle %100 uyumlu başlangıç şeması
   await setDoc(ref, {
     authorId,
     type, // 'post' | 'story' | 'clip'
@@ -56,8 +49,8 @@ export async function ensureContentDoc(contentId, authorId, type = "post", extra
       count: 0,
       sum: 0,
       byStar: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 },
-      bayes: 3.5,     // başlangıç ortalaması (μ)
-      weight: 0.0,    // log(1 + count)
+      bayes: 3.5,
+      weight: 0.0,
       lastUpdated: serverTimestamp(),
     },
   }, { merge: true });
@@ -65,38 +58,33 @@ export async function ensureContentDoc(contentId, authorId, type = "post", extra
   return ref;
 }
 
-// İçeriğe oy verme: docId = raterId (tek oy/kişi/içerik)
-// - Eğer content/{id} yoksa oluşturulmasına yardım eder (owner/type paramlarıyla).
+// Oy ver / güncelle (tek oy/kişi/içerik)
 export async function rateContent({
   contentId,
   authorId,
   value,
-  type = "post",     // 'post' | 'story' | 'clip' (UI çağırırken düzgün gönder)
-  extra = {},        // içerik ilk oluşurken ek metadata gerekiyorsa
+  type = "post",
+  extra = {},
 }) {
   const raterId = currentUidOrThrow();
   if (!contentId || !authorId) throw new Error("rateContent: contentId ve authorId zorunlu.");
-  if (raterId === authorId) throw new Error("Kendi içeriğine oy veremezsin.");
   if (!isValidStar(value)) throw new Error("Oy 1..5 arasında tam sayı olmalı.");
 
-  // İçerik dokümanını garanti altına al
   await ensureContentDoc(contentId, authorId, type, extra);
 
-  // Oy dokümanını yaz (create/update aynı dokümana gider)
   const ratingRef = doc(db, CONTENT_COL, contentId, RATINGS_SUBCOL, raterId);
   await setDoc(ratingRef, {
     raterId,
-    authorId,    // içerik sahibi
-    value,       // 1..5
+    authorId,
+    value,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 
-  // Not: Functions tarafındaki onRatingWrite tetiklenir → agg + userStats güncellenir.
   return { ok: true };
 }
 
-// Kullanıcı itibarını (users/{uid}.reputation) tek seferde getir
+// Kullanıcı itibarını getir
 export async function getUserReputation(uid) {
   const ref = doc(db, USERS_COL, uid);
   const snap = await getDoc(ref);
@@ -104,7 +92,7 @@ export async function getUserReputation(uid) {
   return data?.reputation || null;
 }
 
-// Kullanıcı itibarını canlı izle (unsubscribe döner)
+// Kullanıcı itibarını canlı izle
 export function onUserReputation(uid, cb) {
   const ref = doc(db, USERS_COL, uid);
   return onSnapshot(ref, (snap) => {
@@ -113,7 +101,7 @@ export function onUserReputation(uid, cb) {
   });
 }
 
-// İçerik agregesini tek seferde getir
+// İçerik agregesini getir
 export async function getContentAggregate(contentId) {
   const ref = doc(db, CONTENT_COL, contentId);
   const snap = await getDoc(ref);
@@ -121,7 +109,7 @@ export async function getContentAggregate(contentId) {
   return data?.agg || null;
 }
 
-// İçerik agregesini canlı izle (unsubscribe döner)
+// İçerik agregesini canlı izle
 export function onContentAggregate(contentId, cb) {
   const ref = doc(db, CONTENT_COL, contentId);
   return onSnapshot(ref, (snap) => {
@@ -137,14 +125,14 @@ export async function recomputeUserReputation(uid) {
   return res?.data || { ok: false };
 }
 
-// Altın rozet görünürlüğünü UI için sadeleştir
+// Altın rozet görünürlüğü
 export function resolveGoldBadge(reputation, badges) {
   const visible = Number(reputation?.visible || 0);
   const sample = Number(reputation?.sample || 0);
   const rule = (visible >= GOLD_VISIBLE_MIN) && (sample >= GOLD_SAMPLE_MIN);
   const serverBadge = !!badges?.gold;
   return {
-    shouldShow: rule && serverBadge, // hem kural hem sunucu "gold: true"
+    shouldShow: rule && serverBadge,
     since: badges?.since || null,
     threshold: { visible: GOLD_VISIBLE_MIN, sample: GOLD_SAMPLE_MIN },
   };
