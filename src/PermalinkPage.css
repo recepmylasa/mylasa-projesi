@@ -23,9 +23,7 @@
   overflow: hidden;
   background: #fff;
 }
-.pdm-col {
-  grid-template-columns: 1fr;
-}
+.pdm-col { grid-template-columns: 1fr; }
 
 /* Sol: medya alanı (video/image) — ortalı, letterbox */
 .pdm-media {
@@ -33,12 +31,28 @@
   display: grid;
   place-items: center;
 }
-.pdm-video, .pdm-image {
+
+/* 9:16 sabit çerçeve — modal ile aynı letterbox davranışı */
+.pdm-frame {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 9 / 16;
+  max-height: 100%;
+  max-width: 100%;
+  background: #000;
+}
+
+/* Medya elementi: tam merkez + contain */
+.pdm-mediaEl {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   max-width: 100%;
   max-height: 100%;
   width: auto;
   height: auto;
-  object-fit: contain;     /* yatay videoda zoom yok, letterbox */
+  object-fit: contain;
   object-position: center;
   background: #000;
 }
@@ -58,14 +72,13 @@
   padding: 12px 14px;
   border-bottom: 1px solid rgba(0,0,0,.08);
 }
-.pdm-author {
-  display: flex; align-items: center; gap: 8px;
-}
+.pdm-author { display: flex; align-items: center; gap: 8px; }
 .pdm-infoAvatar {
   width: 32px; height: 32px; border-radius: 999px; object-fit: cover;
   background: #eee;
 }
 .pdm-infoUsername { font-weight: 700; }
+.pdm-infoActions { display: flex; gap: 8px; }
 
 /* Comments */
 .pdm-comments {
@@ -109,11 +122,7 @@
 }
 .pdm-actionBtn:hover { background: rgba(0,0,0,.06); }
 
-.pdm-date {
-  font-size: 11px;
-  color: #8e8e8e;
-  margin: 0;
-}
+.pdm-date { font-size: 11px; color: #8e8e8e; margin: 0; }
 
 /* Yorum formu */
 .pdm-commentForm {
@@ -141,11 +150,7 @@
   padding: 6px 10px;
   border-radius: 999px;
 }
-.pdm-commentForm button[disabled] {
-  opacity: .5; cursor: default;
-}
+.pdm-commentForm button[disabled] { opacity: .5; cursor: default; }
 
 /* Empty states */
-.pdm-empty {
-  padding: 24px;
-}
+.pdm-empty { padding: 24px; }

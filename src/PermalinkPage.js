@@ -12,7 +12,7 @@ import { showToast } from './ToastBoot';
 /* ----------------- UTIL ----------------- */
 const formatTimeAgo = (ts) => {
   if (!ts) return '';
-  const date = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
+  const date = ts?.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
   const diff = Math.floor((Date.now() - date.getTime()) / 1000);
   if (diff < 60) return `${diff}s`;
   if (diff < 3600) return `${Math.floor(diff / 60)}dk`;
@@ -156,9 +156,9 @@ export default function PermalinkPage() {
       const ref = doc(db, coll, contentData.id);
       const yorum = {
         text: yeniYorum,
-        username: currentUser.displayName,
+        username: currentUser.displayName || 'kullanıcı',
         userId: currentUser.uid,
-        photoURL: currentUser.photoURL,
+        photoURL: currentUser.photoURL || '',
         timestamp: new Date().toISOString(),
         likes: [],
       };
@@ -202,20 +202,32 @@ export default function PermalinkPage() {
   return (
     <div className="pdm-overlay">
       <div className="pdm-content">
+        {/* Sol: medya alanı (IG’deki gibi 9:16 frame + contain) */}
         <div className="pdm-media">
-          {contentData.type === 'clip' ? (
-            <video
-              src={contentData?.mediaUrl}
-              className="pdm-video"
-              autoPlay
-              controls
-              playsInline
-            />
-          ) : (
-            <img src={contentData?.mediaUrl} alt="Gönderi" className="pdm-image" />
-          )}
+          <div className="pdm-frame" aria-label="Medya çerçevesi 9:16">
+            {contentData.type === 'clip' ? (
+              <video
+                src={contentData?.mediaUrl}
+                className="pdm-mediaEl"
+                autoPlay
+                controls
+                playsInline
+                controlsList="nodownload noplaybackrate"
+                disablePictureInPicture
+                onContextMenu={(e) => e.preventDefault()}
+              />
+            ) : (
+              <img
+                src={contentData?.mediaUrl}
+                alt="Gönderi"
+                className="pdm-mediaEl"
+                draggable={false}
+              />
+            )}
+          </div>
         </div>
 
+        {/* Sağ: bilgi paneli (beyaz) */}
         <div className="pdm-info">
           <header className="pdm-infoHeader">
             <div className="pdm-author">
@@ -223,6 +235,7 @@ export default function PermalinkPage() {
                 src={authorProfile?.profilFoto || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
                 alt={authorProfile?.kullaniciAdi || 'profil'}
                 className="pdm-infoAvatar"
+                onError={(e) => { e.currentTarget.src = 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'; }}
               />
               <span className="pdm-infoUsername">{authorProfile?.kullaniciAdi || 'kullanıcı'}</span>
             </div>
@@ -239,6 +252,7 @@ export default function PermalinkPage() {
                   src={authorProfile?.profilFoto || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
                   alt={authorProfile?.kullaniciAdi || 'profil'}
                   className="pdm-commentAvatar"
+                  onError={(e) => { e.currentTarget.src = 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'; }}
                 />
                 <div className="pdm-commentBody">
                   <p><strong>{authorProfile?.kullaniciAdi || 'kullanıcı'}</strong> {aciklama}</p>
@@ -252,6 +266,7 @@ export default function PermalinkPage() {
                   src={y.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
                   alt={y.username || 'yorumcu'}
                   className="pdm-commentAvatar"
+                  onError={(e) => { e.currentTarget.src = 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'; }}
                 />
                 <div className="pdm-commentBody">
                   <p><strong>{y.username || 'kullanıcı'}</strong> {y.text}</p>
@@ -264,7 +279,6 @@ export default function PermalinkPage() {
           <div className="pdm-footer">
             <div className="pdm-actions">
               <div className="pdm-starWrap">
-                {/* İçerik sahibinin kendine oy vermesi engellensin */}
                 <StarRatingV2 size={28} disabled={isOwner} onRate={handleRate} />
                 {agg?.avg > 0 && agg?.count > 0 && (
                   <span className="pdm-starMeta" aria-label="Bu içeriğin puanı">
@@ -290,12 +304,14 @@ export default function PermalinkPage() {
                 src={auth.currentUser?.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
                 alt="Profil"
                 className="pdm-commentFormAvatar"
+                onError={(e) => { e.currentTarget.src = 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'; }}
               />
               <input
                 type="text"
                 value={yeniYorum}
                 onChange={(e) => setYeniYorum(e.target.value)}
                 placeholder="Yorum ekle..."
+                aria-label="Yorum ekle"
               />
               <button type="submit" disabled={!yeniYorum.trim() || isSubmitting}>Paylaş</button>
             </form>
