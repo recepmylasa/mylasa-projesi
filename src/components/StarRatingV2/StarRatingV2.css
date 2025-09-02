@@ -1,27 +1,21 @@
-/* StarRatingV2.css */
-
-/* Kök */
+/* src/components/StarRatingV2/StarRatingV2.css */
 .sr2-root {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  touch-action: manipulation; /* mobilde gecikmesiz */
+  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   cursor: pointer;
   user-select: none;
 }
 
-/* Tek ikon yıldız */
-.sr2-star {
-  display: block;
-}
+.sr2-star { display: block; }
 
-/* Panel */
 .sr2-panel {
-  position: fixed; /* parmak üstü mutlak konum için viewport'a sabit */
-  transform: translate(-50%, -100%); /* merkezle ve üstte göster */
-  background: rgba(255, 255, 255, 0.95);
+  position: fixed;
+  transform: translate(-50%, -100%);
+  background: rgba(255, 255, 255, 0.98);
   border: 1px solid #111;
   border-radius: 12px;
   padding: 8px 10px;
@@ -32,7 +26,6 @@
 }
 
 .sr2-panel-btn {
-  -webkit-appearance: none;
   appearance: none;
   border: 0;
   background: transparent;
@@ -40,22 +33,16 @@
   margin: 0;
   cursor: pointer;
 }
-
-.sr2-panel .sr2-star {
-  transition: transform .08s ease;
-}
+.sr2-panel .sr2-star { transition: transform .08s ease; }
 .sr2-panel-btn:active .sr2-star,
-.sr2-panel-btn:focus .sr2-star {
-  transform: scale(0.92);
-}
+.sr2-panel-btn:focus .sr2-star { transform: scale(0.92); }
 
-/* Aktif yıldız panelde sarı olur (highlight) */
 .sr2-star.active path {
-  fill: #FFD400 !important; /* sarı */
-  stroke: #111 !important;  /* siyah kontur */
+  fill: #FFD400 !important;
+  stroke: #111 !important;
 }
 
-/* Büyük geri bildirim animasyonu */
+/* Büyük geri bildirim (ekranda ortada pop) */
 .sr2-feedback-wrap {
   position: fixed;
   inset: 0;
@@ -78,10 +65,7 @@
   filter: drop-shadow(0 14px 40px rgba(0,0,0,0.35));
 }
 
-.sr2-feedback-star {
-  width: 100%;
-  height: 100%;
-}
+.sr2-feedback-star { width: 100%; height: 100%; }
 
 .sr2-feedback-value {
   position: absolute;

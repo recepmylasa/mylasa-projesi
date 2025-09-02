@@ -10,7 +10,7 @@ import {
   deleteDoc,
   updateDoc,
   doc,
-  serverTimestamp,
+  getDoc,
 } from "firebase/firestore";
 import { getStorage, ref as sRef, deleteObject } from "firebase/storage";
 import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
@@ -27,6 +27,17 @@ function ts(val) {
   const t = Date.parse(val);
   return Number.isFinite(t) ? t : 0;
 }
+
+/* util: time-ago */
+const formatTimeAgo = (value) => {
+  if (!value) return "";
+  const d = value?.seconds ? new Date(value.seconds * 1000) : new Date(value);
+  const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (diff < 60) return `${diff}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}dk`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}sa`;
+  return `${Math.floor(diff / 86400)}g`;
+};
 
 /* küçük Play rozeti */
 const PlayBadge = () => (
@@ -105,6 +116,123 @@ function Avatar({ src, size = 40 }) {
   );
 }
 
+/* id üretimi & fallback eşleştirme */
+const makeCommentId = (uid) => `${uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+const deriveId = (y, idx = 0) => y?.commentId || `${y?.userId || "u"}_${Date.parse(y?.timestamp || 0) || 0}` || `idx_${idx}`;
+
+/* ==== Tek yorum satırı (mini ⭐ + üç nokta) ==== */
+function CommentRow({ selected, comment, currentUser }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [rateOpen, setRateOpen] = useState(false);
+
+  const isOwner = currentUser && selected?.authorId === currentUser.uid;
+  const canDelete = currentUser && (comment?.userId === currentUser.uid || isOwner);
+
+  const avg = (Number(comment?.ratingSum || 0) > 0 && Number(comment?.ratingCount || 0) > 0)
+    ? Number(comment.ratingSum) / Number(comment.ratingCount)
+    : 0;
+
+  const handleDelete = async () => {
+    setMenuOpen(false);
+    if (!canDelete) return;
+    if (!window.confirm("Bu yorumu silmek istiyor musun?")) return;
+    try {
+      const ref = doc(db, "clips", selected.id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const list = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
+      const targetId = deriveId(comment);
+      const filtered = list.filter((y, i) => deriveId(y, i) !== targetId);
+      await updateDoc(ref, { yorumlar: filtered });
+    } catch (e) {
+      console.error(e);
+      alert("Silinemedi. Lütfen tekrar dene.");
+    }
+  };
+
+  const handleRate = async (value) => {
+    if (!currentUser) { alert("Puanlamak için giriş yap."); return; }
+    const ref = doc(db, "clips", selected.id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const arr = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
+    const targetId = deriveId(comment);
+    const idx = arr.findIndex((y, i) => deriveId(y, i) === targetId);
+    if (idx === -1) return;
+
+    const c = { ...arr[idx] };
+    const map = { ...(c.ratingsBy || {}) };
+    const prev = typeof map[currentUser.uid] === "number" ? map[currentUser.uid] : null;
+
+    let sum = Number(c.ratingSum || 0);
+    let count = Number(c.ratingCount || 0);
+
+    if (prev != null) { sum -= Number(prev); } else { count += 1; }
+    map[currentUser.uid] = Number(value);
+    sum += Number(value);
+
+    arr[idx] = { ...c, ratingsBy: map, ratingSum: sum, ratingCount: count };
+    await updateDoc(ref, { yorumlar: arr });
+    setRateOpen(false);
+  };
+
+  return (
+    <div className="clip-comment-row">
+      <Avatar src={comment.photoURL || null} size={28} />
+      <div className="clip-comment-body">
+        <div className="clip-caption-bubble">
+          <span className="clip-username--inline">{comment.username || "kullanıcı"}</span>{" "}
+          {comment.text}
+        </div>
+        <div className="clip-comment-meta">
+          <span className="clip-comment-time">{formatTimeAgo(comment.timestamp)}</span>
+          {comment?.ratingCount > 0 && (
+            <span className="clip-comment-rating">{avg.toFixed(1)} ★ · {comment.ratingCount}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="clip-comment-actions">
+        {!rateOpen ? (
+          <button
+            className="clip-cmStar"
+            title="Yorumu puanla"
+            aria-label="Yorumu puanla"
+            onClick={() => setRateOpen(true)}
+          >
+            ★
+          </button>
+        ) : (
+          <div className="clip-cmRate">
+            <StarRatingV2 size={18} onRate={handleRate} />
+          </div>
+        )}
+
+        <div className="clip-cmMoreWrap">
+          <button
+            className="clip-cmMore"
+            aria-label="Daha fazla"
+            title="Daha fazla"
+            onClick={() => setMenuOpen((s) => !s)}
+          >
+            {Icon.more}
+          </button>
+          {menuOpen && (
+            <div className="clip-cmMenu" role="menu">
+              {canDelete && (
+                <button className="danger" role="menuitem" onClick={handleDelete}>Sil</button>
+              )}
+              <button role="menuitem" onClick={() => setMenuOpen(false)}>İptal</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ClipsDesktop({ userId }) {
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -112,8 +240,11 @@ export default function ClipsDesktop({ userId }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [brokenIds, setBrokenIds] = useState(() => new Set());
   const [composerText, setComposerText] = useState("");
-  const [contentAgg, setContentAgg] = useState(null); // StarRating agregesi
-  const [isSaved, setIsSaved] = useState(false);      // Kaydet durumu
+  const [contentAgg, setContentAgg] = useState(null);
+  const [isSaved, setIsSaved] = useState(false);
+
+  // Seçili clip’in yazar profili (users/{authorId})
+  const [authorProfile, setAuthorProfile] = useState(null);
 
   const composerRef = useRef(null);
 
@@ -142,7 +273,7 @@ export default function ClipsDesktop({ userId }) {
     });
   }, [items, brokenIds]);
 
-  /* seçili clip dokümanını canlı izle (yorumlar/metalar canlı gelsin) */
+  /* seçili clip dokümanını canlı izle */
   useEffect(() => {
     if (!selected?.id) return;
     const ref = doc(db, "clips", selected.id);
@@ -153,6 +284,14 @@ export default function ClipsDesktop({ userId }) {
     return () => unsub();
   }, [selected?.id]);
 
+  /* seçili clip’in yazar profilini users/{authorId}’den çek */
+  useEffect(() => {
+    if (!selected?.authorId) { setAuthorProfile(null); return; }
+    const uref = doc(db, "users", selected.authorId);
+    const unsub = onSnapshot(uref, (s) => setAuthorProfile(s.exists() ? s.data() : null));
+    return () => unsub();
+  }, [selected?.authorId]);
+
   /* StarRating agregesi (content/{id}.agg) canlı izleme */
   useEffect(() => {
     setContentAgg(null);
@@ -161,7 +300,7 @@ export default function ClipsDesktop({ userId }) {
     return () => (typeof stop === "function" ? stop() : undefined);
   }, [selected?.id]);
 
-  /* Kaydet durumu (seçim değişince kontrol et) */
+  /* Kaydet durumu */
   useEffect(() => {
     let cancel = false;
     (async () => {
@@ -386,20 +525,28 @@ export default function ClipsDesktop({ userId }) {
 
     try {
       const ref = doc(db, "clips", selected.id);
-      const nextArray = [
-        ...(selected.yorumlar || []),
-        {
-          userId: uid,
-          text,
-          createdAt: serverTimestamp(),
-        },
-      ];
-      await updateDoc(ref, { yorumlar: nextArray });
+
+      // >>> username ve photoURL + deterministik commentId ve rating alanları
+      const displayName = auth.currentUser?.displayName || "kullanıcı";
+      const photoURL = auth.currentUser?.photoURL || null;
+
+      const snap = await getDoc(ref);
+      const current = snap.exists() && Array.isArray(snap.data()?.yorumlar) ? [...snap.data().yorumlar] : [];
+      current.push({
+        commentId: makeCommentId(uid),
+        userId: uid,
+        username: displayName,
+        photoURL,
+        text,
+        timestamp: new Date().toISOString(), // serverTimestamp() array içinde sorun çıkarıyordu
+        ratingsBy: {},
+        ratingSum: 0,
+        ratingCount: 0,
+      });
+
+      await updateDoc(ref, { yorumlar: current });
       setComposerText("");
-      // textarea yüksekliğini resetle
-      if (composerRef.current) {
-        composerRef.current.style.height = "auto";
-      }
+      if (composerRef.current) composerRef.current.style.height = "auto";
     } catch (e) {
       console.error(e);
       alert("Yorum eklenemedi. Lütfen tekrar dene.");
@@ -447,10 +594,12 @@ export default function ClipsDesktop({ userId }) {
   }
 
   const comments = selected?.yorumlar || [];
-  const currentUid = auth.currentUser?.uid;
   const ratingCount = contentAgg?.count ?? Number(selected?.starsCount || 0);
   const ratingAvg =
     contentAgg?.avg ?? contentAgg?.bayes ?? (ratingCount > 0 ? (contentAgg?.sum || 0) / ratingCount : 0);
+
+  const headerAvatar = authorProfile?.profilFoto || selected?.authorProfilePic || null;
+  const headerUsername = authorProfile?.kullaniciAdi || selected?.authorUsername || "kullanıcı";
 
   return (
     <>
@@ -519,9 +668,9 @@ export default function ClipsDesktop({ userId }) {
               {/* başlık */}
               <div className="clip-meta-head">
                 <div className="clip-head-left">
-                  <Avatar src={selected?.authorProfilePic} />
+                  <Avatar src={headerAvatar} />
                   <div className="clip-identity">
-                    <div className="clip-username">{selected?.authorUsername || "kullanıcı"}</div>
+                    <div className="clip-username">{headerUsername}</div>
                     <div className="clip-follow">Takip Et</div>
                   </div>
                 </div>
@@ -545,28 +694,26 @@ export default function ClipsDesktop({ userId }) {
               <div className="clip-comments">
                 {selected?.caption ? (
                   <div className="clip-caption-row">
-                    <Avatar src={selected?.authorProfilePic} size={28} />
+                    <Avatar src={headerAvatar} size={28} />
                     <div className="clip-caption-bubble">
-                      <span className="clip-username--inline">
-                        {selected?.authorUsername || "kullanıcı"}
-                      </span>{" "}
+                      <span className="clip-username--inline">{headerUsername}</span>{" "}
                       {selected?.caption}
                     </div>
                   </div>
                 ) : null}
 
                 {comments.length > 0 ? (
-                  comments.map((c, i) => (
-                    <div key={i} className="clip-caption-row">
-                      <Avatar src={null} size={28} />
-                      <div className="clip-caption-bubble">
-                        <span className="clip-username--inline">
-                          {c.userId === currentUid ? "Sen" : "kullanıcı"}
-                        </span>{" "}
-                        {c.text}
-                      </div>
-                    </div>
-                  ))
+                  comments
+                    .slice()
+                    .sort((a, b) => ts(b.timestamp) - ts(a.timestamp))
+                    .map((c, i) => (
+                      <CommentRow
+                        key={deriveId(c, i)}
+                        selected={selected}
+                        comment={c}
+                        currentUser={auth.currentUser}
+                      />
+                    ))
                 ) : (
                   <div className="clip-comment-empty">Henüz yorum yok.</div>
                 )}
@@ -711,7 +858,7 @@ export default function ClipsDesktop({ userId }) {
                   <li className="sheet-item" onClick={aboutAccount}>
                     Bu hesap hakkında
                   </li>
-                  <li className="sheet-item sheet-cancel" onClick={() => setSheetOpen(false)}>
+                  <li className="sheet-item" onClick={() => setSheetOpen(false)}>
                     İptal
                   </li>
                 </ul>

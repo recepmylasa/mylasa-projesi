@@ -1,84 +1,85 @@
+/* src/YorumModal.css */
 .yorum-modal-content {
-    background-color: white;
-    border-radius: 12px;
-    width: 90vw;
-    max-width: 400px;
-    height: 70vh;
-    max-height: 500px;
-    display: flex;
-    flex-direction: column;
+  background-color: white;
+  border-radius: 12px;
+  width: 90vw;
+  max-width: 400px;
+  height: 70vh;
+  max-height: 500px;
+  display: flex;
+  flex-direction: column;
 }
 
 .yorum-modal-header {
-    text-align: center;
-    padding: 12px;
-    border-bottom: 1px solid #dbdbdb;
+  text-align: center;
+  padding: 12px;
+  border-bottom: 1px solid #dbdbdb;
 }
 
 .yorum-modal-header h3 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .yorum-listesi {
-    flex-grow: 1;
-    overflow-y: auto;
-    padding: 16px;
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 16px;
 }
 
 .yorum-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 12px;
-    font-size: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
 }
 
 .yorum-item strong {
-    font-weight: 600;
-    cursor: pointer;
-    flex-shrink: 0;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .yorum-item span {
-    line-height: 1.4;
+  line-height: 1.4;
 }
 
 .yorum-tarih {
-    margin-left: auto;
-    color: #8e8e8e;
-    font-size: 12px;
-    flex-shrink: 0;
+  margin-left: auto;
+  color: #8e8e8e;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .yorum-yok-mesaji {
-    text-align: center;
-    color: #8e8e8e;
-    margin-top: 40px;
+  text-align: center;
+  color: #8e8e8e;
+  margin-top: 40px;
 }
 
 .yorum-ekleme-formu {
-    display: flex;
-    padding: 8px 16px;
-    border-top: 1px solid #dbdbdb;
+  display: flex;
+  padding: 8px 16px;
+  border-top: 1px solid #dbdbdb;
 }
 
 .yorum-ekleme-formu input {
-    flex-grow: 1;
-    border: none;
-    outline: none;
-    font-size: 14px;
+  flex-grow: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
 }
 
 .yorum-ekleme-formu button {
-    background: none;
-    border: none;
-    color: #0095f6;
-    font-weight: 600;
-    cursor: pointer;
+  background: none;
+  border: none;
+  color: #0095f6;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .yorum-ekleme-formu button:disabled {
-    color: #b2dffc;
+  color: #b2dffc;
 }

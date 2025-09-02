@@ -1,6 +1,4 @@
-/* src/PermalinkPage.css */
-
-/* Tam sayfa beyaz zemin, merkezli içerik */
+/* ===== Permalink Page (pdm-*) ===== */
 .pdm-overlay {
   position: fixed;
   inset: 0;
@@ -11,7 +9,6 @@
   z-index: 3000;
 }
 
-/* İçerik: solda medya, sağda bilgi paneli (IG benzeri) */
 .pdm-content {
   width: min(1100px, 96vw);
   height: min(92vh, 860px);
@@ -25,14 +22,12 @@
 }
 .pdm-col { grid-template-columns: 1fr; }
 
-/* Sol: medya alanı (video/image) — ortalı, letterbox */
 .pdm-media {
   background: #000;
   display: grid;
   place-items: center;
 }
 
-/* 9:16 sabit çerçeve — modal ile aynı letterbox davranışı */
 .pdm-frame {
   position: relative;
   height: 100%;
@@ -42,7 +37,6 @@
   background: #000;
 }
 
-/* Medya elementi: tam merkez + contain */
 .pdm-mediaEl {
   position: absolute;
   top: 50%;
@@ -57,7 +51,6 @@
   background: #000;
 }
 
-/* Sağ: info paneli */
 .pdm-info {
   background: #fff;
   display: grid;
@@ -89,6 +82,7 @@
 .pdm-commentItem {
   display: flex; align-items: flex-start; gap: 8px;
   margin-bottom: 10px;
+  position: relative;
 }
 .pdm-commentAvatar {
   width: 28px; height: 28px; border-radius: 999px; object-fit: cover;
@@ -96,6 +90,34 @@
 }
 .pdm-commentBody p { margin: 0; font-size: 14px; }
 .pdm-commentTime { font-size: 11px; color: #8e8e8e; }
+.pdm-commentMeta { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.pdm-commentRating { font-size: 12px; color: #8e8e8e; }
+
+/* Right-side comment actions */
+.pdm-commentActions {
+  margin-left: auto; display: flex; align-items: center; gap: 4px;
+  position: absolute; right: 0; top: 0; transform: translateY(-2px);
+}
+.pdm-cmStar, .pdm-cmMore {
+  border: 0; background: transparent; cursor: pointer; padding: 4px 6px;
+  border-radius: 8px; color: #262626; opacity: 0; transition: opacity .12s ease, background-color .12s ease;
+}
+.pdm-commentItem:hover .pdm-cmStar,
+.pdm-commentItem:hover .pdm-cmMore { opacity: 1; }
+.pdm-cmStar:hover, .pdm-cmMore:hover { background: rgba(0,0,0,.06); }
+.pdm-cmRate { margin-right: 4px; }
+
+.pdm-cmMoreWrap { position: relative; }
+.pdm-cmMenu {
+  position: absolute; right: 0; top: 26px; background: #fff; border: 1px solid rgba(0,0,0,.08);
+  border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.18); min-width: 120px; padding: 6px; z-index: 2;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.pdm-cmMenu button {
+  background: transparent; border: 0; text-align: left; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-weight: 600;
+}
+.pdm-cmMenu button:hover { background: #f7f7f7; }
+.pdm-cmMenu .danger { color: #ed4956; }
 
 /* Footer */
 .pdm-footer {
@@ -105,26 +127,17 @@
   gap: 8px;
   padding: 8px 12px 12px;
 }
-.pdm-actions {
-  display: flex; align-items: center; justify-content: space-between;
-}
-.pdm-starWrap {
-  display: flex; align-items: center; gap: 8px;
-}
+.pdm-actions { display: flex; align-items: center; justify-content: space-between; }
+.pdm-starWrap { display: flex; align-items: center; gap: 8px; }
 .pdm-starMeta { font-size: 13px; color: #4b4b4b; }
 
 .pdm-actionBtn {
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 999px;
-  padding: 6px 10px;
+  border: 0; background: transparent; cursor: pointer; border-radius: 999px; padding: 6px 10px;
 }
 .pdm-actionBtn:hover { background: rgba(0,0,0,.06); }
 
 .pdm-date { font-size: 11px; color: #8e8e8e; margin: 0; }
 
-/* Yorum formu */
 .pdm-commentForm {
   display: flex; align-items: center; gap: 8px;
   border-top: 1px solid rgba(0,0,0,.08);
@@ -135,22 +148,11 @@
   background: #eee;
 }
 .pdm-commentForm input {
-  flex: 1;
-  border: 0;
-  background: #f2f2f2;
-  border-radius: 10px;
-  padding: 8px 10px;
-  font: inherit;
+  flex: 1; border: 0; background: #f2f2f2; border-radius: 10px; padding: 8px 10px; font: inherit;
 }
 .pdm-commentForm button {
-  border: 0;
-  background: transparent;
-  color: #262626;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 999px;
+  border: 0; background: transparent; color: #262626; cursor: pointer; padding: 6px 10px; border-radius: 999px;
 }
 .pdm-commentForm button[disabled] { opacity: .5; cursor: default; }
 
-/* Empty states */
 .pdm-empty { padding: 24px; }

@@ -1,12 +1,12 @@
-// src/PostDetailModalDesktop.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { db, auth } from "./firebase";
-import { doc, onSnapshot, updateDoc, arrayUnion } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
 import { ensureContentDoc, rateContent as sendRating } from "./reputationClient";
 import { isSaved as fsIsSaved, toggleSave as fsToggleSave } from "./savesClient";
 import "./PostDetailModalDesktop.css";
 
+/* ===== Icons ===== */
 const CommentIcon = () => (
   <svg aria-label="Yorum Yap" height="24" role="img" viewBox="0 0 24 24" width="24">
     <path d="M20.656 17.008a9.993 9.993 0 1 0-3.59 3.615L22 22Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></path>
@@ -23,7 +23,15 @@ const SaveIcon = ({ isSaved }) => (
     <polygon fill={isSaved ? "currentColor" : "none"} points="20 21 12 13.44 4 21 4 3 20 3 20 21" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></polygon>
   </svg>
 );
+const DotsIcon = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <circle cx="5" cy="12" r="2" fill="currentColor" />
+    <circle cx="12" cy="12" r="2" fill="currentColor" />
+    <circle cx="19" cy="12" r="2" fill="currentColor" />
+  </svg>
+);
 
+/* ===== Utils ===== */
 const formatTimeAgo = (ts) => {
   if (!ts) return "";
   const date = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
@@ -33,7 +41,6 @@ const formatTimeAgo = (ts) => {
   if (diff < 86400) return `${Math.floor(diff / 3600)}sa`;
   return `${Math.floor(diff / 86400)}g`;
 };
-
 const formatCount = (n) => {
   if (typeof n !== "number") return "";
   if (n < 1000) return String(n);
@@ -41,9 +48,159 @@ const formatCount = (n) => {
   if (n < 1_000_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 >= 100_000 ? 1 : 0) + "M";
   return (n / 1_000_000_000).toFixed(1) + "B";
 };
+const makeCommentId = (uid) => `${uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
+/* ===== Comment Row ===== */
+function CommentRow({
+  contentId,
+  contentType,   // "clip" | "post"
+  isOwner,       // içerik sahibi misin
+  currentUser,   // auth.currentUser
+  comment,       // yorum objesi
+  onUserClick,   // kullanıcı adına tıklandığında
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [rateOpen, setRateOpen] = useState(false);
+
+  const avg =
+    (Number(comment?.ratingSum || 0) > 0 && Number(comment?.ratingCount || 0) > 0)
+      ? Number(comment.ratingSum) / Number(comment.ratingCount)
+      : 0;
+
+  const canDelete =
+    currentUser &&
+    (comment?.userId === currentUser.uid || isOwner);
+
+  const handleDelete = async () => {
+    setMenuOpen(false);
+    if (!canDelete) return;
+    if (!window.confirm("Bu yorumu silmek istiyor musun?")) return;
+
+    try {
+      const coll = contentType === "clip" ? "clips" : "posts";
+      const ref = doc(db, coll, contentId);
+      // dokümanı UI state’inden güncelle
+      const snap = await new Promise((res) =>
+        onSnapshot(ref, (s) => { res(s); }, { once: true })
+      );
+      const data = snap.data();
+      const list = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
+      const filtered = list.filter((y) => (y.commentId || "") !== (comment.commentId || ""));
+      await updateDoc(ref, { yorumlar: filtered });
+    } catch (e) {
+      console.error(e);
+      alert("Silinemedi. Lütfen tekrar dene.");
+    }
+  };
+
+  const handleRate = async (value) => {
+    if (!currentUser) {
+      alert("Puanlamak için giriş yap.");
+      return;
+    }
+    if (!comment?.commentId) return;
+
+    try {
+      const coll = contentType === "clip" ? "clips" : "posts";
+      const ref = doc(db, coll, contentId);
+
+      const snap = await new Promise((res) =>
+        onSnapshot(ref, (s) => { res(s); }, { once: true })
+      );
+      const data = snap.data();
+      const arr = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
+      const idx = arr.findIndex((y) => (y.commentId || "") === comment.commentId);
+      if (idx === -1) return;
+
+      const c = { ...arr[idx] };
+      const map = { ...(c.ratingsBy || {}) };
+      const prev = typeof map[currentUser.uid] === "number" ? map[currentUser.uid] : null;
+
+      let sum = Number(c.ratingSum || 0);
+      let count = Number(c.ratingCount || 0);
+
+      if (prev != null) {
+        sum -= Number(prev);
+      } else {
+        count += 1;
+      }
+      map[currentUser.uid] = Number(value);
+      sum += Number(value);
+
+      arr[idx] = { ...c, ratingsBy: map, ratingSum: sum, ratingCount: count };
+      await updateDoc(ref, { yorumlar: arr });
+      setRateOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert("Puan verilemedi.");
+    }
+  };
+
+  return (
+    <div className="pdmDk-commentItem">
+      <img
+        src={comment.photoURL || "https://placehold.co/32x32/EFEFEF/AAAAAA?text=P"}
+        alt={comment.username || "kullanıcı"}
+        className="pdmDk-commentAvatar"
+      />
+      <div className="pdmDk-commentBody">
+        <p>
+          <strong onClick={() => onUserClick?.(comment.userId)}>{comment.username || "kullanıcı"}</strong>{" "}
+          {comment.text}
+        </p>
+        <div className="pdmDk-commentMeta">
+          <span className="pdmDk-commentTime">{formatTimeAgo(comment.timestamp)}</span>
+          {comment?.ratingCount > 0 && (
+            <span className="pdmDk-commentRating">
+              {avg.toFixed(1)} ★ · {comment.ratingCount}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="pdmDk-commentActions">
+        {!rateOpen ? (
+          <button
+            className="pdmDk-cmStar"
+            title="Yorumu puanla"
+            onClick={() => setRateOpen(true)}
+            aria-label="Yorumu puanla"
+          >
+            ★
+          </button>
+        ) : (
+          <div className="pdmDk-cmRate">
+            <StarRatingV2 size={18} onRate={handleRate} />
+          </div>
+        )}
+
+        <div className="pdmDk-cmMoreWrap">
+          <button
+            className="pdmDk-cmMore"
+            aria-label="Daha fazla"
+            title="Daha fazla"
+            onClick={() => setMenuOpen((s) => !s)}
+          >
+            <DotsIcon />
+          </button>
+          {menuOpen && (
+            <div className="pdmDk-cmMenu" role="menu">
+              {canDelete && (
+                <button className="danger" onClick={handleDelete} role="menuitem">
+                  Sil
+                </button>
+              )}
+              <button onClick={() => setMenuOpen(false)} role="menuitem">İptal</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Main ===== */
 export default function PostDetailModalDesktop({ post, onClose, onUserClick, aktifKullaniciId }) {
-  // App overlay'i masaüstünde alttan hizalıyor; bu bileşen kendini "pseudo-center" yapar.
   const [contentData, setContentData] = useState(post);
   const [authorProfile, setAuthorProfile] = useState(null);
   const [yeniYorum, setYeniYorum] = useState("");
@@ -99,18 +256,24 @@ export default function PostDetailModalDesktop({ post, onClose, onUserClick, akt
       const coll = contentData.type === "clip" ? "clips" : "posts";
       const ref = doc(db, coll, contentData.id);
       const yorum = {
+        commentId: makeCommentId(currentUser.uid),
         text: yeniYorum,
-        username: currentUser.displayName,
+        username: currentUser.displayName || "kullanıcı",
         userId: currentUser.uid,
-        photoURL: currentUser.photoURL,
+        photoURL: currentUser.photoURL || "",
         timestamp: new Date().toISOString(),
-        likes: [],
+        ratingsBy: {},
+        ratingSum: 0,
+        ratingCount: 0,
       };
-      await updateDoc(ref, { yorumlar: arrayUnion(yorum) });
+      const current = Array.isArray(contentData.yorumlar) ? [...contentData.yorumlar] : [];
+      current.push(yorum);
+      await updateDoc(ref, { yorumlar: current });
       setYeniYorum("");
       inputRef.current?.focus();
     } catch (err) {
       console.error("Yorum eklenirken hata:", err);
+      alert("Yorum eklenemedi. Lütfen tekrar dene.");
     } finally {
       setIsSubmitting(false);
     }
@@ -204,27 +367,23 @@ export default function PostDetailModalDesktop({ post, onClose, onUserClick, akt
               </div>
             )}
 
-            {sortedYorumlar.map((y, i) => (
-              <div key={i} className="pdmDk-commentItem">
-                <img
-                  src={y.photoURL || "https://placehold.co/32x32/EFEFEF/AAAAAA?text=P"}
-                  alt={y.username}
-                  className="pdmDk-commentAvatar"
-                />
-                <div className="pdmDk-commentBody">
-                  <p>
-                    <strong onClick={() => onUserClick?.(y.userId)}>{y.username}</strong> {y.text}
-                  </p>
-                  <span className="pdmDk-commentTime">{formatTimeAgo(y.timestamp)}</span>
-                </div>
-              </div>
+            {sortedYorumlar.map((y) => (
+              <CommentRow
+                key={y.commentId || `${y.userId}_${y.timestamp}`}
+                contentId={contentData.id}
+                contentType={contentData.type}
+                isOwner={isOwner}
+                currentUser={currentUser}
+                comment={y}
+                onUserClick={onUserClick}
+              />
             ))}
           </div>
 
           <div className="pdmDk-footer">
             <div className="pdmDk-actions">
               <div className="pdmDk-starWrap">
-                <StarRatingV2 size={28} onRate={handleRate} readOnly={isOwner} />
+                <StarRatingV2 size={28} onRate={handleRate} disabled={isOwner} />
                 {agg?.avg > 0 && agg?.count > 0 && (
                   <span className="pdmDk-starMeta" aria-label="Bu içeriğin puanı">
                     {Number(agg.avg).toFixed(1)} ★ · {formatCount(agg.count)} oy

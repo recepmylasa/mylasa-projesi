@@ -15,6 +15,7 @@ import { httpsCallable } from "firebase/functions";
 // === Koleksiyon/Saha adları ===
 export const CONTENT_COL = "content";
 export const RATINGS_SUBCOL = "ratings";
+export const COMMENTS_SUBCOL = "comments"; // ✨ YENİ: yorum alt koleksiyonu
 export const USERS_COL = "users";
 export const USERSTATS_COL = "userStats";
 
@@ -82,6 +83,56 @@ export async function rateContent({
   }, { merge: true });
 
   return { ok: true };
+}
+
+// ✨ YENİ — Bir yoruma oy ver / güncelle (tek oy/kişi/yorum)
+export async function rateComment({ contentId, commentId, value }) {
+  const raterId = currentUidOrThrow();
+  if (!contentId || !commentId) throw new Error("rateComment: contentId ve commentId zorunlu.");
+  if (!isValidStar(value)) throw new Error("Oy 1..5 arasında tam sayı olmalı.");
+
+  const ratingRef = doc(
+    db,
+    CONTENT_COL,
+    contentId,
+    COMMENTS_SUBCOL,
+    commentId,
+    RATINGS_SUBCOL,
+    raterId
+  );
+
+  await setDoc(
+    ratingRef,
+    {
+      raterId,
+      value,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return { ok: true };
+}
+
+// ✨ YENİ — Yorumun agregesini (avg,count) canlı izle
+export function onCommentAggregate(contentId, commentId, cb) {
+  const ref = doc(db, CONTENT_COL, contentId, COMMENTS_SUBCOL, commentId);
+  return onSnapshot(ref, (snap) => {
+    const data = snap.exists() ? snap.data() : null;
+    cb(data?.agg || null);
+  });
+}
+
+// (Opsiyon) deterministik commentId üretici — eski kayıtlarda ID yoksa UI kullanabilir
+export function deriveCommentId(yorum, index = 0) {
+  return (
+    yorum?.commentId ||
+    (yorum?.userId && yorum?.timestamp
+      ? `${yorum.userId}_${Date.parse(yorum.timestamp || 0) || 0}`
+      : null) ||
+    `idx_${index}`
+  );
 }
 
 // Kullanıcı itibarını getir

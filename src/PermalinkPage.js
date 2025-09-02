@@ -1,13 +1,21 @@
-// src/PermalinkPage.js
 import React, { useEffect, useState } from 'react';
 import { db, auth } from './firebase';
-import { doc, onSnapshot, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import './PermalinkPage.css';
 
 import StarRatingV2 from './components/StarRatingV2/StarRatingV2';
 import { ensureContentDoc, rateContent as sendRating } from './reputationClient';
 import { isSaved as fsIsSaved, toggleSave as fsToggleSave } from './savesClient';
 import { showToast } from './ToastBoot';
+
+/* ----------------- ICONS ----------------- */
+const DotsIcon = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <circle cx="5" cy="12" r="2" fill="currentColor" />
+    <circle cx="12" cy="12" r="2" fill="currentColor" />
+    <circle cx="19" cy="12" r="2" fill="currentColor" />
+  </svg>
+);
 
 /* ----------------- UTIL ----------------- */
 const formatTimeAgo = (ts) => {
@@ -39,6 +47,127 @@ const getPermalink = ({ type, id }) => {
   const seg = type === 'clip' ? 'c' : 'p';
   return `${base}/${seg}/${id}`;
 };
+const makeCommentId = (uid) => `${uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+/* ----------------- COMMENT ROW ----------------- */
+function CommentRow({ contentId, contentType, isOwner, currentUser, comment }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [rateOpen, setRateOpen] = useState(false);
+
+  const avg = (Number(comment?.ratingSum || 0) > 0 && Number(comment?.ratingCount || 0) > 0)
+    ? Number(comment.ratingSum) / Number(comment.ratingCount)
+    : 0;
+
+  const canDelete = currentUser && (comment?.userId === currentUser.uid || isOwner);
+
+  const handleDelete = async () => {
+    setMenuOpen(false);
+    if (!canDelete) return;
+    if (!window.confirm('Bu yorumu silmek istiyor musun?')) return;
+    try {
+      const coll = contentType === 'clip' ? 'clips' : 'posts';
+      const ref = doc(db, coll, contentId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const list = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
+      const filtered = list.filter((y) => (y.commentId || '') !== (comment.commentId || ''));
+      await updateDoc(ref, { yorumlar: filtered });
+    } catch (e) {
+      console.error(e);
+      showToast('Silinemedi. Lütfen tekrar dene.', { variant: 'error' });
+    }
+  };
+
+  const handleRate = async (value) => {
+    if (!currentUser) { showToast('Puanlamak için giriş yap.', { variant: 'error' }); return; }
+    if (!comment?.commentId) return;
+    try {
+      const coll = contentType === 'clip' ? 'clips' : 'posts';
+      const ref = doc(db, coll, contentId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const arr = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
+      const idx = arr.findIndex((y) => (y.commentId || '') === comment.commentId);
+      if (idx === -1) return;
+
+      const c = { ...arr[idx] };
+      const map = { ...(c.ratingsBy || {}) };
+      const prev = typeof map[currentUser.uid] === 'number' ? map[currentUser.uid] : null;
+
+      let sum = Number(c.ratingSum || 0);
+      let count = Number(c.ratingCount || 0);
+
+      if (prev != null) { sum -= Number(prev); } else { count += 1; }
+      map[currentUser.uid] = Number(value);
+      sum += Number(value);
+
+      arr[idx] = { ...c, ratingsBy: map, ratingSum: sum, ratingCount: count };
+      await updateDoc(ref, { yorumlar: arr });
+      setRateOpen(false);
+    } catch (e) {
+      console.error(e);
+      showToast('Puan verilemedi.', { variant: 'error' });
+    }
+  };
+
+  return (
+    <div className="pdm-commentItem">
+      <img
+        src={comment.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
+        alt={comment.username || 'kullanıcı'}
+        className="pdm-commentAvatar"
+        onError={(e) => { e.currentTarget.src = 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'; }}
+      />
+      <div className="pdm-commentBody">
+        <p><strong>{comment.username || 'kullanıcı'}</strong> {comment.text}</p>
+        <div className="pdm-commentMeta">
+          <span className="pdm-commentTime">{formatTimeAgo(comment.timestamp)}</span>
+          {comment?.ratingCount > 0 && (
+            <span className="pdm-commentRating">{avg.toFixed(1)} ★ · {comment.ratingCount}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="pdm-commentActions">
+        {!rateOpen ? (
+          <button
+            className="pdm-cmStar"
+            title="Yorumu puanla"
+            aria-label="Yorumu puanla"
+            onClick={() => setRateOpen(true)}
+          >
+            ★
+          </button>
+        ) : (
+          <div className="pdm-cmRate">
+            <StarRatingV2 size={18} onRate={handleRate} />
+          </div>
+        )}
+
+        <div className="pdm-cmMoreWrap">
+          <button
+            className="pdm-cmMore"
+            aria-label="Daha fazla"
+            title="Daha fazla"
+            onClick={() => setMenuOpen((s) => !s)}
+          >
+            <DotsIcon />
+          </button>
+          {menuOpen && (
+            <div className="pdm-cmMenu" role="menu">
+              {canDelete && (
+                <button className="danger" role="menuitem" onClick={handleDelete}>Sil</button>
+              )}
+              <button role="menuitem" onClick={() => setMenuOpen(false)}>İptal</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ----------------- PAGE ----------------- */
 export default function PermalinkPage() {
@@ -155,14 +284,20 @@ export default function PermalinkPage() {
       const coll = contentData.type === 'clip' ? 'clips' : 'posts';
       const ref = doc(db, coll, contentData.id);
       const yorum = {
+        commentId: makeCommentId(currentUser.uid),
         text: yeniYorum,
         username: currentUser.displayName || 'kullanıcı',
         userId: currentUser.uid,
         photoURL: currentUser.photoURL || '',
         timestamp: new Date().toISOString(),
-        likes: [],
+        ratingsBy: {},
+        ratingSum: 0,
+        ratingCount: 0,
       };
-      await updateDoc(ref, { yorumlar: arrayUnion(yorum) });
+      const snap = await getDoc(ref);
+      const current = snap.exists() && Array.isArray(snap.data()?.yorumlar) ? [...snap.data().yorumlar] : [];
+      current.push(yorum);
+      await updateDoc(ref, { yorumlar: current });
       setYeniYorum('');
       showToast('Yorum gönderildi', { variant: 'success' });
     } catch (err) {
@@ -202,7 +337,7 @@ export default function PermalinkPage() {
   return (
     <div className="pdm-overlay">
       <div className="pdm-content">
-        {/* Sol: medya alanı (IG’deki gibi 9:16 frame + contain) */}
+        {/* Sol: medya alanı */}
         <div className="pdm-media">
           <div className="pdm-frame" aria-label="Medya çerçevesi 9:16">
             {contentData.type === 'clip' ? (
@@ -227,7 +362,7 @@ export default function PermalinkPage() {
           </div>
         </div>
 
-        {/* Sağ: bilgi paneli (beyaz) */}
+        {/* Sağ: bilgi paneli */}
         <div className="pdm-info">
           <header className="pdm-infoHeader">
             <div className="pdm-author">
@@ -261,18 +396,14 @@ export default function PermalinkPage() {
             )}
 
             {yorumlar.map((y, i) => (
-              <div key={i} className="pdm-commentItem">
-                <img
-                  src={y.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
-                  alt={y.username || 'yorumcu'}
-                  className="pdm-commentAvatar"
-                  onError={(e) => { e.currentTarget.src = 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'; }}
-                />
-                <div className="pdm-commentBody">
-                  <p><strong>{y.username || 'kullanıcı'}</strong> {y.text}</p>
-                  <span className="pdm-commentTime">{formatTimeAgo(y.timestamp)}</span>
-                </div>
-              </div>
+              <CommentRow
+                key={y.commentId || `${y.userId}_${y.timestamp || i}`}
+                contentId={contentData.id}
+                contentType={contentData.type}
+                isOwner={isOwner}
+                currentUser={currentUser}
+                comment={y}
+              />
             ))}
           </div>
 
