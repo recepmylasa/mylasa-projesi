@@ -1,13 +1,16 @@
 // src/components/StarRatingV2/StarRatingV2.js
-// Masaüstünde tek tıkla 5'li paneli aç, seçimle oy ver.
-// Dokunmatik/uzun bas destekli. Büyük yıldız animasyonu korunur.
+// Tek ikon yıldız + (masaüstü: tek tıkta panel) (dokunmatik: uzun bas)
+// Panel ve büyük yıldız createPortal ile <body> içine çizilir; böylece
+// herhangi bir overflow/transform tarafından kırpılmaz.
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import "./StarRatingV2.css";
 import StarFeedbackAnimation from "./StarFeedbackAnimation";
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+// Bas kontur yıldız (renksiz görünüm)
 function OutlineStar({ size = 28, active = false, className = "", title }) {
   return (
     <svg
@@ -18,7 +21,7 @@ function OutlineStar({ size = 28, active = false, className = "", title }) {
       viewBox="0 0 24 24"
       className={`sr2-star ${active ? "active" : ""} ${className}`}
     >
-      <title>{title}</title>
+      {title ? <title>{title}</title> : null}
       <path
         d="M12 2l2.955 6.201 6.844.996-4.95 4.826 1.169 6.817L12 17.77 5.982 20.84l1.169-6.817-4.95-4.826 6.844-.996L12 2z"
         fill={active ? "#FFD400" : "#FFFFFF"}
@@ -45,7 +48,6 @@ export default function StarRatingV2({
   disabled = false,
   className = "",
 }) {
-  const rootRef = useRef(null);
   const panelRef = useRef(null);
   const holdTimer = useRef(null);
 
@@ -55,16 +57,9 @@ export default function StarRatingV2({
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackValue, setFeedbackValue] = useState(0);
 
-  // === Yardımcılar ===
-  const starCenter = useCallback(() => {
-    const el = rootRef.current;
-    if (!el) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const r = el.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  }, []);
-
+  // paneli ekranda imlecin biraz üstünde aç
   const openPanelAt = useCallback((clientX, clientY) => {
-    const OFFSET_Y = 56; // parmak üstünde/ikonun biraz üzerinde göster
+    const OFFSET_Y = 56; // parmak üstü
     const px = clamp(clientX, 40, window.innerWidth - 40);
     const py = clamp(clientY - OFFSET_Y, 60, window.innerHeight - 80);
     setPanelPos({ x: px, y: py });
@@ -77,6 +72,7 @@ export default function StarRatingV2({
     setHoverStars(0);
   }, []);
 
+  // panel içi hangi yıldıza denk geliyor?
   const computeStarsFromPointer = useCallback((clientX) => {
     const el = panelRef.current;
     if (!el) return 0;
@@ -87,6 +83,7 @@ export default function StarRatingV2({
     return clamp(idx, 1, 5);
   }, []);
 
+  // oy işlemi + animasyon + ses
   const commitVote = useCallback(
     async (value) => {
       if (disabled || !value) return;
@@ -102,13 +99,29 @@ export default function StarRatingV2({
       } finally {
         setFeedbackValue(value);
         setShowFeedback(true);
-        setTimeout(() => setShowFeedback(false), 650);
+        window.setTimeout(() => setShowFeedback(false), 650);
       }
     },
     [disabled, onRate, soundSrc]
   );
 
-  // === Etkileşim: Pointer tabanlı birleşik yaklaşım ===
+  // pointer olayları
+  const onPointerDown = (e) => {
+    if (disabled) return;
+    const p = e.touches?.[0] || e;
+
+    // Masaüstü: tek tıkta paneli hemen aç
+    if (!e.touches) {
+      openPanelAt(p.clientX, p.clientY);
+      return;
+    }
+
+    // Dokunmatik: uzun basınca aç
+    holdTimer.current = window.setTimeout(() => {
+      openPanelAt(p.clientX, p.clientY);
+    }, 300);
+  };
+
   const clearHold = () => {
     if (holdTimer.current) {
       clearTimeout(holdTimer.current);
@@ -116,113 +129,114 @@ export default function StarRatingV2({
     }
   };
 
-  const onPointerDown = (e) => {
-    if (disabled) return;
-    // Uzun basınca panel açılsın
-    const p = e.nativeEvent;
-    const clientX = p.clientX ?? starCenter().x;
-    const clientY = p.clientY ?? starCenter().y;
-    clearHold();
-    holdTimer.current = setTimeout(() => openPanelAt(clientX, clientY), 300);
-  };
-
   const onPointerUp = async (e) => {
     if (disabled) return;
-    // Eğer panel açık değilse KISA TIKTA artık 1★ VERMİYORUZ —
-    // Masaüstünde kısa tık, 5'li paneli açsın.
-    if (!panelOpen) {
+    const up = e.changedTouches?.[0] || e;
+
+    // Panel açıksa bırakma konumuna göre oyla
+    if (panelOpen) {
       clearHold();
-      const { x, y } = starCenter();
-      openPanelAt(x, y);
+      const el = panelRef.current;
+      if (!el) {
+        closePanel();
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const inside =
+        up.clientX >= rect.left &&
+        up.clientX <= rect.right &&
+        up.clientY >= rect.top &&
+        up.clientY <= rect.bottom;
+
+      if (inside && hoverStars > 0) {
+        closePanel();
+        await commitVote(hoverStars);
+      } else {
+        closePanel();
+      }
       return;
     }
 
-    clearHold();
-    const up = e.nativeEvent;
-    const rect = panelRef.current?.getBoundingClientRect();
-    if (!rect) { closePanel(); return; }
-
-    const inside =
-      up.clientX >= rect.left &&
-      up.clientX <= rect.right &&
-      up.clientY >= rect.top &&
-      up.clientY <= rect.bottom;
-
-    if (inside && hoverStars > 0) {
-      closePanel();
-      await commitVote(hoverStars);
-    } else {
-      closePanel();
+    // Panel kapalı (dokunmatik kısa dokunuş): 1★ ver
+    if (e.touches) {
+      clearHold();
+      await commitVote(1);
     }
   };
 
   const onPointerMove = (e) => {
     if (!panelOpen) return;
-    const p = e.nativeEvent;
-    const stars = computeStarsFromPointer(p.clientX);
+    const move = e.touches?.[0] || e;
+    const stars = computeStarsFromPointer(move.clientX);
     setHoverStars(stars);
-    if (e.cancelable) e.preventDefault();
+    if (e.cancelable) e.preventDefault(); // panel açıkken sayfayı kaydırma
   };
 
-  // Dışa tıklayınca veya ESC ile kapat
+  // dışa tıklayınca kapat
   useEffect(() => {
-    const onDocDown = (ev) => {
+    const onDocDown = (e) => {
       if (!panelOpen) return;
       const p = panelRef.current;
-      if (p && !p.contains(ev.target)) closePanel();
-    };
-    const onEsc = (ev) => {
-      if (ev.key === "Escape") closePanel();
+      if (p && !p.contains(e.target)) closePanel();
     };
     document.addEventListener("pointerdown", onDocDown, { passive: true });
-    document.addEventListener("keydown", onEsc);
-    return () => {
-      document.removeEventListener("pointerdown", onDocDown);
-      document.removeEventListener("keydown", onEsc);
-    };
+    return () => document.removeEventListener("pointerdown", onDocDown);
   }, [panelOpen, closePanel]);
+
+  // temizlik
+  useEffect(() => () => clearHold(), []);
 
   return (
     <div
       className={`sr2-root ${className}`}
-      ref={rootRef}
-      // Pointer tabanlı birleşik eventler
-      onPointerDown={onPointerDown}
-      onPointerUp={onPointerUp}
-      onPointerMove={onPointerMove}
+      onTouchStart={onPointerDown}
+      onTouchEnd={onPointerUp}
+      onTouchMove={onPointerMove}
+      onMouseDown={onPointerDown}
+      onMouseUp={onPointerUp}
+      onMouseMove={onPointerMove}
       role="button"
       aria-label="Yıldız ver"
       tabIndex={0}
     >
+      {/* Tek ikon (renksiz) */}
       <OutlineStar size={size} title="Yıldız ver" />
 
-      {panelOpen && (
-        <div
-          className="sr2-panel"
-          ref={panelRef}
-          style={{ left: panelPos.x, top: panelPos.y }}
-        >
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              className="sr2-panel-btn"
-              onMouseEnter={() => setHoverStars(n)}
-              onFocus={() => setHoverStars(n)}
-              onClick={async (e) => {
-                e.stopPropagation();
-                closePanel();
-                await commitVote(n);
-              }}
-              aria-label={`${n} yıldız seç`}
-              type="button"
-            >
-              <OutlineStar size={28} active={n <= hoverStars} />
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Panel (5 yıldız) — body portal */}
+      {panelOpen &&
+        createPortal(
+          <div
+            className="sr2-panel"
+            ref={panelRef}
+            style={{ left: panelPos.x, top: panelPos.y }}
+          >
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                className="sr2-panel-btn"
+                onMouseEnter={() => setHoverStars(n)}
+                onFocus={() => setHoverStars(n)}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  closePanel();
+                  await commitVote(n);
+                }}
+                aria-label={`${n} yıldız seç`}
+                type="button"
+              >
+                <OutlineStar size={28} active={n <= hoverStars} />
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
 
-      <StarFeedbackAnimation visible={showFeedback} value={feedbackValue} />
+      {/* Büyük geri bildirim (body portal) */}
+      {showFeedback &&
+        createPortal(
+          <StarFeedbackAnimation visible={showFeedback} value={feedbackValue} />,
+          document.body
+        )}
     </div>
   );
 }
