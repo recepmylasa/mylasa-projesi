@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { db, auth } from "./firebase";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
@@ -32,14 +32,18 @@ const DotsIcon = () => (
 );
 
 /* ===== Utils ===== */
-const formatTimeAgo = (ts) => {
+// IG tarzı kısa Türkçe: 45Sn, 3D (dakika), 5S (saat), 10G (gün)
+const formatTimeAgoShort = (ts) => {
   if (!ts) return "";
-  const date = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
+  const date = ts?.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
   const diff = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (diff < 60) return `${diff}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}dk`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}sa`;
-  return `${Math.floor(diff / 86400)}g`;
+  if (diff < 60) return `${diff}Sn`;
+  const m = Math.floor(diff / 60);
+  if (m < 60) return `${m}D`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}S`;
+  const g = Math.floor(h / 24);
+  return `${g}G`;
 };
 const formatCount = (n) => {
   if (typeof n !== "number") return "";
@@ -58,9 +62,11 @@ function CommentRow({
   currentUser,   // auth.currentUser
   comment,       // yorum objesi
   onUserClick,   // kullanıcı adına tıklandığında
+  openMenuId,    // aktif açık menü id’si (üstten gelir)
+  setOpenMenuId, // menü kontrolcüsü (üstten gelir)
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
+  const rowRef = useRef(null);
 
   const avg =
     (Number(comment?.ratingSum || 0) > 0 && Number(comment?.ratingCount || 0) > 0)
@@ -71,18 +77,35 @@ function CommentRow({
     currentUser &&
     (comment?.userId === currentUser.uid || isOwner);
 
+  const menuOpen = openMenuId === (comment.commentId || "");
+
+  const closeMenu = useCallback(() => setOpenMenuId(null), [setOpenMenuId]);
+
+  // Dışa tıklayınca menüyü kapat
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e) => {
+      if (!rowRef.current) return;
+      if (!rowRef.current.contains(e.target)) {
+        closeMenu();
+      }
+    };
+    document.addEventListener("pointerdown", onDown, { passive: true });
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [menuOpen, closeMenu]);
+
   const handleDelete = async () => {
-    setMenuOpen(false);
+    closeMenu();
     if (!canDelete) return;
     if (!window.confirm("Bu yorumu silmek istiyor musun?")) return;
 
     try {
       const coll = contentType === "clip" ? "clips" : "posts";
       const ref = doc(db, coll, contentId);
-      // dokümanı UI state’inden güncelle
-      const snap = await new Promise((res) =>
-        onSnapshot(ref, (s) => { res(s); }, { once: true })
-      );
+      // sadece bir kez çekip güncelle
+      const snap = await new Promise((resolve) => {
+        const unsub = onSnapshot(ref, (s) => { resolve(s); unsub(); });
+      });
       const data = snap.data();
       const list = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
       const filtered = list.filter((y) => (y.commentId || "") !== (comment.commentId || ""));
@@ -103,10 +126,9 @@ function CommentRow({
     try {
       const coll = contentType === "clip" ? "clips" : "posts";
       const ref = doc(db, coll, contentId);
-
-      const snap = await new Promise((res) =>
-        onSnapshot(ref, (s) => { res(s); }, { once: true })
-      );
+      const snap = await new Promise((resolve) => {
+        const unsub = onSnapshot(ref, (s) => { resolve(s); unsub(); });
+      });
       const data = snap.data();
       const arr = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
       const idx = arr.findIndex((y) => (y.commentId || "") === comment.commentId);
@@ -136,8 +158,14 @@ function CommentRow({
     }
   };
 
+  // Bu yorum için benim puanım var mı? (küçük yıldızı kırmızı doldurmak için)
+  const myScore =
+    currentUser && comment?.ratingsBy && typeof comment.ratingsBy[currentUser.uid] === "number"
+      ? Number(comment.ratingsBy[currentUser.uid])
+      : null;
+
   return (
-    <div className="pdmDk-commentItem">
+    <div ref={rowRef} className={`pdmDk-commentItem${menuOpen ? " menu-open" : ""}`}>
       <img
         src={comment.photoURL || "https://placehold.co/32x32/EFEFEF/AAAAAA?text=P"}
         alt={comment.username || "kullanıcı"}
@@ -149,7 +177,7 @@ function CommentRow({
           {comment.text}
         </p>
         <div className="pdmDk-commentMeta">
-          <span className="pdmDk-commentTime">{formatTimeAgo(comment.timestamp)}</span>
+          <span className="pdmDk-commentTime">{formatTimeAgoShort(comment.timestamp)}</span>
           {comment?.ratingCount > 0 && (
             <span className="pdmDk-commentRating">
               {avg.toFixed(1)} ★ · {comment.ratingCount}
@@ -159,27 +187,25 @@ function CommentRow({
       </div>
 
       <div className="pdmDk-commentActions">
-        {!rateOpen ? (
-          <button
-            className="pdmDk-cmStar"
-            title="Yorumu puanla"
-            onClick={() => setRateOpen(true)}
-            aria-label="Yorumu puanla"
-          >
-            ★
-          </button>
-        ) : (
-          <div className="pdmDk-cmRate">
-            <StarRatingV2 size={18} onRate={handleRate} />
-          </div>
-        )}
+        {/* Mini yıldız: masaüstünde tek tıkla panel açar */}
+        <div className="pdmDk-cmStar" title="Yorumu puanla" aria-label="Yorumu puanla">
+          <StarRatingV2
+            size={18}
+            onRate={handleRate}
+            className={myScore ? "sr2--rated" : ""}
+          />
+        </div>
 
         <div className="pdmDk-cmMoreWrap">
           <button
             className="pdmDk-cmMore"
             aria-label="Daha fazla"
             title="Daha fazla"
-            onClick={() => setMenuOpen((s) => !s)}
+            onClick={() =>
+              setOpenMenuId((prev) =>
+                prev === (comment.commentId || "") ? null : (comment.commentId || "")
+              )
+            }
           >
             <DotsIcon />
           </button>
@@ -190,7 +216,7 @@ function CommentRow({
                   Sil
                 </button>
               )}
-              <button onClick={() => setMenuOpen(false)} role="menuitem">İptal</button>
+              <button onClick={closeMenu} role="menuitem">İptal</button>
             </div>
           )}
         </div>
@@ -208,9 +234,18 @@ export default function PostDetailModalDesktop({ post, onClose, onUserClick, akt
   const [isSaved, setIsSaved] = useState(false);
   const [agg, setAgg] = useState(null);
   const [shareToast, setShareToast] = useState("");
+  const [openMenuId, setOpenMenuId] = useState(null); // sadece BİR menü açık
   const inputRef = useRef(null);
 
   const currentUser = auth.currentUser;
+
+  // Herhangi bir yere tıklanınca global menüyü kapat (ör. boş alan)
+  useEffect(() => {
+    if (!openMenuId) return;
+    const onDown = () => setOpenMenuId(null);
+    window.addEventListener("blur", onDown);
+    return () => window.removeEventListener("blur", onDown);
+  }, [openMenuId]);
 
   useEffect(() => {
     if (!post || !post.id || !post.type) return;
@@ -327,8 +362,8 @@ export default function PostDetailModalDesktop({ post, onClose, onUserClick, akt
   const isOwner = contentData?.authorId === aktifKullaniciId;
 
   return (
-    <div className="pdmDk-root">
-      <div className="pdmDk-card">
+    <div className="pdmDk-root" onClick={() => openMenuId && setOpenMenuId(null)}>
+      <div className="pdmDk-card" onClick={(e) => e.stopPropagation()}>
         <div className="pdmDk-media">
           {contentData?.type === "clip" ? (
             <video src={contentData?.mediaUrl} className="pdmDk-video" autoPlay controls playsInline />
@@ -376,6 +411,8 @@ export default function PostDetailModalDesktop({ post, onClose, onUserClick, akt
                 currentUser={currentUser}
                 comment={y}
                 onUserClick={onUserClick}
+                openMenuId={openMenuId}
+                setOpenMenuId={setOpenMenuId}
               />
             ))}
           </div>
@@ -419,7 +456,7 @@ export default function PostDetailModalDesktop({ post, onClose, onUserClick, akt
               <div className="pdmDk-lockedBanner">Yorumlar kapalı</div>
             )}
 
-            <p className="pdmDk-date">{formatTimeAgo(contentData?.tarih)}</p>
+            <p className="pdmDk-date">{formatTimeAgoShort(contentData?.tarih)}</p>
 
             {!contentData?.yorumlarKapali && (
               <form onSubmit={handleYorumGonder} className="pdmDk-commentForm">

@@ -82,7 +82,7 @@
   background: #000;
 }
 
-/* Video: letterbox + tam merkez (yatayda zoom yok, simetrik boşluk) */
+/* Video: letterbox + tam merkez */
 .clip-frame > video {
   position: absolute;
   top: 50%;
@@ -97,24 +97,27 @@
   background: #000;
 }
 
-/* Sağ panel — BEYAZ tema */
+/* Sağ panel — BEYAZ tema (sticky header/footer ile) */
 .clip-meta {
   --icon: #262626;
   --icon-hover-bg: rgba(0,0,0,.06);
   --muted: #8e8e8e;
-
   background: #fff;
   color: #262626;
   display: grid;
   grid-template-rows: auto 1fr auto auto auto; /* head / comments / composer / actions / footer */
   height: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
-/* Üst başlık */
+/* Üst başlık (sticky) */
 .clip-meta-head {
+  position: sticky; top: 0; z-index: 10;
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 14px;
   border-bottom: 1px solid rgba(0,0,0,.08);
+  background: #fff;
 }
 .clip-head-left { display: flex; align-items: center; gap: 10px; }
 .clip-avatar {
@@ -136,7 +139,7 @@
 }
 .clip-ghost-btn:hover { background: var(--icon-hover-bg); }
 
-/* Yorumlar alanı */
+/* Yorumlar alanı (sadece burası scroll) */
 .clip-comments {
   padding: 12px 14px;
   overflow: auto;
@@ -161,7 +164,9 @@
   position: relative;
   display: flex; align-items: flex-start; gap: 8px;
   margin-bottom: 10px;
+  z-index: 1;
 }
+.clip-comment-row.menu-open { z-index: 50; }
 .clip-comment-body { min-width: 0; }
 .clip-comment-meta {
   display: flex; align-items: center; gap: 10px;
@@ -182,7 +187,9 @@
   transition: opacity .12s ease, background-color .12s ease;
 }
 .clip-comment-row:hover .clip-cmStar,
-.clip-comment-row:hover .clip-cmMore { opacity: 1; }
+.clip-comment-row:hover .clip-cmMore,
+.clip-comment-row.menu-open .clip-cmStar,
+.clip-comment-row.menu-open .clip-cmMore { opacity: 1; }
 .clip-cmStar:hover, .clip-cmMore:hover { background: rgba(0,0,0,.06); }
 .clip-cmRate { margin-right: 4px; }
 
@@ -190,7 +197,7 @@
 .clip-cmMenu {
   position: absolute; right: 0; top: 26px; background: #fff;
   border: 1px solid rgba(0,0,0,.08); border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0,0,0,.18); min-width: 120px; padding: 6px; z-index: 2;
+  box-shadow: 0 8px 30px rgba(0,0,0,.18); min-width: 120px; padding: 6px; z-index: 60;
   display: flex; flex-direction: column; gap: 2px;
 }
 .clip-cmMenu button {
@@ -199,11 +206,10 @@
 .clip-cmMenu button:hover { background: #f7f7f7; }
 .clip-cmMenu .danger { color: #ed4956; }
 
-/* Composer (beyaz) */
+/* Composer (sticky) */
 .clip-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  position: sticky; bottom: 76px; z-index: 9;
+  display: flex; align-items: flex-end; gap: 8px;
   padding: 8px 10px;
   border-top: 1px solid rgba(0,0,0,.08);
   background: #fff;
@@ -238,8 +244,9 @@
 .clip-composer-send:active { transform: scale(.96); }
 .clip-composer--disabled { opacity: .6; pointer-events: none; }
 
-/* Alt aksiyon buton satırı */
+/* Alt aksiyon buton satırı (sticky) */
 .clip-actions {
+  position: sticky; bottom: 40px; z-index: 9;
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 10px;
   border-top: 1px solid rgba(0,0,0,.08);
@@ -261,8 +268,9 @@
 /* Kaydet aktif */
 .save-active { color: #111; }
 
-/* Footer: metrik + zaman */
+/* Footer: metrik + zaman (en altta sticky) */
 .clip-meta-footer {
+  position: sticky; bottom: 0; z-index: 9;
   padding: 8px 12px 12px;
   border-top: 1px solid rgba(0,0,0,.08);
   background: #fff;

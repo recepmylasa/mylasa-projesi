@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { db, auth } from './firebase';
 import { doc, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import './PermalinkPage.css';
@@ -18,14 +18,18 @@ const DotsIcon = () => (
 );
 
 /* ----------------- UTIL ----------------- */
-const formatTimeAgo = (ts) => {
+// IG tarzı kısa Türkçe: 45Sn, 3D (dakika), 5S (saat), 10G (gün)
+const formatTimeAgoShort = (ts) => {
   if (!ts) return '';
   const date = ts?.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
   const diff = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (diff < 60) return `${diff}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}dk`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}sa`;
-  return `${Math.floor(diff / 86400)}g`;
+  if (diff < 60) return `${diff}Sn`;
+  const m = Math.floor(diff / 60);
+  if (m < 60) return `${m}D`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}S`;
+  const g = Math.floor(h / 24);
+  return `${g}G`;
 };
 const formatCount = (n) => {
   if (typeof n !== 'number') return '';
@@ -50,18 +54,40 @@ const getPermalink = ({ type, id }) => {
 const makeCommentId = (uid) => `${uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
 /* ----------------- COMMENT ROW ----------------- */
-function CommentRow({ contentId, contentType, isOwner, currentUser, comment }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+function CommentRow({
+  contentId,
+  contentType,
+  isOwner,
+  currentUser,
+  comment,
+  openMenuId,
+  setOpenMenuId,
+}) {
   const [rateOpen, setRateOpen] = useState(false);
+  const rowRef = useRef(null);
 
-  const avg = (Number(comment?.ratingSum || 0) > 0 && Number(comment?.ratingCount || 0) > 0)
-    ? Number(comment.ratingSum) / Number(comment.ratingCount)
-    : 0;
+  const avg =
+    (Number(comment?.ratingSum || 0) > 0 && Number(comment?.ratingCount || 0) > 0)
+      ? Number(comment.ratingSum) / Number(comment.ratingCount)
+      : 0;
 
   const canDelete = currentUser && (comment?.userId === currentUser.uid || isOwner);
+  const menuOpen = openMenuId === (comment.commentId || '');
+  const closeMenu = useCallback(() => setOpenMenuId(null), [setOpenMenuId]);
+
+  // dışa tıklayınca menüyü kapat
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e) => {
+      if (!rowRef.current) return;
+      if (!rowRef.current.contains(e.target)) closeMenu();
+    };
+    document.addEventListener('pointerdown', onDown, { passive: true });
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [menuOpen, closeMenu]);
 
   const handleDelete = async () => {
-    setMenuOpen(false);
+    closeMenu();
     if (!canDelete) return;
     if (!window.confirm('Bu yorumu silmek istiyor musun?')) return;
     try {
@@ -112,8 +138,13 @@ function CommentRow({ contentId, contentType, isOwner, currentUser, comment }) {
     }
   };
 
+  const myScore =
+    currentUser && comment?.ratingsBy && typeof comment.ratingsBy[currentUser.uid] === 'number'
+      ? Number(comment.ratingsBy[currentUser.uid])
+      : null;
+
   return (
-    <div className="pdm-commentItem">
+    <div ref={rowRef} className={`pdm-commentItem${menuOpen ? ' menu-open' : ''}`}>
       <img
         src={comment.photoURL || 'https://placehold.co/32x32/EFEFEF/AAAAAA?text=P'}
         alt={comment.username || 'kullanıcı'}
@@ -123,7 +154,7 @@ function CommentRow({ contentId, contentType, isOwner, currentUser, comment }) {
       <div className="pdm-commentBody">
         <p><strong>{comment.username || 'kullanıcı'}</strong> {comment.text}</p>
         <div className="pdm-commentMeta">
-          <span className="pdm-commentTime">{formatTimeAgo(comment.timestamp)}</span>
+          <span className="pdm-commentTime">{formatTimeAgoShort(comment.timestamp)}</span>
           {comment?.ratingCount > 0 && (
             <span className="pdm-commentRating">{avg.toFixed(1)} ★ · {comment.ratingCount}</span>
           )}
@@ -131,27 +162,21 @@ function CommentRow({ contentId, contentType, isOwner, currentUser, comment }) {
       </div>
 
       <div className="pdm-commentActions">
-        {!rateOpen ? (
-          <button
-            className="pdm-cmStar"
-            title="Yorumu puanla"
-            aria-label="Yorumu puanla"
-            onClick={() => setRateOpen(true)}
-          >
-            ★
-          </button>
-        ) : (
-          <div className="pdm-cmRate">
-            <StarRatingV2 size={18} onRate={handleRate} />
-          </div>
-        )}
+        {/* mini ⭐: masaüstünde tek tıkla panel açılır (StarRatingV2) */}
+        <div className="pdm-cmStar" title="Yorumu puanla" aria-label="Yorumu puanla">
+          <StarRatingV2 size={18} onRate={handleRate} className={myScore ? 'sr2--rated' : ''} />
+        </div>
 
         <div className="pdm-cmMoreWrap">
           <button
             className="pdm-cmMore"
             aria-label="Daha fazla"
             title="Daha fazla"
-            onClick={() => setMenuOpen((s) => !s)}
+            onClick={() =>
+              setOpenMenuId(prev =>
+                prev === (comment.commentId || '') ? null : (comment.commentId || '')
+              )
+            }
           >
             <DotsIcon />
           </button>
@@ -160,7 +185,7 @@ function CommentRow({ contentId, contentType, isOwner, currentUser, comment }) {
               {canDelete && (
                 <button className="danger" role="menuitem" onClick={handleDelete}>Sil</button>
               )}
-              <button role="menuitem" onClick={() => setMenuOpen(false)}>İptal</button>
+              <button role="menuitem" onClick={closeMenu}>İptal</button>
             </div>
           )}
         </div>
@@ -178,6 +203,7 @@ export default function PermalinkPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [yeniYorum, setYeniYorum] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState(null);
 
   const currentUser = auth.currentUser;
 
@@ -335,8 +361,8 @@ export default function PermalinkPage() {
   const isOwner = contentData?.authorId === auth.currentUser?.uid;
 
   return (
-    <div className="pdm-overlay">
-      <div className="pdm-content">
+    <div className="pdm-overlay" onClick={() => openMenuId && setOpenMenuId(null)}>
+      <div className="pdm-content" onClick={(e) => e.stopPropagation()}>
         {/* Sol: medya alanı */}
         <div className="pdm-media">
           <div className="pdm-frame" aria-label="Medya çerçevesi 9:16">
@@ -403,6 +429,8 @@ export default function PermalinkPage() {
                 isOwner={isOwner}
                 currentUser={currentUser}
                 comment={y}
+                openMenuId={openMenuId}
+                setOpenMenuId={setOpenMenuId}
               />
             ))}
           </div>
@@ -428,7 +456,7 @@ export default function PermalinkPage() {
               </button>
             </div>
 
-            <p className="pdm-date">{formatTimeAgo(contentData?.tarih)}</p>
+            <p className="pdm-date">{formatTimeAgoShort(contentData?.tarih)}</p>
 
             <form onSubmit={handleYorumGonder} className="pdm-commentForm">
               <img

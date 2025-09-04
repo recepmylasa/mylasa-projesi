@@ -10,7 +10,6 @@ import {
   deleteDoc,
   updateDoc,
   doc,
-  getDoc,
 } from "firebase/firestore";
 import { getStorage, ref as sRef, deleteObject } from "firebase/storage";
 import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
@@ -27,17 +26,6 @@ function ts(val) {
   const t = Date.parse(val);
   return Number.isFinite(t) ? t : 0;
 }
-
-/* util: time-ago */
-const formatTimeAgo = (value) => {
-  if (!value) return "";
-  const d = value?.seconds ? new Date(value.seconds * 1000) : new Date(value);
-  const diff = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (diff < 60) return `${diff}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}dk`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}sa`;
-  return `${Math.floor(diff / 86400)}g`;
-};
 
 /* küçük Play rozeti */
 const PlayBadge = () => (
@@ -116,34 +104,31 @@ function Avatar({ src, size = 40 }) {
   );
 }
 
-/* id üretimi & fallback eşleştirme */
-const makeCommentId = (uid) => `${uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-const deriveId = (y, idx = 0) => y?.commentId || `${y?.userId || "u"}_${Date.parse(y?.timestamp || 0) || 0}` || `idx_${idx}`;
-
-/* ==== Tek yorum satırı (mini ⭐ + üç nokta) ==== */
-function CommentRow({ selected, comment, currentUser }) {
+/* ==== Yorum satırı (mini yıldız + üç nokta) ==== */
+function ClipCommentRow({ clipId, isOwner, currentUser, comment }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [rateOpen, setRateOpen] = useState(false);
 
-  const isOwner = currentUser && selected?.authorId === currentUser.uid;
-  const canDelete = currentUser && (comment?.userId === currentUser.uid || isOwner);
+  const avg =
+    Number(comment?.ratingCount) > 0
+      ? Number(comment?.ratingSum || 0) / Number(comment.ratingCount)
+      : 0;
 
-  const avg = (Number(comment?.ratingSum || 0) > 0 && Number(comment?.ratingCount || 0) > 0)
-    ? Number(comment.ratingSum) / Number(comment.ratingCount)
-    : 0;
+  const canDelete =
+    currentUser && (comment?.userId === currentUser.uid || isOwner);
 
   const handleDelete = async () => {
     setMenuOpen(false);
     if (!canDelete) return;
     if (!window.confirm("Bu yorumu silmek istiyor musun?")) return;
     try {
-      const ref = doc(db, "clips", selected.id);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) return;
+      const ref = doc(db, "clips", clipId);
+      // tek seferlik çek
+      const snap = await new Promise((resolve) => {
+        const unsub = onSnapshot(ref, (s) => { resolve(s); unsub(); });
+      });
       const data = snap.data();
       const list = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
-      const targetId = deriveId(comment);
-      const filtered = list.filter((y, i) => deriveId(y, i) !== targetId);
+      const filtered = list.filter((y) => (y.commentId || "") !== (comment.commentId || ""));
       await updateDoc(ref, { yorumlar: filtered });
     } catch (e) {
       console.error(e);
@@ -153,62 +138,64 @@ function CommentRow({ selected, comment, currentUser }) {
 
   const handleRate = async (value) => {
     if (!currentUser) { alert("Puanlamak için giriş yap."); return; }
-    const ref = doc(db, "clips", selected.id);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return;
-    const data = snap.data();
-    const arr = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
-    const targetId = deriveId(comment);
-    const idx = arr.findIndex((y, i) => deriveId(y, i) === targetId);
-    if (idx === -1) return;
+    if (!comment?.commentId) return;
+    try {
+      const ref = doc(db, "clips", clipId);
+      const snap = await new Promise((resolve) => {
+        const unsub = onSnapshot(ref, (s) => { resolve(s); unsub(); });
+      });
+      const data = snap.data();
+      const arr = Array.isArray(data?.yorumlar) ? [...data.yorumlar] : [];
+      const idx = arr.findIndex((y) => (y.commentId || "") === comment.commentId);
+      if (idx === -1) return;
 
-    const c = { ...arr[idx] };
-    const map = { ...(c.ratingsBy || {}) };
-    const prev = typeof map[currentUser.uid] === "number" ? map[currentUser.uid] : null;
+      const c = { ...arr[idx] };
+      const map = { ...(c.ratingsBy || {}) };
+      const prev = typeof map[currentUser.uid] === "number" ? map[currentUser.uid] : null;
 
-    let sum = Number(c.ratingSum || 0);
-    let count = Number(c.ratingCount || 0);
+      let sum = Number(c.ratingSum || 0);
+      let count = Number(c.ratingCount || 0);
 
-    if (prev != null) { sum -= Number(prev); } else { count += 1; }
-    map[currentUser.uid] = Number(value);
-    sum += Number(value);
+      if (prev != null) {
+        sum -= Number(prev);
+      } else {
+        count += 1;
+      }
+      map[currentUser.uid] = Number(value);
+      sum += Number(value);
 
-    arr[idx] = { ...c, ratingsBy: map, ratingSum: sum, ratingCount: count };
-    await updateDoc(ref, { yorumlar: arr });
-    setRateOpen(false);
+      arr[idx] = { ...c, ratingsBy: map, ratingSum: sum, ratingCount: count };
+      await updateDoc(ref, { yorumlar: arr });
+    } catch (e) {
+      console.error(e);
+      alert("Puan verilemedi.");
+    }
   };
 
   return (
-    <div className="clip-comment-row">
+    <div className={`clip-comment-row${menuOpen ? " menu-open" : ""}`}>
       <Avatar src={comment.photoURL || null} size={28} />
       <div className="clip-comment-body">
-        <div className="clip-caption-bubble">
+        <div className="clip-caption-bubble" style={{ background: "transparent", padding: 0 }}>
           <span className="clip-username--inline">{comment.username || "kullanıcı"}</span>{" "}
           {comment.text}
         </div>
         <div className="clip-comment-meta">
-          <span className="clip-comment-time">{formatTimeAgo(comment.timestamp)}</span>
+          <span className="clip-comment-time">
+            {comment?.timestamp ? new Date(ts(comment.timestamp)).toLocaleString() : ""}
+          </span>
           {comment?.ratingCount > 0 && (
-            <span className="clip-comment-rating">{avg.toFixed(1)} ★ · {comment.ratingCount}</span>
+            <span className="clip-comment-rating">
+              {avg.toFixed(1)} ★ · {comment.ratingCount}
+            </span>
           )}
         </div>
       </div>
 
       <div className="clip-comment-actions">
-        {!rateOpen ? (
-          <button
-            className="clip-cmStar"
-            title="Yorumu puanla"
-            aria-label="Yorumu puanla"
-            onClick={() => setRateOpen(true)}
-          >
-            ★
-          </button>
-        ) : (
-          <div className="clip-cmRate">
-            <StarRatingV2 size={18} onRate={handleRate} />
-          </div>
-        )}
+        <div className="clip-cmStar" title="Yorumu puanla" aria-label="Yorumu puanla">
+          <StarRatingV2 size={18} onRate={handleRate} />
+        </div>
 
         <div className="clip-cmMoreWrap">
           <button
@@ -222,9 +209,11 @@ function CommentRow({ selected, comment, currentUser }) {
           {menuOpen && (
             <div className="clip-cmMenu" role="menu">
               {canDelete && (
-                <button className="danger" role="menuitem" onClick={handleDelete}>Sil</button>
+                <button className="danger" onClick={handleDelete} role="menuitem">
+                  Sil
+                </button>
               )}
-              <button role="menuitem" onClick={() => setMenuOpen(false)}>İptal</button>
+              <button onClick={() => setMenuOpen(false)} role="menuitem">İptal</button>
             </div>
           )}
         </div>
@@ -526,19 +515,20 @@ export default function ClipsDesktop({ userId }) {
     try {
       const ref = doc(db, "clips", selected.id);
 
-      // >>> username ve photoURL + deterministik commentId ve rating alanları
-      const displayName = auth.currentUser?.displayName || "kullanıcı";
+      const displayName =
+        auth.currentUser?.displayName ||
+        authorProfile?.kullaniciAdi ||
+        "kullanıcı";
       const photoURL = auth.currentUser?.photoURL || null;
 
-      const snap = await getDoc(ref);
-      const current = snap.exists() && Array.isArray(snap.data()?.yorumlar) ? [...snap.data().yorumlar] : [];
+      const current = Array.isArray(selected.yorumlar) ? [...selected.yorumlar] : [];
       current.push({
-        commentId: makeCommentId(uid),
+        commentId: `${uid}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
         userId: uid,
         username: displayName,
         photoURL,
         text,
-        timestamp: new Date().toISOString(), // serverTimestamp() array içinde sorun çıkarıyordu
+        timestamp: new Date().toISOString(),
         ratingsBy: {},
         ratingSum: 0,
         ratingCount: 0,
@@ -551,7 +541,7 @@ export default function ClipsDesktop({ userId }) {
       console.error(e);
       alert("Yorum eklenemedi. Lütfen tekrar dene.");
     }
-  }, [composerText, selected]);
+  }, [composerText, selected, authorProfile]);
 
   const onComposerKeyDown = useCallback(
     (e) => {
@@ -594,6 +584,7 @@ export default function ClipsDesktop({ userId }) {
   }
 
   const comments = selected?.yorumlar || [];
+  const currentUid = auth.currentUser?.uid;
   const ratingCount = contentAgg?.count ?? Number(selected?.starsCount || 0);
   const ratingAvg =
     contentAgg?.avg ?? contentAgg?.bayes ?? (ratingCount > 0 ? (contentAgg?.sum || 0) / ratingCount : 0);
@@ -646,7 +637,7 @@ export default function ClipsDesktop({ userId }) {
       {/* Modal */}
       {selected && (
         <div className="clip-lightbox" onMouseDown={close}>
-          <div className="clip-dialog" onMouseDown={stop} role="dialog" aria-modal="true">
+          <div className="clip-dialog" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             {/* sol: video sahnesi */}
             <div className="clip-stage">
               <div className="clip-frame" aria-label="Video çerçevesi 9:16">
@@ -665,7 +656,7 @@ export default function ClipsDesktop({ userId }) {
 
             {/* sağ: meta panel (beyaz) */}
             <aside className="clip-meta">
-              {/* başlık */}
+              {/* başlık (sticky) */}
               <div className="clip-meta-head">
                 <div className="clip-head-left">
                   <Avatar src={headerAvatar} />
@@ -690,7 +681,7 @@ export default function ClipsDesktop({ userId }) {
                 </div>
               </div>
 
-              {/* yorumlar */}
+              {/* yorumlar (scroll) */}
               <div className="clip-comments">
                 {selected?.caption ? (
                   <div className="clip-caption-row">
@@ -705,13 +696,14 @@ export default function ClipsDesktop({ userId }) {
                 {comments.length > 0 ? (
                   comments
                     .slice()
-                    .sort((a, b) => ts(b.timestamp) - ts(a.timestamp))
+                    .sort((a, b) => new Date(ts(b.timestamp)) - new Date(ts(a.timestamp)))
                     .map((c, i) => (
-                      <CommentRow
-                        key={deriveId(c, i)}
-                        selected={selected}
-                        comment={c}
+                      <ClipCommentRow
+                        key={c.commentId || `${c.userId}_${c.timestamp || i}`}
+                        clipId={selected.id}
+                        isOwner={selected?.authorId === currentUid}
                         currentUser={auth.currentUser}
+                        comment={c}
                       />
                     ))
                 ) : (
@@ -719,7 +711,7 @@ export default function ClipsDesktop({ userId }) {
                 )}
               </div>
 
-              {/* composer */}
+              {/* composer (sticky) */}
               <div
                 className={
                   "clip-composer" + (selected?.commentsDisabled ? " clip-composer--disabled" : "")
@@ -747,7 +739,7 @@ export default function ClipsDesktop({ userId }) {
                 </button>
               </div>
 
-              {/* aksiyon bar */}
+              {/* aksiyon bar (sticky) */}
               <div className="clip-actions" role="group" aria-label="Aksiyonlar">
                 <div className="clip-actions-left">
                   <StarRatingV2
@@ -798,7 +790,7 @@ export default function ClipsDesktop({ userId }) {
                 </div>
               </div>
 
-              {/* metrikler */}
+              {/* metrikler (sticky en alt) */}
               <div className="clip-meta-footer">
                 {!selected?.hideLikes && (
                   <div className="clip-stats">
