@@ -1,5 +1,5 @@
 // src/ClipDetailModalDesktop.js
-// Masaüstü Clip modalı — Reels paritesi: tekil menü + kısa TR zaman + portal menü
+// Masaüstü Clip modalı — Reels paritesi: tekil menü + kısa TR zaman + BODY portal menü
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -18,7 +18,7 @@ function toMillis(ts) {
   return 0;
 }
 
-export function formatTimeAgoTR(input) {
+function formatTimeAgoTR(input) {
   const then = toMillis(input);
   if (!then) return "";
   const diffS = Math.max(0, Math.floor((Date.now() - then) / 1000));
@@ -30,6 +30,8 @@ export function formatTimeAgoTR(input) {
   const g = Math.floor(h / 24);
   return `${g}g`;                                     // Xg
 }
+
+const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 
 /* =============== Body portal ================= */
 function useBodyPortal() {
@@ -81,9 +83,7 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
     if (!openMenu) return;
     const onDown = (e) => {
       const menuEl = document.querySelector('[data-clipdesk-menu="true"]');
-      const trigger = document.querySelector(
-        `[data-cm-trigger="${openMenu.id}"]`
-      );
+      const trigger = document.querySelector(`*[data-cm-trigger="${openMenu.id}"]`);
       if (menuEl && menuEl.contains(e.target)) return;
       if (trigger && trigger.contains(e.target)) return;
       setOpenMenu(null);
@@ -99,21 +99,20 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
     v.muted = true;
     v.playsInline = true;
     const start = async () => {
-      try {
-        await v.play();
-      } catch (_) {}
+      try { await v.play(); } catch (_) {}
     };
     start();
   }, []);
 
   const onMoreClick = (cid, ev) => {
     const r = ev.currentTarget.getBoundingClientRect();
-    // fixed koordinatlar: viewport’a göre
-    setOpenMenu((prev) =>
-      prev && prev.id === cid
-        ? null
-        : { id: cid, x: r.left + r.width, y: r.top + r.height + 8 }
-    );
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const menuW = 180;
+    const menuH = 100;
+    const x = clamp(r.left + r.width - menuW, 8, vw - menuW - 8);
+    const y = clamp(r.top + r.height + 8, 8, vh - menuH - 8);
+    setOpenMenu((prev) => (prev && prev.id === cid ? null : { id: cid, x, y }));
   };
 
   const renderMenu = () => {
@@ -122,24 +121,22 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
       position: "fixed",
       left: `${openMenu.x}px`,
       top: `${openMenu.y}px`,
-      zIndex: 2100, // modal içinde en üst katmanda
+      zIndex: 2600, // modal içinde en üst katmanda
       background: "#fff",
       border: "1px solid rgba(0,0,0,.15)",
       borderRadius: 12,
       boxShadow: "0 8px 24px rgba(0,0,0,.2)",
       padding: 8,
       minWidth: 160,
+      color: "#111",
     };
+    const itemCls = "clipdesk__menuItem";
     return createPortal(
       <div style={style} data-clipdesk-menu="true" role="menu">
-        <button role="menuitem" className="clipdesk__menuItem">
-          Şikayet Et
+        <button role="menuitem" className={itemCls} onClick={() => setOpenMenu(null)}>
+          Bağlantıyı Kopyala
         </button>
-        <button
-          role="menuitem"
-          className="clipdesk__menuItem"
-          onClick={() => setOpenMenu(null)}
-        >
+        <button role="menuitem" className={itemCls} onClick={() => setOpenMenu(null)}>
           İptal
         </button>
       </div>,
@@ -149,41 +146,26 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
 
   return (
     <div className="clipdesk__panel" role="dialog" aria-modal="true">
-      <button className="clipdesk__close" onClick={onClose} aria-label="Kapat">
-        ✕
-      </button>
+      <button className="clipdesk__close" onClick={onClose} aria-label="Kapat">✕</button>
 
       <div className="clipdesk__content">
         <div className="clipdesk__videoWrap">
           {src ? (
-            <video
-              ref={videoRef}
-              src={src}
-              controls
-              playsInline
-              muted
-              className="clipdesk__video"
-            />
+            <video ref={videoRef} src={src} controls playsInline muted className="clipdesk__video" />
           ) : (
             <div className="clipdesk__empty">Video bulunamadı</div>
           )}
         </div>
 
         <aside className="clipdesk__meta">
-          {/* Header */}
+          {/* Başlık */}
           {clip?.kullaniciAdi && (
             <div className="clipdesk__header">
-              <span
-                className="clipdesk__username"
-                onClick={() => onUserClick?.(clip?.authorId)}
-              >
+              <span className="clipdesk__username" onClick={() => onUserClick?.(clip?.authorId)}>
                 {clip.kullaniciAdi}
               </span>
               {clip?.tarih && (
-                <span
-                  className="clipdesk__time"
-                  title={new Date(toMillis(clip.tarih)).toLocaleString("tr-TR")}
-                >
+                <span className="clipdesk__time" title={new Date(toMillis(clip.tarih)).toLocaleString("tr-TR")}>
                   {formatTimeAgoTR(clip.tarih)}
                 </span>
               )}
@@ -191,9 +173,7 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
           )}
 
           {/* Açıklama */}
-          {clip?.caption && (
-            <div className="clipdesk__caption">{clip.caption}</div>
-          )}
+          {clip?.caption && <div className="clipdesk__caption">{clip.caption}</div>}
 
           {/* Yorumlar */}
           <div className="clipdesk__comments">
@@ -201,39 +181,23 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
               const cid = y.commentId || `${y.userId || "u"}_${i}`;
               const isOpen = openMenu?.id === cid;
               return (
-                <div
-                  className={`clipdesk__cmtRow ${isOpen ? "menu-open" : ""}`}
-                  key={cid}
-                >
+                <div className={`clipdesk__cmtRow ${isOpen ? "menu-open" : ""}`} key={cid}>
                   <img
                     className="clipdesk__cmtAvatar"
-                    src={
-                      y.photoURL ||
-                      "https://placehold.co/32x32/EFEFEF/AAAAAA?text=P"
-                    }
+                    src={y.photoURL || "https://placehold.co/32x32/EFEFEF/AAAAAA?text=P"}
                     alt={y.username || ""}
                   />
                   <div className="clipdesk__cmtBody">
                     <div className="clipdesk__cmtTop">
-                      <b
-                        className="clipdesk__cmtUser"
-                        onClick={() => onUserClick?.(y.userId)}
-                      >
+                      <b className="clipdesk__cmtUser" onClick={() => onUserClick?.(y.userId)}>
                         {y.username || ""}
                       </b>
-                      <span
-                        className="clipdesk__cmtTime"
-                        title={new Date(toMillis(y.timestamp)).toLocaleString(
-                          "tr-TR"
-                        )}
-                      >
+                      <span className="clipdesk__cmtTime" title={new Date(toMillis(y.timestamp)).toLocaleString("tr-TR")}>
                         {formatTimeAgoTR(y.timestamp)}
                       </span>
                     </div>
 
-                    {y.text && (
-                      <div className="clipdesk__cmtText">{y.text}</div>
-                    )}
+                    {y.text && <div className="clipdesk__cmtText">{y.text}</div>}
 
                     <div className="clipdesk__cmtActions">
                       <button

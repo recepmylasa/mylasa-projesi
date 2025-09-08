@@ -420,7 +420,8 @@ export default function PostDetailModalDesktop({ post, onClose, onUserClick, akt
           <div className="pdmDk-footer">
             <div className="pdmDk-actions">
               <div className="pdmDk-starWrap">
-                <StarRatingV2 size={28} onRate={handleRate} disabled={isOwner} />
+                {/* GOLD THEME APPLIED HERE */}
+                <StarRatingV2 size={28} onRate={handleRate} disabled={isOwner} className="sr2--gold" />
                 {agg?.avg > 0 && agg?.count > 0 && (
                   <span className="pdmDk-starMeta" aria-label="Bu içeriğin puanı">
                     {Number(agg.avg).toFixed(1)} ★ · {formatCount(agg.count)} oy

@@ -1,7 +1,7 @@
 // src/ClipsGrid.js
-// Kullanıcının "video" içeriklerini 9:16 grid olarak gösterir.
-// /p/:id pushState + popstate (App.js) ile detay modalını açar.
-// Bu sürüm: Grid kartında üç nokta menüsü **PORTAL** ile body'e çizilir (üst üste binmez).
+// Kullanıcının "video" (Clips) içeriklerini 9:16 grid olarak gösterir.
+// ► Düzeltme: Kart tıklayınca artık /c/:id (clip permalink) açılır.
+// ► Üç nokta menüsü BODY portalına çizilir (üst üste binmez), tekil menü mantığı vardır.
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -32,9 +32,9 @@ const DotsIcon = ({ size = 18 }) => (
 
 /* === Yardımcılar === */
 const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
-const isVideoUrl = (url = "") => /\.(mp4|webm|mov|ogg)(\?|$)/i.test(url);
+const isVideoUrl = (url = "") => /(\.(mp4|webm|mov|ogg))(\?|$)/i.test(url);
 
-// esnek alan isimleri
+// esnek tarih alanları
 const TS = (v) => {
   if (!v) return 0;
   if (typeof v === "number") return v < 2e12 ? v * 1000 : v;
@@ -44,6 +44,7 @@ const TS = (v) => {
   return Number.isFinite(t) ? t : 0;
 };
 
+// Esnek kaynak: farklı koleksiyon/alan adlarına uyumlu okur
 async function fetchUserClipsFlexible(userId) {
   // olası koleksiyon adları
   const colNames = ["clips", "reels", "posts", "gonderiler", "paylasimlar"];
@@ -166,11 +167,11 @@ export default function ClipsGrid({ userId }) {
     return arr;
   }, [items]);
 
-  // Karte basınca post modalını aç
-  const openPost = useCallback((it) => {
+  // Kart tıklanınca CLIP permalink (/c/:id)
+  const openClip = useCallback((it) => {
     if (!it?.id) return;
     try {
-      window.history.pushState({ modal: "post", id: it.id }, "", `/p/${it.id}`);
+      window.history.pushState({ modal: "clip", id: it.id }, "", `/c/${it.id}`);
       window.dispatchEvent(new PopStateEvent("popstate"));
     } catch (e) {
       console.error("open clip error:", e);
@@ -187,7 +188,7 @@ export default function ClipsGrid({ userId }) {
     const menuH = 96;
     const x = clamp(r.left + r.width - menuW, 8, vw - menuW - 8);
     const y = clamp(r.top + r.height + 8, 8, vh - menuH - 8);
-    setOpenMenu({ id: it.id, x, y, permalink: `${window.location.origin}/p/${it.id}` });
+    setOpenMenu({ id: it.id, x, y, permalink: `${window.location.origin}/c/${it.id}` });
   }, []);
 
   // Dış tık / ESC ile menü kapatma
@@ -211,7 +212,7 @@ export default function ClipsGrid({ userId }) {
     try {
       if (navigator.share) {
         await navigator.share({ title: "Mylasa", url });
-      } else {
+      } else if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
       }
       setOpenMenu(null);
@@ -291,7 +292,7 @@ export default function ClipsGrid({ userId }) {
             key={it.id}
             type="button"
             className="clips-card"
-            onClick={() => openPost(it)}
+            onClick={() => openClip(it)}
             aria-label="Clips'i aç"
             role="listitem"
           >
