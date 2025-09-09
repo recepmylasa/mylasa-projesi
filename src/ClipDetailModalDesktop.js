@@ -1,8 +1,7 @@
-// src/ClipDetailModalDesktop.js
-// Masaüstü Clip modalı — Reels paritesi: tekil menü + kısa TR zaman + BODY portal menü
-
+// Masaüstü Clip modalı — Tekil menü, boşluk/ESC/scroll/resize ile kapanma, yorum zamanı = SADECE TARİH
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { formatDateTR } from "./utils";
 import "./ClipDetailModalDesktop.css";
 
 /* ================= Helpers ================= */
@@ -17,20 +16,18 @@ function toMillis(ts) {
   if (typeof ts.toDate === "function") return ts.toDate().getTime();
   return 0;
 }
-
 function formatTimeAgoTR(input) {
   const then = toMillis(input);
   if (!then) return "";
   const diffS = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffS < 60) return `${diffS}s`;                 // Xs
+  if (diffS < 60) return `${diffS}s`;
   const m = Math.floor(diffS / 60);
-  if (m < 60) return `${m}dk`;                        // Xdk
+  if (m < 60) return `${m}dk`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}sa`;                        // Xsa
+  if (h < 24) return `${h}sa`;
   const g = Math.floor(h / 24);
-  return `${g}g`;                                     // Xg
+  return `${g}g`;
 }
-
 const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 
 /* =============== Body portal ================= */
@@ -52,8 +49,9 @@ function useBodyPortal() {
 }
 
 /* ================= Component ================= */
-export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
+export default function ClipDetailModalDesktop({ clip, onClose, onUserClick, onDeleteComment }) {
   const videoRef = useRef(null);
+  const commentsRef = useRef(null);
   const portalRoot = useBodyPortal();
 
   // Tekil menü durumu: { id, x, y } veya null
@@ -65,6 +63,18 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
     () => (Array.isArray(clip?.yorumlar) ? clip.yorumlar : []),
     [clip]
   );
+
+  /* Global menü kapatma olayı (farklı instancelar için) */
+  useEffect(() => {
+    const onGlobal = (e) => {
+      // Başka bir menü açılırken herkesi kapat
+      const except = e?.detail?.except;
+      if (except && openMenu?.id === except) return;
+      setOpenMenu(null);
+    };
+    window.addEventListener("clipdesk:closeMenus", onGlobal);
+    return () => window.removeEventListener("clipdesk:closeMenus", onGlobal);
+  }, [openMenu]);
 
   /* ESC: menü açıksa kapat; aksi halde modalı kapat */
   useEffect(() => {
@@ -92,6 +102,21 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [openMenu]);
 
+  /* Scroll/resize olduğu anda menüyü kapat (takılmayı önler) */
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    const list = commentsRef.current;
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    if (list) list.addEventListener("scroll", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      if (list) list.removeEventListener("scroll", close);
+    };
+  }, [openMenu]);
+
   /* Autoplay güvenli başlatma */
   useEffect(() => {
     const v = videoRef.current;
@@ -105,6 +130,9 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
   }, []);
 
   const onMoreClick = (cid, ev) => {
+    // Yeni menü açılırken herkese "kapat" bildirimi gönder
+    window.dispatchEvent(new CustomEvent("clipdesk:closeMenus", { detail: { except: cid } }));
+
     const r = ev.currentTarget.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -115,13 +143,18 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
     setOpenMenu((prev) => (prev && prev.id === cid ? null : { id: cid, x, y }));
   };
 
+  const handleDelete = (cid) => {
+    try { onDeleteComment?.(cid); } catch (_) {}
+    setOpenMenu(null);
+  };
+
   const renderMenu = () => {
     if (!openMenu || !portalRoot) return null;
     const style = {
       position: "fixed",
       left: `${openMenu.x}px`,
       top: `${openMenu.y}px`,
-      zIndex: 2600, // modal içinde en üst katmanda
+      zIndex: 2600,
       background: "#fff",
       border: "1px solid rgba(0,0,0,.15)",
       borderRadius: 12,
@@ -133,8 +166,8 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
     const itemCls = "clipdesk__menuItem";
     return createPortal(
       <div style={style} data-clipdesk-menu="true" role="menu">
-        <button role="menuitem" className={itemCls} onClick={() => setOpenMenu(null)}>
-          Bağlantıyı Kopyala
+        <button role="menuitem" className={itemCls} onClick={() => handleDelete(openMenu.id)}>
+          Sil
         </button>
         <button role="menuitem" className={itemCls} onClick={() => setOpenMenu(null)}>
           İptal
@@ -158,25 +191,22 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
         </div>
 
         <aside className="clipdesk__meta">
-          {/* Başlık */}
+          {/* Başlık (header: isteğe bağlı relatıve zaman kalabilir) */}
           {clip?.kullaniciAdi && (
             <div className="clipdesk__header">
               <span className="clipdesk__username" onClick={() => onUserClick?.(clip?.authorId)}>
                 {clip.kullaniciAdi}
               </span>
               {clip?.tarih && (
-                <span className="clipdesk__time" title={new Date(toMillis(clip.tarih)).toLocaleString("tr-TR")}>
+                <span className="clipdesk__time" title={new Date(toMillis(clip.tarih)).toLocaleDateString("tr-TR")}>
                   {formatTimeAgoTR(clip.tarih)}
                 </span>
               )}
             </div>
           )}
 
-          {/* Açıklama */}
-          {clip?.caption && <div className="clipdesk__caption">{clip.caption}</div>}
-
           {/* Yorumlar */}
-          <div className="clipdesk__comments">
+          <div className="clipdesk__comments" ref={commentsRef}>
             {yorumlar.map((y, i) => {
               const cid = y.commentId || `${y.userId || "u"}_${i}`;
               const isOpen = openMenu?.id === cid;
@@ -192,8 +222,11 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
                       <b className="clipdesk__cmtUser" onClick={() => onUserClick?.(y.userId)}>
                         {y.username || ""}
                       </b>
-                      <span className="clipdesk__cmtTime" title={new Date(toMillis(y.timestamp)).toLocaleString("tr-TR")}>
-                        {formatTimeAgoTR(y.timestamp)}
+                      <span
+                        className="clipdesk__cmtTime"
+                        title={new Date(toMillis(y.timestamp)).toLocaleDateString("tr-TR")}
+                      >
+                        {formatDateTR(y.timestamp)}
                       </span>
                     </div>
 
@@ -216,6 +249,11 @@ export default function ClipDetailModalDesktop({ clip, onClose, onUserClick }) {
               );
             })}
           </div>
+
+          {/* Alt bant — SADECE TARİH */}
+          {clip?.tarih && (
+            <div className="clipdesk__footer" aria-label="İçerik tarihi">{formatDateTR(clip.tarih)}</div>
+          )}
         </aside>
       </div>
 

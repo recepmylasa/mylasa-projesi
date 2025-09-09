@@ -65,7 +65,6 @@ function CommentRow({
   openMenuId,    // aktif açık menü id’si (üstten gelir)
   setOpenMenuId, // menü kontrolcüsü (üstten gelir)
 }) {
-  const [rateOpen, setRateOpen] = useState(false);
   const rowRef = useRef(null);
 
   const avg =
@@ -151,7 +150,6 @@ function CommentRow({
 
       arr[idx] = { ...c, ratingsBy: map, ratingSum: sum, ratingCount: count };
       await updateDoc(ref, { yorumlar: arr });
-      setRateOpen(false);
     } catch (e) {
       console.error(e);
       alert("Puan verilemedi.");
