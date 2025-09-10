@@ -9,106 +9,143 @@
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
 
-    <!-- Google Fonts - Cookie (Mylasa logosu için) -->
+    <!-- Google Fonts - Cookie (for Mylasa Logo) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cookie&display=swap" rel="stylesheet">
 
     <title>React App</title>
 
-    <!-- Global UI Patch: tek menü, saat gizle, üstüne binmeleri düzelt -->
-    <style id="ui-guard-css">
-      /* Yorum menüsü en üste çıksın */
-      .clip-cmMenu { z-index: 5000 !important; }
-
-      /* IG tarzı sheet ve yıldız panelleri de güvene al */
-      .sheet-list { z-index: 5100 !important; position: relative; }
-      .sr2-panel, .sr2-root + .sr2-panel { z-index: 5200 !important; }
-
-      /* Yorum satırlarındaki saatleri gizle */
-      .clip-comment-time { display: none !important; }
-
-      /* Sağ alttaki zaman (footer) yazısını gizle */
-      .clip-time { display: none !important; }
-
-      /* Dışsal kapatma zorlaması için (JS bu attribute’u ekler/siler) */
-      .clip-cmMenu[data-forced-hidden="1"] { display: none !important; }
-
-      /* Bazı projelerde menü animasyonundan dolayı visibility kullanılıyor olabilir */
-      .clip-cmMenu[data-forced-hidden="1"] { visibility: hidden !important; opacity: 0 !important; }
+    <style>
+      /* Küçük düzeltmeler */
+      /* Bazı menüler display:inline olabiliyor; zorla blok yapıp görünürlüğü ölçebilmek için */
+      [data-global-menu], .clip-cmMenu, .comment-menu, .cm-menu, .menu-popup, .popover-menu {
+        display: block;
+      }
     </style>
   </head>
   <body>
-    <noscript>Bu uygulamayı çalıştırmak için JavaScript’i etkinleştir.</noscript>
+    <noscript>Bu uygulamayı çalıştırmak için JavaScript’i etkinleştirmen gerekiyor.</noscript>
     <div id="root"></div>
 
-    <!-- Global UI Guard: yalnızca tek menü açık kalsın, dışarı tıklayınca kapan-sın -->
-    <script id="ui-guard-script">
+    <!-- GLOBAL: Tek menü/panel kuralı + tarih yalnızca gün/ay/yıl -->
+    <script id="global-popover-manager">
       (function () {
-        // Yalnızca bir kez çalışsın
-        if (window.__uiGuardInstalled) return;
-        window.__uiGuardInstalled = true;
+        const SEL_MENUS = [
+          '.clip-cmMenu',         // bizim yorum menüsü (varsa)
+          '.comment-menu',
+          '.cm-menu',
+          '.menu-popup',
+          '.popover-menu',
+          'div[role="menu"]',
+          'ul[role="menu"]'
+        ];
+        // yıldız panelleri (bizim veya başka)
+        const SEL_STARS = [
+          '.sr2-panel',           // StarRatingV2 panel
+          '.star-popover',
+          '.rating-panel',
+          '.stars-panel'
+        ];
 
-        const SELECTOR_MENU = '.clip-cmMenu';
-
-        function allMenus() {
-          return Array.from(document.querySelectorAll(SELECTOR_MENU));
-        }
-
-        function forceCloseAll(except = null) {
-          allMenus().forEach(m => {
-            if (m === except) return;
-            m.setAttribute('data-forced-hidden', '1');
-          });
-        }
-
-        function clearForceClose(menu) {
-          if (menu && menu.getAttribute('data-forced-hidden') === '1') {
-            menu.removeAttribute('data-forced-hidden');
-          }
-        }
-
-        // 1) Her pointer down’da (capture) önce eski menüleri kapat.
-        //    Böylece aynı tıkla yeni satırın menüsü açılırken eskiler kapanmış olur.
-        window.addEventListener('pointerdown', function (e) {
-          const insideMenu = e.target.closest(SELECTOR_MENU);
-          if (insideMenu) return; // menü içi ise kapatma
-
-          // Her tıklamada tüm menüleri gizle (React state'e dokunmadan, sadece görünürlüğü kesiyoruz)
-          forceCloseAll(null);
-        }, true); // capture önemli
-
-        // 2) ESC tuşu ile de kapat
-        window.addEventListener('keydown', function (e) {
-          if (e.key === 'Escape') forceCloseAll(null);
+        let lastPoint = { x: 0, y: 0 };
+        window.addEventListener('pointerdown', e => {
+          lastPoint.x = e.clientX || 0;
+          lastPoint.y = e.clientY || 0;
         }, true);
 
-        // 3) Yeni bir menü DOM’a geldiğinde diğerlerini kapat, kendisini görünür yap.
-        const obs = new MutationObserver((mutList) => {
-          // Her değişiklikte ekranda görünen menüler var mı bak
-          const menus = allMenus();
+        function isVisible(el) {
+          if (!el || !(el instanceof Element)) return false;
+          const style = window.getComputedStyle(el);
+          if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) return false;
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }
 
-          // Görünür olanları bul
-          const visible = menus.filter(m => {
-            const cs = getComputedStyle(m);
-            const rect = m.getBoundingClientRect();
-            return cs.display !== 'none' && cs.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+        function qAllVisible(selectors) {
+          const list = [];
+          selectors.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => { if (isVisible(el)) list.push(el); });
           });
+          return Array.from(new Set(list));
+        }
 
-          if (visible.length > 0) {
-            // En son eklenen/görünen menüyü açık say, diğerlerini kapat
-            const last = visible[visible.length - 1];
-            clearForceClose(last);
-            visible.forEach(m => { if (m !== last) m.setAttribute('data-forced-hidden', '1'); });
+        function distToPoint(el, pt) {
+          const r = el.getBoundingClientRect();
+          const cx = r.left + r.width/2;
+          const cy = r.top + r.height/2;
+          const dx = (cx - pt.x);
+          const dy = (cy - pt.y);
+          return Math.hypot(dx, dy);
+        }
+
+        function forceClose(el) {
+          try {
+            // 1) Escape olayı göndermeyi dene (çoğu popover kapatır)
+            const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+            el.dispatchEvent(esc);
+            document.dispatchEvent(esc);
+          } catch {}
+          // 2) Dışına tıklama gönder (bazı kütüphaneler click-away ile kapanır)
+          try {
+            const evt = new MouseEvent('mousedown', { bubbles: true });
+            document.body.dispatchEvent(evt);
+          } catch {}
+          // 3) Yine de açık kalıyorsa görsel olarak gizle (bir sonraki açılışta React yeniden stil verecek)
+          el.setAttribute('data-global-closed', '1');
+          el.style.display = 'none';
+        }
+
+        function keepOnlyClosest(list, point) {
+          if (list.length <= 1) return;
+          let keep = list[0];
+          let best = distToPoint(keep, point);
+          for (let i=1;i<list.length;i++){
+            const d = distToPoint(list[i], point);
+            if (d < best) { best = d; keep = list[i]; }
           }
-        });
+          list.forEach(el => { if (el !== keep) forceClose(el); });
+        }
 
-        obs.observe(document.documentElement, {
-          subtree: true,
-          childList: true,
-          attributes: true,
-          attributeFilter: ['style', 'class', 'data-open']
-        });
+        function pruneAll() {
+          // küçük gecikme: React/portal menü DOM’a eklensin, sonra budayalım
+          setTimeout(() => {
+            const menus = qAllVisible(SEL_MENUS);
+            const stars = qAllVisible(SEL_STARS);
+            keepOnlyClosest(menus, lastPoint);
+            keepOnlyClosest(stars, lastPoint);
+
+            // Menü açıldıysa yıldızları, yıldız açıldıysa menüleri kapat
+            if (menus.length) stars.forEach(forceClose);
+            if (stars.length) menus.forEach(forceClose);
+          }, 80);
+        }
+
+        // Her tıklamada temizle
+        document.addEventListener('click', pruneAll, true);
+
+        /* ====== SAATİ GİZLE, SADECE TARİH GÖSTER ====== */
+        const DATE_RE = /(\d{1,2}\.\d{1,2}\.\d{2,4})/; // 26.08.2025 gibi
+        function onlyDate(text) {
+          // "26.08.2025 18:48:25" -> "26.08.2025"
+          if (!text) return text;
+          const m = String(text).match(DATE_RE);
+          return m ? m[1] : text;
+        }
+        function normalizeTimes(root) {
+          const nodes = [];
+          // Alt kısımdaki gönderi zamanı
+          document.querySelectorAll('.clip-time, .clipdesk__time').forEach(n => nodes.push(n));
+          // Yorum satırı mini zamanları (projende class adı farklıysa yine yakalarız)
+          document.querySelectorAll('.clip-comment-time, .clipdesk__cmtTime, .comment-time').forEach(n => nodes.push(n));
+          nodes.forEach(n => {
+            try { n.textContent = onlyDate(n.textContent); } catch {}
+          });
+        }
+        // Açılış + her DOM değişiminde uygula
+        const obs = new MutationObserver(() => normalizeTimes(document.body));
+        obs.observe(document.documentElement || document.body, { subtree: true, childList: true, characterData: true });
+        window.addEventListener('load', () => normalizeTimes(document.body));
       })();
     </script>
   </body>

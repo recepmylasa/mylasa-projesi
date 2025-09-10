@@ -194,10 +194,12 @@
 .clip-cmRate { margin-right: 4px; }
 
 .clip-cmMoreWrap { position: relative; }
+/* Menü: katman çakışmasın diye z-index yukarı çekildi */
 .clip-cmMenu {
   position: absolute; right: 0; top: 26px; background: #fff;
   border: 1px solid rgba(0,0,0,.08); border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0,0,0,.18); min-width: 120px; padding: 6px; z-index: 60;
+  box-shadow: 0 8px 30px rgba(0,0,0,.18); min-width: 120px; padding: 6px;
+  z-index: 5060; /* ÖNEMLİ: diğer overlay’lerin üstünde */
   display: flex; flex-direction: column; gap: 2px;
 }
 .clip-cmMenu button {
@@ -279,7 +281,8 @@
 .clip-stats { font-size: 14px; line-height: 1.2; }
 .clip-stats-strong { font-weight: 700; }
 .clip-time {
-  font-size: 11px; color: var(--muted); text-transform: uppercase;
+  font-size: 11px; color: var(--muted);
+  text-transform: uppercase; /* tarihi büyük gösteriyorsun, istersen 'none' yap */
   letter-spacing: .02em;
 }
 

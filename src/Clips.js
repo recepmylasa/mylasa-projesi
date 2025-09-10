@@ -1,21 +1,9 @@
-// src/Clips.js — TAM DOSYA (menü çakışması fix + yorum saatleri kaldırıldı)
-// Not: Tek dosyada; mevcut ayarlar bozulmadan çalışır. Üç nokta menüsü
-// aynı anda yalnızca BİR yorumda açık kalır ve sayfada boş bir yere tıklayınca kapanır.
-
+// src/Clips.js — TAM DOSYA (tek popover ve tarih formatı düzeltildi)
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { auth, db } from "./firebase";
 import {
-  collection,
-  query,
-  where,
-  orderBy,
-  limit,
-  onSnapshot,
-  deleteDoc,
-  updateDoc,
-  doc,
-  getDoc,
-  runTransaction,
+  collection, query, where, orderBy, limit, onSnapshot,
+  deleteDoc, updateDoc, doc, getDoc, runTransaction,
   serverTimestamp,
 } from "firebase/firestore";
 import { getStorage, ref as sRef, deleteObject } from "firebase/storage";
@@ -24,7 +12,18 @@ import { isSaved as fsIsSaved, toggleSave as fsToggleSave } from "./savesClient"
 import "./Clips.css";
 
 /* -------------------------------------------------------------------------- */
-/* StarRatingV2 (INLINE) – tek ikon, basınca 5'li panel, tekrar basınca iptal */
+/* Küresel POPUP/POPOVER kapatma olayı (tek açık kuralı)                      */
+/* -------------------------------------------------------------------------- */
+const POP_EVT = "clips:close-popovers";
+function broadcastClosePopovers(exceptId = "") {
+  try {
+    window.dispatchEvent(new CustomEvent(POP_EVT, { detail: { exceptId } }));
+  } catch {}
+}
+
+/* -------------------------------------------------------------------------- */
+/* StarRatingV2 – tek ikon, basınca 5’li panel, tekrar basınca iptal          */
+/*   + başka bir popover açılırsa kendini kapatır                             */
 /* -------------------------------------------------------------------------- */
 function StarRatingV2({
   size = 18,
@@ -39,9 +38,11 @@ function StarRatingV2({
   const [hoverVal, setHoverVal] = useState(null);
   const [myVal, setMyVal] = useState(initialValue);
   const [popVal, setPopVal] = useState(null);
+  const idRef = useRef(() => `sr2-${Math.random().toString(36).slice(2, 8)}`).current;
 
   useEffect(() => setMyVal(initialValue), [initialValue]);
 
+  // Dışarı tık/Escape ile kapanma
   useEffect(() => {
     if (!panelOpen) return;
     const close = () => setPanelOpen(false);
@@ -53,6 +54,16 @@ function StarRatingV2({
       window.removeEventListener("keydown", onEsc);
     };
   }, [panelOpen]);
+
+  // Başka bir popover açılınca kendini kapat
+  useEffect(() => {
+    const onBus = (e) => {
+      const except = e?.detail?.exceptId || "";
+      if (except !== idRef) setPanelOpen(false);
+    };
+    window.addEventListener(POP_EVT, onBus);
+    return () => window.removeEventListener(POP_EVT, onBus);
+  }, [idRef]);
 
   const openPanelAt = (clientX, clientY) => {
     const margin = 14;
@@ -68,7 +79,10 @@ function StarRatingV2({
   const onSmallStarMouseDown = (e) => {
     if (disabled) return;
     e.stopPropagation();
-    // toggle: panel kapalıyken ve önceden oy varsa -> iptal
+    // Başka popover’ları kapat (kendimiz hariç)
+    broadcastClosePopovers(idRef);
+
+    // toggle: panel kapalıyken ve oy varsa -> iptal
     if (!panelOpen && (myVal || active)) {
       setMyVal(null);
       setPopVal(null);
@@ -87,25 +101,15 @@ function StarRatingV2({
   };
 
   const SmallStar = ({ filled }) => (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
-      style={{ display:"block", transition:"transform .12s ease" }}
-    >
-      <path
-        d="M12 3.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 18.9 6.1 21.7l1.13-6.58L2.45 10.4l6.6-.96L12 3.5z"
-        fill={filled ? "#FF4D4F" : "none"}
-        stroke="#111" strokeWidth="1.4"
-      />
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display:"block" }}>
+      <path d="M12 3.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 18.9 6.1 21.7l1.13-6.58L2.45 10.4l6.6-.96L12 3.5z"
+            fill={filled ? "#FF4D4F" : "none"} stroke="#111" strokeWidth="1.4"/>
     </svg>
   );
-
   const PanelStar = ({ hot }) => (
     <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 3.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 18.9 6.1 21.7l1.13-6.58L2.45 10.4l6.6-.96L12 3.5z"
-        fill={hot ? "#FF4D4F" : "none"}
-        stroke="#111" strokeWidth="1.4"
-      />
+      <path d="M12 3.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 18.9 6.1 21.7l1.13-6.58L2.45 10.4l6.6-.96L12 3.5z"
+            fill={hot ? "#FF4D4F" : "none"} stroke="#111" strokeWidth="1.4"/>
     </svg>
   );
 
@@ -117,9 +121,9 @@ function StarRatingV2({
         title={disabled ? "" : (myVal || active ? "Oyu iptal et" : "Yıldız ver")}
         style={{
           position:"relative", display:"inline-flex", alignItems:"center",
-          justifyContent:"center", cursor: disabled ? "default" : "pointer",
-          userSelect:"none"
+          justifyContent:"center", cursor: disabled ? "default" : "pointer", userSelect:"none"
         }}
+        data-sr2-id={idRef}
       >
         <SmallStar filled={Boolean(myVal || active)} />
       </div>
@@ -129,23 +133,15 @@ function StarRatingV2({
           onMouseDown={(e) => e.stopPropagation()}
           style={{
             position:"fixed",
-            left: panelXY.x,
-            top: panelXY.y,
+            left: panelXY.x, top: panelXY.y,
             transform:"translate(-50%, calc(-100% - 10px))",
-            background:"rgba(255,255,255,0.98)",
-            border:"1px solid #111",
-            borderRadius:12,
-            padding:"6px 8px",
-            display:"flex",
-            gap:6,
-            zIndex:5010,
-            boxShadow:"0 10px 24px rgba(0,0,0,.35)",
-            animation:"sr2fade .14s ease-out",
+            background:"rgba(255,255,255,0.98)", border:"1px solid #111",
+            borderRadius:12, padding:"6px 8px", display:"flex", gap:6,
+            zIndex:5010, boxShadow:"0 10px 24px rgba(0,0,0,.35)"
           }}
         >
           {[1,2,3,4,5].map(v => (
-            <button
-              key={v}
+            <button key={v}
               onMouseEnter={() => setHoverVal(v)}
               onMouseLeave={() => setHoverVal(null)}
               onFocus={() => setHoverVal(v)}
@@ -171,10 +167,8 @@ function StarRatingV2({
             position:"relative", display:"inline-flex", alignItems:"center", justifyContent:"center"
           }}>
             <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width:"100%", height:"100%" }}>
-              <path
-                d="M12 3.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 18.9 6.1 21.7l1.13-6.58L2.45 10.4l6.6-.96L12 3.5z"
-                fill="#FF6B6E" stroke="#111" strokeWidth="1.4"
-              />
+              <path d="M12 3.5l2.95 5.98 6.6.96-4.78 4.66 1.13 6.58L12 18.9 6.1 21.7l1.13-6.58L2.45 10.4l6.6-.96L12 3.5z"
+                    fill="#FF6B6E" stroke="#111" strokeWidth="1.4"/>
             </svg>
             <div style={{
               position:"absolute", fontWeight:800, fontSize:64, color:"#1a1a1a",
@@ -183,27 +177,12 @@ function StarRatingV2({
           </div>
         </div>
       )}
-
-      {/* küçük animasyon keyframes (inline) */}
-      <style>{`
-        @keyframes sr2fade {
-          from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)) scale(.98); }
-          to { opacity: 1; transform: translate(-50%, calc(-100% - 10px)) scale(1); }
-        }
-        @keyframes sr2pop {
-          0% { opacity: 0; transform: scale(.72); }
-          16% { opacity: 1; transform: scale(1.06); }
-          42% { opacity: 1; transform: scale(1.0); }
-          78% { opacity: .98; transform: scale(.96); }
-          100% { opacity: 0; transform: scale(.92); }
-        }
-      `}</style>
     </>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/* YORUM PUANLAMA İSTEMCİSİ (INLINE)                                          */
+/* YORUM PUANLAMA                                                              */
 /* -------------------------------------------------------------------------- */
 function commentKeyFor(contentId, comment) {
   let ms = 0;
@@ -272,13 +251,9 @@ function ts(val) {
   const t = Date.parse(val);
   return Number.isFinite(t) ? t : 0;
 }
-const PlayBadge = () => (
-  <div className="clip-badge" aria-hidden="true">
-    <svg width="18" height="18" viewBox="0 0 24 24" role="img">
-      <path d="M8 7v10l9-5-9-5z" fill="#fff" />
-    </svg>
-  </div>
-);
+function formatDateOnly(ms) {
+  try { return new Date(ms).toLocaleDateString("tr-TR"); } catch { return ""; }
+}
 const Icon = {
   comment: (
     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
@@ -340,15 +315,18 @@ function Avatar({ src, size = 40 }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* CommentItem – tek satır yorum + yıldız + üç nokta menüsü                   */
+/* CommentItem – tek satır yorum + ⭐ + üç nokta menü                          */
+/*   - Sadece bir menü açık: parent openMenuKey ile                           */
+/*   - Başka popover açılırsa (menu/⭐) hepsi kapanır                          */
 /* -------------------------------------------------------------------------- */
-function CommentItem({ comment, contentId, currentUid, menuKey, openMenuKey, setOpenMenuKey }) {
+function CommentItem({ comment, contentId, currentUid, sheetOpen, openMenuKey, setOpenMenuKey, onDeleteComment }) {
   const [agg, setAgg] = useState({ count: 0, avg: 0 });
   const [mine, setMine] = useState(null);
   const key = useMemo(
     () => commentKeyFor(contentId, comment),
     [contentId, comment?.timestamp, comment?.userId]
   );
+  const menuOpen = openMenuKey === key;
 
   useEffect(() => {
     let off;
@@ -367,75 +345,54 @@ function CommentItem({ comment, contentId, currentUid, menuKey, openMenuKey, set
     }
   };
 
+  const toggleMenu = (e) => {
+    e.stopPropagation();
+    // yeni bir menü açılıyor => tüm popover’ları kapat
+    broadcastClosePopovers("comment-menu");
+    setOpenMenuKey((prev) => (prev === key ? null : key));
+  };
+
   const name = comment.username || (comment.userId === currentUid ? (auth.currentUser?.displayName || "Sen") : "kullanıcı");
 
-  const isMenuOpen = openMenuKey === menuKey;
-  const onMore = (e) => {
-    e.stopPropagation();
-    setOpenMenuKey(isMenuOpen ? null : menuKey);
-  };
-
-  const onDelete = async () => {
-    try {
-      const ref = doc(db, "clips", contentId);
-      // yorum zamanı/uid ile eşleşerek sil
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(ref);
-        if (!snap.exists()) return;
-        const arr = Array.isArray(snap.data().yorumlar) ? [...snap.data().yorumlar] : [];
-        const idx = arr.findIndex((y) =>
-          String(y?.timestamp || "") === String(comment?.timestamp || "") &&
-          String(y?.userId || "") === String(comment?.userId || "") &&
-          String(y?.text || "") === String(comment?.text || "")
-        );
-        if (idx >= 0) {
-          arr.splice(idx, 1);
-          tx.update(ref, { yorumlar: arr });
-        }
-      });
-      setOpenMenuKey(null);
-    } catch (e) {
-      console.error(e);
-      alert("Yorum silinemedi.");
-    }
-  };
-
   return (
-    <div className={"clip-comment-row" + (isMenuOpen ? " menu-open" : "")}>
+    <div className={"clip-comment-row" + (menuOpen ? " menu-open" : "")}>
       <Avatar src={comment.photoURL || null} size={28} />
-      <div className="clip-comment-body" style={{ position:"relative", width:"100%" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
-          <span className="clip-username--inline">{name}</span>
-          {/* ZAMAN GÖSTERİMİ KALDIRILDI */}
-        </div>
-        <div className="clip-comment-text">{comment.text}</div>
+      <div className="clip-comment-body">
+        <div style={{ display:"flex", alignItems:"center", gap:8, justifyContent:"space-between" }}>
+          <div>
+            <span className="clip-username--inline">{name}</span>{" "}
+            {comment.text}
+          </div>
 
-        <div className="clip-comment-meta">
-          <span className="clip-comment-rating">
-            {agg.count > 0 ? `${Number(agg.avg||0).toFixed(1)} ★ · ${agg.count}` : ""}
-          </span>
-          <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
+          <div className="clip-comment-actions">
             <StarRatingV2
+              className="clip-cmStar"
               size={18}
-              disabled={false}
+              disabled={!!sheetOpen}
               active={!!mine}
               initialValue={mine}
               onRate={give}
             />
-            <div className="clip-cmMoreWrap" style={{ position:"relative" }}>
-              <button className="clip-cmMore" aria-label="Diğer" onClick={onMore}>{Icon.more}</button>
-              {isMenuOpen && (
-                <div
-                  className="clip-cmMenu"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  style={{ zIndex: 60 }}
-                >
-                  <button className="danger" onClick={onDelete}>Sil</button>
+            <div className="clip-cmMoreWrap">
+              <button className="clip-cmMore" aria-label="Diğer" title="Diğer" onClick={toggleMenu}>
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/>
+                </svg>
+              </button>
+              {menuOpen && (
+                <div className="clip-cmMenu" onMouseDown={(e) => e.stopPropagation()}>
+                  {(comment.userId === currentUid) && (
+                    <button className="danger" onClick={() => onDeleteComment(comment)}>Sil</button>
+                  )}
                   <button onClick={() => setOpenMenuKey(null)}>İptal</button>
                 </div>
               )}
             </div>
           </div>
+        </div>
+
+        <div className="clip-comment-meta">
+          <span className="clip-comment-rating">{agg.count > 0 ? `${Number(agg.avg||0).toFixed(1)} ★ · ${agg.count}` : ""}</span>
         </div>
       </div>
     </div>
@@ -455,23 +412,22 @@ export default function ClipsDesktop({ userId }) {
   const [contentAgg, setContentAgg] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
   const [authorProfile, setAuthorProfile] = useState(null);
-  // SADECE BİR YORUM MENÜSÜ AÇIK KALSIN
-  const [openCommentMenuKey, setOpenCommentMenuKey] = useState(null);
+
+  const [openMenuKey, setOpenMenuKey] = useState(null); // <<< sadece bir yorum menüsü açık
 
   const composerRef = useRef(null);
 
-  // Sayfada boş yere tıklanınca açılmış yorum menüsünü kapa
+  // Global tıklamada menüleri kapat
   useEffect(() => {
-    if (openCommentMenuKey == null) return;
-    const close = () => setOpenCommentMenuKey(null);
-    const onEsc = (e) => { if (e.key === "Escape") setOpenCommentMenuKey(null); };
-    window.addEventListener("mousedown", close);
-    window.addEventListener("keydown", onEsc);
-    return () => {
-      window.removeEventListener("mousedown", close);
-      window.removeEventListener("keydown", onEsc);
+    const onDown = (e) => {
+      // sheet açıkken kapatmayalım
+      if (sheetOpen) return;
+      setOpenMenuKey(null);
+      broadcastClosePopovers(""); // yıldız panellerini de kapat
     };
-  }, [openCommentMenuKey]);
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [sheetOpen]);
 
   useEffect(() => {
     if (!userId) return;
@@ -539,7 +495,7 @@ export default function ClipsDesktop({ userId }) {
     setSelectedIndex(idx);
     setSheetOpen(false);
     setComposerText("");
-    setOpenCommentMenuKey(null);
+    setOpenMenuKey(null);
     document.body.style.overflow = "hidden";
   }, [grid]);
 
@@ -548,7 +504,8 @@ export default function ClipsDesktop({ userId }) {
     setSelectedIndex(-1);
     setSheetOpen(false);
     setComposerText("");
-    setOpenCommentMenuKey(null);
+    setOpenMenuKey(null);
+    broadcastClosePopovers("");
     document.body.style.overflow = "";
   }, []);
 
@@ -567,7 +524,8 @@ export default function ClipsDesktop({ userId }) {
       setSelectedIndex(prev);
       setSheetOpen(false);
       setComposerText("");
-      setOpenCommentMenuKey(null);
+      setOpenMenuKey(null);
+      broadcastClosePopovers("");
     }
   }, [selectedIndex, grid]);
 
@@ -580,7 +538,8 @@ export default function ClipsDesktop({ userId }) {
       setSelectedIndex(next);
       setSheetOpen(false);
       setComposerText("");
-      setOpenCommentMenuKey(null);
+      setOpenMenuKey(null);
+      broadcastClosePopovers("");
     }
   }, [selectedIndex, grid]);
 
@@ -797,6 +756,20 @@ export default function ClipsDesktop({ userId }) {
     }
   }, [selected]);
 
+  const deleteComment = useCallback(async (cmt) => {
+    if (!selected) return;
+    if (!window.confirm("Bu yorumu silmek istiyor musun?")) return;
+    try {
+      const ref = doc(db, "clips", selected.id);
+      const next = (selected.yorumlar || []).filter((x) => !(x.userId === cmt.userId && x.timestamp === cmt.timestamp && x.text === cmt.text));
+      await updateDoc(ref, { yorumlar: next });
+      setOpenMenuKey(null);
+    } catch (e) {
+      console.error(e);
+      alert("Yorum silinemedi.");
+    }
+  }, [selected]);
+
   if (!grid || grid.length === 0) {
     return (
       <div className="clips-empty">
@@ -831,26 +804,14 @@ export default function ClipsDesktop({ userId }) {
               aria-label="Clipi aç"
             >
               {/\.(jpe?g|png|webp|avif)$/i.test(poster) ? (
-                <img
-                  className="clip-media"
-                  src={poster}
-                  alt={it.caption || "clip"}
-                  loading="lazy"
-                  onError={() => markBroken(it.id)}
-                />
+                <img className="clip-media" src={poster} alt={it.caption || "clip"} loading="lazy" onError={() => markBroken(it.id)} />
               ) : (
-                <video
-                  className="clip-media"
-                  src={media}
-                  poster={poster || undefined}
-                  muted
-                  playsInline
-                  preload="metadata"
-                  onError={() => markBroken(it.id)}
-                />
+                <video className="clip-media" src={media} poster={poster || undefined} muted playsInline preload="metadata" onError={() => markBroken(it.id)} />
               )}
               <div className="clip-hover" />
-              <PlayBadge />
+              <div className="clip-badge" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" role="img"><path d="M8 7v10l9-5-9-5z" fill="#fff" /></svg>
+              </div>
             </button>
           );
         })}
@@ -885,12 +846,7 @@ export default function ClipsDesktop({ userId }) {
                 </div>
 
                 <div className="clip-head-icons">
-                  <button
-                    className="clip-ghost-btn"
-                    title="Diğer"
-                    aria-label="Diğer"
-                    onClick={() => setSheetOpen(true)}
-                  >
+                  <button className="clip-ghost-btn" title="Diğer" aria-label="Diğer" onClick={() => { broadcastClosePopovers(""); setSheetOpen(true); setOpenMenuKey(null); }}>
                     {Icon.more}
                   </button>
                   <button className="clip-ghost-btn" title="Kapat" aria-label="Kapat" onClick={close}>
@@ -899,7 +855,7 @@ export default function ClipsDesktop({ userId }) {
                 </div>
               </div>
 
-              <div className="clip-comments" onScroll={() => setOpenCommentMenuKey(null)}>
+              <div className="clip-comments" onMouseDown={(e) => e.stopPropagation()}>
                 {selected?.caption ? (
                   <div className="clip-caption-row">
                     <Avatar src={headerAvatar} size={28} />
@@ -913,13 +869,14 @@ export default function ClipsDesktop({ userId }) {
                 {comments.length > 0 ? (
                   comments.map((c, i) => (
                     <CommentItem
-                      key={`${selected.id}_${i}`}
+                      key={i}
                       comment={c}
                       contentId={selected.id}
                       currentUid={currentUid}
-                      menuKey={`${selected.id}_${i}`}
-                      openMenuKey={openCommentMenuKey}
-                      setOpenMenuKey={setOpenCommentMenuKey}
+                      sheetOpen={sheetOpen}
+                      openMenuKey={openMenuKey}
+                      setOpenMenuKey={setOpenMenuKey}
+                      onDeleteComment={deleteComment}
                     />
                   ))
                 ) : (
@@ -927,11 +884,7 @@ export default function ClipsDesktop({ userId }) {
                 )}
               </div>
 
-              <div
-                className={
-                  "clip-composer" + (selected?.commentsDisabled ? " clip-composer--disabled" : "")
-                }
-              >
+              <div className={"clip-composer" + (selected?.commentsDisabled ? " clip-composer--disabled" : "")}>
                 <textarea
                   ref={composerRef}
                   className="clip-composer-input"
@@ -943,13 +896,8 @@ export default function ClipsDesktop({ userId }) {
                   disabled={!!selected?.commentsDisabled}
                   aria-label="Yorum ekle"
                 />
-                <button
-                  className="clip-composer-send"
-                  title="Gönder"
-                  aria-label="Yorumu gönder"
-                  onClick={submitComment}
-                  disabled={!!selected?.commentsDisabled || !(composerText || "").trim()}
-                >
+                <button className="clip-composer-send" title="Gönder" aria-label="Yorumu gönder" onClick={submitComment}
+                        disabled={!!selected?.commentsDisabled || !(composerText || "").trim()}>
                   {Icon.send}
                 </button>
               </div>
@@ -960,12 +908,7 @@ export default function ClipsDesktop({ userId }) {
                     className="clip-star"
                     onRate={async (value) => {
                       try {
-                        await rateContent({
-                          contentId: selected.id,
-                          authorId: selected.authorId,
-                          value,
-                          type: "clip",
-                        });
+                        await rateContent({ contentId: selected.id, authorId: selected.authorId, value, type: "clip" });
                       } catch (e) {
                         console.error(e);
                         alert(e?.message || "Oy verilemedi.");
@@ -973,32 +916,19 @@ export default function ClipsDesktop({ userId }) {
                     }}
                   />
 
-                  <button
-                    className="clip-action-btn"
-                    title="Yorum"
-                    aria-label="Yorum yap"
-                    onClick={() => composerRef.current?.focus()}
-                  >
+                  <button className="clip-action-btn" title="Yorum" aria-label="Yorum yap" onClick={() => composerRef.current?.focus()}>
                     {Icon.comment}
                   </button>
 
-                  <button
-                    className="clip-action-btn"
-                    title="Paylaş"
-                    aria-label="Paylaş"
-                    onClick={shareClip}
-                  >
+                  <button className="clip-action-btn" title="Paylaş" aria-label="Paylaş" onClick={shareClip}>
                     {Icon.send}
                   </button>
                 </div>
 
                 <div className="clip-actions-right">
-                  <button
-                    className={"clip-action-btn" + (isSaved ? " save-active" : "")}
-                    title={isSaved ? "Kaydedildi" : "Kaydet"}
-                    aria-label={isSaved ? "Kaydedildi" : "Kaydet"}
-                    onClick={onToggleSave}
-                  >
+                  <button className={"clip-action-btn" + (isSaved ? " save-active" : "")}
+                          title={isSaved ? "Kaydedildi" : "Kaydet"} aria-label={isSaved ? "Kaydedildi" : "Kaydet"}
+                          onClick={onToggleSave}>
                     {isSaved ? Icon.saveSolid : Icon.saveOutline}
                   </button>
                 </div>
@@ -1009,19 +939,15 @@ export default function ClipsDesktop({ userId }) {
                   <div className="clip-stats">
                     {ratingCount > 0 ? (
                       <>
-                        <strong className="clip-stats-strong">
-                          {Number(ratingAvg || 0).toFixed(1)} ★
-                        </strong>{" "}
-                        · {ratingCount} oy
+                        <strong className="clip-stats-strong">{Number(ratingAvg || 0).toFixed(1)} ★</strong>{" "}· {ratingCount} oy
                       </>
                     ) : (
                       <span>İlk oyu sen ver</span>
                     )}
                   </div>
                 )}
-                {/* GÖNDERİ SÜRESİ KALSIN; YORUM SÜRESİ YOK */}
                 <div className="clip-time">
-                  {selected?.tarih ? new Date(ts(selected.tarih)).toLocaleString() : ""}
+                  {selected?.tarih ? formatDateOnly(ts(selected.tarih)) : ""}
                 </div>
               </div>
             </aside>
@@ -1032,11 +958,7 @@ export default function ClipsDesktop({ userId }) {
               <div className="sheet-mask" onClick={() => setSheetOpen(false)} />
               <div className="sheet" role="dialog" onMouseDown={stop}>
                 <ul className="sheet-list">
-                  {canDelete && (
-                    <li className="sheet-item sheet-danger" onClick={handleDelete}>
-                      Sil
-                    </li>
-                  )}
+                  {canDelete && <li className="sheet-item sheet-danger" onClick={handleDelete}>Sil</li>}
                   <li className="sheet-item" onClick={handleEditCaption}>Düzenle</li>
                   <li className="sheet-item" onClick={toggleHideLikes}>
                     {selected?.hideLikes ? "Beğenme sayısını göster" : "Beğenme sayısını başkalarından gizle"}
