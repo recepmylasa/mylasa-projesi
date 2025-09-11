@@ -1,0 +1,29 @@
+/* ==== Mylasa Global CSS Fix ==== */
+/* JS kapattığında etiketlediğimiz popover/menüleri kesin gizle */
+[data-global-closed="1"] { display: none !important; }
+
+/* Menüler ve yıldız panelinin tutarlı z-index sıralaması */
+.clip-cmMenu,
+.comment-menu,
+.cm-menu,
+.menu-popup,
+.popover-menu,
+.dropdown-menu,
+[role="menu"] {
+  z-index: 2605 !important;
+}
+
+.sr2-panel, .star-popover, .rating-panel, .stars-panel {
+  z-index: 2700 !important;
+}
+
+/* Mevcut sheet/toast katmanlarına üstte kalma garantisi */
+.sheet-mask { z-index: 2600 !important; }
+.sheet      { z-index: 2610 !important; }
+.toast-layer{ z-index: 2800 !important; }
+
+/* Bazı kütüphaneler menüyü inline render’lıyor: ölçülebilsin diye blokla */
+.clip-cmMenu, .comment-menu, .cm-menu, .menu-popup, .popover-menu,
+.dropdown-menu, .dropdown.show, .dropdown-menu.show,
+.ant-dropdown, .ant-popover, .MuiPopover-root,
+[role="menu"] { display: block; }
