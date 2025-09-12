@@ -21,7 +21,7 @@
     <div id="root"></div>
 
     <!--
-      GLOBAL POPUP MANAGER v4
+      GLOBAL POPUP MANAGER v4.1
       - Modal içindeyken (data-modal-root) üç noktaya 2. kez tıklama **modalı kapatmaz**.
       - Aynı anda sadece TEK menü / yıldız paneli açık kalır (en yakını tutulur, diğerleri kapatılır).
       - Yorum/alt kısımlarda SADECE TARİH gösterilir (saat gizlenir).
@@ -49,9 +49,12 @@
           document.querySelectorAll(sel).forEach((el) => { if (isVisible(el)) out.push(el); });
           return out;
         }
+
+        // NOT: .clipdesk__cmMenu eklendi (masaüstü klip yorum menüsü için)
         const MENU_SELECTORS = [
           '[data-clipdesk-menu="true"]',
           '[data-portal="clipdesk-menu-root"] [role="menu"]',
+          ".clipdesk__cmMenu",
           ".clip-cmMenu",".comment-menu",".cm-menu",".menu-popup",".popover-menu",
           'div[role="menu"]','ul[role="menu"]',
         ];
@@ -114,10 +117,11 @@
         }, true);
         document.addEventListener("keydown", (e) => { if (e.key === "Escape") schedulePrune(); }, true);
 
-        /* ========== MODAL GUARD (kritik): üç nokta 2. tık modalı kapatmasın ========== */
+        /* ========== MODAL GUARD: üç nokta 2. tık modalı kapatmasın ========== */
         const GUARD_EVENTS = ["pointerdown","click","mousedown","mouseup","touchstart","touchend"];
         function isMenuOpen() {
-          return !!document.querySelector('[data-clipdesk-menu="true"], .sr2-panel, .star-popover, .rating-panel, .stars-panel');
+          // NOT: .clipdesk__cmMenu eklendi
+          return !!document.querySelector('[data-clipdesk-menu="true"], .clipdesk__cmMenu, .sr2-panel, .star-popover, .rating-panel, .stars-panel');
         }
         function guard(e) {
           const t = e.target;
@@ -125,9 +129,9 @@
           if (!inModal) return;
 
           const isTrigger = t.closest('.clipdesk__cmtMore,[data-cm-trigger]');
-          const inMenu = t.closest('[data-clipdesk-menu="true"]');
+          const inMenu = t.closest('[role="menu"], .clipdesk__cmMenu, [data-clipdesk-menu="true"]');
 
-          // Menü açıkken tetikleyiciye tıklama → sadece menüyü kapatma; modal kapanmamalı
+          // Menü açıkken tetikleyiciye / menü içine tıklama → modal kapanmamalı
           if ((isTrigger && isMenuOpen()) || inMenu) {
             if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
             e.stopPropagation();
