@@ -5,22 +5,29 @@
   --clip-hover:rgba(0,0,0,.06);
 }
 
+.clipdesk__root{
+  width:100%;
+  padding-top:6vh;
+  padding-bottom:4vh;
+}
+
 .clipdesk__panel{
-  background:#111;
-  color:#fff;
+  background:#fff;
+  color:var(--clip-text);
   width:min(1100px, 96vw);
   height:min(92vh, 860px);
+  margin:0 auto;
   display:flex;
   flex-direction:column;
   border-radius:12px;
   box-shadow:0 10px 40px rgba(0,0,0,.35);
   overflow:hidden;
+  position:relative;
 }
 
 .clipdesk__close{
-  align-self:flex-end;
-  margin:8px 12px 0 0;
-  background:rgba(255,255,255,.08);
+  position:absolute; right:10px; top:10px; z-index:20;
+  background:rgba(17,17,17,.72);
   color:#fff;
   border:0;
   width:36px;height:36px;
@@ -28,7 +35,7 @@
   font-size:18px;
   cursor:pointer;
 }
-.clipdesk__close:hover{ background:rgba(255,255,255,.14); }
+.clipdesk__close:hover{ background:rgba(17,17,17,.88); }
 
 .clipdesk__content{
   display:grid;
@@ -91,6 +98,7 @@
   z-index:1;
 }
 .clipdesk__cmtRow.menu-open{ z-index:5; }
+
 .clipdesk__cmtAvatar{ width:32px; height:32px; border-radius:999px; object-fit:cover; background:#e5e5e5; }
 .clipdesk__cmtBody{ min-width:0; flex:1; }
 .clipdesk__cmtTop{ display:flex; align-items:center; gap:8px; }
@@ -99,18 +107,33 @@
 .clipdesk__cmtTime{ font-size:12px; color:var(--clip-muted); }
 .clipdesk__cmtText{ margin-top:2px; white-space:pre-wrap; word-break:break-word; }
 
-.clipdesk__cmtActions{ position:absolute; right:0; top:0; }
-.clipdesk__cmtMore{ width:28px; height:28px; border-radius:8px; border:0; cursor:pointer; background:transparent; color:var(--clip-text); }
+.clipdesk__cmtActions{
+  position:absolute; right:0; top:0;
+  display:flex; align-items:center; gap:4px;
+}
+
+.clipdesk__cmtMore{
+  width:28px; height:28px;
+  border-radius:8px; border:0; cursor:pointer;
+  background:transparent; color:var(--clip-text);
+  line-height:1; display:grid; place-items:center;
+}
 .clipdesk__cmtMore:hover{ background:var(--clip-hover); }
 
-.clipdesk__menuItem{
-  display:block; width:100%;
-  background:transparent; border:0;
-  text-align:left; padding:8px 10px;
-  border-radius:8px; cursor:pointer;
-  color:var(--clip-text); font-weight:600;
+/* Menü: Post’taki gibi satır içinde, portal yok */
+.clipdesk__cmMenu{
+  position:absolute; right:0; top:26px;
+  background:#fff; border:1px solid rgba(0,0,0,.08);
+  border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,.18);
+  min-width:120px; padding:6px; z-index:60;
+  display:flex; flex-direction:column; gap:2px;
 }
-.clipdesk__menuItem:hover{ background:#f7f7f7; }
+.clipdesk__cmMenu button{
+  background:transparent; border:0; text-align:left; padding:8px 10px;
+  border-radius:8px; cursor:pointer; font-weight:600; color:var(--clip-text);
+}
+.clipdesk__cmMenu button:hover{ background:#f7f7f7; }
+.clipdesk__cmMenu .danger{ color:#ed4956; }
 
 .clipdesk__footer{
   padding:8px 14px 12px;
@@ -119,15 +142,4 @@
   font-size:12px;
 }
 
-.clipdesk__caption{
-  padding:12px 14px;
-  border-top:1px solid var(--clip-border);
-  border-bottom:1px solid var(--clip-border);
-  font-size:14px; line-height:1.4;
-}
-
 .clipdesk__empty{ padding:32px; color:#bbb; text-align:center; }
-
-[data-portal="clipdesk-menu"]{ position:fixed; z-index:2600 !important; inset:auto; }
-.sr2-panel{ z-index:2700 !important; }
-.toast-layer{ z-index:2800 !important; }

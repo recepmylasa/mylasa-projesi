@@ -105,9 +105,8 @@ function Avatar({ src, size = 40 }) {
 }
 
 /* ==== Yorum satırı (mini yıldız + üç nokta) ==== */
-function ClipCommentRow({ clipId, isOwner, currentUser, comment }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-
+/* Tekil menü kuralı: openMenuId üstten gelir */
+function ClipCommentRow({ clipId, isOwner, currentUser, comment, openMenuId, setOpenMenuId }) {
   const avg =
     Number(comment?.ratingCount) > 0
       ? Number(comment?.ratingSum || 0) / Number(comment.ratingCount)
@@ -116,8 +115,11 @@ function ClipCommentRow({ clipId, isOwner, currentUser, comment }) {
   const canDelete =
     currentUser && (comment?.userId === currentUser.uid || isOwner);
 
+  const menuId = comment.commentId || "";
+  const menuOpen = openMenuId === menuId;
+
   const handleDelete = async () => {
-    setMenuOpen(false);
+    setOpenMenuId(null);
     if (!canDelete) return;
     if (!window.confirm("Bu yorumu silmek istiyor musun?")) return;
     try {
@@ -156,11 +158,7 @@ function ClipCommentRow({ clipId, isOwner, currentUser, comment }) {
       let sum = Number(c.ratingSum || 0);
       let count = Number(c.ratingCount || 0);
 
-      if (prev != null) {
-        sum -= Number(prev);
-      } else {
-        count += 1;
-      }
+      if (prev != null) { sum -= Number(prev); } else { count += 1; }
       map[currentUser.uid] = Number(value);
       sum += Number(value);
 
@@ -202,18 +200,24 @@ function ClipCommentRow({ clipId, isOwner, currentUser, comment }) {
             className="clip-cmMore"
             aria-label="Daha fazla"
             title="Daha fazla"
-            onClick={() => setMenuOpen((s) => !s)}
+            /* MODAL KAPANMASIN: kaynağı burada kesiyoruz */
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpenMenuId((prev) => (prev === menuId ? null : menuId));
+            }}
           >
             {Icon.more}
           </button>
           {menuOpen && (
-            <div className="clip-cmMenu" role="menu">
+            <div className="clip-cmMenu" role="menu" onMouseDown={(e) => e.stopPropagation()}>
               {canDelete && (
                 <button className="danger" onClick={handleDelete} role="menuitem">
                   Sil
                 </button>
               )}
-              <button onClick={() => setMenuOpen(false)} role="menuitem">İptal</button>
+              <button onClick={() => setOpenMenuId(null)} role="menuitem">İptal</button>
             </div>
           )}
         </div>
@@ -231,6 +235,9 @@ export default function ClipsDesktop({ userId }) {
   const [composerText, setComposerText] = useState("");
   const [contentAgg, setContentAgg] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
+
+  // TEK AÇIK MENÜ anahtarı (yorum satırları için)
+  const [openCmtMenuId, setOpenCmtMenuId] = useState(null);
 
   // Seçili clip’in yazar profili (users/{authorId})
   const [authorProfile, setAuthorProfile] = useState(null);
@@ -309,6 +316,7 @@ export default function ClipsDesktop({ userId }) {
     setSelectedIndex(idx);
     setSheetOpen(false);
     setComposerText("");
+    setOpenCmtMenuId(null);
     document.body.style.overflow = "hidden";
   }, [grid]);
 
@@ -317,10 +325,9 @@ export default function ClipsDesktop({ userId }) {
     setSelectedIndex(-1);
     setSheetOpen(false);
     setComposerText("");
+    setOpenCmtMenuId(null);
     document.body.style.overflow = "";
   }, []);
-
-  const stop = (e) => e.stopPropagation();
 
   const markBroken = useCallback((id) => {
     setBrokenIds((prev) => new Set(prev).add(id));
@@ -336,6 +343,7 @@ export default function ClipsDesktop({ userId }) {
       setSelectedIndex(prev);
       setSheetOpen(false);
       setComposerText("");
+      setOpenCmtMenuId(null);
     }
   }, [selectedIndex, grid]);
 
@@ -348,6 +356,7 @@ export default function ClipsDesktop({ userId }) {
       setSelectedIndex(next);
       setSheetOpen(false);
       setComposerText("");
+      setOpenCmtMenuId(null);
     }
   }, [selectedIndex, grid]);
 
@@ -362,7 +371,7 @@ export default function ClipsDesktop({ userId }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [selected, close, goPrev, goNext]);
 
-  /* ---- üç nokta sheet aksiyonları ---- */
+  /* sheet aksiyonları vs. (değişmedi) */
   const clipRef = useCallback(
     () => (selected ? doc(db, "clips", selected.id) : null),
     [selected]
@@ -573,6 +582,18 @@ export default function ClipsDesktop({ userId }) {
     }
   }, [selected]);
 
+  /* Açık yorum menüsünü güvenli kapatma: scroll/resize/değişim */
+  useEffect(() => {
+    const closeMenus = () => setOpenCmtMenuId(null);
+    window.addEventListener("resize", closeMenus);
+    window.addEventListener("scroll", closeMenus, true);
+    return () => {
+      window.removeEventListener("resize", closeMenus);
+      window.removeEventListener("scroll", closeMenus, true);
+    };
+  }, []);
+  useEffect(() => { setOpenCmtMenuId(null); }, [selected?.id]);
+
   /* ---- render ---- */
   if (!grid || grid.length === 0) {
     return (
@@ -636,8 +657,23 @@ export default function ClipsDesktop({ userId }) {
 
       {/* Modal */}
       {selected && (
-        <div className="clip-lightbox" onMouseDown={close}>
-          <div className="clip-dialog" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div
+          className="clip-lightbox"
+          /* SADECE overlay hedeflenirse kapat (içeriden gelen baloncuklar modalı kapatmasın) */
+          onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
+          onClick={(e) => { if (e.target === e.currentTarget) close(); }}
+        >
+          <div
+            className="clip-dialog"
+            role="dialog"
+            aria-modal="true"
+            /* içteki tüm tıklamalar overlay’e sızmasın */
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (openCmtMenuId) setOpenCmtMenuId(null); // boş alana tık: menüleri kapat
+            }}
+          >
             {/* sol: video sahnesi */}
             <div className="clip-stage">
               <div className="clip-frame" aria-label="Video çerçevesi 9:16">
@@ -704,6 +740,8 @@ export default function ClipsDesktop({ userId }) {
                         isOwner={selected?.authorId === currentUid}
                         currentUser={auth.currentUser}
                         comment={c}
+                        openMenuId={openCmtMenuId}
+                        setOpenMenuId={setOpenCmtMenuId}
                       />
                     ))
                 ) : (
@@ -817,7 +855,7 @@ export default function ClipsDesktop({ userId }) {
           {sheetOpen && (
             <>
               <div className="sheet-mask" onClick={() => setSheetOpen(false)} />
-              <div className="sheet" role="dialog" onMouseDown={stop}>
+              <div className="sheet" role="dialog" onMouseDown={(e) => e.stopPropagation()}>
                 <ul className="sheet-list">
                   {canDelete && (
                     <li className="sheet-item sheet-danger" onClick={handleDelete}>

@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="tr">
   <head>
     <meta charset="utf-8" />
@@ -10,146 +9,159 @@
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
 
-```
-<!-- Google Fonts - Cookie (for Mylasa Logo) -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cookie&display=swap" rel="stylesheet">
+    <!-- Google Fonts - Cookie (for Mylasa Logo) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cookie&display=swap" rel="stylesheet">
 
-<title>Mylasa</title>
-```
-
+    <title>Mylasa</title>
   </head>
   <body>
     <noscript>Bu uygulamayı çalıştırmak için JavaScript’i etkinleştirmen gerekiyor.</noscript>
     <div id="root"></div>
 
-```
-<!--
-  GLOBAL FIX
-  - Aynı anda sadece TEK menü / yıldız paneli açık kalır (tıklanan en yakını).
-  - Yorum/alt kısımdaki saat gizlenir, sadece TARİH (gg.aa.yyyy) gösterilir.
-  - Bir önceki sürümdeki kesintiye sebep olabilen ağır MutationObserver kaldırıldı.
-    Yerine "idle" anlarda çalışan hafif bir düzenleyici kullanıldı.
--->
-<script>
-  (function () {
-    // --- yardımcılar
-    const idle = (cb) => ("requestIdleCallback" in window
-      ? window.requestIdleCallback(cb, { timeout: 400 })
-      : setTimeout(cb, 80));
+    <!--
+      GLOBAL POPUP MANAGER v4
+      - Modal içindeyken (data-modal-root) üç noktaya 2. kez tıklama **modalı kapatmaz**.
+      - Aynı anda sadece TEK menü / yıldız paneli açık kalır (en yakını tutulur, diğerleri kapatılır).
+      - Yorum/alt kısımlarda SADECE TARİH gösterilir (saat gizlenir).
+    -->
+    <script>
+      (function () {
+        /* ========== yardımcılar ========== */
+        const idle = (cb) =>
+          ("requestIdleCallback" in window
+            ? window.requestIdleCallback(cb, { timeout: 400 })
+            : setTimeout(cb, 80));
 
-    let lastPoint = { x: 0, y: 0 };
-    window.addEventListener(
-      "pointerdown",
-      (e) => {
-        lastPoint.x = e.clientX || 0;
-        lastPoint.y = e.clientY || 0;
-        // yeni menü DOM'a eklensin, sonra buda
-        setTimeout(prune, 60);
-      },
-      true
-    );
+        let lastPoint = { x: 0, y: 0 };
 
-    const MENU_SELECTORS = [
-      ".clip-cmMenu",
-      ".comment-menu",
-      ".cm-menu",
-      ".menu-popup",
-      ".popover-menu",
-      'div[role="menu"]',
-      'ul[role="menu"]',
-    ];
-    const STAR_SELECTORS = [
-      ".sr2-panel",
-      ".star-popover",
-      ".rating-panel",
-      ".stars-panel",
-    ];
+        function isVisible(el) {
+          if (!el || el.nodeType !== 1) return false;
+          const s = getComputedStyle(el);
+          if (s.visibility === "hidden" || s.display === "none" || +s.opacity === 0) return false;
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        }
+        function uniq(arr) { return Array.from(new Set(arr)); }
+        function qsaVisible(sel) {
+          const out = [];
+          document.querySelectorAll(sel).forEach((el) => { if (isVisible(el)) out.push(el); });
+          return out;
+        }
+        const MENU_SELECTORS = [
+          '[data-clipdesk-menu="true"]',
+          '[data-portal="clipdesk-menu-root"] [role="menu"]',
+          ".clip-cmMenu",".comment-menu",".cm-menu",".menu-popup",".popover-menu",
+          'div[role="menu"]','ul[role="menu"]',
+        ];
+        const STAR_SELECTORS = [
+          ".sr2-panel",".star-popover",".rating-panel",".stars-panel",
+        ];
 
-    function isVisible(el) {
-      if (!el || el.nodeType !== 1) return false;
-      const s = getComputedStyle(el);
-      if (s.visibility === "hidden" || s.display === "none" || +s.opacity === 0)
-        return false;
-      const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0;
-    }
-    function allVisible(selectors) {
-      const out = [];
-      selectors.forEach((sel) =>
-        document.querySelectorAll(sel).forEach((el) => {
-          if (isVisible(el)) out.push(el);
-        })
-      );
-      return Array.from(new Set(out));
-    }
-    function pointIn(el, pt) {
-      const r = el.getBoundingClientRect();
-      return pt.x >= r.left && pt.x <= r.right && pt.y >= r.top && pt.y <= r.bottom;
-    }
-    function dist(el, pt) {
-      const r = el.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      return Math.hypot(cx - pt.x, cy - pt.y);
-    }
-    function forceClose(el) {
-      try { el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch {}
-      try { document.body.click(); } catch {}
-      el.style.display = "none"; // son çare
-      el.setAttribute("data-global-closed", "1");
-    }
-    function keepNearest(list, pt) {
-      if (list.length <= 1) return;
-      let keep = list.find((el) => pointIn(el, pt)) || list[0];
-      let best = pointIn(keep, pt) ? 0 : dist(keep, pt);
-      for (const el of list) {
-        const d = pointIn(el, pt) ? 0 : dist(el, pt);
-        if (d < best) { best = d; keep = el; }
-      }
-      list.forEach((el) => { if (el !== keep) forceClose(el); });
-    }
-    function prune() {
-      idle(() => {
-        const menus = allVisible(MENU_SELECTORS);
-        const stars = allVisible(STAR_SELECTORS);
-        keepNearest(menus, lastPoint);
-        keepNearest(stars, lastPoint);
-        if (menus.length) stars.forEach(forceClose);
-        if (stars.length) menus.forEach(forceClose);
-      });
-    }
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") prune(); }, true);
+        function allVisible(selectors) { return uniq(selectors.flatMap((sel) => qsaVisible(sel))); }
+        function pointIn(el, pt) {
+          const r = el.getBoundingClientRect();
+          return pt.x >= r.left && pt.x <= r.right && pt.y >= r.top && pt.y <= r.bottom;
+        }
+        function dist(el, pt) {
+          const r = el.getBoundingClientRect();
+          const cx = r.left + r.width / 2;
+          const cy = r.top + r.height / 2;
+          return Math.hypot(cx - pt.x, cy - pt.y);
+        }
+        function softClose(el) {
+          try { el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch {}
+        }
+        function hardRemove(el) {
+          try { el.parentNode && el.parentNode.removeChild(el); } catch {}
+        }
+        function closeAllExcept(list, keepEl) {
+          list.forEach((el) => { if (el !== keepEl) { softClose(el); hardRemove(el); } });
+        }
+        function keepNearest(list, pt) {
+          if (list.length <= 1) return;
+          let keep = list.find((el) => pointIn(el, pt)) || list[0];
+          let best = pointIn(keep, pt) ? 0 : dist(keep, pt);
+          for (const el of list) {
+            const d = pointIn(el, pt) ? 0 : dist(el, pt);
+            if (d < best) { best = d; keep = el; }
+          }
+          closeAllExcept(list, keep);
+        }
+        function pruneOnce() {
+          const menus = allVisible(MENU_SELECTORS);
+          const stars = allVisible(STAR_SELECTORS);
+          // Tekillik
+          keepNearest(menus, lastPoint);
+          keepNearest(stars, lastPoint);
+          // Çapraz kapatma
+          if (menus.length) closeAllExcept(stars, null);
+          if (stars.length) closeAllExcept(menus, null);
+        }
+        function schedulePrune() {
+          pruneOnce();
+          setTimeout(pruneOnce, 16);
+          setTimeout(pruneOnce, 120);
+          idle(pruneOnce);
+        }
 
-    // --- SADECE TARİH (saat yok)
-    const DATE_RE = /(\n|\r|\s)*?(\d{1,2}\.\d{1,2}\.\d{2,4})/;
-    function onlyDate(text) {
-      if (!text) return text;
-      const m = String(text).match(DATE_RE);
-      return m ? m[2] : text;
-    }
-    let dateFixScheduled = false;
-    function scheduleDateFix() {
-      if (dateFixScheduled) return;
-      dateFixScheduled = true;
-      idle(() => {
-        dateFixScheduled = false;
-        const nodes = document.querySelectorAll(
-          ".clip-time, .clipdesk__time, .clip-comment-time, .clipdesk__cmtTime, .comment-time"
-        );
-        nodes.forEach((n) => {
-          const v = onlyDate(n.textContent);
-          if (v !== n.textContent) n.textContent = v;
-        });
-      });
-    }
-    window.addEventListener("load", scheduleDateFix);
-    document.addEventListener("click", scheduleDateFix, true);
-    document.addEventListener("DOMContentLoaded", scheduleDateFix);
-  })();
-</script>
-```
+        /* --- son tıklanan noktayı kaydet + prune --- */
+        window.addEventListener("pointerdown", (e) => {
+          lastPoint.x = e.clientX || 0;
+          lastPoint.y = e.clientY || 0;
+          setTimeout(schedulePrune, 30);
+        }, true);
+        document.addEventListener("keydown", (e) => { if (e.key === "Escape") schedulePrune(); }, true);
 
+        /* ========== MODAL GUARD (kritik): üç nokta 2. tık modalı kapatmasın ========== */
+        const GUARD_EVENTS = ["pointerdown","click","mousedown","mouseup","touchstart","touchend"];
+        function isMenuOpen() {
+          return !!document.querySelector('[data-clipdesk-menu="true"], .sr2-panel, .star-popover, .rating-panel, .stars-panel');
+        }
+        function guard(e) {
+          const t = e.target;
+          const inModal = t && t.closest && t.closest('[data-modal-root]');
+          if (!inModal) return;
+
+          const isTrigger = t.closest('.clipdesk__cmtMore,[data-cm-trigger]');
+          const inMenu = t.closest('[data-clipdesk-menu="true"]');
+
+          // Menü açıkken tetikleyiciye tıklama → sadece menüyü kapatma; modal kapanmamalı
+          if ((isTrigger && isMenuOpen()) || inMenu) {
+            if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+            e.stopPropagation();
+          }
+        }
+        GUARD_EVENTS.forEach((ev) => window.addEventListener(ev, guard, true));
+        GUARD_EVENTS.forEach((ev) => document.addEventListener(ev, guard, true));
+
+        /* ========== SADECE TARİH (saat yok) ========== */
+        const DATE_RE = /(\n|\r|\s)*?(\d{1,2}\.\d{1,2}\.\d{2,4})/;
+        function onlyDate(text) {
+          if (!text) return text;
+          const m = String(text).match(DATE_RE);
+          return m ? m[2] : text;
+        }
+        let dateFixScheduled = false;
+        function scheduleDateFix() {
+          if (dateFixScheduled) return;
+          dateFixScheduled = true;
+          idle(() => {
+            dateFixScheduled = false;
+            const nodes = document.querySelectorAll(
+              ".clip-time, .clipdesk__time, .clip-comment-time, .clipdesk__cmtTime, .comment-time"
+            );
+            nodes.forEach((n) => {
+              const v = onlyDate(n.textContent);
+              if (v !== n.textContent) n.textContent = v;
+            });
+          });
+        }
+        window.addEventListener("load", scheduleDateFix);
+        document.addEventListener("click", scheduleDateFix, true);
+        document.addEventListener("DOMContentLoaded", scheduleDateFix);
+      })();
+    </script>
   </body>
 </html>
