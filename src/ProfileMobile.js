@@ -1,25 +1,51 @@
 // Mobil profil: üst bar + avatar/stats + sekmeler (grid / clips / saved / tagged)
+// Bu sürümde: Profil ızgarasındaki karta dokununca tam ekran mobil viewer açılır (soldan/sağdan kaydırma).
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import "./ProfileMobile.css";
 import { GridIcon, ClipsIcon, SavedIcon, TaggedIcon } from "./icons";
 import UserPosts from "./UserPosts";
+import ProfilePostViewerMobile from "./ProfilePostViewerMobile";
 
 export default function ProfileMobile({ user }) {
   const [mode, setMode] = useState("grid");
-  const avatarUrl = user?.photoURL || user?.profilFoto || user?.avatar || "/avatars/default.png";
+  const [viewer, setViewer] = useState(null); // { items, index }
+  const avatarUrl =
+    user?.photoURL || user?.profilFoto || user?.avatar || "/avatars/default.png";
+
+  const onOpenFromGrid = useCallback((items, startIndex) => {
+    if (!Array.isArray(items) || items.length === 0) return;
+    setViewer({ items, index: Math.max(0, Math.min(startIndex ?? 0, items.length - 1)) });
+  }, []);
+
+  const closeViewer = useCallback(() => setViewer(null), []);
+
+  const username = user?.username || user?.kullaniciAdi || "kullanıcı";
 
   return (
     <div>
+      {/* Üst bar */}
       <div className="mobile-topbar">
-        <div onClick={()=>window.history.length>1?window.history.back():window.location.assign('/')} style={{cursor:'pointer'}}>‹</div>
-        <div className="mobile-username">{user.username || user.kullaniciAdi}</div>
-        <div>⋯</div>
+        <div
+          onClick={() =>
+            window.history.length > 1
+              ? window.history.back()
+              : window.location.assign("/")
+          }
+          style={{ cursor: "pointer" }}
+          aria-label="Geri"
+          title="Geri"
+        >
+          ‹
+        </div>
+        <div className="mobile-username">{username}</div>
+        <div aria-hidden="true">⋯</div>
       </div>
 
+      {/* Avatar + istatistikler */}
       <div className="mobile-avatar-row">
         <div className="avatar-ring-sm">
-          <img alt={`${user.username || user.kullaniciAdi} avatar`} src={avatarUrl} />
+          <img alt={`${username} avatar`} src={avatarUrl} />
         </div>
         <div>
           <div className="mobile-stats">
@@ -39,33 +65,84 @@ export default function ProfileMobile({ user }) {
         </div>
       </div>
 
+      {/* Sekmeler */}
       <div className="mobile-tabs">
-        <a href="#" className={`mobile-tab ${mode==='grid'?'active':''}`} onClick={(e)=>{e.preventDefault(); setMode('grid')}}>
-          <GridIcon active={mode==='grid'} />
+        <a
+          href="#"
+          className={`mobile-tab ${mode === "grid" ? "active" : ""}`}
+          onClick={(e) => {
+            e.preventDefault();
+            setMode("grid");
+          }}
+          aria-label="Gönderiler"
+          title="Gönderiler"
+        >
+          <GridIcon active={mode === "grid"} />
         </a>
-        <a href="#" className={`mobile-tab ${mode==='clips'?'active':''}`} onClick={(e)=>{e.preventDefault(); setMode('clips')}}>
-          <ClipsIcon active={mode==='clips'} />
+        <a
+          href="#"
+          className={`mobile-tab ${mode === "clips" ? "active" : ""}`}
+          onClick={(e) => {
+            e.preventDefault();
+            setMode("clips");
+          }}
+          aria-label="Klipler"
+          title="Klipler"
+        >
+          <ClipsIcon active={mode === "clips"} />
         </a>
-        <a href="#" className={`mobile-tab ${mode==='saved'?'active':''}`} onClick={(e)=>{e.preventDefault(); setMode('saved')}}>
-          <SavedIcon active={mode==='saved'} />
+        <a
+          href="#"
+          className={`mobile-tab ${mode === "saved" ? "active" : ""}`}
+          onClick={(e) => {
+            e.preventDefault();
+            setMode("saved");
+          }}
+          aria-label="Kaydedilenler"
+          title="Kaydedilenler"
+        >
+          <SavedIcon active={mode === "saved"} />
         </a>
-        <a href="#" className={`mobile-tab ${mode==='tagged'?'active':''}`} onClick={(e)=>{e.preventDefault(); setMode('tagged')}}>
-          <TaggedIcon active={mode==='tagged'} />
+        <a
+          href="#"
+          className={`mobile-tab ${mode === "tagged" ? "active" : ""}`}
+          onClick={(e) => {
+            e.preventDefault();
+            setMode("tagged");
+          }}
+          aria-label="Etiketlenenler"
+          title="Etiketlenenler"
+        >
+          <TaggedIcon active={mode === "tagged"} />
         </a>
       </div>
 
-      {mode === 'grid' && (
-        <div className="userposts-container" style={{padding: '8px'}}>
-          <UserPosts userId={user.id} />
+      {/* İçerik */}
+      {mode === "grid" && (
+        <div className="userposts-container" style={{ padding: "8px" }}>
+          <UserPosts userId={user.id} onOpen={onOpenFromGrid} />
         </div>
       )}
-      {mode === 'clips' && (
-        <div className="userposts-container" style={{padding: '8px'}}>
-          <UserPosts userId={user.id} onlyClips />
+
+      {mode === "clips" && (
+        <div className="userposts-container" style={{ padding: "8px" }}>
+          <UserPosts userId={user.id} onlyClips onOpen={onOpenFromGrid} />
         </div>
       )}
-      {mode !== 'grid' && mode !== 'clips' && (
-        <div style={{padding: 16, color: '#999'}}>Bu sekme Sprint 2’de detaylandırılacak.</div>
+
+      {mode !== "grid" && mode !== "clips" && (
+        <div style={{ padding: 16, color: "#999" }}>
+          Bu sekme Sprint 2’de detaylandırılacak.
+        </div>
+      )}
+
+      {/* Tam ekran mobil viewer */}
+      {viewer && (
+        <ProfilePostViewerMobile
+          items={viewer.items}
+          startIndex={viewer.index}
+          onClose={closeViewer}
+        />
       )}
     </div>
   );

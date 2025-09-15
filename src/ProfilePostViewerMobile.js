@@ -1,152 +1,171 @@
 // src/ProfilePostViewerMobile.jsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { auth, db } from "./firebase";
-import {
-  collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc,
-} from "firebase/firestore";
+import { auth } from "./firebase";
 import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
 import { ensureContentDoc, rateContent as sendRating } from "./reputationClient";
 import { isSaved as fsIsSaved, toggleSave as fsToggleSave } from "./savesClient";
 import "./ProfilePostViewerMobile.css";
 
-function ts(v){ if(!v) return 0; if(typeof v==="number") return v<2e12? v*1000:v;
-  if(v.seconds) return v.seconds*1000; const t=Date.parse(v); return Number.isFinite(t)?t:0; }
+/* --- yardımcılar --- */
+function ts(v){
+  if(!v) return 0;
+  if(typeof v==="number") return v<2e12? v*1000:v;
+  if(v.seconds) return v.seconds*1000;
+  const t = Date.parse(v);
+  return Number.isFinite(t)? t : 0;
+}
 
-export default function ProfilePostViewerMobile({ userId, startId, onClose }) {
-  const [items, setItems] = useState([]);
-  const [initialIndex, setInitialIndex] = useState(0);
+const mediaUrlOf = (it) =>
+  it?.mediaUrl || it?.imageUrl || it?.videoUrl || it?.gorselUrl || it?.photoUrl || it?.resimUrl || it?.fileUrl || it?.url || "";
+
+const isVideo = (url) => !!url && /\.(mp4|webm|mov|ogg)(\?|$)/i.test(url);
+
+const displayNameOf = (it, fallback="") =>
+  it?.authorName || it?.userName || it?.username || it?.kullaniciAdi || fallback;
+
+const avatarOf = (it) =>
+  it?.authorPhoto || it?.userPhoto || it?.photoURL || it?.avatar || "/avatars/default.png";
+
+/**
+ * IG-stili mobil gönderi görüntüleyici (feed görünümü).
+ * Props:
+ *  - items: Array (ızgaradan gelen liste – aynı kullanıcının postları)
+ *  - startIndex?: number (ilk gösterilecek kart)
+ *  - onClose: fn()
+ */
+export default function ProfilePostViewerMobile({ items = [], startIndex = 0, onClose }) {
   const [savedMap, setSavedMap] = useState({});
   const listRef = useRef(null);
 
-  // posts + clips (aynı profilden)
-  useEffect(() => {
-    if (!userId) return;
-    const qPosts = query(
-      collection(db, "posts"),
-      where("authorId", "==", userId),
-      orderBy("tarih", "desc"),
-      limit(50)
+  const list = useMemo(() => {
+    const unique = new Map();
+    for (const it of Array.isArray(items) ? items : []) {
+      if (it?.id && !unique.has(it.id)) unique.set(it.id, it);
+    }
+    // tarihine göre sırala (yeni → eski)
+    const arr = Array.from(unique.values()).sort(
+      (a,b) => ts(b.tarih || b.createdAt || b.timestamp || b.date) - ts(a.tarih || a.createdAt || a.timestamp || a.date)
     );
-    const qClips = query(
-      collection(db, "clips"),
-      where("authorId", "==", userId),
-      orderBy("tarih", "desc"),
-      limit(50)
-    );
+    return arr;
+  }, [items]);
 
-    const unsubs = [];
-    const buf = { posts: [], clips: [] };
-
-    const flush = () => {
-      const merged = [...buf.posts.map(x => ({...x, type:"post"})),
-                      ...buf.clips.map(x => ({...x, type:"clip"}))];
-      merged.sort((a,b)=> ts(b.tarih)-ts(a.tarih));
-      setItems(merged);
-      if (startId) {
-        const idx = merged.findIndex(x => x.id === startId);
-        setInitialIndex(idx >= 0 ? idx : 0);
-      }
-    };
-
-    unsubs.push(onSnapshot(qPosts, s=>{
-      buf.posts = s.docs.map(d=>({id:d.id, ...d.data()}));
-      flush();
-    }));
-    unsubs.push(onSnapshot(qClips, s=>{
-      buf.clips = s.docs.map(d=>({id:d.id, ...d.data()}));
-      flush();
-    }));
-
-    return () => unsubs.forEach(u=>u());
-  }, [userId, startId]);
-
-  // açılışta ilgili karta kaydır
+  // açılışta seçili karta kaydır
   useEffect(() => {
     const el = listRef.current;
-    if (!el) return;
-    const child = el.children[initialIndex];
-    if (child) child.scrollIntoView({ block: "start", behavior: "instant" });
-  }, [items.length, initialIndex]);
+    const idx = Math.max(0, Math.min(startIndex, list.length - 1));
+    if (!el || list.length === 0) return;
+    // biraz beklet ki layout oluşsun
+    const t = setTimeout(() => {
+      const child = el.children[idx];
+      if (child) child.scrollIntoView({ block: "start", behavior: "instant" });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [list, startIndex]);
 
   const toggleSave = useCallback(async (it) => {
+    if (!it?.id) return;
     setSavedMap(m => ({...m, [it.id]: !(m[it.id])}));
     try {
       const { saved } = await fsToggleSave({
-        contentId: it.id, type: it.type, authorId: it.authorId,
-        mediaUrl: it.mediaUrl || it.videoUrl || "", caption: it.aciklama || it.mesaj || it.caption || "",
+        contentId: it.id,
+        type: it.type || "post",
+        authorId: it.authorId,
+        mediaUrl: mediaUrlOf(it),
+        caption: it.aciklama || it.caption || it.mesaj || "",
       });
       setSavedMap(m => ({...m, [it.id]: !!saved}));
-    } catch(e){
+    } catch {
       setSavedMap(m => ({...m, [it.id]: !(m[it.id])}));
     }
   }, []);
 
   const rate = useCallback(async (it, value) => {
-    await ensureContentDoc(it.id, it.authorId, it.type);
-    await sendRating({ contentId: it.id, authorId: it.authorId, value, type: it.type });
+    if (!it?.id) return;
+    try {
+      await ensureContentDoc(it.id, it.authorId, it.type || "post");
+      await sendRating({ contentId: it.id, authorId: it.authorId, value, type: it.type || "post" });
+    } catch {/* sessiz */}
   }, []);
 
   return (
-    <div className="ppv-overlay" data-modal-root>
-      {/* header */}
-      <div className="ppv-header">
-        <button className="ppv-back" onClick={onClose} aria-label="Geri">←</button>
-        <div className="ppv-title">Gönderiler</div>
+    <div className="ppv-feed-root" data-modal-root>
+      {/* üst bar */}
+      <div className="ppv-feed-header">
+        <button className="ppv-feed-back" onClick={onClose} aria-label="Geri">‹</button>
+        <div className="ppv-feed-title">Gönderiler</div>
+        <div className="ppv-feed-menu" aria-hidden="true">⋯</div>
       </div>
 
-      {/* dikey sayfa sayfa liste */}
-      <div className="ppv-list" ref={listRef}>
-        {items.map((it) => (
-          <section key={it.id} className="ppv-item" role="group" aria-label="Gönderi">
-            {/* medya */}
-            <div className="ppv-media">
-              {it.type === "clip" ? (
-                <video
-                  src={it.mediaUrl || it.videoUrl} className="ppv-mediaEl"
-                  controls playsInline autoPlay muted
-                />
-              ) : (
-                <img src={it.mediaUrl} alt="" className="ppv-mediaEl" draggable={false}/>
-              )}
-            </div>
+      {/* içerik */}
+      <div className="ppv-feed-list" ref={listRef}>
+        {list.map((it) => {
+          const url = mediaUrlOf(it);
+          const video = isVideo(url);
+          const name = displayNameOf(it, displayNameOf(list[0], "kullanıcı"));
+          const avatar = avatarOf(it) || avatarOf(list[0]);
 
-            {/* aksiyonlar */}
-            <div className="ppv-actions">
-              <StarRatingV2 size={24} onRate={(v)=>rate(it,v)} />
-              <button className="ppv-btn" onClick={()=>{ /* yorum inputuna focus: opsiyonel */ }}>
-                💬
-              </button>
-              <button className="ppv-btn" onClick={()=>{
-                const url = `${window.location.origin}/${it.type === "clip" ? "c":"p"}/${it.id}`;
-                navigator.share ? navigator.share({ title:"Gönderi", url }).catch(()=>{})
-                               : navigator.clipboard.writeText(url);
-              }}>↗</button>
-              <button className={"ppv-btn save" + (savedMap[it.id] ? " active": "")}
-                      onClick={()=>toggleSave(it)}>
-                {savedMap[it.id] ? "🔖" : "📑"}
-              </button>
-            </div>
+          return (
+            <article key={it.id} className="ppv-card" role="article" aria-label="Gönderi">
+              {/* profil satırı */}
+              <header className="ppv-card-head">
+                <img className="ppv-head-avatar" src={avatar} alt="" />
+                <div className="ppv-head-meta">
+                  <div className="ppv-head-name">{name}</div>
+                  {it?.location && <div className="ppv-head-loc">{it.location}</div>}
+                </div>
+                <button className="ppv-head-more" aria-label="Menü">⋯</button>
+              </header>
 
-            {/* yazı + zaman */}
-            {(it.aciklama || it.mesaj || it.caption) && (
-              <div className="ppv-caption">
-                {it.aciklama || it.mesaj || it.caption}
+              {/* medya */}
+              <div className="ppv-card-media">
+                {video ? (
+                  <video
+                    className="ppv-media-el"
+                    src={url}
+                    controls
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  <img className="ppv-media-el" src={url} alt={it?.aciklama || it?.caption || ""} />
+                )}
               </div>
-            )}
-            <div className="ppv-time">
-              {new Date(ts(it.tarih)).toLocaleDateString("tr-TR")}
-            </div>
 
-            {/* yorum composer (opsiyonel hızlı alan) */}
-            <div className="ppv-composer">
-              <img className="ppv-avatar"
-                   src={auth.currentUser?.photoURL || "https://placehold.co/28x28"}
-                   alt="" />
-              <input className="ppv-input" placeholder="Yorum ekle…" />
-              <button className="ppv-send">Paylaş</button>
-            </div>
-          </section>
-        ))}
+              {/* aksiyonlar */}
+              <div className="ppv-card-actions">
+                <div className="ppv-actions-left">
+                  <StarRatingV2 size={22} onRate={(v)=>rate(it,v)} />
+                  <button className="ppv-btn" aria-label="Yorum">💬</button>
+                  <button
+                    className="ppv-btn"
+                    aria-label="Paylaş"
+                    onClick={()=>{
+                      const shareUrl = `${window.location.origin}/${video ? "c":"p"}/${it.id}`;
+                      if (navigator.share) navigator.share({ title: "Gönderi", url: shareUrl }).catch(()=>{});
+                      else navigator.clipboard.writeText(shareUrl).catch(()=>{});
+                    }}
+                  >↗</button>
+                </div>
+                <button
+                  className={"ppv-btn save" + (savedMap[it.id] ? " active" : "")}
+                  aria-label="Kaydet"
+                  onClick={()=>toggleSave(it)}
+                >🔖</button>
+              </div>
+
+              {/* caption + zaman */}
+              {(it?.aciklama || it?.caption || it?.mesaj) && (
+                <div className="ppv-card-caption">
+                  <span className="ppv-cap-name">{name}</span>&nbsp;
+                  <span className="ppv-cap-text">{it.aciklama || it.caption || it.mesaj}</span>
+                </div>
+              )}
+              <div className="ppv-card-time">
+                {new Date(ts(it.tarih || it.createdAt || it.timestamp || it.date)).toLocaleDateString("tr-TR")}
+              </div>
+            </article>
+          );
+        })}
       </div>
     </div>
   );

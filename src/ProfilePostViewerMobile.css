@@ -1,26 +1,112 @@
-/* tam ekran overlay */
-.ppv-overlay { position:fixed; inset:0; background:#000; z-index:9999; color:#fff; }
+/* kök */
+.ppv-feed-root{
+  position:fixed;
+  inset:0;
+  background:#fff;
+  color:#000;
+  z-index:9999;
+  display:flex;
+  flex-direction:column;
+}
 
 /* üst bar */
-.ppv-header { position:sticky; top:0; height:48px; display:flex; align-items:center; gap:8px;
-  padding:0 12px; background:rgba(0,0,0,.35); backdrop-filter:saturate(180%) blur(10px); z-index:10; }
-.ppv-back { appearance:none; border:0; background:transparent; color:#fff; font-size:20px; }
-.ppv-title { font-weight:600; }
+.ppv-feed-header{
+  position:sticky;
+  top:0;
+  height:48px;
+  display:grid;
+  grid-template-columns:48px 1fr 48px;
+  align-items:center;
+  padding:0 4px;
+  border-bottom:1px solid #efefef;
+  background:#fff;
+  z-index:10;
+}
+.ppv-feed-back,
+.ppv-feed-menu{
+  appearance:none;
+  border:0;
+  background:transparent;
+  font-size:24px;
+  line-height:1;
+  color:#111;
+}
+.ppv-feed-title{
+  text-align:center;
+  font-weight:700;
+  font-size:16px;
+}
 
-/* dikey sayfalar */
-.ppv-list { height:100dvh; overflow-y:auto; scroll-snap-type:y mandatory; overscroll-behavior:contain; }
-.ppv-item { height:100dvh; scroll-snap-align:start; display:flex; flex-direction:column; }
-.ppv-media { flex:1 1 auto; display:flex; align-items:center; justify-content:center; background:#000; }
-.ppv-mediaEl { max-width:100%; max-height:100%; object-fit:contain; }
+/* liste */
+.ppv-feed-list{
+  flex:1 1 auto;
+  overflow-y:auto;
+  -webkit-overflow-scrolling: touch;
+  background:#fff;
+}
 
-/* alt içerik */
-.ppv-actions { display:flex; gap:10px; align-items:center; padding:8px 12px; }
-.ppv-btn { background:transparent; border:0; color:#fff; font-size:18px; }
-.ppv-btn.save.active { opacity:1; }
-.ppv-caption { padding:0 12px 6px; color:#eee; }
-.ppv-time { padding:0 12px 8px; color:#aaa; font-size:12px; }
+/* kart */
+.ppv-card{
+  background:#fff;
+  border-bottom:8px solid #f7f7f7; /* kartlar arası boşluk duygusu */
+}
 
-.ppv-composer { display:flex; align-items:center; gap:8px; padding:8px 12px 16px; }
-.ppv-avatar { width:28px; height:28px; border-radius:50%; background:#222; }
-.ppv-input { flex:1; background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,.2); color:#fff; outline:none; }
-.ppv-send { background:transparent; border:0; color:#8ab4ff; font-weight:600; }
+/* kart başlık */
+.ppv-card-head{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 12px;
+}
+.ppv-head-avatar{
+  width:32px; height:32px; border-radius:50%; object-fit:cover; background:#eee;
+}
+.ppv-head-meta{ display:flex; flex-direction:column; }
+.ppv-head-name{ font-weight:700; font-size:14px; }
+.ppv-head-loc{ font-size:12px; color:#8e8e8e; }
+.ppv-head-more{ margin-left:auto; appearance:none; border:0; background:transparent; font-size:22px; color:#333; }
+
+/* medya */
+.ppv-card-media{ width:100%; background:#000; }
+.ppv-media-el{
+  display:block;
+  width:100%;
+  height:auto;
+  max-height:85vh;           /* çok uzun görüntülerde ekranı taşırmasın */
+  object-fit:contain;
+  background:#000;
+}
+
+/* aksiyonlar */
+.ppv-card-actions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:8px 8px 0;
+}
+.ppv-actions-left{ display:flex; align-items:center; gap:10px; }
+.ppv-btn{
+  appearance:none; border:0; background:transparent;
+  font-size:20px; line-height:1; color:#111;
+}
+.ppv-btn.save.active{ opacity:1; }
+
+/* caption + zaman */
+.ppv-card-caption{
+  padding:6px 12px 0;
+  font-size:14px;
+}
+.ppv-cap-name{ font-weight:700; }
+.ppv-cap-text{
+  display:inline;
+  display:-webkit-box;
+  -webkit-line-clamp:3;      /* IG'deki '…devamı' hissine yakın, 3 satır kıs */
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.ppv-card-time{
+  padding:6px 12px 12px;
+  color:#8e8e8e;
+  font-size:12px;
+  text-transform:lowercase;
+}
