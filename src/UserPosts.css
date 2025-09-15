@@ -17,10 +17,6 @@
   background: #f2f2f2;
   border-radius: 3px;
   cursor: pointer;
-
-  /* mobil dokunma efekti temizliği */
-  -webkit-tap-highlight-color: transparent;
-  outline: none;
 }
 
 .post-grid-image {
@@ -38,12 +34,10 @@
   background: rgba(0, 0, 0, 0.35);
   padding: 4px;
   border-radius: 8px;
-
-  /* tıklamayı engellemesin */
-  pointer-events: none;
+  color: #fff;                 /* merkezi ikonlar currentColor kullanır */
 }
 
-/* Hover’da like/yorum sayısı (masaüstü için) */
+/* Hover’da like/yorum sayısı */
 .post-grid-overlay {
   position: absolute;
   inset: 0;
@@ -52,34 +46,22 @@
   justify-content: flex-end;
   gap: 12px;
   padding: 8px;
-  color: #fff;
+  color: #fff;                 /* ikon + metin rengi */
   font-weight: 600;
   background: linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.35) 100%);
   opacity: 0;
   transition: opacity .15s ease;
-  text-shadow: 0 1px 2px rgba(0,0,0,.35);
 }
 
-/* Sadece hover destekli cihazlarda overlay açılır */
-@media (hover: hover) and (pointer: fine) {
-  .post-grid-item:hover .post-grid-overlay { opacity: 1; }
-}
-
-/* Klavye erişilebilirliği */
-.post-grid-item:focus-visible .post-grid-overlay { opacity: 1; }
+.post-grid-item:hover .post-grid-overlay { opacity: 1; }
 
 .overlay-stat {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-/* --- Mobilde overlay tamamen kapalı (IG davranışı) --- */
-@media (hover: none), (pointer: coarse) {
-  .post-grid-overlay { display: none; }
-}
-
-/* --- Clip viewer overlay --- */
+/* --- Clip viewer overlay (fallback) --- */
 .clip-viewer-backdrop {
   position: fixed;
   inset: 0;

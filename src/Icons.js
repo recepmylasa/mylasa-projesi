@@ -11,11 +11,11 @@ const svgBase = ({ size = 24, className, title }) => ({
   className,
 });
 
-/** Outline çizgiler IG'ye yakın: stroke=2, round cap/join */
+/** IG’ye yakın outline: stroke≈1.8, round cap/join */
 const strokeProps = {
   fill: "none",
   stroke: "currentColor",
-  strokeWidth: 2,
+  strokeWidth: 1.8,
   strokeLinecap: "round",
   strokeLinejoin: "round",
 };
@@ -64,6 +64,7 @@ export const CommentIcon = ({ size, className, title }) => (
 
 export const ShareIcon = ({ size, className, title }) => (
   <svg {...svgBase({ size, className, title })}>
+    {/* kâğıt uçak – IG’ye yakın oran */}
     <path d="M3 12 21 4l-5 8 5 8-18-8Z" {...strokeProps} />
   </svg>
 );
