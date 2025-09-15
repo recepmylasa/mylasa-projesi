@@ -1,38 +1,10 @@
 // src/UserPosts.js
 // Profil grid (resim/video). Esnek şema desteği.
-// Post tık: /p/:id (mevcut akış bozulmaz)
-// Clip tık: dahili video overlay AÇILIR (EĞER onOpen VERİLMEDİYSE).
-// onOpen(items, startIndex) verilirse, HER KART için onu çağırır (mobil tam ekran viewer entegrasyonu).
-
 import React, { useMemo, useEffect, useState, useCallback } from "react";
 import { db } from "./firebase";
-import {
-  collection,
-  collectionGroup,
-  query,
-  where,
-  getDocs,
-  limit,
-} from "firebase/firestore";
+import { collection, collectionGroup, query, where, getDocs, limit } from "firebase/firestore";
+import { StarIcon, CommentIcon, ClipBadge } from "./icons";
 import "./UserPosts.css";
-
-/* --- küçük ikonlar --- */
-const StarIconOverlay = () => (
-  <svg aria-hidden="true" height="20" viewBox="0 0 24 24" width="20" fill="white">
-    <path d="M12 17.27 18.18 21 16.54 13.97 22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-  </svg>
-);
-const CommentIconOverlay = () => (
-  <svg aria-hidden="true" height="20" viewBox="0 0 24 24" width="20" fill="white">
-    <path d="M20.656 17.008a9.993 9.993 0 1 0-3.59 3.615L22 22Z" stroke="white" strokeWidth="2" strokeLinejoin="round"/>
-  </svg>
-);
-const ClipIconGrid = () => (
-  <svg aria-hidden="true" height="18" viewBox="0 0 24 24" width="18" fill="white">
-    <path d="M4 6a3 3 0 0 1 3-3h7.5L18 6h2a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6Z" opacity=".45"/>
-    <path d="M12 10.5v3l3-1.5-3-1.5Z" />
-  </svg>
-);
 
 /* --- yardımcılar --- */
 const isVideoExt = (url) => !!url && /\.(mp4|webm|mov|ogg)(\?|$)/i.test(url);
@@ -56,7 +28,6 @@ function isClipItem(item) {
   const t = (item?.type || item?.format || item?.kind || "").toString().toLowerCase();
   const mt = (item?.mediaType || item?.mime || item?.mimeType || "").toString().toLowerCase();
   const url = mediaUrlOf(item);
-
   return (
     item?.isClip === true ||
     item?.isVideo === true ||
@@ -75,13 +46,12 @@ function ts(val) {
   return Number.isFinite(t) ? t : 0;
 }
 
-/** Yalnızca CLIPS: önce direkt /clips sorgula; bulunamazsa geniş esnek yolla filtrele. */
+/** Yalnızca CLIPS: önce direkt /clips; yoksa tüm içerikten videoları ayıkla. */
 async function fetchUserClipsFlexible(userId) {
   const idFields = [
     "authorId","userId","uid","userID","ownerId","kullaniciId","createdBy","olusturanId",
     "user.uid","author.uid","owner.uid","user.id","author.id","accountId"
   ];
-  // 1) /clips
   for (const f of idFields) {
     try {
       const qy = query(collection(db, "clips"), where(f, "==", userId), limit(200));
@@ -89,7 +59,6 @@ async function fetchUserClipsFlexible(userId) {
       if (!snap.empty) return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch {}
   }
-  // 2) /**/clips
   for (const f of idFields) {
     try {
       const qy = query(collectionGroup(db, "clips"), where(f, "==", userId), limit(200));
@@ -97,17 +66,13 @@ async function fetchUserClipsFlexible(userId) {
       if (!snap.empty) return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch {}
   }
-  // 3) fallback: tüm içerikten videoları ayıkla
   const everything = await fetchUserPostsFlexible(userId);
   return everything.filter(isClipItem);
 }
 
-/** Gönderiler (post/clip mix) — çok esnek koleksiyon/ad alanı aralığı */
+/** Gönderiler (post/clip mix) — esnek koleksiyon/ad alanı */
 async function fetchUserPostsFlexible(userId) {
-  const colNames = [
-    "posts", "gonderiler", "paylasimlar", "postlar",
-    "clips", "reels", "videolar"
-  ];
+  const colNames = ["posts", "gonderiler", "paylasimlar", "postlar", "clips", "reels", "videolar"];
   const idFields = [
     "authorId","userId","uid","userID","ownerId","kullaniciId","createdBy","olusturanId","accountId",
     "user.uid","author.uid","owner.uid","user.id","author.id"
@@ -137,22 +102,19 @@ async function fetchUserPostsFlexible(userId) {
 /**
  * Props:
  *  - userId: string
- *  - content?: array (varsa direkt o kullanılır)
- *  - onlyClips?: boolean → true ise yalnızca video (clip) göster
- *  - onOpen?: function(items, startIndex) → verildiyse, tüm tıklamalar bunu çağırır
+ *  - content?: array
+ *  - onlyClips?: boolean
+ *  - onOpen?: function(items, startIndex)
  */
 export default function UserPosts({ userId, content, onlyClips = false, onOpen }) {
   const [fetched, setFetched] = useState(null);
-  const [clipViewer, setClipViewer] = useState(null); // Fallback: onOpen verilmezse
+  const [clipViewer, setClipViewer] = useState(null);
 
-  // body scroll kilidi (fallback viewer açıkken)
   useEffect(() => {
     if (clipViewer) {
       const prev = document.body.style.overflow;
       document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = prev;
-      };
+      return () => { document.body.style.overflow = prev; };
     }
   }, [clipViewer]);
 
@@ -161,18 +123,14 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
     let cancelled = false;
     (async () => {
       try {
-        const items = onlyClips
-          ? await fetchUserClipsFlexible(userId)
-          : await fetchUserPostsFlexible(userId);
+        const items = onlyClips ? await fetchUserClipsFlexible(userId) : await fetchUserPostsFlexible(userId);
         if (!cancelled) setFetched(items);
       } catch (e) {
         console.error("UserPosts fetch error:", e);
         if (!cancelled) setFetched([]);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [userId, content, onlyClips]);
 
   const list = useMemo(() => {
@@ -186,13 +144,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
 
     const getCreated = (x) =>
       ts(
-        x.createdAt ||
-          x.created_at ||
-          x.tarih ||
-          x.timestamp ||
-          x.olusturmaTarihi ||
-          x.time ||
-          x.date
+        x.createdAt || x.created_at || x.tarih || x.timestamp || x.olusturmaTarihi || x.time || x.date
       );
     arr.sort((a, b) => getCreated(b) - getCreated(a));
 
@@ -200,7 +152,6 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
     return arr;
   }, [content, fetched, onlyClips]);
 
-  // Viewer’a tip bilgisi taşıyan aynı sıradaki liste
   const viewList = useMemo(
     () => list.map((it) => (it.type ? it : { ...it, type: isClipItem(it) ? "clip" : "post" })),
     [list]
@@ -223,11 +174,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
   };
 
   if (!Array.isArray(list)) {
-    return (
-      <div className="user-posts-message">
-        <span>Yükleniyor...</span>
-      </div>
-    );
+    return <div className="user-posts-message"><span>Yükleniyor...</span></div>;
   }
   if (list.length === 0) {
     return (
@@ -248,10 +195,9 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
 
           const handleClick = () => {
             if (typeof onOpen === "function") {
-              onOpen(viewList, idx); // Mobil tam ekran viewer entegrasyonu (tip bilgisiyle birlikte)
+              onOpen(viewList, idx);
               return;
             }
-            // onOpen yoksa eski davranış:
             if (isClip) openClip(item);
             else openPost(item);
           };
@@ -266,13 +212,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
               role="listitem"
             >
               {isClip ? (
-                <video
-                  src={url}
-                  className="post-grid-image"
-                  muted
-                  playsInline
-                  preload="metadata"
-                />
+                <video src={url} className="post-grid-image" muted playsInline preload="metadata" />
               ) : (
                 <img
                   src={url}
@@ -283,22 +223,20 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
               )}
 
               {isClip && (
-                <div className="post-grid-icon-wrapper">
-                  <ClipIconGrid />
+                <div className="post-grid-icon-wrapper" style={{ color: "#fff" }}>
+                  <ClipBadge size={18} />
                 </div>
               )}
 
-              <div className="post-grid-overlay">
+              <div className="post-grid-overlay" style={{ color: "#fff" }}>
                 <div className="overlay-stat">
-                  <StarIconOverlay />
+                  <StarIcon />
                   <span>
-                    {item?.starsCount ??
-                      item?.likes ??
-                      (item?.begenenler?.length || 0)}
+                    {item?.starsCount ?? item?.likes ?? (item?.begenenler?.length || 0)}
                   </span>
                 </div>
                 <div className="overlay-stat">
-                  <CommentIconOverlay />
+                  <CommentIcon />
                   <span>
                     {item?.commentsCount ?? (item?.yorumlar?.length || 0)}
                   </span>
@@ -311,16 +249,9 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
 
       {/* Fallback clip viewer (onOpen yoksa devrede) */}
       {clipViewer && (
-        <div
-          className="clip-viewer-backdrop"
-          onClick={() => setClipViewer(null)}
-          role="dialog"
-          aria-modal="true"
-        >
+        <div className="clip-viewer-backdrop" onClick={() => setClipViewer(null)} role="dialog" aria-modal="true">
           <div className="clip-viewer" onClick={(e) => e.stopPropagation()}>
-            <button className="clip-close" onClick={() => setClipViewer(null)}>
-              Kapat
-            </button>
+            <button className="clip-close" onClick={() => setClipViewer(null)}>Kapat</button>
             <video src={clipViewer.url} controls autoPlay playsInline />
           </div>
         </div>

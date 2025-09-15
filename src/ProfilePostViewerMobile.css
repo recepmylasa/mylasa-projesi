@@ -1,112 +1,180 @@
-/* kök */
-.ppv-feed-root{
-  position:fixed;
-  inset:0;
-  background:#fff;
-  color:#000;
-  z-index:9999;
-  display:flex;
-  flex-direction:column;
+/* — Tamamen mobil feed görünümü, beyaz zemin. class prefix: .ppv- — */
+
+.ppv-root {
+  position: fixed;
+  inset: 0;
+  background: #fff;           /* siyah yerine beyaz */
+  color: #111;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
 }
 
 /* üst bar */
-.ppv-feed-header{
-  position:sticky;
-  top:0;
-  height:48px;
-  display:grid;
-  grid-template-columns:48px 1fr 48px;
-  align-items:center;
-  padding:0 4px;
-  border-bottom:1px solid #efefef;
-  background:#fff;
-  z-index:10;
+.ppv-header {
+  position: sticky;
+  top: 0;
+  height: 48px;
+  display: grid;
+  grid-template-columns: 48px 1fr 48px;
+  align-items: center;
+  padding: 0 4px;
+  border-bottom: 1px solid #efefef;
+  background: #fff;
+  z-index: 20;                /* beyaz kalması için yükseltildi */
 }
-.ppv-feed-back,
-.ppv-feed-menu{
-  appearance:none;
-  border:0;
-  background:transparent;
-  font-size:24px;
-  line-height:1;
-  color:#111;
+.ppv-back,
+.ppv-kebab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: #111;
 }
-.ppv-feed-title{
-  text-align:center;
-  font-weight:700;
-  font-size:16px;
+.ppv-title {
+  text-align: center;
+  font-weight: 700;
+  font-size: 15px;
 }
 
-/* liste */
-.ppv-feed-list{
-  flex:1 1 auto;
-  overflow-y:auto;
+/* içerik alanı (yukarı kaydırmalı) */
+.ppv-list {
+  height: calc(100dvh - 48px);
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  background:#fff;
+  scroll-behavior: smooth;
+  background: #fff;
 }
 
 /* kart */
-.ppv-card{
-  background:#fff;
-  border-bottom:8px solid #f7f7f7; /* kartlar arası boşluk duygusu */
+.ppv-card {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 8px solid #fafafa; /* IG aralığına yakın boşluk */
 }
 
-/* kart başlık */
-.ppv-card-head{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  padding:10px 12px;
+/* kart header */
+.ppv-head {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
 }
-.ppv-head-avatar{
-  width:32px; height:32px; border-radius:50%; object-fit:cover; background:#eee;
+.ppv-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #eee;
 }
-.ppv-head-meta{ display:flex; flex-direction:column; }
-.ppv-head-name{ font-weight:700; font-size:14px; }
-.ppv-head-loc{ font-size:12px; color:#8e8e8e; }
-.ppv-head-more{ margin-left:auto; appearance:none; border:0; background:transparent; font-size:22px; color:#333; }
+.ppv-head-meta { min-width: 0; }
+.ppv-name {
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.ppv-loc {
+  color: #888;
+  font-size: 12px;
+  line-height: 1.1;
+}
+.ppv-more {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #111;
+}
 
 /* medya */
-.ppv-card-media{ width:100%; background:#000; }
-.ppv-media-el{
-  display:block;
-  width:100%;
-  height:auto;
-  max-height:85vh;           /* çok uzun görüntülerde ekranı taşırmasın */
-  object-fit:contain;
-  background:#000;
+.ppv-media { background: #000; } /* letterbox */
+.ppv-media-el {
+  width: 100%;
+  height: auto;
+  max-height: 80vh;
+  display: block;
+  object-fit: contain; /* içeriği kırpmadan göster */
+  background: #000;
 }
 
-/* aksiyonlar */
-.ppv-card-actions{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:8px 8px 0;
+/* aksiyon satırı */
+.ppv-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 4px;
 }
-.ppv-actions-left{ display:flex; align-items:center; gap:10px; }
-.ppv-btn{
-  appearance:none; border:0; background:transparent;
-  font-size:20px; line-height:1; color:#111;
+.ppv-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
-.ppv-btn.save.active{ opacity:1; }
+.ppv-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 6px;
+  border-radius: 8px;
+  line-height: 0;
+  color: #111;
+}
+.ppv-btn:active { background: #f2f2f2; }
 
-/* caption + zaman */
-.ppv-card-caption{
-  padding:6px 12px 0;
-  font-size:14px;
+/* ikon boyutu ve varsayılan renk */
+.ppv-ico {
+  width: 24px;
+  height: 24px;
+  display: block;
+  fill: currentColor; /* outline ikonlarda path'ler fill:none + stroke ile geliyor */
 }
-.ppv-cap-name{ font-weight:700; }
-.ppv-cap-text{
-  display:inline;
-  display:-webkit-box;
-  -webkit-line-clamp:3;      /* IG'deki '…devamı' hissine yakın, 3 satır kıs */
-  -webkit-box-orient:vertical;
-  overflow:hidden;
+
+/* sayaçlar */
+.ppv-counts {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 6px;
 }
-.ppv-card-time{
-  padding:6px 12px 12px;
-  color:#8e8e8e;
-  font-size:12px;
-  text-transform:lowercase;
+.ppv-like-strong { font-weight: 700; font-size: 14px; }
+.ppv-like-ghost { color: #999; font-size: 14px; }
+.ppv-show-comments {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #666;
+  font-size: 14px;
+  padding: 2px 0;
+}
+
+/* caption */
+.ppv-caption {
+  padding: 0 12px 6px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: #111;
+}
+.ppv-cap-name { font-weight: 700; }
+.ppv-caption.collapsed .ppv-cap-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;    /* 2 satıra kısalt */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ppv-moretext {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #666;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* zaman etiketi */
+.ppv-time {
+  padding: 0 12px 12px;
+  color: #9b9b9b;
+  font-size: 11px;
+  letter-spacing: .02em;
+  text-transform: none; /* IG mobilde küçük harfli “x s önce” formu */
 }

@@ -1,5 +1,5 @@
 // Mobil profil: üst bar + avatar/stats + sekmeler (grid / clips / saved / tagged)
-// Bu sürümde: Profil ızgarasındaki karta dokununca tam ekran mobil viewer açılır (soldan/sağdan kaydırma).
+// Profil grid kartına dokununca tam ekran mobil viewer açılır (yukarı kaydırmalı).
 
 import React, { useState, useCallback } from "react";
 import "./ProfileMobile.css";
@@ -9,18 +9,31 @@ import ProfilePostViewerMobile from "./ProfilePostViewerMobile";
 
 export default function ProfileMobile({ user }) {
   const [mode, setMode] = useState("grid");
-  const [viewer, setViewer] = useState(null); // { items, index }
+  const [viewer, setViewer] = useState(null); // { items, index, userMeta }
+
   const avatarUrl =
     user?.photoURL || user?.profilFoto || user?.avatar || "/avatars/default.png";
 
-  const onOpenFromGrid = useCallback((items, startIndex) => {
-    if (!Array.isArray(items) || items.length === 0) return;
-    setViewer({ items, index: Math.max(0, Math.min(startIndex ?? 0, items.length - 1)) });
-  }, []);
+  const username =
+    user?.displayName || user?.username || user?.kullaniciAdi || "kullanıcı";
+
+  const onOpenFromGrid = useCallback(
+    (items, startIndex) => {
+      if (!Array.isArray(items) || items.length === 0) return;
+      setViewer({
+        items,
+        index: Math.max(0, Math.min(startIndex ?? 0, items.length - 1)),
+        userMeta: {
+          id: user?.id,
+          name: username,
+          avatar: avatarUrl,
+        },
+      });
+    },
+    [user?.id, username, avatarUrl]
+  );
 
   const closeViewer = useCallback(() => setViewer(null), []);
-
-  const username = user?.username || user?.kullaniciAdi || "kullanıcı";
 
   return (
     <div>
@@ -120,13 +133,13 @@ export default function ProfileMobile({ user }) {
       {/* İçerik */}
       {mode === "grid" && (
         <div className="userposts-container" style={{ padding: "8px" }}>
-          <UserPosts userId={user.id} onOpen={onOpenFromGrid} />
+          <UserPosts userId={user?.id} onOpen={onOpenFromGrid} />
         </div>
       )}
 
       {mode === "clips" && (
         <div className="userposts-container" style={{ padding: "8px" }}>
-          <UserPosts userId={user.id} onlyClips onOpen={onOpenFromGrid} />
+          <UserPosts userId={user?.id} onlyClips onOpen={onOpenFromGrid} />
         </div>
       )}
 
@@ -142,6 +155,7 @@ export default function ProfileMobile({ user }) {
           items={viewer.items}
           startIndex={viewer.index}
           onClose={closeViewer}
+          viewerUser={viewer.userMeta}   // << paylaşan kullanıcı bilgisi
         />
       )}
     </div>
