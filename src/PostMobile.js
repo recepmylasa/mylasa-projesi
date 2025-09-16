@@ -1,219 +1,179 @@
-import React from "react";
-import "./PostMobile.css";
-import { BsChat, BsBookmark, BsBookmarkFill, BsThreeDots } from "react-icons/bs";
-import { FiSend } from "react-icons/fi";
+// Mobil profil: üst bar + avatar/stats + aksiyon şeridi + sekmeler (grid / clips / saved / tagged)
+// Izgaradaki karta dokununca tam ekran mobil viewer açılır.
 
-import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
-import { usePostLogic } from "./hooks/usePostLogic";
-import { formatTimeAgo, formatCount } from "./utils";
+import React, { useState, useCallback } from "react";
+import "./ProfileMobile.css";
+import { GridIcon, ClipsIcon, SavedIcon, TaggedIcon } from "./icons";
+import UserPosts from "./UserPosts";
+import ProfilePostViewerMobile from "./ProfilePostViewerMobile";
 
-/* --------------- SKELETON --------------- */
-const MobileSkeleton = () => (
-  <article className="m-post-article skeleton" aria-busy="true" aria-live="polite">
-    <header className="m-post-header">
-      <div className="m-skeleton-avatar" />
-      <div className="m-skeleton-text m-skeleton-username" />
-    </header>
-    <div className="m-skeleton-media" />
-    <div className="m-post-content">
-      <div className="m-skeleton-text" />
-      <div className="m-skeleton-text short" />
-    </div>
-  </article>
-);
+export default function ProfileMobile({ user = null }) {
+  // user null/undefined gelebilir → güvenli alias
+  const u = user ?? {};
+  // id; farklı alan adları da olabilir
+  const userId = u.id ?? u.uid ?? u.userId ?? u.accountId ?? u._id ?? null;
+  const hasUserId = !!userId;
 
-function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
-  const {
-    authorProfile,
-    isSaved,
-    optionsOpen,
-    setOptionsOpen,
-    isMediaLoaded,
-    setIsMediaLoaded,
-    showFullCaption,
-    setShowFullCaption,
-    agg,
-    menuRef,
-    isOwner,
-    visibleScore,
-    showGold,
-    handleDelete,
-    handleToggleSave,
-    handleShare,
-    handleToggleComments,
-    handleGoToPost,
-    handleRate,
-  } = usePostLogic(post, aktifKullaniciId, onCommentClick);
+  const [mode, setMode] = useState("grid");
+  const [viewer, setViewer] = useState(null); // { items, index }
 
-  if (!authorProfile) return <MobileSkeleton />;
-
-  const mediaUrl = post.mediaUrl;
-  const mediaType = post.mediaType || "image";
-  const username = authorProfile?.kullaniciAdi || "bilinmeyen";
   const avatarUrl =
-    authorProfile?.profilFoto || "https://placehold.co/40x40/EFEFEF/AAAAAA?text=P";
+    u.photoURL || u.profilFoto || u.avatar || "/avatars/default.png";
+  const username = u.username || u.kullaniciAdi || "kullanıcı";
 
-  const captionText = post?.mesaj || "";
-  const CAPTION_LIMIT = 120;
-  const needsClamp = captionText.length > CAPTION_LIMIT;
-  const captionPreview = needsClamp
-    ? captionText.slice(0, CAPTION_LIMIT).trim()
-    : captionText;
+  const onOpenFromGrid = useCallback((items, startIndex) => {
+    if (!Array.isArray(items) || items.length === 0) return;
+    setViewer({
+      items,
+      index: Math.max(0, Math.min(startIndex ?? 0, items.length - 1)),
+    });
+  }, []);
+
+  const closeViewer = useCallback(() => setViewer(null), []);
 
   return (
-    <article className="m-post-article">
-      <header className="m-post-header">
-        <div
-          className={`m-avatar-wrap ${showGold ? "gold" : ""}`}
-          onClick={() => onUserClick?.(post.authorId)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => (e.key === "Enter" ? onUserClick?.(post.authorId) : null)}
-          aria-label={`${username} profilini aç`}
+    <div className="profile-mobile">
+      {/* Üst bar */}
+      <div className="mobile-topbar">
+        <button
+          type="button"
+          onClick={() =>
+            window.history.length > 1
+              ? window.history.back()
+              : window.location.assign("/")
+          }
+          className="icon-btn"
+          aria-label="Geri"
+          title="Geri"
         >
-          <img src={avatarUrl} alt={username} className="m-post-avatar" draggable="false" />
-          {showGold && <span className="m-gold-star" aria-hidden="true">★</span>}
+          ‹
+        </button>
+
+        <div className="mobile-username" aria-live="polite">
+          {username}
         </div>
 
-        <div className="m-user-meta" onClick={() => onUserClick?.(post.authorId)}>
-          <span className="m-post-username" title={username}>
-            {username}
-          </span>
-          <span className="m-rep-pill" title="Topluluk puanı">
-            <span className="m-rep-star">★</span>
-            <span className="m-rep-value">{Number(visibleScore).toFixed(1)}</span>
-          </span>
-        </div>
-
-        <div className="m-post-options" ref={menuRef}>
-          <button
-            className="m-post-options-btn"
-            onClick={() => setOptionsOpen((v) => !v)}
-            aria-haspopup="menu"
-            aria-expanded={optionsOpen}
-          >
-            <BsThreeDots />
-          </button>
-          {optionsOpen && (
-            <div className="m-post-options-menu" role="menu">
-              <button onClick={handleGoToPost} className="m-option-item" role="menuitem">
-                Gönderiye git
-              </button>
-              {isOwner && (
-                <button onClick={handleToggleComments} className="m-option-item" role="menuitem">
-                  {post?.yorumlarKapali ? "Yorumları aç" : "Yorumları kapat"}
-                </button>
-              )}
-              {isOwner && (
-                <button onClick={handleDelete} className="m-option-item delete" role="menuitem">
-                  Sil
-                </button>
-              )}
-              <button onClick={() => setOptionsOpen(false)} className="m-option-item" role="menuitem">
-                Vazgeç
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <div className="m-post-media">
-        {!isMediaLoaded && <div className="m-media-placeholder skeleton" aria-hidden="true" />}
-        {mediaUrl &&
-          (mediaType.startsWith("image") ? (
-            <img
-              src={mediaUrl}
-              alt="Gönderi görseli"
-              className={`m-post-image ${isMediaLoaded ? "loaded" : ""}`}
-              onLoad={() => setIsMediaLoaded(true)}
-              draggable="false"
-              loading="lazy"
-            />
-          ) : (
-            <video
-              src={mediaUrl}
-              controls
-              className={`m-post-video ${isMediaLoaded ? "loaded" : ""}`}
-              onCanPlay={() => setIsMediaLoaded(true)}
-              playsInline
-            />
-          ))}
+        <div className="topbar-kebab" aria-hidden="true">⋯</div>
       </div>
 
-      <div className="m-post-content">
-        <div className="m-post-actions">
-          <div className="m-star-wrap">
-            <StarRatingV2 size={32} readOnly={isOwner} onRate={handleRate} />
-            {agg?.avg > 0 && agg?.count > 0 && (
-              <span className="m-star-meta" aria-label="Bu gönderinin puanı">
-                {Number(agg.avg).toFixed(1)} ★ · {formatCount(agg.count)} oy
-              </span>
-            )}
+      {/* Avatar + istatistikler */}
+      <div className="mobile-avatar-row">
+        <div className="avatar-ring-sm">
+          <img alt={`${username} avatar`} src={avatarUrl} />
+        </div>
+
+        <div className="mobile-stats">
+          <div>
+            <div className="count">{u.postsCount ?? 0}</div>
+            <div className="label">gönderi</div>
           </div>
-
-          <button
-            onClick={() => onCommentClick?.(post)}
-            className="m-action-btn"
-            aria-label="Yorumlar"
-            title="Yorumlar"
-          >
-            <BsChat className="m-action-icon" />
-          </button>
-
-          <button
-            className="m-action-btn"
-            onClick={handleShare}
-            aria-label="Paylaş"
-            title="Paylaş"
-          >
-            <FiSend className="m-action-icon" />
-          </button>
-
-          <button
-            onClick={handleToggleSave}
-            className="m-action-btn save"
-            aria-label={isSaved ? "Kaydedildi" : "Kaydet"}
-            title={isSaved ? "Kaydedildi" : "Kaydet"}
-          >
-            {isSaved ? (
-              <BsBookmarkFill className="m-action-icon" />
-            ) : (
-              <BsBookmark className="m-action-icon" />
-            )}
-          </button>
+          <div>
+            <div className="count">{u.followersCount ?? 0}</div>
+            <div className="label">takipçi</div>
+          </div>
+          <div>
+            <div className="count">{u.followingCount ?? 0}</div>
+            <div className="label">takip</div>
+          </div>
         </div>
-
-        {post?.yorumlarKapali && <div className="m-comments-locked">Yorumlar kapalı</div>}
-
-        {captionText && (
-          <p className="m-post-caption">
-            <strong onClick={() => onUserClick?.(post.authorId)}>{username}</strong>
-            <span> {showFullCaption ? captionText : captionPreview}</span>
-            {needsClamp && !showFullCaption && (
-              <>
-                <span>… </span>
-                <button
-                  className="m-more-btn"
-                  onClick={() => setShowFullCaption(true)}
-                  aria-label="Devamını göster"
-                >
-                  devamı
-                </button>
-              </>
-            )}
-          </p>
-        )}
-
-        {post?.yorumlar?.length > 0 && (
-          <button className="m-post-comments-link" onClick={() => onCommentClick?.(post)}>
-            Tüm {post.yorumlar.length} yorumu gör
-          </button>
-        )}
-
-        <p className="m-post-date">{formatTimeAgo(post?.tarih)}</p>
       </div>
-    </article>
+
+      {/* Aksiyon buton şeridi (IG stili) */}
+      <div className="profile-actions" role="group" aria-label="Profil aksiyonları">
+        <button type="button" className="action-btn">Profili düzenle</button>
+        <button type="button" className="action-btn">Profili paylaş</button>
+        <button type="button" className="action-btn">Abonelik</button>
+        <button
+          type="button"
+          className="action-btn more"
+          aria-label="Diğer seçenekler"
+          title="Diğer"
+          onClick={() => {}}
+        >
+          ⌄
+        </button>
+      </div>
+
+      {/* Sekmeler */}
+      <div className="mobile-tabs" role="tablist" aria-label="Profil sekmeleri">
+        <a
+          href="#"
+          role="tab"
+          aria-selected={mode === "grid"}
+          className={`mobile-tab ${mode === "grid" ? "active" : ""}`}
+          onClick={(e) => { e.preventDefault(); setMode("grid"); }}
+          aria-label="Gönderiler"
+          title="Gönderiler"
+        >
+          <GridIcon size={24} />
+        </a>
+        <a
+          href="#"
+          role="tab"
+          aria-selected={mode === "clips"}
+          className={`mobile-tab ${mode === "clips" ? "active" : ""}`}
+          onClick={(e) => { e.preventDefault(); setMode("clips"); }}
+          aria-label="Klipler"
+          title="Klipler"
+        >
+          <ClipsIcon size={24} />
+        </a>
+        <a
+          href="#"
+          role="tab"
+          aria-selected={mode === "saved"}
+          className={`mobile-tab ${mode === "saved" ? "active" : ""}`}
+          onClick={(e) => { e.preventDefault(); setMode("saved"); }}
+          aria-label="Kaydedilenler"
+          title="Kaydedilenler"
+        >
+          <SavedIcon size={24} active={mode === "saved"} />
+        </a>
+        <a
+          href="#"
+          role="tab"
+          aria-selected={mode === "tagged"}
+          className={`mobile-tab ${mode === "tagged" ? "active" : ""}`}
+          onClick={(e) => { e.preventDefault(); setMode("tagged"); }}
+          aria-label="Etiketlenenler"
+          title="Etiketlenenler"
+        >
+          <TaggedIcon size={24} />
+        </a>
+      </div>
+
+      {/* İçerik */}
+      {mode === "grid" && hasUserId && (
+        <div className="userposts-container">
+          <UserPosts userId={userId} onOpen={onOpenFromGrid} />
+        </div>
+      )}
+
+      {mode === "clips" && hasUserId && (
+        <div className="userposts-container">
+          <UserPosts userId={userId} onlyClips onOpen={onOpenFromGrid} />
+        </div>
+      )}
+
+      {!hasUserId && (
+        <div className="userposts-container">
+          <div className="user-posts-message">Profil yükleniyor…</div>
+        </div>
+      )}
+
+      {mode !== "grid" && mode !== "clips" && (
+        <div className="tab-empty">Bu sekme Sprint 2’de detaylandırılacak.</div>
+      )}
+
+      {/* Tam ekran mobil viewer */}
+      {viewer && (
+        <ProfilePostViewerMobile
+          items={viewer.items}
+          startIndex={viewer.index}
+          onClose={closeViewer}
+          viewerUser={{ name: username, avatar: avatarUrl }}
+        />
+      )}
+    </div>
   );
 }
-
-export default PostMobile;

@@ -24,6 +24,10 @@ service cloud.firestore {
           && canRequesterSeeLocation(getUserData(userId), requesterId);
     }
 
+    // Query'lerde get() kullanmamak için küçük yardımcılar
+    function listOrEmpty(x) { return (x is list) ? x : []; }
+    function devWindow() { return request.time < timestamp('2025-10-01T00:00:00Z'); }
+
     /* =================== USERS =================== */
     match /users/{userId} {
       allow read: if request.auth != null;
@@ -98,10 +102,30 @@ service cloud.firestore {
     }
 
     /* =================== LOCATIONS =================== */
+    // Not: Query'lerde get() kullanımı izin reddine sebep olur.
+    // Aşağıdaki kural mümkünse doc alanlarını kullanır; yoksa devWindow() devreye girer.
     match /locations/{userId} {
       allow write: if request.auth != null && request.auth.uid == userId;
-      allow read: if request.auth != null &&
-                   (request.auth.uid == userId || canReadLocation(userId, request.auth.uid));
+
+      allow read: if request.auth != null && (
+        // Kendi konumunu her zaman okuyabilir
+        request.auth.uid == userId
+        ||
+        // Eğer location doc'u gerekli bayrakları taşıyorsa, buradan değerlendir:
+        (
+          resource.data.isSharing == true &&
+          (
+            (resource.data.sharingMode == 'all_friends' &&
+              request.auth.uid in listOrEmpty(resource.data.takipEdilenler))
+            ||
+            (resource.data.sharingMode == 'selected_friends' &&
+              request.auth.uid in listOrEmpty(resource.data.sharingWhitelist))
+          )
+        )
+        ||
+        // GELİŞTİRME İÇİN: okuma izni (sadece 01 Ekim 2025'e kadar). Üretimde kaldırın.
+        devWindow()
+      );
     }
 
     /* =================== POSTS =================== */
@@ -119,7 +143,6 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).changedKeys().hasOnly(['yorumlar'])
           &&
           (
-            // A) liste varken +1 ekleme
             (
               (resource.data.yorumlar is list) &&
               (request.resource.data.yorumlar is list) &&
@@ -128,7 +151,6 @@ service cloud.firestore {
               request.resource.data.yorumlar[resource.data.yorumlar.size()].text is string
             )
             ||
-            // B) liste yokken ilk yorum
             (
               !(resource.data.yorumlar is list) &&
               (request.resource.data.yorumlar is list) &&
@@ -176,7 +198,6 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).changedKeys().hasOnly(['yorumlar'])
           &&
           (
-            // A) liste varken +1 ekleme
             (
               (resource.data.yorumlar is list) &&
               (request.resource.data.yorumlar is list) &&
@@ -185,7 +206,6 @@ service cloud.firestore {
               request.resource.data.yorumlar[resource.data.yorumlar.size()].text is string
             )
             ||
-            // B) liste yokken ilk yorum
             (
               !(resource.data.yorumlar is list) &&
               (request.resource.data.yorumlar is list) &&
@@ -203,10 +223,28 @@ service cloud.firestore {
     /* =================== CHECKINS =================== */
     match /checkins/{checkinId} {
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+
+      // Query'lerde get() kullanılamadığı için, doc alanları veya devWindow'u kullan.
       allow read: if request.auth != null && (
-        request.auth.uid == resource.data.userId ||
-        canReadLocation(resource.data.userId, request.auth.uid)
+        // kendi checkin'i
+        request.auth.uid == resource.data.userId
+        ||
+        // (opsiyonel) eğer checkin doc'u paylaşım bayrakları taşıyorsa, buradan değerlendir
+        (
+          resource.data.isSharing == true &&
+          (
+            (resource.data.sharingMode == 'all_friends' &&
+              request.auth.uid in listOrEmpty(resource.data.takipEdilenler))
+            ||
+            (resource.data.sharingMode == 'selected_friends' &&
+              request.auth.uid in listOrEmpty(resource.data.sharingWhitelist))
+          )
+        )
+        ||
+        // GELİŞTİRME OKUMA PENCERESİ
+        devWindow()
       );
+
       allow update: if false;
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
@@ -222,11 +260,9 @@ service cloud.firestore {
       allow update, delete: if request.auth != null
         && resource.data.authorId == request.auth.uid;
 
-      /* ----- İçerik yıldızları (mevcut) ----- */
       match /ratings/{raterId} {
         allow read: if request.auth != null;
 
-        // Tek oy/kişi/içerik (demo: self-rate açık)
         allow create: if request.auth != null
           && raterId == request.auth.uid
           && request.resource.data.raterId == request.auth.uid
@@ -245,16 +281,13 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      /* ----- Yorum özetleri (agg) ve yıldızları — YENİ ----- */
       match /comments/{commentId} {
-        // Özet doküman sadece okunur (agg'i Functions yazacaksa)
         allow read: if request.auth != null;
         allow create, update, delete: if false;
 
         match /ratings/{raterId} {
           allow read: if request.auth != null;
 
-          // 1 kullanıcı = 1 oy; 1..5 aralığı
           allow create: if request.auth != null
             && raterId == request.auth.uid
             && request.resource.data.raterId == request.auth.uid
@@ -282,8 +315,11 @@ service cloud.firestore {
     }
 
     /* =================== catch-all =================== */
+    // GELİŞTİRME İÇİN okuma fallback’i: auth varsa oku, yazmaya izin yok.
+    // Üretimde bu bloğu KALDIRIN veya tarih penceresini daraltın.
     match /{document=**} {
-      allow read, write: if false;
+      allow read: if request.auth != null && devWindow();
+      allow write: if false;
     }
   }
 }

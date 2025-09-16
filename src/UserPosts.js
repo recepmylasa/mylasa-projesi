@@ -1,10 +1,9 @@
-// src/UserPosts.js
-// Profil grid (resim/video). Esnek şema desteği.
+// Profil grid (resim/video). Esnek şema + sonsuz kaydırma + skeleton.
 // Post tık: /p/:id (mevcut akış bozulmaz)
 // Clip tık: dahili video overlay AÇILIR (EĞER onOpen VERİLMEDİYSE).
 // onOpen(items, startIndex) verilirse, HER KART için onu çağırır (mobil tam ekran viewer entegrasyonu).
 
-import React, { useMemo, useEffect, useState, useCallback } from "react";
+import React, { useMemo, useEffect, useState, useCallback, useRef } from "react";
 import { db } from "./firebase";
 import {
   collection,
@@ -12,7 +11,10 @@ import {
   query,
   where,
   getDocs,
+  orderBy,
+  startAfter,
   limit,
+  documentId,
 } from "firebase/firestore";
 import "./UserPosts.css";
 import { ClipBadge, CommentIcon, StarIcon } from "./icons";
@@ -58,75 +60,115 @@ function ts(val) {
   return Number.isFinite(t) ? t : 0;
 }
 
-/** Yalnızca CLIPS: önce direkt /clips sorgula; bulunamazsa geniş esnek yolla filtrele. */
-async function fetchUserClipsFlexible(userId) {
+/** Dinamik strateji: koleksiyon adı + id alanı + order alanı belirle.
+ *  Amaç: İlk başarılı yol bulunur; sonraki sayfalarda aynı yoldan devam edilir.
+ */
+async function choosePathStrategy({ userId, onlyClips, pageSize = 12 }) {
+  const clipCols = ["clips", "reels", "videolar"];
+  const postCols = ["posts", "gonderiler", "paylasimlar", "postlar"];
+  const colNames = onlyClips ? [...clipCols, ...postCols] : [...postCols, ...clipCols];
+
   const idFields = [
-    "authorId","userId","uid","userID","ownerId","kullaniciId","createdBy","olusturanId",
-    "user.uid","author.uid","owner.uid","user.id","author.id","accountId"
+    "authorId", "userId", "uid", "userID", "ownerId", "kullaniciId", "createdBy", "olusturanId", "accountId",
+    "user.uid", "author.uid", "owner.uid", "user.id", "author.id"
   ];
-  // 1) /clips
-  for (const f of idFields) {
-    try {
-      const qy = query(collection(db, "clips"), where(f, "==", userId), limit(200));
-      const snap = await getDocs(qy);
-      if (!snap.empty) return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch {}
+
+  const orderFields = ["createdAt", "created_at", "tarih", "timestamp", "olusturmaTarihi", "time", "date"];
+
+  // 1) Önce belirgin koleksiyonlarda, önce collection sonra collectionGroup dene
+  const kinds = ["collection", "collectionGroup"];
+
+  for (const cn of colNames) {
+    for (const kind of kinds) {
+      for (const idf of idFields) {
+        // 1.a — order'lı dene (en çok tercih edilen)
+        for (const ofield of orderFields) {
+          try {
+            const base = kind === "collection" ? collection(db, cn) : collectionGroup(db, cn);
+            const qy = query(
+              base,
+              where(idf, "==", userId),
+              orderBy(ofield, "desc"),
+              limit(pageSize)
+            );
+            const snap = await getDocs(qy);
+            // Başarılı sorgu -> bu stratejiyi seç
+            return {
+              kind, cn, idField: idf,
+              orderByField: ofield,
+              orderByDocumentId: false,
+              firstDocs: snap.docs
+            };
+          } catch (e) {
+            // index gerekli olabilir vs. — bir alt varyanta geç
+          }
+        }
+        // 1.b — fallback: documentId() ile sırala (en geniş uyumluluk)
+        try {
+          const base = kind === "collection" ? collection(db, cn) : collectionGroup(db, cn);
+          const qy = query(
+            base,
+            where(idf, "==", userId),
+            orderBy(documentId()),
+            limit(pageSize)
+          );
+          const snap = await getDocs(qy);
+          return {
+            kind, cn, idField: idf,
+            orderByField: null,
+            orderByDocumentId: true,
+            firstDocs: snap.docs
+          };
+        } catch (e) {
+          // diğer idField'a geç
+        }
+      }
+    }
   }
-  // 2) /**/clips
-  for (const f of idFields) {
-    try {
-      const qy = query(collectionGroup(db, "clips"), where(f, "==", userId), limit(200));
-      const snap = await getDocs(qy);
-      if (!snap.empty) return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch {}
-  }
-  // 3) fallback: tüm içerikten videoları ayıkla
-  const everything = await fetchUserPostsFlexible(userId);
-  return everything.filter(isClipItem);
+
+  // Hiçbir rota bulunamadıysa boş strateji döndür (UI "Henüz Yok" gösterecek)
+  return null;
 }
 
-/** Gönderiler (post/clip mix) — çok esnek koleksiyon/ad alanı aralığı */
-async function fetchUserPostsFlexible(userId) {
-  const colNames = [
-    "posts", "gonderiler", "paylasimlar", "postlar",
-    "clips", "reels", "videolar"
-  ];
-  const idFields = [
-    "authorId","userId","uid","userID","ownerId","kullaniciId","createdBy","olusturanId","accountId",
-    "user.uid","author.uid","owner.uid","user.id","author.id"
-  ];
+/** Verilen stratejiyle tek sayfa getiren yardımcı */
+async function fetchPageWithStrategy({ strategy, userId, pageSize = 12, cursor = null }) {
+  if (!strategy) return { docs: [], lastDoc: null };
+  const { kind, cn, idField, orderByField, orderByDocumentId } = strategy;
+  const base = kind === "collection" ? collection(db, cn) : collectionGroup(db, cn);
 
-  for (const cn of colNames) {
-    for (const f of idFields) {
-      try {
-        const qy = query(collection(db, cn), where(f, "==", userId), limit(200));
-        const snap = await getDocs(qy);
-        if (!snap.empty) return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      } catch {}
-    }
-  }
-  for (const cn of colNames) {
-    for (const f of idFields) {
-      try {
-        const qy = query(collectionGroup(db, cn), where(f, "==", userId), limit(200));
-        const snap = await getDocs(qy);
-        if (!snap.empty) return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      } catch {}
-    }
-  }
-  return [];
+  const parts = [where(idField, "==", userId)];
+  if (orderByField) parts.push(orderBy(orderByField, "desc"));
+  if (orderByDocumentId) parts.push(orderBy(documentId()));
+  parts.push(limit(pageSize));
+  if (cursor) parts.push(startAfter(cursor));
+
+  const qy = query(base, ...parts);
+  const snap = await getDocs(qy);
+  const docs = snap.docs;
+  const lastDoc = docs.length > 0 ? docs[docs.length - 1] : cursor;
+  return { docs, lastDoc };
 }
 
 /**
  * Props:
  *  - userId: string
- *  - content?: array (varsa direkt o kullanılır)
+ *  - content?: array (varsa direkt o kullanılır; sayfalama devre dışı)
  *  - onlyClips?: boolean → true ise yalnızca video (clip) göster
  *  - onOpen?: function(items, startIndex) → verildiyse, tüm tıklamalar bunu çağırır
+ *  - pageSize?: number → varsayılan 12
  */
-export default function UserPosts({ userId, content, onlyClips = false, onOpen }) {
-  const [fetched, setFetched] = useState(null);
+export default function UserPosts({ userId, content, onlyClips = false, onOpen, pageSize = 12 }) {
+  const [strategy, setStrategy] = useState(null);
+  const [items, setItems] = useState([]);
+  const [cursor, setCursor] = useState(null);
+  const [isEnd, setIsEnd] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
   const [clipViewer, setClipViewer] = useState(null); // Fallback: onOpen verilmezse
+  const sentinelRef = useRef(null);
+
+  // content verilirse data direkt ondan gelir (sayfalama yok)
+  const useExternalContent = Array.isArray(content);
 
   // body scroll kilidi (fallback viewer açıkken)
   useEffect(() => {
@@ -139,34 +181,102 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
     }
   }, [clipViewer]);
 
+  // Başlangıç yükü: strateji seç + ilk sayfa
   useEffect(() => {
-    if (!userId || Array.isArray(content)) return;
-    let cancelled = false;
+    if (!userId || useExternalContent) return;
+
+    let alive = true;
+    setStrategy(null);
+    setItems([]);
+    setCursor(null);
+    setIsEnd(false);
+    setInitialLoading(true);
+
     (async () => {
       try {
-        const items = onlyClips
-          ? await fetchUserClipsFlexible(userId)
-          : await fetchUserPostsFlexible(userId);
-        if (!cancelled) setFetched(items);
+        const strat = await choosePathStrategy({ userId, onlyClips, pageSize });
+        if (!alive) return;
+        if (!strat) {
+          setStrategy(null);
+          setItems([]);
+          setIsEnd(true);
+          setInitialLoading(false);
+          return;
+        }
+        setStrategy(strat);
+
+        const docs = strat.firstDocs || [];
+        const mapped = docs.map((d) => ({ id: d.id, ...d.data() }));
+        setItems((prev) => mergeUnique(prev, mapped));
+        setCursor(docs.length > 0 ? docs[docs.length - 1] : null);
+        setIsEnd(docs.length < pageSize);
       } catch (e) {
-        console.error("UserPosts fetch error:", e);
-        if (!cancelled) setFetched([]);
+        console.error("UserPosts init error:", e);
+        setItems([]);
+        setIsEnd(true);
+      } finally {
+        if (alive) setInitialLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, content, onlyClips]);
 
+    return () => {
+      alive = false;
+    };
+  }, [userId, onlyClips, pageSize, useExternalContent]);
+
+  // Sonsuz kaydırma: sentinel görünürse sayfa çek
+  useEffect(() => {
+    if (useExternalContent) return;              // dış içerikte sayfalama yok
+    if (!strategy || isEnd) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const io = new IntersectionObserver(
+      async (entries) => {
+        const ent = entries[0];
+        if (!ent?.isIntersecting) return;
+        if (loading) return;
+        setLoading(true);
+        try {
+          const { docs, lastDoc } = await fetchPageWithStrategy({
+            strategy,
+            userId,
+            pageSize,
+            cursor,
+          });
+          const mapped = docs.map((d) => ({ id: d.id, ...d.data() }));
+          setItems((prev) => mergeUnique(prev, mapped));
+          setCursor(docs.length > 0 ? lastDoc : cursor);
+          setIsEnd(docs.length < pageSize);
+        } catch (e) {
+          console.error("UserPosts page fetch error:", e);
+          // hata durumunda döngüyü kitlememek için küçük bir gecikme ile tekrar denenebilir
+          setIsEnd(true);
+        } finally {
+          setLoading(false);
+        }
+      },
+      { rootMargin: "600px 0px 1200px 0px", threshold: 0.01 }
+    );
+
+    io.observe(el);
+    return () => io.disconnect();
+  }, [strategy, isEnd, loading, cursor, userId, pageSize, useExternalContent]);
+
+  // İçerik kaynağı: dışarıdan içerik varsa onu kullan; yoksa state'teki birikmiş öğeler
+  const listRaw = useMemo(() => {
+    if (useExternalContent) return content || [];
+    return items;
+  }, [useExternalContent, content, items]);
+
+  // Çoğaltmaları önle, tarih sıralaması (mümkünse), onlyClips filtresi
   const list = useMemo(() => {
-    const raw = Array.isArray(content) ? content : Array.isArray(fetched) ? fetched : [];
     const map = new Map();
-    for (const it of raw) {
+    for (const it of listRaw) {
       if (!it || !it.id) continue;
       if (!map.has(it.id)) map.set(it.id, it);
     }
     let arr = Array.from(map.values());
-
     const getCreated = (x) =>
       ts(
         x.createdAt ||
@@ -181,7 +291,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
 
     if (onlyClips) arr = arr.filter(isClipItem);
     return arr;
-  }, [content, fetched, onlyClips]);
+  }, [listRaw, onlyClips]);
 
   // Viewer’a tip bilgisi taşıyan aynı sıradaki liste
   const viewList = useMemo(
@@ -205,14 +315,18 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
     setClipViewer({ url, item: it });
   };
 
-  if (!Array.isArray(list)) {
+  // İLK YÜKLEME skeleton
+  if (!useExternalContent && initialLoading) {
     return (
-      <div className="user-posts-message">
-        <span>Yükleniyor...</span>
+      <div className="user-posts-grid" role="list" aria-busy="true" aria-live="polite">
+        {Array.from({ length: pageSize }).map((_, i) => (
+          <div key={i} className="post-grid-item skeleton-card" aria-hidden="true" />
+        ))}
       </div>
     );
   }
-  if (list.length === 0) {
+
+  if (!Array.isArray(list) || list.length === 0) {
     return (
       <div className="user-posts-message">
         <span className="icon">📷</span>
@@ -290,6 +404,16 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
             </button>
           );
         })}
+
+        {/* Sonsuz kaydırma sentinel + yükleme skeletonları (append) */}
+        {!useExternalContent && !isEnd && (
+          <>
+            {Array.from({ length: Math.min(6, pageSize) }).map((_, i) => (
+              <div key={`skel-${i}`} className="post-grid-item skeleton-card" aria-hidden="true" />
+            ))}
+            <div ref={sentinelRef} className="infinite-sentinel" aria-hidden="true" />
+          </>
+        )}
       </div>
 
       {/* Fallback clip viewer (onOpen yoksa devrede) */}
@@ -310,4 +434,14 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen }
       )}
     </>
   );
+}
+
+/** Diziye benzersiz ekleme */
+function mergeUnique(prev, add) {
+  const map = new Map(prev.map((x) => [x.id, x]));
+  for (const it of add) {
+    if (!it || !it.id) continue;
+    map.set(it.id, it);
+  }
+  return Array.from(map.values());
 }

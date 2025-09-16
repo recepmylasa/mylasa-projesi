@@ -1,4 +1,3 @@
-// src/icons.js
 import React from "react";
 
 /** Ortak props: size, className, title */
@@ -11,11 +10,11 @@ const svgBase = ({ size = 24, className, title }) => ({
   className,
 });
 
-/** IG’ye yakın outline: stroke≈1.8, round cap/join */
+/** IG’ye yakın outline: stroke=2, round cap/join */
 const strokeProps = {
   fill: "none",
   stroke: "currentColor",
-  strokeWidth: 1.8,
+  strokeWidth: 2,
   strokeLinecap: "round",
   strokeLinejoin: "round",
 };
@@ -64,12 +63,10 @@ export const CommentIcon = ({ size, className, title }) => (
 
 export const ShareIcon = ({ size, className, title }) => (
   <svg {...svgBase({ size, className, title })}>
-    {/* kâğıt uçak – IG’ye yakın oran */}
     <path d="M3 12 21 4l-5 8 5 8-18-8Z" {...strokeProps} />
   </svg>
 );
 
-/** Kebab (…): direction: "horizontal" | "vertical" */
 export const KebabIcon = ({ direction = "horizontal", size, className, title }) => (
   <svg {...svgBase({ size, className, title })}>
     {direction === "vertical" ? (
@@ -101,7 +98,6 @@ export const StarIcon = ({ filled = false, size, className, title }) => (
   </svg>
 );
 
-/** Küçük clip rozeti (grid köşesi için) */
 export const ClipBadge = ({ size = 18, className, title }) => (
   <svg {...svgBase({ size, className, title })}>
     <rect x="4" y="6" width="16" height="12" rx="3" {...strokeProps} />
@@ -112,5 +108,54 @@ export const ClipBadge = ({ size = 18, className, title }) => (
 export const ChevronLeftIcon = ({ size, className, title }) => (
   <svg {...svgBase({ size, className, title })}>
     <path d="M15 18 9 12l6-6" {...strokeProps} />
+  </svg>
+);
+
+/* ───── Adım 3 ek ikonlar ───── */
+export const ChevronDownIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <path d="M6 9l6 6 6-6" {...strokeProps} />
+  </svg>
+);
+
+export const VerifiedBadgeIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <path d="M12 2l2.3 2.1 3.2-.4 1.2 3 2.7 1.5-1 3 1 3-2.7 1.5-1.2 3-3.2-.4L12 22l-2.3-2.1-3.2.4-1.2-3L2.6 15l1-3-1-3L5.3 7.5l1.2-3 3.2.4L12 2Z" {...strokeProps}/>
+    <path d="M9.5 12l1.8 1.8L15 10" {...strokeProps}/>
+  </svg>
+);
+
+export const ExternalLinkIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <path d="M14 3h7v7" {...strokeProps} />
+    <path d="M10 14L21 3" {...strokeProps} />
+    <path d="M20 14v6a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1h6" {...strokeProps} />
+  </svg>
+);
+
+export const PhoneIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.7.6 2.5a2 2 0 0 1-.5 2.1L8.2 9.2a16 16 0 0 0 6.6 6.6l.9-1.4a2 2 0 0 1 2.1-.5c.8.3 1.6.5 2.5.6A2 2 0 0 1 22 16.9Z" {...strokeProps} />
+  </svg>
+);
+
+export const MailIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <rect x="3" y="5" width="18" height="14" rx="2" {...strokeProps} />
+    <path d="M3 7l9 6 9-6" {...strokeProps} />
+  </svg>
+);
+
+export const QrIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <path d="M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3z" {...strokeProps} />
+    <path d="M15 15h3v3h3" {...strokeProps} />
+  </svg>
+);
+
+/* ───── Adım 9 için ek ikon ───── */
+export const PlusIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <path d="M12 5v14M5 12h14" {...strokeProps} />
   </svg>
 );
