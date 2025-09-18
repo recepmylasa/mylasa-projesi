@@ -1,8 +1,26 @@
-/* --- Profil grid Pixelfed/Instagram stili + skeleton + sentinel --- */
+/* UserPosts.css */
+/* --- Profil grid Instagram'a yakın görünüm: 3 sütun, ince beyaz gutter, oran değişkenleri + a11y odak halkası --- */
+
 .user-posts-grid {
+  /* Oran & boşluk değişkenleri (kolay ayar) */
+  --grid-gap: var(--grid-gap, 2px); /* container’dan gelebilir; yoksa 2px */
+  --post-ratio: 4 / 5;  /* Gönderiler: IG grid’e yakın dikey (kare değil) */
+  --clip-ratio: 9 / 16; /* Klipler/Reels */
+
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 2px; /* IG’e daha yakın: çok ince gutter */
+  gap: var(--grid-gap);
+  background: #fff;   /* gap çizgileri beyaz görünsün */
+}
+
+/* Reels/Klipler: 9:16 kutular */
+.user-posts-grid.clips-mode .post-grid-item {
+  aspect-ratio: var(--clip-ratio);
+}
+
+/* Gönderiler: 4:5 kutular (kare değil) */
+.user-posts-grid.posts-mode .post-grid-item {
+  aspect-ratio: var(--post-ratio);
 }
 
 @media (min-width: 768px) {
@@ -12,17 +30,25 @@
 .post-grid-item {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;          /* kare kart */
   overflow: hidden;
-  background: #f2f2f2;
-  border-radius: 0;              /* IG kare görünüm */
+  background: #f2f2f2;  /* görsel yüklenirken gri alan */
+  border-radius: 0;      /* IG kare görünüm */
   cursor: pointer;
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
 }
+
+/* Klavye erişilebilirliği: odak halkası + overlay görünür */
+.post-grid-item:focus-visible {
+  outline: 2px solid #0095f6;     /* Instagram maviye yakın */
+  outline-offset: 2px;
+}
+.post-grid-item:focus-visible .post-grid-overlay { opacity: 1; }
 
 .post-grid-image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: cover;        /* stretch olmasın; merkezden kırpar */
+  object-position: center;  /* hizayı stabilize et */
   display: block;
 }
 
@@ -100,7 +126,7 @@
 .clip-viewer {
   position: relative;
   width: min(900px, 90vw);
-  aspect-ratio: 9 / 16;         /* dikey video alanı */
+  aspect-ratio: 9 / 16;      /* dikey video alanı */
   background: #000;
   border-radius: 8px;
   overflow: hidden;
@@ -136,4 +162,18 @@
   display: block;
   font-size: 20px;
   margin-bottom: 6px;
+}
+
+/* Görsel gizli metin yardımcı sınıf (gerekirse) */
+.sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0);
+  white-space: nowrap; border: 0;
+}
+
+/* Erişilebilirlik: hareket azalt */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-card::after { animation: none; }
 }

@@ -1,3 +1,4 @@
+// UserPosts.js
 // Profil grid (resim/video). Esnek şema + sonsuz kaydırma + skeleton.
 // Post tık: /p/:id (mevcut akış bozulmaz)
 // Clip tık: dahili video overlay AÇILIR (EĞER onOpen VERİLMEDİYSE).
@@ -37,6 +38,16 @@ function mediaUrlOf(item) {
   );
 }
 
+function thumbUrlOf(item) {
+  return (
+    item?.thumbUrl ||
+    item?.thumbnail ||
+    item?.coverUrl ||
+    item?.poster ||
+    ""
+  );
+}
+
 function isClipItem(item) {
   const t = (item?.type || item?.format || item?.kind || "").toString().toLowerCase();
   const mt = (item?.mediaType || item?.mime || item?.mimeType || "").toString().toLowerCase();
@@ -58,6 +69,23 @@ function ts(val) {
   if (val._seconds) return val._seconds * 1000;
   const t = Date.parse(val);
   return Number.isFinite(t) ? t : 0;
+}
+
+/* Sayı biçimleme: 1200 -> "1,2 B" (TR yerel) */
+const nfCompact =
+  (typeof Intl !== "undefined" &&
+    Intl.NumberFormat &&
+    new Intl.NumberFormat("tr", { notation: "compact", maximumFractionDigits: 1 })) || null;
+
+function formatCount(n) {
+  const num = Number(n || 0);
+  if (!isFinite(num)) return "0";
+  if (nfCompact) return nfCompact.format(num);
+  // Fallback (çok eski tarayıcılar için)
+  if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(1).replace(/\.0$/, "") + " Mr";
+  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, "") + " Mn";
+  if (num >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, "") + " B";
+  return String(num);
 }
 
 /** Dinamik strateji: koleksiyon adı + id alanı + order alanı belirle.
@@ -250,13 +278,13 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
           setIsEnd(docs.length < pageSize);
         } catch (e) {
           console.error("UserPosts page fetch error:", e);
-          // hata durumunda döngüyü kitlememek için küçük bir gecikme ile tekrar denenebilir
+          // hata durumunda döngüyü kitlememek için küçük bir gecikme ile kapat
           setIsEnd(true);
         } finally {
           setLoading(false);
         }
       },
-      { rootMargin: "600px 0px 1200px 0px", threshold: 0.01 }
+      { rootMargin: "800px 0px 1600px 0px", threshold: 0.01 }
     );
 
     io.observe(el);
@@ -318,7 +346,12 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
   // İLK YÜKLEME skeleton
   if (!useExternalContent && initialLoading) {
     return (
-      <div className="user-posts-grid" role="list" aria-busy="true" aria-live="polite">
+      <div
+        className={`user-posts-grid ${onlyClips ? "clips-mode" : "posts-mode"}`}
+        role="list"
+        aria-busy="true"
+        aria-live="polite"
+      >
         {Array.from({ length: pageSize }).map((_, i) => (
           <div key={i} className="post-grid-item skeleton-card" aria-hidden="true" />
         ))}
@@ -337,18 +370,32 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
 
   return (
     <>
-      <div className="user-posts-grid" role="list">
+      <div
+        className={`user-posts-grid ${onlyClips ? "clips-mode" : "posts-mode"}`}
+        role="list"
+      >
         {viewList.map((item, idx) => {
           const url = mediaUrlOf(item);
           if (!url) return null;
           const isClip = item.type === "clip";
+          const poster = thumbUrlOf(item);
+
+          const likes =
+            item?.starsCount ??
+            item?.likes ??
+            (item?.begenenler?.length || 0);
+          const comments =
+            item?.commentsCount ??
+            (item?.yorumlar?.length || 0);
+
+          const ariaType = isClip ? "Klip" : "Gönderi";
+          const label = `${ariaType} aç — ${formatCount(likes)} beğeni, ${formatCount(comments)} yorum`;
 
           const handleClick = () => {
             if (typeof onOpen === "function") {
-              onOpen(viewList, idx); // Mobil tam ekran viewer entegrasyonu (tip bilgisiyle birlikte)
+              onOpen(viewList, idx); // Mobil tam ekran viewer entegrasyonu
               return;
             }
-            // onOpen yoksa eski davranış:
             if (isClip) openClip(item);
             else openPost(item);
           };
@@ -359,12 +406,14 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
               type="button"
               className="post-grid-item"
               onClick={handleClick}
-              aria-label={isClip ? "Clipi aç" : "Gönderiyi aç"}
+              aria-label={label}
+              title={`${formatCount(likes)} beğeni • ${formatCount(comments)} yorum`}
               role="listitem"
             >
               {isClip ? (
                 <video
                   src={url}
+                  poster={poster || undefined}
                   className="post-grid-image"
                   muted
                   playsInline
@@ -376,6 +425,8 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
                   alt={item?.aciklama || item?.caption || "gönderi"}
                   className="post-grid-image"
                   loading="lazy"
+                  decoding="async"
+                  sizes="(max-width: 768px) 33vw, 33vw"
                 />
               )}
 
@@ -388,17 +439,11 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
               <div className="post-grid-overlay" style={{ color: "#fff" }}>
                 <div className="overlay-stat">
                   <StarIcon size={18} />
-                  <span>
-                    {item?.starsCount ??
-                      item?.likes ??
-                      (item?.begenenler?.length || 0)}
-                  </span>
+                  <span>{formatCount(likes)}</span>
                 </div>
                 <div className="overlay-stat">
                   <CommentIcon size={18} />
-                  <span>
-                    {item?.commentsCount ?? (item?.yorumlar?.length || 0)}
-                  </span>
+                  <span>{formatCount(comments)}</span>
                 </div>
               </div>
             </button>

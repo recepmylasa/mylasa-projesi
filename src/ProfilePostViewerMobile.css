@@ -1,5 +1,5 @@
 /* src/ProfilePostViewerMobile.css */
-/* — Tamamen mobil feed görünümü, beyaz zemin. class prefix: .ppv- — */
+/* — Mobil tam ekran viewer. class prefix: .ppv- — */
 
 .ppv-root {
   position: fixed;
@@ -39,17 +39,37 @@
   font-size: 15px;
 }
 
-/* içerik alanı */
+/* “Aşağı çek kapat” ipucu */
+.ppv-pullhint{
+  position: sticky;
+  top: 48px;
+  text-align: center;
+  font-size: 11px;
+  color: #b0b0b0;
+  padding: 6px 0 2px;
+  background: #fff;
+  z-index: 15;
+}
+
+/* içerik alanı: snap + vertical pan; yatay pan’i JS yönetiyor */
 .ppv-list {
   height: calc(100dvh - 48px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
   background: #fff;
+  scroll-snap-type: y mandatory;
+  touch-action: pan-y; /* dikey kaydır; yatayı biz işliyoruz */
 }
 
 /* kart */
-.ppv-card { display: flex; flex-direction: column; border-bottom: 8px solid #fafafa; }
+.ppv-card {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 8px solid #fafafa;
+  scroll-snap-align: start;
+  background: #fff;
+}
 
 /* header */
 .ppv-head {
@@ -66,19 +86,38 @@
 .ppv-more { appearance: none; border: 0; background: transparent; color: #111; }
 
 /* medya */
-.ppv-media { background: #000; }
-.ppv-media-el { width: 100%; height: auto; max-height: 80vh; display: block; object-fit: contain; background: #000; }
+.ppv-media { position: relative; background: #000; }
+.ppv-media-el {
+  width: 100%;
+  height: auto;
+  max-height: 80vh;
+  display: block;
+  object-fit: contain;
+  background: #000;
+}
+
+/* üst/alt gradient cilası (ikonlar ve caption kontrastı için) */
+.ppv-media-gradients::before,
+.ppv-media-gradients::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  pointer-events: none;
+}
+.ppv-media-gradients::before {
+  top: 0; height: 72px;
+  background: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,0));
+}
+.ppv-media-gradients::after {
+  bottom: 0; height: 96px;
+  background: linear-gradient(0deg, rgba(0,0,0,.45), rgba(0,0,0,0));
+}
 
 /* aksiyon satırı */
 .ppv-actions { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 4px; }
 .ppv-actions-left { display: flex; align-items: center; gap: 12px; }
 .ppv-btn { appearance: none; border: 0; background: transparent; padding: 6px; border-radius: 8px; line-height: 0; color: #111; }
 .ppv-btn:active { background: #f2f2f2; }
-
-/* ——— İKONLAR ———
-   Tek yerden kontrol: svg çizgileri stroke, dolgu yok.
-   Kaydet aktif gibi doldurmalı ikonlar kendi path'inde fill verir. */
-.ppv-ico { width: 24px; height: 24px; display: block; color: currentColor; fill: none; }
 
 /* sayaçlar */
 .ppv-counts { display: flex; align-items: center; gap: 12px; padding: 0 12px 6px; }
@@ -98,4 +137,114 @@
 .ppv-moretext { appearance: none; border: 0; background: transparent; color: #666; font-weight: 600; font-size: 14px; }
 
 /* zaman */
-.ppv-time { padding: 0 12px 12px; color: #9b9b9b; font-size: 11px; letter-spacing: .02em; text-transform: none; }
+.ppv-time { padding: 0 12px 12px; color: #9b9b9b; font-size: 11px; letter-spacing: .02em; }
+
+/* ---- Bottom Sheet ortak stiller ---- */
+.ppv-sheet-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  z-index: 1400;
+  display: grid;
+  place-items: end center;
+}
+.ppv-sheet{
+  width: 100%;
+  background: #fff;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  box-shadow: 0 -8px 24px rgba(0,0,0,.2);
+  transform: translateY(0%); /* animasyon basit */
+  will-change: transform;
+}
+.ppv-sheet-handle{
+  width: 42px; height: 4px; border-radius: 999px;
+  background: #ddd;
+  margin: 8px auto 6px;
+}
+.ppv-sheet-title{
+  text-align: center;
+  font-weight: 700;
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid #efefef;
+}
+.ppv-sheet-item{
+  appearance: none; border: 0; background: transparent;
+  width: 100%; text-align: left;
+  padding: 14px 16px; font-size: 15px; color: #111;
+  border-bottom: 1px solid #f3f3f3;
+}
+.ppv-sheet-item.cancel{ color: #dc2626; }
+
+/* paylaşım kısa toast */
+.ppv-toast{
+  position: absolute;
+  bottom: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,.8);
+  color: #fff; padding: 6px 10px; border-radius: 8px; font-size: 12px;
+}
+
+/* ---- Yorumlar sheet ek stiller ---- */
+.ppv-sheet.comments{
+  max-height: 80vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+.ppv-comments-list{
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 8px 10px;
+}
+.ppv-comment{
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 6px;
+}
+.ppv-comment-avatar{
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #eee;
+}
+.ppv-comment-body{ min-width: 0; }
+.ppv-comment-line{
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 13px;
+}
+.ppv-comment-name{ font-weight: 700; }
+.ppv-comment-time{ color: #999; font-size: 12px; }
+.ppv-comment-text{ font-size: 14px; color: #111; margin-top: 2px; line-height: 1.35; }
+
+/* skeleton satırlar */
+.ppv-comment.skel .ppv-comment-avatar.skel-block{ background: #f0f0f0; position: relative; overflow: hidden; }
+.ppv-skel-line{
+  height: 12px; background: #f0f0f0; border-radius: 6px; margin: 6px 0;
+  position: relative; overflow: hidden;
+}
+.ppv-skel-line::after,
+.ppv-comment.skel .ppv-comment-avatar.skel-block::after{
+  content: ""; position: absolute; inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.6) 50%, rgba(255,255,255,0) 100%);
+  animation: ppv-shine 1.2s infinite;
+}
+.ppv-skel-line.w60{ width: 60%; }
+.ppv-skel-line.w90{ width: 90%; }
+
+@keyframes ppv-shine { 100% { transform: translateX(100%); } }
+
+.ppv-comments-input{
+  display: grid; grid-template-columns: 1fr auto; gap: 8px;
+  padding: 10px 12px 14px; border-top: 1px solid #efefef;
+}
+.ppv-comments-input input{
+  height: 36px; border: 1px solid #e5e5e5; border-radius: 10px; padding: 0 10px; font-size: 14px;
+}
+.ppv-comments-input button{
+  height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: #efefef; color: #999; font-weight: 600;
+}
+
+/* erişilebilirlik: hareket azalt */
+@media (prefers-reduced-motion: reduce) {
+  .ppv-list { scroll-behavior: auto; }
+}

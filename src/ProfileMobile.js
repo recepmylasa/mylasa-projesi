@@ -3,7 +3,7 @@
 
 import React, { useState, useCallback } from "react";
 import "./ProfileMobile.css";
-import { GridIcon, ClipsIcon, SavedIcon, TaggedIcon } from "./icons";
+import { GridIcon, ClipsIcon, SavedIcon, TaggedIcon, KebabIcon } from "./icons";
 import UserPosts from "./UserPosts";
 import ProfilePostViewerMobile from "./ProfilePostViewerMobile";
 
@@ -20,6 +20,16 @@ export default function ProfileMobile({ user = null }) {
   const avatarUrl =
     u.photoURL || u.profilFoto || u.avatar || "/avatars/default.png";
   const username = u.username || u.kullaniciAdi || "kullanıcı";
+
+  // kişisel hesap varsayılan; yalnızca iş/creator profilde abonelik göster
+  const isBizOrCreator =
+    u.accountType === "business" ||
+    u.accountType === "creator" ||
+    u.isBusiness === true ||
+    u.isPro === true ||
+    u.professional === true;
+
+  const showSubscription = !!u.hasSubscriptions && isBizOrCreator;
 
   const onOpenFromGrid = useCallback((items, startIndex) => {
     if (!Array.isArray(items) || items.length === 0) return;
@@ -53,7 +63,14 @@ export default function ProfileMobile({ user = null }) {
           {username}
         </div>
 
-        <div className="topbar-kebab" aria-hidden="true">⋯</div>
+        <button
+          type="button"
+          className="icon-btn topbar-icon"
+          aria-label="Seçenekler"
+          title="Seçenekler"
+        >
+          <KebabIcon direction="vertical" size={22} />
+        </button>
       </div>
 
       {/* Avatar + istatistikler */}
@@ -82,7 +99,9 @@ export default function ProfileMobile({ user = null }) {
       <div className="profile-actions" role="group" aria-label="Profil aksiyonları">
         <button type="button" className="action-btn">Profili düzenle</button>
         <button type="button" className="action-btn">Profili paylaş</button>
-        <button type="button" className="action-btn">Abonelik</button>
+        {showSubscription && (
+          <button type="button" className="action-btn">Abonelik</button>
+        )}
         <button
           type="button"
           className="action-btn more"
@@ -100,6 +119,7 @@ export default function ProfileMobile({ user = null }) {
           href="#"
           role="tab"
           aria-selected={mode === "grid"}
+          aria-controls="tab-panel-grid"
           className={`mobile-tab ${mode === "grid" ? "active" : ""}`}
           onClick={(e) => { e.preventDefault(); setMode("grid"); }}
           aria-label="Gönderiler"
@@ -111,6 +131,7 @@ export default function ProfileMobile({ user = null }) {
           href="#"
           role="tab"
           aria-selected={mode === "clips"}
+          aria-controls="tab-panel-clips"
           className={`mobile-tab ${mode === "clips" ? "active" : ""}`}
           onClick={(e) => { e.preventDefault(); setMode("clips"); }}
           aria-label="Klipler"
@@ -122,6 +143,7 @@ export default function ProfileMobile({ user = null }) {
           href="#"
           role="tab"
           aria-selected={mode === "saved"}
+          aria-controls="tab-panel-saved"
           className={`mobile-tab ${mode === "saved" ? "active" : ""}`}
           onClick={(e) => { e.preventDefault(); setMode("saved"); }}
           aria-label="Kaydedilenler"
@@ -133,6 +155,7 @@ export default function ProfileMobile({ user = null }) {
           href="#"
           role="tab"
           aria-selected={mode === "tagged"}
+          aria-controls="tab-panel-tagged"
           className={`mobile-tab ${mode === "tagged" ? "active" : ""}`}
           onClick={(e) => { e.preventDefault(); setMode("tagged"); }}
           aria-label="Etiketlenenler"
@@ -142,29 +165,74 @@ export default function ProfileMobile({ user = null }) {
         </a>
       </div>
 
-      {/* İçerik: userId yoksa render etmeyelim */}
-      {mode === "grid" && hasUserId && (
-        <div className="userposts-container">
-          <UserPosts userId={userId} onOpen={onOpenFromGrid} />
-        </div>
-      )}
+      {/* İçerik panelleri */}
+      <div
+        id="tab-panel-grid"
+        role="tabpanel"
+        hidden={mode !== "grid"}
+        className="tab-panel"
+      >
+        {hasUserId ? (
+          <div className="userposts-container">
+            <UserPosts userId={userId} onOpen={onOpenFromGrid} />
+          </div>
+        ) : (
+          <div className="userposts-container">
+            <div className="user-posts-message">Profil yükleniyor…</div>
+          </div>
+        )}
+      </div>
 
-      {mode === "clips" && hasUserId && (
-        <div className="userposts-container">
-          <UserPosts userId={userId} onlyClips onOpen={onOpenFromGrid} />
-        </div>
-      )}
+      <div
+        id="tab-panel-clips"
+        role="tabpanel"
+        hidden={mode !== "clips"}
+        className="tab-panel"
+      >
+        {hasUserId ? (
+          <div className="userposts-container">
+            <UserPosts userId={userId} onlyClips onOpen={onOpenFromGrid} />
+          </div>
+        ) : (
+          <div className="userposts-container">
+            <div className="user-posts-message">Profil yükleniyor…</div>
+          </div>
+        )}
+      </div>
 
-      {/* userId henüz yoksa basit placeholder */}
-      {!hasUserId && (
-        <div className="userposts-container">
-          <div className="user-posts-message">Profil yükleniyor…</div>
+      <div
+        id="tab-panel-saved"
+        role="tabpanel"
+        hidden={mode !== "saved"}
+        className="tab-panel"
+      >
+        <div className="empty-tab">
+          <div className="empty-tab__icon">
+            <SavedIcon size={48} active />
+          </div>
+          <div className="empty-tab__title">Kaydedikleriniz</div>
+          <div className="empty-tab__desc">
+            Gönderileri kaydedin ve burada görün. Sadece siz görebilirsiniz.
+          </div>
         </div>
-      )}
+      </div>
 
-      {mode !== "grid" && mode !== "clips" && (
-        <div className="tab-empty">Bu sekme Sprint 2’de detaylandırılacak.</div>
-      )}
+      <div
+        id="tab-panel-tagged"
+        role="tabpanel"
+        hidden={mode !== "tagged"}
+        className="tab-panel"
+      >
+        <div className="empty-tab">
+          <div className="empty-tab__icon">
+            <TaggedIcon size={48} />
+          </div>
+          <div className="empty-tab__title">Etiketlendiğin fotoğraflar</div>
+          <div className="empty-tab__desc">
+            Başkaları sizi gönderilerine etiketlediğinde burada görünecek.
+          </div>
+        </div>
+      </div>
 
       {/* Tam ekran mobil viewer */}
       {viewer && (
