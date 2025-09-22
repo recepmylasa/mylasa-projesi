@@ -1,0 +1,13 @@
+/* src/ProfileTabsMobile.css */
+@import "./styles/ig-mobile.css";
+
+.ptm{
+  position:relative; display:grid; grid-template-columns:repeat(3,1fr);
+  border-top:1px solid var(--divider);
+  background:var(--bg);
+}
+.ptm-tab{ position:relative; display:grid; place-items:center; padding:10px 0; color:#8e8e8e; text-decoration:none; }
+.ptm-tab.active{ color:#000; }
+.ptm-tab.active::after{
+  content:""; position:absolute; top:0; left:16px; right:16px; height:2px; background:#000; border-radius:1px;
+}

@@ -1,165 +1,417 @@
-import { useEffect, useState, useCallback } from 'react';
-import { db } from './firebase';
-import { collection, query, getDocs, where, orderBy, limit } from 'firebase/firestore';
-import PostDetailModal from './PostDetailModal';
-import './Explore.css';
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { db } from "./firebase";
+import {
+  collection,
+  query,
+  getDocs,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+} from "firebase/firestore";
+import PostDetailModal from "./PostDetailModal";
+import ProfilePostViewerMobile from "./ProfilePostViewerMobile";
+import { ClipBadge, CommentIcon, StarIcon } from "./icons";
+import "./Explore.css";
 
-// --- İkonlar ---
-const LikeIconOverlay = () => ( <svg aria-label="Beğen" height="20" role="img" viewBox="0 0 48 48" width="20" fill="white"><path d="M34.3 3.5C27.2 3.5 24 8.25 24 8.25S20.8 3.5 13.7 3.5C8.5 3.5 0 9.8 0 17.5 0 25.8 12 34.8 24 44.2 36 34.8 48 25.8 48 17.5 48 9.8 39.5 3.5 34.3 3.5Z" /></svg> );
-const CommentIconOverlay = () => ( <svg aria-label="Yorum" height="20" role="img" viewBox="0 0 24 24" width="20" fill="white"><path d="M20.656 17.008a9.993 9.993 0 1 0-3.59 3.615L22 22Z" stroke="white" strokeWidth="2" strokeLinejoin="round"></path></svg> );
-// ----------------
+/* ——— Yardımcılar ——— */
+const isVideoExt = (url) => !!url && /\.(mp4|webm|mov|ogg)(\?|$)/i.test(url);
+const mediaUrlOf = (it) =>
+  it?.mediaUrl ||
+  it?.videoUrl ||
+  it?.imageUrl ||
+  it?.gorselUrl ||
+  it?.photoUrl ||
+  it?.resimUrl ||
+  it?.fileUrl ||
+  it?.url ||
+  it?.thumbUrl ||
+  "";
+const thumbUrlOf = (it) =>
+  it?.thumbUrl || it?.thumbnail || it?.coverUrl || it?.poster || "";
+const isClipItem = (it) => {
+  const t = (it?.type || it?.format || it?.kind || "").toString().toLowerCase();
+  const mt = (it?.mediaType || it?.mime || it?.mimeType || "").toString().toLowerCase();
+  const url = mediaUrlOf(it);
+  return (
+    it?.isClip === true ||
+    it?.isVideo === true ||
+    t === "clip" ||
+    t === "video" ||
+    t === "reel" ||
+    t === "reels" ||
+    mt.startsWith("video/") ||
+    isVideoExt(url)
+  );
+};
+const likeCountOf = (it) =>
+  typeof it?.starsCount === "number"
+    ? it.starsCount
+    : typeof it?.likes === "number"
+    ? it.likes
+    : Array.isArray(it?.begenenler)
+    ? it.begenenler.length
+    : 0;
+const commentCountOf = (it) =>
+  typeof it?.commentsCount === "number"
+    ? it.commentsCount
+    : Array.isArray(it?.yorumlar)
+    ? it.yorumlar.length
+    : 0;
 
 function Explore({ aktifKullaniciId, onUserClick }) {
-    const [posts, setPosts] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [selectedPost, setSelectedPost] = useState(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [searchResults, setSearchResults] = useState([]);
-    const [isSearching, setIsSearching] = useState(false);
+  /* Arama */
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
 
-    // --- NİHAİ VE SAĞLAM ARAMA ALGORİTMASI ---
-    useEffect(() => {
-        const searchUsers = async () => {
-            if (searchTerm.trim() === '') {
-                setSearchResults([]);
-                setIsSearching(false);
-                return;
-            }
-            setIsSearching(true);
-            
-            try {
-                const usersRef = collection(db, "users");
-                // Arama metninin sadece ilk kelimesini alıyoruz, çünkü Firestore sadece baştan arama yapabilir.
-                const ilkKelime = searchTerm.split(' ')[0];
-                const aramaMetniLower = ilkKelime.toLowerCase();
-                const aramaMetniCapitalized = ilkKelime.charAt(0).toUpperCase() + ilkKelime.slice(1).toLowerCase();
-                
-                // Map kullanarak sonuçları birleştirmek daha güvenli ve verimli.
-                const allResults = new Map();
+  /* Grid */
+  const [posts, setPosts] = useState([]);
+  const [cursor, setCursor] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [paging, setPaging] = useState(false);
+  const [isEnd, setIsEnd] = useState(false);
 
-                // Sorgu 1: Kullanıcı adına göre (küçük harf)
-                try {
-                    const usernameQuery = query(
-                        usersRef, 
-                        where("kullaniciAdi", ">=", aramaMetniLower),
-                        where("kullaniciAdi", "<=", aramaMetniLower + '\uf8ff'),
-                        limit(10)
-                    );
-                    const usernameSnapshot = await getDocs(usernameQuery);
-                    usernameSnapshot.docs.forEach(doc => {
-                        const data = doc.data();
-                        allResults.set(data.uid, { id: doc.id, ...data });
-                    });
-                } catch (error) {
-                    console.error("Kullanıcı adı araması başarısız, ama devam ediliyor:", error);
-                }
+  /* Detay & Viewer */
+  const [selectedPost, setSelectedPost] = useState(null); // desktop modal
+  const [viewer, setViewer] = useState(null); // { items, index } – mobile viewer
 
-                // Sorgu 2: Ad Soyada göre (Büyük harfle başlayabilir)
-                try {
-                    const fullNameQuery = query(
-                        usersRef,
-                        where("adSoyad", ">=", aramaMetniCapitalized),
-                        where("adSoyad", "<=", aramaMetniCapitalized + '\uf8ff'),
-                        limit(10)
-                    );
-                    const fullNameSnapshot = await getDocs(fullNameQuery);
-                    fullNameSnapshot.docs.forEach(doc => {
-                        const data = doc.data();
-                        allResults.set(data.uid, { id: doc.id, ...data });
-                    });
-                } catch (error) {
-                    console.error("Ad Soyad araması başarısız, ama devam ediliyor:", error);
-                }
+  const sentinelRef = useRef(null);
 
-                // Map'teki birleştirilmiş ve tekilleştirilmiş sonuçları diziye çevir
-                setSearchResults(Array.from(allResults.values()));
+  /* ——— Arama (debounce) ——— */
+  useEffect(() => {
+    let alive = true;
 
-            } catch (error) {
-                console.error("Genel arama hatası:", error);
-                setSearchResults([]);
-            } finally {
-                setIsSearching(false);
-            }
-        };
+    const run = async () => {
+      const term = searchTerm.trim();
+      if (!term) {
+        if (!alive) return;
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
+      setIsSearching(true);
 
-        const delayDebounceFn = setTimeout(() => { searchUsers(); }, 300);
-        return () => clearTimeout(delayDebounceFn);
-    }, [searchTerm]);
+      try {
+        const usersRef = collection(db, "users");
+        const firstWord = term.split(" ")[0];
+        const lw = firstWord.toLowerCase();
+        const cap = firstWord.charAt(0).toUpperCase() + firstWord.slice(1).toLowerCase();
 
+        const map = new Map();
 
-    // Keşfet gönderilerini yükleme
-    const fetchInitialPosts = useCallback(async () => {
-        setLoading(true);
-        const postsRef = collection(db, "posts");
-        const q = query(postsRef, orderBy("tarih", "desc"), limit(21));
-        const documentSnapshots = await getDocs(q);
-        const initialPosts = documentSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setPosts(initialPosts);
-        setLoading(false);
-    }, []);
+        // kullanıcı adı (kullaniciAdi / username)
+        const q1 = query(
+          usersRef,
+          where("kullaniciAdi", ">=", lw),
+          where("kullaniciAdi", "<=", lw + "\uf8ff"),
+          limit(10)
+        );
+        const s1 = await getDocs(q1);
+        s1.docs.forEach((d) => {
+          const data = d.data();
+          map.set(data.uid || d.id, { id: d.id, ...data });
+        });
 
-    useEffect(() => {
-        fetchInitialPosts();
-    }, [fetchInitialPosts]);
+        const q1b = query(
+          usersRef,
+          where("username", ">=", lw),
+          where("username", "<=", lw + "\uf8ff"),
+          limit(10)
+        );
+        const s1b = await getDocs(q1b);
+        s1b.docs.forEach((d) => {
+          const data = d.data();
+          map.set(data.uid || d.id, { id: d.id, ...data });
+        });
 
-    return (
-        <>
-            <div className="explore-container">
-                <div className="search-bar-wrapper">
-                    <div className="search-bar-container">
-                        <input 
-                            type="text" 
-                            placeholder="Ara..." 
-                            className="search-input" 
-                            value={searchTerm} 
-                            onChange={(e) => setSearchTerm(e.target.value)} 
-                        />
-                    </div>
-                </div>
+        // ad soyad (adSoyad / displayName)
+        const q2 = query(
+          usersRef,
+          where("adSoyad", ">=", cap),
+          where("adSoyad", "<=", cap + "\uf8ff"),
+          limit(10)
+        );
+        const s2 = await getDocs(q2);
+        s2.docs.forEach((d) => {
+          const data = d.data();
+          map.set(data.uid || d.id, { id: d.id, ...data });
+        });
 
-                {searchTerm.trim() !== '' ? (
-                    <div className="search-results-container">
-                        {isSearching ? (
-                            <p className="search-message">Aranıyor...</p>
-                        ) : searchResults.length > 0 ? (
-                            searchResults.map(user => (
-                                <div key={user.uid} className="search-result-item" onClick={() => onUserClick(user.uid)}>
-                                    <img src={user.profilFoto || 'https://placehold.co/44x44/e0e0e0/e0e0e0?text=?'} alt={user.kullaniciAdi} />
-                                    <div className="search-result-info">
-                                        <span className="username">{user.kullaniciAdi}</span>
-                                        <span className="fullname">{user.adSoyad}</span>
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="search-message">Sonuç bulunamadı.</p>
-                        )}
-                    </div>
-                ) : (
-                    <>
-                        {loading ? ( <p style={{ textAlign: 'center', marginTop: 40 }}>Keşfet yükleniyor...</p> ) : 
-                         posts.length > 0 ? (
-                            <div className="explore-grid">
-                                {posts.map(post => (
-                                    <div key={post.id} className="explore-grid-item" onClick={() => setSelectedPost(post)}>
-                                        <img src={post.mediaUrl} alt="Keşfet gönderisi" className="explore-grid-image" />
-                                        <div className="explore-grid-overlay">
-                                            <div className="explore-overlay-stat"><LikeIconOverlay /><span>{post.begenenler?.length || 0}</span></div>
-                                            <div className="explore-overlay-stat"><CommentIconOverlay /><span>{post.yorumlar?.length || 0}</span></div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (<p style={{ textAlign: 'center', marginTop: 40 }}>Keşfedecek yeni bir şey yok.</p>)}
-                    </>
-                )}
-            </div>
+        const q2b = query(
+          usersRef,
+          where("displayName", ">=", cap),
+          where("displayName", "<=", cap + "\uf8ff"),
+          limit(10)
+        );
+        const s2b = await getDocs(q2b);
+        s2b.docs.forEach((d) => {
+          const data = d.data();
+          map.set(data.uid || d.id, { id: d.id, ...data });
+        });
 
-            {selectedPost && (
-                <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} aktifKullaniciId={aktifKullaniciId} />
-            )}
-        </>
+        if (!alive) return;
+        setSearchResults(Array.from(map.values()));
+      } catch (e) {
+        if (!alive) return;
+        console.error("Arama hatası:", e);
+        setSearchResults([]);
+      } finally {
+        if (alive) setIsSearching(false);
+      }
+    };
+
+    const t = setTimeout(run, 300);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [searchTerm]);
+
+  /* ——— Keşfet gönderileri: ilk sayfa ——— */
+  const pageSize = 24;
+  const fetchFirstPage = useCallback(async () => {
+    setLoading(true);
+    setIsEnd(false);
+    setCursor(null);
+    try {
+      const postsRef = collection(db, "posts");
+      const qy = query(postsRef, orderBy("tarih", "desc"), limit(pageSize));
+      const snap = await getDocs(qy);
+      const docs = snap.docs;
+      const mapped = docs.map((d) => ({ id: d.id, ...d.data() }));
+      setPosts(mapped);
+      setCursor(docs.length > 0 ? docs[docs.length - 1] : null);
+      setIsEnd(docs.length < pageSize);
+    } catch (e) {
+      console.error("Explore ilk sayfa hatası:", e);
+      setPosts([]);
+      setIsEnd(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFirstPage();
+  }, [fetchFirstPage]);
+
+  /* ——— Sonsuz kaydırma: sonraki sayfalar ——— */
+  const fetchNext = useCallback(async () => {
+    if (paging || isEnd || !cursor) return;
+    setPaging(true);
+    try {
+      const postsRef = collection(db, "posts");
+      const qy = query(postsRef, orderBy("tarih", "desc"), startAfter(cursor), limit(pageSize));
+      const snap = await getDocs(qy);
+      const docs = snap.docs;
+      const add = docs.map((d) => ({ id: d.id, ...d.data() }));
+      setPosts((prev) => mergeUnique(prev, add));
+      setCursor(docs.length > 0 ? docs[docs.length - 1] : cursor);
+      setIsEnd(docs.length < pageSize);
+    } catch (e) {
+      console.error("Explore sayfalama hatası:", e);
+      setIsEnd(true);
+    } finally {
+      setPaging(false);
+    }
+  }, [paging, isEnd, cursor]);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const ent = entries[0];
+        if (ent?.isIntersecting) fetchNext();
+      },
+      { rootMargin: "800px 0px 1200px 0px", threshold: 0.01 }
     );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [fetchNext]);
+
+  /* ——— Grid listesi + mozaik ——— */
+  const gridList = useMemo(() => posts, [posts]);
+  const isBig = (idx) => idx % 7 === 0; // 0,7,14,...
+
+  /* ——— Kart aç ——— */
+  const openCard = (idx) => {
+    // Mobil: tam ekran viewer, Desktop: mevcut modal
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    if (isMobile) {
+      const withTypes = gridList.map((p) =>
+        p.type ? p : { ...p, type: isClipItem(p) ? "clip" : "post" }
+      );
+      setViewer({ items: withTypes, index: idx });
+    } else {
+      setSelectedPost(gridList[idx]);
+    }
+  };
+
+  const closeViewer = () => setViewer(null);
+
+  return (
+    <>
+      <div className="explore-container">
+        {/* Arama */}
+        <div className="search-bar-wrapper">
+          <div className="search-bar-container">
+            <input
+              type="text"
+              placeholder="Ara…"
+              className="search-input"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              aria-label="Kullanıcı ara"
+            />
+          </div>
+        </div>
+
+        {/* Sonuçlar veya Grid */}
+        {searchTerm.trim() ? (
+          <div className="search-results-container" role="list">
+            {isSearching ? (
+              <p className="search-message">Aranıyor…</p>
+            ) : searchResults.length > 0 ? (
+              searchResults.map((user) => {
+                const uid = user.uid || user.id;
+                const avatar =
+                  user.profilFoto || user.photoURL || "/avatars/default.png";
+                const uname = user.kullaniciAdi || user.username || "kullanıcı";
+                const fname = user.adSoyad || user.displayName || "";
+                return (
+                  <button
+                    key={uid}
+                    className="search-result-item"
+                    onClick={() => onUserClick(uid)}
+                    role="listitem"
+                    aria-label={`${uname} profiline git`}
+                    type="button"
+                  >
+                    <img src={avatar} alt="" />
+                    <div className="search-result-info">
+                      <span className="username">{uname}</span>
+                      <span className="fullname">{fname}</span>
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <p className="search-message">Sonuç bulunamadı.</p>
+            )}
+          </div>
+        ) : (
+          <>
+            {loading ? (
+              <div className="explore-grid" aria-busy="true" aria-live="polite">
+                {Array.from({ length: pageSize }).map((_, i) => (
+                  <div key={i} className="explore-grid-item skeleton" aria-hidden="true" />
+                ))}
+              </div>
+            ) : gridList.length > 0 ? (
+              <div className="explore-grid" role="list">
+                {gridList.map((post, idx) => {
+                  const url = mediaUrlOf(post);
+                  if (!url) return null;
+                  const clip = isClipItem(post);
+                  const poster = thumbUrlOf(post);
+                  const big = isBig(idx);
+
+                  return (
+                    <button
+                      key={post.id}
+                      type="button"
+                      className={`explore-grid-item${big ? " big" : ""}`}
+                      onClick={() => openCard(idx)}
+                      role="listitem"
+                      aria-label={clip ? "Klipi aç" : "Gönderiyi aç"}
+                    >
+                      {clip ? (
+                        <video
+                          className="explore-grid-media"
+                          src={url}
+                          poster={poster || undefined}
+                          muted
+                          playsInline
+                          preload="metadata"
+                        />
+                      ) : (
+                        <img
+                          src={url}
+                          alt={post?.aciklama || post?.caption || "gönderi"}
+                          className="explore-grid-media"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      )}
+
+                      {clip && (
+                        <div className="explore-clip-badge" style={{ color: "#fff" }}>
+                          <ClipBadge size={16} />
+                        </div>
+                      )}
+
+                      <div className="explore-grid-overlay" style={{ color: "#fff" }}>
+                        <div className="explore-overlay-stat">
+                          <StarIcon size={18} />
+                          <span>{likeCountOf(post)}</span>
+                        </div>
+                        <div className="explore-overlay-stat">
+                          <CommentIcon size={18} />
+                          <span>{commentCountOf(post)}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {/* Sonsuz kaydırma sentinel + skeleton append */}
+                {!isEnd && (
+                  <>
+                    {Array.from({ length: Math.min(6, pageSize) }).map((_, i) => (
+                      <div key={`skel-${i}`} className="explore-grid-item skeleton" aria-hidden="true" />
+                    ))}
+                    <div ref={sentinelRef} className="explore-sentinel" aria-hidden="true" />
+                  </>
+                )}
+              </div>
+            ) : (
+              <p className="search-message">Keşfedecek yeni bir şey yok.</p>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Desktop modal */}
+      {selectedPost && (
+        <PostDetailModal
+          post={selectedPost}
+          onClose={() => setSelectedPost(null)}
+          aktifKullaniciId={aktifKullaniciId}
+        />
+      )}
+
+      {/* Mobil tam ekran viewer */}
+      {viewer && (
+        <ProfilePostViewerMobile
+          items={viewer.items}
+          startIndex={viewer.index}
+          onClose={closeViewer}
+        />
+      )}
+    </>
+  );
 }
 
 export default Explore;
+
+/* ——— yardımcı ——— */
+function mergeUnique(prev, add) {
+  const map = new Map(prev.map((x) => [x.id, x]));
+  for (const it of add) {
+    if (!it || !it.id) continue;
+    map.set(it.id, it);
+  }
+  return Array.from(map.values());
+}

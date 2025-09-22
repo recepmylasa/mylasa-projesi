@@ -1,3 +1,4 @@
+// src/icons.js
 import React from "react";
 
 /** Ortak props: size, className, title */
@@ -111,7 +112,6 @@ export const ChevronLeftIcon = ({ size, className, title }) => (
   </svg>
 );
 
-/* ───── Adım 3 ek ikonlar ───── */
 export const ChevronDownIcon = ({ size, className, title }) => (
   <svg {...svgBase({ size, className, title })}>
     <path d="M6 9l6 6 6-6" {...strokeProps} />
@@ -153,9 +153,44 @@ export const QrIcon = ({ size, className, title }) => (
   </svg>
 );
 
-/* ───── Adım 9 için ek ikon ───── */
 export const PlusIcon = ({ size, className, title }) => (
   <svg {...svgBase({ size, className, title })}>
     <path d="M12 5v14M5 12h14" {...strokeProps} />
+  </svg>
+);
+
+/* ───── CreateSheet ek ikonları ───── */
+export const StoryIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <circle cx="12" cy="12" r="9" {...strokeProps} />
+    <circle cx="12" cy="12" r="3" {...strokeProps} />
+  </svg>
+);
+
+export const HighlightIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <circle cx="12" cy="12" r="9" {...strokeProps} />
+    <path d="M7 12h10" {...strokeProps} />
+  </svg>
+);
+
+export const LiveIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <rect x="3" y="7" width="18" height="10" rx="3" {...strokeProps} />
+    <path d="M8 12h8" {...strokeProps} />
+  </svg>
+);
+
+export const AdsIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <rect x="4" y="6" width="16" height="12" rx="2" {...strokeProps} />
+    <path d="M6 9h12" {...strokeProps} />
+  </svg>
+);
+
+export const ChannelIcon = ({ size, className, title }) => (
+  <svg {...svgBase({ size, className, title })}>
+    <path d="M4 7h16v10H4z" {...strokeProps} />
+    <path d="M8 11h8" {...strokeProps} />
   </svg>
 );

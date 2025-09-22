@@ -1,27 +1,24 @@
-/* UserPosts.css */
-/* --- Profil grid Instagram'a yakın görünüm: 3 sütun, ince beyaz gutter, oran değişkenleri + a11y odak halkası --- */
+/* src/UserPosts.css */
+/* Profil grid — IG mobil görünümüne yakın: 3 sütun, ince beyaz gutter,
+   oran değişkenleri + a11y odak halkası + skeleton parıltısı. */
 
 .user-posts-grid {
-  /* Oran & boşluk değişkenleri (kolay ayar) */
-  --grid-gap: var(--grid-gap, 2px); /* container’dan gelebilir; yoksa 2px */
-  --post-ratio: 4 / 5;  /* Gönderiler: IG grid’e yakın dikey (kare değil) */
-  --clip-ratio: 9 / 16; /* Klipler/Reels */
+  /* Oran & boşluk (kolay ayar) */
+  --grid-gap: var(--grid-gap, 2px);   /* container’dan gelebilir; yoksa 2px */
+  --post-ratio: 4 / 5;                /* Gönderiler */
+  --clip-ratio: 9 / 16;               /* Klipler/Reels */
 
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--grid-gap);
-  background: #fff;   /* gap çizgileri beyaz görünsün */
+  background: #fff;                   /* gap çizgileri beyaz görünsün */
 }
 
 /* Reels/Klipler: 9:16 kutular */
-.user-posts-grid.clips-mode .post-grid-item {
-  aspect-ratio: var(--clip-ratio);
-}
+.user-posts-grid.clips-mode .post-grid-item { aspect-ratio: var(--clip-ratio); }
 
-/* Gönderiler: 4:5 kutular (kare değil) */
-.user-posts-grid.posts-mode .post-grid-item {
-  aspect-ratio: var(--post-ratio);
-}
+/* Gönderiler: 4:5 kutular */
+.user-posts-grid.posts-mode .post-grid-item { aspect-ratio: var(--post-ratio); }
 
 @media (min-width: 768px) {
   .user-posts-grid { gap: 6px; }
@@ -39,7 +36,7 @@
 
 /* Klavye erişilebilirliği: odak halkası + overlay görünür */
 .post-grid-item:focus-visible {
-  outline: 2px solid #0095f6;     /* Instagram maviye yakın */
+  outline: 2px solid #0095f6; /* IG maviye yakın */
   outline-offset: 2px;
 }
 .post-grid-item:focus-visible .post-grid-overlay { opacity: 1; }
@@ -60,10 +57,10 @@
   background: rgba(0, 0, 0, 0.45);
   padding: 4px;
   border-radius: 6px;
-  color: #fff; /* merkezi ikonlar currentColor kullanır */
+  color: #fff;
 }
 
-/* Hover’da like/yorum sayısı – sadece hover destekli cihazlarda */
+/* Hover’da oy/yorum sayısı – sadece hover destekli cihazlarda */
 .post-grid-overlay {
   position: absolute;
   inset: 0;
@@ -72,7 +69,7 @@
   justify-content: flex-end;
   gap: 12px;
   padding: 8px;
-  color: #fff; /* ikon + metin rengi */
+  color: #fff;
   font-weight: 600;
   background: linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.35) 100%);
   opacity: 0;
@@ -88,7 +85,7 @@
   gap: 6px;
 }
 
-/* --- Skeleton kartlar (parıltı animasyonu) --- */
+/* Skeleton kartlar (parıltı) */
 .skeleton-card {
   background: #f2f2f2;
   position: relative;
@@ -102,78 +99,43 @@
   background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.6) 50%, rgba(255,255,255,0) 100%);
   animation: skel-shine 1.2s infinite;
 }
-@keyframes skel-shine {
-  100% { transform: translateX(100%); }
-}
+@keyframes skel-shine { 100% { transform: translateX(100%); } }
 
 /* Sonsuz kaydırma sentinel */
-.infinite-sentinel {
-  height: 1px; /* görünmez ama IO tetikler */
-  width: 100%;
-}
+.infinite-sentinel { height: 1px; width: 100%; }
 
-/* --- Clip viewer overlay (fallback) --- */
+/* Fallback clip viewer overlay */
 .clip-viewer-backdrop {
-  position: fixed;
-  inset: 0;
+  position: fixed; inset: 0;
   background: rgba(0,0,0,.8);
   z-index: 2200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
 }
-
 .clip-viewer {
   position: relative;
   width: min(900px, 90vw);
-  aspect-ratio: 9 / 16;      /* dikey video alanı */
+  aspect-ratio: 9 / 16;
   background: #000;
   border-radius: 8px;
   overflow: hidden;
 }
-
-.clip-viewer video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #000;
-}
-
+.clip-viewer video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .clip-close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  border: 0;
-  padding: 8px 10px;
-  border-radius: 999px;
-  background: rgba(0,0,0,.55);
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
+  position: absolute; top: 10px; right: 10px;
+  border: 0; padding: 8px 10px; border-radius: 999px;
+  background: rgba(0,0,0,.55); color: #fff; cursor: pointer; font-size: 14px;
 }
 
 /* Boş durum */
-.user-posts-message {
-  padding: 24px 12px;
-  color: #8e8e8e;
-  text-align: center;
-}
-.user-posts-message .icon {
-  display: block;
-  font-size: 20px;
-  margin-bottom: 6px;
-}
+.user-posts-message { padding: 24px 12px; color: #8e8e8e; text-align: center; }
+.user-posts-message .icon { display: block; font-size: 20px; margin-bottom: 6px; }
 
-/* Görsel gizli metin yardımcı sınıf (gerekirse) */
+/* Görsel gizli metin yardımcı sınıf */
 .sr-only {
-  position: absolute !important;
-  width: 1px; height: 1px;
-  padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0, 0, 0, 0);
+  position: absolute !important; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
   white-space: nowrap; border: 0;
 }
 
-/* Erişilebilirlik: hareket azalt */
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-card::after { animation: none; }
-}
+/* Hareket azalt tercihi */
+@media (prefers-reduced-motion: reduce) { .skeleton-card::after { animation: none; } }

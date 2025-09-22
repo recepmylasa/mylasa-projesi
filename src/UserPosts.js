@@ -1,8 +1,8 @@
-// UserPosts.js
-// Profil grid (resim/video). Esnek şema + sonsuz kaydırma + skeleton.
-// Post tık: /p/:id (mevcut akış bozulmaz)
-// Clip tık: dahili video overlay AÇILIR (EĞER onOpen VERİLMEDİYSE).
-// onOpen(items, startIndex) verilirse, HER KART için onu çağırır (mobil tam ekran viewer entegrasyonu).
+// src/UserPosts.js
+// Profil grid: esnek Firestore şeması + sonsuz kaydırma + skeleton.
+// Post tık: /p/:id (mevcut permalink modal akışı)
+// Clip tık: dahili video overlay (EĞER onOpen VERİLMEDİYSE).
+// onOpen(items, startIndex) verilirse, HER KART için onu çağırır (mobil tam ekran viewer).
 
 import React, { useMemo, useEffect, useState, useCallback, useRef } from "react";
 import { db } from "./firebase";
@@ -20,7 +20,7 @@ import {
 import "./UserPosts.css";
 import { ClipBadge, CommentIcon, StarIcon } from "./icons";
 
-/* --- yardımcılar --- */
+/* ───────── yardımcılar ───────── */
 const isVideoExt = (url) => !!url && /\.(mp4|webm|mov|ogg)(\?|$)/i.test(url);
 
 function mediaUrlOf(item) {
@@ -39,13 +39,7 @@ function mediaUrlOf(item) {
 }
 
 function thumbUrlOf(item) {
-  return (
-    item?.thumbUrl ||
-    item?.thumbnail ||
-    item?.coverUrl ||
-    item?.poster ||
-    ""
-  );
+  return item?.thumbUrl || item?.thumbnail || item?.coverUrl || item?.poster || "";
 }
 
 function isClipItem(item) {
@@ -56,7 +50,10 @@ function isClipItem(item) {
   return (
     item?.isClip === true ||
     item?.isVideo === true ||
-    t === "clip" || t === "video" || t === "reel" || t === "reels" ||
+    t === "clip" ||
+    t === "video" ||
+    t === "reel" ||
+    t === "reels" ||
     mt.startsWith("video/") ||
     isVideoExt(url)
   );
@@ -81,7 +78,6 @@ function formatCount(n) {
   const num = Number(n || 0);
   if (!isFinite(num)) return "0";
   if (nfCompact) return nfCompact.format(num);
-  // Fallback (çok eski tarayıcılar için)
   if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(1).replace(/\.0$/, "") + " Mr";
   if (num >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, "") + " Mn";
   if (num >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, "") + " B";
@@ -97,68 +93,72 @@ async function choosePathStrategy({ userId, onlyClips, pageSize = 12 }) {
   const colNames = onlyClips ? [...clipCols, ...postCols] : [...postCols, ...clipCols];
 
   const idFields = [
-    "authorId", "userId", "uid", "userID", "ownerId", "kullaniciId", "createdBy", "olusturanId", "accountId",
-    "user.uid", "author.uid", "owner.uid", "user.id", "author.id"
+    "authorId",
+    "userId",
+    "uid",
+    "userID",
+    "ownerId",
+    "kullaniciId",
+    "createdBy",
+    "olusturanId",
+    "accountId",
+    "user.uid",
+    "author.uid",
+    "owner.uid",
+    "user.id",
+    "author.id",
   ];
 
   const orderFields = ["createdAt", "created_at", "tarih", "timestamp", "olusturmaTarihi", "time", "date"];
 
-  // 1) Önce belirgin koleksiyonlarda, önce collection sonra collectionGroup dene
   const kinds = ["collection", "collectionGroup"];
 
   for (const cn of colNames) {
     for (const kind of kinds) {
       for (const idf of idFields) {
-        // 1.a — order'lı dene (en çok tercih edilen)
+        // 1.a — order'lı deneyelim
         for (const ofield of orderFields) {
           try {
             const base = kind === "collection" ? collection(db, cn) : collectionGroup(db, cn);
-            const qy = query(
-              base,
-              where(idf, "==", userId),
-              orderBy(ofield, "desc"),
-              limit(pageSize)
-            );
+            const qy = query(base, where(idf, "==", userId), orderBy(ofield, "desc"), limit(pageSize));
             const snap = await getDocs(qy);
-            // Başarılı sorgu -> bu stratejiyi seç
             return {
-              kind, cn, idField: idf,
+              kind,
+              cn,
+              idField: idf,
               orderByField: ofield,
               orderByDocumentId: false,
-              firstDocs: snap.docs
+              firstDocs: snap.docs,
             };
           } catch (e) {
-            // index gerekli olabilir vs. — bir alt varyanta geç
+            /* index gerekebilir → bir alt varyanta in */
           }
         }
-        // 1.b — fallback: documentId() ile sırala (en geniş uyumluluk)
+        // 1.b — fallback: documentId() ile sırala
         try {
           const base = kind === "collection" ? collection(db, cn) : collectionGroup(db, cn);
-          const qy = query(
-            base,
-            where(idf, "==", userId),
-            orderBy(documentId()),
-            limit(pageSize)
-          );
+          const qy = query(base, where(idf, "==", userId), orderBy(documentId()), limit(pageSize));
           const snap = await getDocs(qy);
           return {
-            kind, cn, idField: idf,
+            kind,
+            cn,
+            idField: idf,
             orderByField: null,
             orderByDocumentId: true,
-            firstDocs: snap.docs
+            firstDocs: snap.docs,
           };
         } catch (e) {
-          // diğer idField'a geç
+          /* diğer idField'a geç */
         }
       }
     }
   }
 
-  // Hiçbir rota bulunamadıysa boş strateji döndür (UI "Henüz Yok" gösterecek)
+  // başarılı rota bulunamadı
   return null;
 }
 
-/** Verilen stratejiyle tek sayfa getiren yardımcı */
+/** Verilen stratejiyle tek sayfa çeker */
 async function fetchPageWithStrategy({ strategy, userId, pageSize = 12, cursor = null }) {
   if (!strategy) return { docs: [], lastDoc: null };
   const { kind, cn, idField, orderByField, orderByDocumentId } = strategy;
@@ -181,11 +181,22 @@ async function fetchPageWithStrategy({ strategy, userId, pageSize = 12, cursor =
  * Props:
  *  - userId: string
  *  - content?: array (varsa direkt o kullanılır; sayfalama devre dışı)
- *  - onlyClips?: boolean → true ise yalnızca video (clip) göster
- *  - onOpen?: function(items, startIndex) → verildiyse, tüm tıklamalar bunu çağırır
+ *  - mode?: "grid" | "clips" | "tagged"  (geri uyumlu: onlyClips)
+ *  - onlyClips?: boolean (DEPRECATED; mode ile aynı işleve gelir)
+ *  - onOpen?: function(items, startIndex)
  *  - pageSize?: number → varsayılan 12
  */
-export default function UserPosts({ userId, content, onlyClips = false, onOpen, pageSize = 12 }) {
+export default function UserPosts({
+  userId,
+  content,
+  mode = "grid",
+  onlyClips,
+  onOpen,
+  pageSize = 12,
+}) {
+  // Geri uyumluluk: onlyClips verildiyse onu baz al; yoksa mode'dan türet
+  const showClips = (typeof onlyClips === "boolean" ? onlyClips : mode === "clips") === true;
+
   const [strategy, setStrategy] = useState(null);
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
@@ -200,13 +211,12 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
 
   // body scroll kilidi (fallback viewer açıkken)
   useEffect(() => {
-    if (clipViewer) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = prev;
-      };
-    }
+    if (!clipViewer) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, [clipViewer]);
 
   // Başlangıç yükü: strateji seç + ilk sayfa
@@ -222,7 +232,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
 
     (async () => {
       try {
-        const strat = await choosePathStrategy({ userId, onlyClips, pageSize });
+        const strat = await choosePathStrategy({ userId, onlyClips: showClips, pageSize });
         if (!alive) return;
         if (!strat) {
           setStrategy(null);
@@ -250,11 +260,11 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
     return () => {
       alive = false;
     };
-  }, [userId, onlyClips, pageSize, useExternalContent]);
+  }, [userId, showClips, pageSize, useExternalContent]);
 
   // Sonsuz kaydırma: sentinel görünürse sayfa çek
   useEffect(() => {
-    if (useExternalContent) return;              // dış içerikte sayfalama yok
+    if (useExternalContent) return; // dış içerikte sayfalama yok
     if (!strategy || isEnd) return;
     const el = sentinelRef.current;
     if (!el) return;
@@ -262,8 +272,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
     const io = new IntersectionObserver(
       async (entries) => {
         const ent = entries[0];
-        if (!ent?.isIntersecting) return;
-        if (loading) return;
+        if (!ent?.isIntersecting || loading) return;
         setLoading(true);
         try {
           const { docs, lastDoc } = await fetchPageWithStrategy({
@@ -278,8 +287,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
           setIsEnd(docs.length < pageSize);
         } catch (e) {
           console.error("UserPosts page fetch error:", e);
-          // hata durumunda döngüyü kitlememek için küçük bir gecikme ile kapat
-          setIsEnd(true);
+          setIsEnd(true); // döngü kilitlenmesin
         } finally {
           setLoading(false);
         }
@@ -291,13 +299,13 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
     return () => io.disconnect();
   }, [strategy, isEnd, loading, cursor, userId, pageSize, useExternalContent]);
 
-  // İçerik kaynağı: dışarıdan içerik varsa onu kullan; yoksa state'teki birikmiş öğeler
+  // İçerik kaynağı
   const listRaw = useMemo(() => {
     if (useExternalContent) return content || [];
     return items;
   }, [useExternalContent, content, items]);
 
-  // Çoğaltmaları önle, tarih sıralaması (mümkünse), onlyClips filtresi
+  // Çoğaltmaları önle, tarih sıralaması, klip filtresi
   const list = useMemo(() => {
     const map = new Map();
     for (const it of listRaw) {
@@ -306,22 +314,14 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
     }
     let arr = Array.from(map.values());
     const getCreated = (x) =>
-      ts(
-        x.createdAt ||
-          x.created_at ||
-          x.tarih ||
-          x.timestamp ||
-          x.olusturmaTarihi ||
-          x.time ||
-          x.date
-      );
+      ts(x.createdAt || x.created_at || x.tarih || x.timestamp || x.olusturmaTarihi || x.time || x.date);
     arr.sort((a, b) => getCreated(b) - getCreated(a));
 
-    if (onlyClips) arr = arr.filter(isClipItem);
+    if (showClips) arr = arr.filter(isClipItem);
     return arr;
-  }, [listRaw, onlyClips]);
+  }, [listRaw, showClips]);
 
-  // Viewer’a tip bilgisi taşıyan aynı sıradaki liste
+  // Viewer listesi (tip işaretli)
   const viewList = useMemo(
     () => list.map((it) => (it.type ? it : { ...it, type: isClipItem(it) ? "clip" : "post" })),
     [list]
@@ -347,7 +347,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
   if (!useExternalContent && initialLoading) {
     return (
       <div
-        className={`user-posts-grid ${onlyClips ? "clips-mode" : "posts-mode"}`}
+        className={`user-posts-grid ${showClips ? "clips-mode" : "posts-mode"}`}
         role="list"
         aria-busy="true"
         aria-live="polite"
@@ -363,33 +363,25 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
     return (
       <div className="user-posts-message">
         <span className="icon">📷</span>
-        <div>{onlyClips ? "Henüz Clip Yok" : "Henüz Paylaşım Yok"}</div>
+        <div>{showClips ? "Henüz Klip Yok" : "Henüz Paylaşım Yok"}</div>
       </div>
     );
   }
 
   return (
     <>
-      <div
-        className={`user-posts-grid ${onlyClips ? "clips-mode" : "posts-mode"}`}
-        role="list"
-      >
+      <div className={`user-posts-grid ${showClips ? "clips-mode" : "posts-mode"}`} role="list">
         {viewList.map((item, idx) => {
           const url = mediaUrlOf(item);
           if (!url) return null;
           const isClip = item.type === "clip";
           const poster = thumbUrlOf(item);
 
-          const likes =
-            item?.starsCount ??
-            item?.likes ??
-            (item?.begenenler?.length || 0);
-          const comments =
-            item?.commentsCount ??
-            (item?.yorumlar?.length || 0);
+          const votes = item?.starsCount ?? item?.likes ?? (item?.begenenler?.length || 0);
+          const comments = item?.commentsCount ?? (item?.yorumlar?.length || 0);
 
           const ariaType = isClip ? "Klip" : "Gönderi";
-          const label = `${ariaType} aç — ${formatCount(likes)} beğeni, ${formatCount(comments)} yorum`;
+          const label = `${ariaType} aç — ${formatCount(votes)} oy, ${formatCount(comments)} yorum`;
 
           const handleClick = () => {
             if (typeof onOpen === "function") {
@@ -407,8 +399,10 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
               className="post-grid-item"
               onClick={handleClick}
               aria-label={label}
-              title={`${formatCount(likes)} beğeni • ${formatCount(comments)} yorum`}
+              title={`${formatCount(votes)} oy • ${formatCount(comments)} yorum`}
               role="listitem"
+              data-id={item.id}
+              data-type={isClip ? "clip" : "post"}
             >
               {isClip ? (
                 <video
@@ -439,7 +433,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
               <div className="post-grid-overlay" style={{ color: "#fff" }}>
                 <div className="overlay-stat">
                   <StarIcon size={18} />
-                  <span>{formatCount(likes)}</span>
+                  <span>{formatCount(votes)}</span>
                 </div>
                 <div className="overlay-stat">
                   <CommentIcon size={18} />
@@ -463,12 +457,7 @@ export default function UserPosts({ userId, content, onlyClips = false, onOpen, 
 
       {/* Fallback clip viewer (onOpen yoksa devrede) */}
       {clipViewer && (
-        <div
-          className="clip-viewer-backdrop"
-          onClick={() => setClipViewer(null)}
-          role="dialog"
-          aria-modal="true"
-        >
+        <div className="clip-viewer-backdrop" onClick={() => setClipViewer(null)} role="dialog" aria-modal="true">
           <div className="clip-viewer" onClick={(e) => e.stopPropagation()}>
             <button className="clip-close" onClick={() => setClipViewer(null)}>
               Kapat

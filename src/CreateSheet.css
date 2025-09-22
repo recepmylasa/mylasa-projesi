@@ -1,0 +1,25 @@
+/* src/CreateSheet.css */
+@import "./styles/ig-mobile.css";
+
+.cs-backdrop{
+  position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:2200;
+}
+.cs-sheet{
+  position:fixed; left:0; right:0; bottom:0; z-index:2201;
+  background:#fff; border-top-left-radius:16px; border-top-right-radius:16px;
+  box-shadow:0 -8px 24px rgba(0,0,0,.15);
+  transform:translateY(100%); transition:transform .2s ease-out;
+}
+.cs-sheet.open{ transform:translateY(0%); }
+.cs-handle{ width:40px; height:4px; border-radius:3px; background:#ddd; margin:10px auto; }
+.cs-title{ font-size:14px; font-weight:700; padding:0 16px 10px 16px; display:flex; align-items:center; gap:8px; }
+.cs-list{ padding:6px 6px 10px 6px; }
+.cs-item{
+  width:100%; display:flex; align-items:center; gap:12px;
+  padding:12px; margin:8px 10px; border:1px solid #eee; border-radius:12px;
+  background:#fff; color:#000;
+}
+.cs-item:active{ background:#f7f7f7; }
+.cs-icon{ width:24px; height:24px; display:grid; place-items:center; color:#111; }
+.cs-label{ font-weight:600; }
+.cs-safe{ height: calc(env(safe-area-inset-bottom) + 8px); }

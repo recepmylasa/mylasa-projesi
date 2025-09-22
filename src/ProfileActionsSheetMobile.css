@@ -1,0 +1,65 @@
+/* src/ProfileActionsSheetMobile.css */
+@import "./styles/ig-mobile.css";
+
+/* Backdrop */
+.pas-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  z-index: 2400;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease;
+}
+.pas-backdrop.open{
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Sheet */
+.pas-sheet{
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  box-shadow: 0 -8px 24px rgba(0,0,0,.15);
+  transform: translateY(100%);
+  transition: transform .18s ease-out;
+  max-height: 80vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+.pas-sheet.open{ transform: translateY(0%); }
+
+.pas-handle{
+  width: 44px; height: 5px; border-radius: 999px;
+  background: #e5e5e5; margin: 10px auto 6px;
+}
+.pas-title{
+  text-align: center;
+  font-weight: 700;
+  padding: 0 16px 8px 16px;
+  border-bottom: 1px solid var(--divider);
+}
+
+/* Menü */
+.pas-list{
+  padding: 6px 6px 12px 6px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.pas-item{
+  width: 100%;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 10px; margin: 8px 10px;
+  border-radius: 12px; border: 1px solid #eee;
+  background: #fff; color: #000;
+  appearance: none; border-width: 1px;
+}
+.pas-item:active{ background: #f7f7f7; }
+
+.pas-icon{ width: 24px; height: 24px; display: grid; place-items: center; color: #111; }
+.pas-label{ font-weight: 600; }
+
+.pas-safe{ height: calc(env(safe-area-inset-bottom) + 8px); }

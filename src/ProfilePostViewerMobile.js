@@ -4,6 +4,7 @@ import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
 import { ensureContentDoc, rateContent as sendRating } from "./reputationClient";
 import { toggleSave as fsToggleSave } from "./savesClient";
 import { KebabIcon, CommentIcon, ShareIcon, SaveIcon } from "./icons";
+import CommentsPanel from "./components/CommentsPanel/CommentsPanel";
 import "./ProfilePostViewerMobile.css";
 
 /* ---------- yardımcılar ---------- */
@@ -38,7 +39,6 @@ function typeOf(it) {
   const url = mediaUrlOf(it);
   return isVideoUrl(url) ? "clip" : "post";
 }
-
 function relTimeTR(input) {
   const d = ts(input);
   if (!d) return "";
@@ -52,13 +52,13 @@ function relTimeTR(input) {
   return `${g}g önce`;
 }
 
+/** deep-link yardımcıları */
+const pathFor = (it) => `/${(it?.type === "clip" ? "c" : "p")}/${it?.id ?? ""}`;
+
 /**
  * IG-stili mobil gönderi görüntüleyici (profilden açılan).
  * Dikey swipe ile postlar arasında geçiş; yatay swipe ile önceki/sonraki posta atlama.
- * - items: Array (post + clip karışık)
- * - startIndex?: number
- * - viewerUser?: { name, avatar }
- * - onClose: fn()
+ * Deep-link senkronu: URL /p/:id veya /c/:id olarak güncellenir.
  */
 export default function ProfilePostViewerMobile({
   items = [],
@@ -71,12 +71,16 @@ export default function ProfilePostViewerMobile({
   const [currentIndex, setCurrentIndex] = useState(0);
 
   // alt sayfalar
-  const [shareSheet, setShareSheet] = useState(null);   // { url }
-  const [commentsFor, setCommentsFor] = useState(null); // item | null
-  const [copied, setCopied] = useState(false);          // paylaşım sheet kopyalama feedback
+  const [shareSheet, setShareSheet] = useState(null);
+  const [commentsFor, setCommentsFor] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const listRef = useRef(null);
   const rafRef = useRef(0);
+
+  // deep-link: önceki URL ve ilk push yapıldı mı?
+  const prevUrlRef = useRef("");
+  const urlPushedRef = useRef(false);
 
   // yatay swipe dedektörü
   const ptrRef = useRef({
@@ -88,7 +92,7 @@ export default function ProfilePostViewerMobile({
     dy: 0,
   });
 
-  // tekilleştir + tarihe göre sırala (yeni -> eski) + type
+  // tekilleştir + tarihe göre sırala + type
   const list = useMemo(() => {
     const uniq = new Map();
     for (const it of Array.isArray(items) ? items : []) {
@@ -102,7 +106,7 @@ export default function ProfilePostViewerMobile({
     return arr.map((x) => (x.type ? x : { ...x, type: typeOf(x) }));
   }, [items]);
 
-  // açılış index’i ve ilk hizalama
+  // açılış index’i + ilk hizalama
   useEffect(() => {
     const idx = Math.max(0, Math.min(startIndex, list.length - 1));
     setCurrentIndex(idx);
@@ -114,14 +118,10 @@ export default function ProfilePostViewerMobile({
     });
   }, [list, startIndex]);
 
-  // body-scroll kilidi + ESC + back-stack entegrasyonu
+  // body-scroll kilidi + popstate (back ile kapat)
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
-    // kendi tarihçe state’imizi bas
-    const st = { ppv: true, ts: Date.now() };
-    try { window.history.pushState(st, ""); } catch {}
 
     const onPop = () => { cleanupAndClose(); };
     window.addEventListener("popstate", onPop);
@@ -133,7 +133,41 @@ export default function ProfilePostViewerMobile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ESC davranışı: önce sheet'leri kapat, sonra viewer
+  // DEEP-LINK: İlk pushState (viewer açılırken) — URL'i ilk karta göre ayarla
+  useEffect(() => {
+    if (urlPushedRef.current) return;
+    if (!list.length) return;
+
+    prevUrlRef.current = window.location.pathname + window.location.search + window.location.hash;
+
+    const idx = Math.max(0, Math.min(startIndex, list.length - 1));
+    const firstPath = pathFor(list[idx]);
+
+    try {
+      window.history.pushState({ ppv: true, from: prevUrlRef.current }, "", firstPath);
+      urlPushedRef.current = true;
+    } catch {
+      // sessiz
+    }
+  }, [list, startIndex]);
+
+  // DEEP-LINK: Kart değişince URL'i replaceState ile güncelle
+  useEffect(() => {
+    if (!urlPushedRef.current) return;
+    const it = list[currentIndex];
+    if (!it) return;
+    const newPath = pathFor(it);
+    if (window.location.pathname === newPath) return;
+    try {
+      window.history.replaceState(
+        { ppv: true, from: prevUrlRef.current },
+        "",
+        newPath
+      );
+    } catch {}
+  }, [currentIndex, list]);
+
+  // ESC: önce sheet’leri, sonra viewer’ı kapat
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape") return;
@@ -148,8 +182,8 @@ export default function ProfilePostViewerMobile({
   const doClose = useCallback(() => {
     try {
       if (window.history.state && window.history.state.ppv) {
-        window.history.back();
-        setTimeout(() => cleanupAndClose(), 250);
+        window.history.back();            // önceki sayfaya dön
+        setTimeout(() => cleanupAndClose(), 250); // olası popstate gecikmesine karşı
       } else {
         cleanupAndClose();
       }
@@ -162,7 +196,7 @@ export default function ProfilePostViewerMobile({
     if (typeof onClose === "function") onClose();
   }, [onClose]);
 
-  // scroll konumundan currentIndex belirleme (hafif)
+  // scroll’dan currentIndex tespiti
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
@@ -197,7 +231,7 @@ export default function ProfilePostViewerMobile({
     if (child) child.scrollIntoView({ block: "start", behavior });
   }, []);
 
-  // Aktif karttaki videoyu oynat, diğerlerini durdur
+  // aktif karttaki videoyu oynat, diğerlerini durdur
   useEffect(() => {
     const root = listRef.current;
     if (!root) return;
@@ -206,7 +240,6 @@ export default function ProfilePostViewerMobile({
       const vids = card.querySelectorAll("video");
       vids.forEach((v) => {
         if (i === currentIndex) {
-          // dene; autoplay politikası gereği sessiz
           v.muted = true;
           v.play().catch(() => {});
         } else {
@@ -219,7 +252,7 @@ export default function ProfilePostViewerMobile({
   // ----- Kaydet / Puanla / Açıklama -----
   const toggleSave = useCallback(async (it) => {
     if (!it?.id) return;
-    setSavedMap((m) => ({ ...m, [it.id]: !m[it.id] })); // iyimser
+    setSavedMap((m) => ({ ...m, [it.id]: !m[it.id] }));
     try {
       const { saved } = await fsToggleSave({
         contentId: it.id,
@@ -230,7 +263,7 @@ export default function ProfilePostViewerMobile({
       });
       setSavedMap((m) => ({ ...m, [it.id]: !!saved }));
     } catch {
-      setSavedMap((m) => ({ ...m, [it.id]: !m[it.id] })); // geri al
+      setSavedMap((m) => ({ ...m, [it.id]: !m[it.id] }));
     }
   }, []);
 
@@ -256,14 +289,14 @@ export default function ProfilePostViewerMobile({
   const viewerFallbackAvatar =
     viewerUser?.avatar || viewerUser?.photoURL || viewerUser?.profilFoto || "/avatars/default.png";
 
-  // ----- Yatay swipe (önceki/sonraki posta atla) + Aşağı çek kapat -----
+  // ----- Yatay swipe + Aşağı çek kapat -----
   const atCardTop = useCallback(() => {
     const el = listRef.current;
     if (!el) return false;
     const child = el.children[currentIndex];
     if (!child) return false;
     const rel = child.offsetTop - el.scrollTop;
-    return Math.abs(rel) < 4; // hizalı kabul
+    return Math.abs(rel) < 4;
   }, [currentIndex]);
 
   const handlePointerDown = (e) => {
@@ -283,15 +316,11 @@ export default function ProfilePostViewerMobile({
 
     if (p.locked === null) {
       const ax = Math.abs(p.dx), ay = Math.abs(p.dy);
-      if (ax > 12 || ay > 12) {
+      if (ax > ay ? ax > 12 : ay > 12) {
         p.locked = ax > ay ? "h" : "v";
       }
     }
-
-    // yatay swipe’ta dikey kaydırmayı engelle
-    if (p.locked === "h") {
-      e.preventDefault();
-    }
+    if (p.locked === "h") e.preventDefault();
   };
 
   const handlePointerEnd = () => {
@@ -300,11 +329,9 @@ export default function ProfilePostViewerMobile({
     const { dx, dy, locked } = p;
 
     if (locked === "h" && Math.abs(dx) > 60) {
-      // sola kaydır → sonraki; sağa kaydır → önceki
       const dir = dx < 0 ? +1 : -1;
       scrollToIndex(currentIndex + dir, "smooth");
     } else if (locked === "v" && dy > 120 && atCardTop()) {
-      // baştaki kart hizalıyken aşağı doğru çekileirse kapat
       doClose();
     }
 
@@ -354,7 +381,7 @@ export default function ProfilePostViewerMobile({
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
       >
-        {list.map((it, i) => {
+        {list.map((it) => {
           const url = mediaUrlOf(it);
           const isVideo = it.type === "clip";
 
@@ -366,7 +393,7 @@ export default function ProfilePostViewerMobile({
           const cap = it?.aciklama || it?.caption || it?.mesaj || "";
           const expanded = !!expandedMap[it.id];
 
-          const shareUrl = `${window.location.origin}/${isVideo ? "c" : "p"}/${it.id}`;
+          const shareUrl = `${window.location.origin}${pathFor(it)}`;
 
           return (
             <article key={it.id} className="ppv-card" role="article" aria-label="Gönderi">
@@ -435,7 +462,12 @@ export default function ProfilePostViewerMobile({
                   <span className="ppv-like-ghost">İlk oyu sen ver</span>
                 )}
                 {commentCount > 0 && (
-                  <button className="ppv-show-comments" type="button" aria-label="Yorumları gör" onClick={() => setCommentsFor(it)}>
+                  <button
+                    className="ppv-show-comments"
+                    type="button"
+                    aria-label="Yorumları gör"
+                    onClick={() => setCommentsFor(it)}
+                  >
                     {commentCount} yorumu gör
                   </button>
                 )}
@@ -478,48 +510,13 @@ export default function ProfilePostViewerMobile({
         </div>
       )}
 
-      {/* --- Yorumlar Sheet (iskelet) --- */}
-      {commentsFor && (
-        <div className="ppv-sheet-backdrop" role="presentation" onClick={() => setCommentsFor(null)}>
-          <div className="ppv-sheet comments" role="dialog" aria-modal="true" aria-label="Yorumlar" onClick={(e) => e.stopPropagation()}>
-            <div className="ppv-sheet-handle" />
-            <div className="ppv-sheet-title">Yorumlar</div>
-
-            <div className="ppv-comments-list">
-              {Array.isArray(commentsFor.yorumlar) && commentsFor.yorumlar.length > 0 ? (
-                commentsFor.yorumlar.map((y, i) => (
-                  <div key={i} className="ppv-comment">
-                    <div className="ppv-comment-avatar" />
-                    <div className="ppv-comment-body">
-                      <div className="ppv-comment-line">
-                        <strong className="ppv-comment-name">{y.userName || y.username || "kullanıcı"}</strong>
-                        <span className="ppv-comment-time">{relTimeTR(y.tarih || y.createdAt || y.timestamp)}</span>
-                      </div>
-                      <div className="ppv-comment-text">{y.text || y.mesaj || ""}</div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                // İskelet yer tutucu
-                Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="ppv-comment skel">
-                    <div className="ppv-comment-avatar skel-block" />
-                    <div className="ppv-comment-body">
-                      <div className="ppv-skel-line w60" />
-                      <div className="ppv-skel-line w90" />
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="ppv-comments-input">
-              <input type="text" placeholder="Yorum ekle… (demo)" disabled />
-              <button disabled>Paylaş</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* --- Yorumlar Paneli (read-only) --- */}
+      <CommentsPanel
+        open={!!commentsFor}
+        contentId={commentsFor?.id}
+        initialLocal={commentsFor?.yorumlar}
+        onClose={() => setCommentsFor(null)}
+      />
     </div>
   );
 }
