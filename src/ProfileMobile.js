@@ -1,4 +1,3 @@
-// src/ProfileMobile.js
 // Mobil profil: header + highlights + sekmeler + içerik + CreateSheet + QR Modal + ActionsSheet + Saved
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import "./ProfileMobile.css";
@@ -125,6 +124,10 @@ export default function ProfileMobile({ user = null }) {
           handleShare();
           closeActions();
           break;
+        case "saved":
+          setMode("saved");        // <-- eklendi
+          closeActions();
+          break;
         default:
           // Bu sprintte: görsel & akış entegrasyonu
           console.log("action:", id);
@@ -152,7 +155,7 @@ export default function ProfileMobile({ user = null }) {
         if (alive) setSavedLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => { let _ = (alive = false); };
   }, [mode, isSelf]);
 
   // ---- SAVED: sonsuz kaydırma ----

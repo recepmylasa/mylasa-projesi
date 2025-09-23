@@ -1,60 +1,50 @@
-// src/ProfileHighlightsMobile.jsx
 import React from "react";
 import "./ProfileHighlightsMobile.css";
-import { PlusIcon } from "./icons";
 
-/**
- * Highlights (Öne Çıkanlar) — IG mobil stili
- *
- * Props:
- * - items: [{ id, title, coverUrl }]  // title zorunlu, cover opsiyonel
- * - onAdd: () => void                 // "+ Yeni" tıklaması
- * - onOpen: (item, index) => void     // highlight tıklaması
- * - username: string                  // a11y için
- */
+/** IG mobil “Öne Çıkanlar” */
 export default function ProfileHighlightsMobile({
   items = [],
   onAdd = () => {},
   onOpen = () => {},
-  username = "kullanıcı",
+  username = "",
 }) {
   const list = Array.isArray(items) ? items : [];
 
   return (
-    <section className="phl" aria-label={`${username} öne çıkanlar`}>
-      {/* + Yeni balonu */}
+    <section className="hl-row" aria-label={`${username || "profil"} öne çıkanlar`}>
+      {/* + Yeni */}
       <button
         type="button"
-        className="phl-col"
-        aria-label="Yeni öne çıkan oluştur"
+        className="hl-col"
         onClick={onAdd}
+        aria-label="Yeni öne çıkan"
       >
-        <span className="phl-bubble add" aria-hidden="true">
-          <PlusIcon size={24} />
+        <span className="hl-bubble" aria-hidden="true">
+          {/* FIX: style object olmalı */}
+          <span style={{ fontSize: 28, lineHeight: 1 }}>+</span>
         </span>
-        <span className="phl-label">Yeni</span>
+        <span className="hl-label">Yeni</span>
       </button>
 
-      {/* Öğeler */}
-      {list.map((it, idx) => (
+      {list.map((it, i) => (
         <button
-          key={it.id || `${it.title}-${idx}`}
+          key={it.id || i}
           type="button"
-          className="phl-col"
-          onClick={() => onOpen(it, idx)}
-          aria-label={`${it.title} öne çıkanı aç`}
-          title={it.title}
+          className="hl-col"
+          onClick={() => onOpen(it, i)}
+          aria-label={`${it.title || "Öne çıkan"} aç`}
+          title={it.title || "Öne çıkan"}
         >
-          <span className="phl-bubble" aria-hidden="true">
+          <span className="hl-bubble" aria-hidden="true">
             {it.coverUrl ? (
               <img src={it.coverUrl} alt="" />
             ) : (
-              <span className="phl-placeholder">{(it.title || "?")[0]}</span>
+              <span style={{ fontWeight: 700 }}>
+                {(it.title || "?")[0]}
+              </span>
             )}
           </span>
-          <span className="phl-label" aria-hidden="false">
-            {it.title || "Öne çıkan"}
-          </span>
+          <span className="hl-label">{it.title || "Öne çıkan"}</span>
         </button>
       ))}
     </section>
