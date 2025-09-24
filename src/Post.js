@@ -1,7 +1,7 @@
 import React from "react";
 import "./Post.css";
-import { BsChat, BsBookmark, BsBookmarkFill, BsThreeDots } from "react-icons/bs";
-import { FiSend } from "react-icons/fi";
+// 🔁 Standart ikonlar (./icons)
+import { CommentIcon, ShareIcon, SaveIcon, KebabIcon } from "./icons";
 
 import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
 import { usePostLogic } from "./hooks/usePostLogic";
@@ -94,8 +94,10 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             aria-haspopup="menu"
             aria-expanded={optionsOpen}
             aria-controls="post-menu"
+            title="Seçenekler"
           >
-            <BsThreeDots />
+            {/* ••• dikey kebab */}
+            <KebabIcon direction="vertical" className="postDk-actionIcon" />
           </button>
           {optionsOpen && (
             <div id="post-menu" className="postDk-optionsMenu" role="menu">
@@ -164,7 +166,7 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             aria-label="Yorumlar"
             title="Yorumlar"
           >
-            <BsChat className="postDk-actionIcon" />
+            <CommentIcon className="postDk-actionIcon" />
           </button>
 
           <button
@@ -173,7 +175,7 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             aria-label="Paylaş"
             title="Paylaş"
           >
-            <FiSend className="postDk-actionIcon" />
+            <ShareIcon className="postDk-actionIcon" />
           </button>
 
           <button
@@ -182,11 +184,7 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             aria-label={isSaved ? "Kaydedildi" : "Kaydet"}
             title={isSaved ? "Kaydedildi" : "Kaydet"}
           >
-            {isSaved ? (
-              <BsBookmarkFill className="postDk-actionIcon" />
-            ) : (
-              <BsBookmark className="postDk-actionIcon" />
-            )}
+            <SaveIcon className="postDk-actionIcon" active={!!isSaved} />
           </button>
         </div>
 
