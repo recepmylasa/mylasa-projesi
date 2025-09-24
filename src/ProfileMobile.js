@@ -41,7 +41,7 @@ export default function ProfileMobile({ user = null }) {
 
   const avatarUrl =
     u.photoURL || u.profilFoto || u.avatar || "/avatars/default.png";
-  const username = u.username || u.kullaniciAdi || "kullanıcı";
+  const username = typeof u.username === "string" ? u.username.toLowerCase() : "kullanıcı";
 
   // auth state dinle
   useEffect(() => {
@@ -125,11 +125,10 @@ export default function ProfileMobile({ user = null }) {
           closeActions();
           break;
         case "saved":
-          setMode("saved");        // <-- eklendi
+          setMode("saved");
           closeActions();
           break;
         default:
-          // Bu sprintte: görsel & akış entegrasyonu
           console.log("action:", id);
           closeActions();
           break;
@@ -199,6 +198,7 @@ export default function ProfileMobile({ user = null }) {
     <div className="profile-mobile">
       <ProfileHeaderMobile
         user={u}
+        isSelf={isSelf}           /* + rozeti için kritik */
         onShare={handleShare}
         onEdit={() => {}}
         onMenu={openActions}

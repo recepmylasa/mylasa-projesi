@@ -13,14 +13,8 @@ export default function ProfileHighlightsMobile({
   return (
     <section className="hl-row" aria-label={`${username || "profil"} öne çıkanlar`}>
       {/* + Yeni */}
-      <button
-        type="button"
-        className="hl-col"
-        onClick={onAdd}
-        aria-label="Yeni öne çıkan"
-      >
+      <button type="button" className="hl-col" onClick={onAdd} aria-label="Yeni öne çıkan">
         <span className="hl-bubble" aria-hidden="true">
-          {/* FIX: style object olmalı */}
           <span style={{ fontSize: 28, lineHeight: 1 }}>+</span>
         </span>
         <span className="hl-label">Yeni</span>

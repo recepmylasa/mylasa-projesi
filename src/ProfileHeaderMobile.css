@@ -1,30 +1,72 @@
 @import "./styles/ig-mobile.css";
 
-.phm{ background:var(--bg); color:var(--ink); }
-
-/* top bar */
-.phm-top{
-  display:flex; align-items:center; justify-content:space-between;
-  height:var(--topbar-h); padding:0 12px; border-bottom:1px solid var(--divider);
+.phm{
+  background:var(--bg);
+  color:var(--ink);
+  /* İsim ve sayaç grubu için ortak sol iç boşluk (G hizası) */
+  --name-align: 18px;   /* 16–20 arası mikro ayar yapılabilir */
 }
-.phm-userline{ display:flex; align-items:center; gap:6px; min-width:0; }
-.phm-username{
-  font-weight:800; font-size:20px; letter-spacing:0.2px; text-transform:none;
-  max-width:60vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+
+/* Avatar + Sağ blok */
+.phm-row{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:12px;
+  padding:16px 16px 10px;
+  align-items:center;
 }
-.phm-top-actions{ display:flex; align-items:center; gap:6px; }
 
-/* avatar + stats row */
-.phm-row{ display:grid; grid-template-columns:auto 1fr; gap:12px; padding:14px 16px 10px; align-items:center; }
-.phm-stats{ display:flex; align-items:center; justify-content:space-around; text-align:center; }
-.phm-stats > div{ min-width:0; }
-
-/* name */
-.phm-name{ padding:0 16px 10px; font-weight:600; }
-
-/* action chips under name */
-.phm-actions{
-  padding:0 16px 10px;
-  display:grid; grid-template-columns:1fr 1fr 40px; gap:8px;
+/* Sağ kolon */
+.phm-right{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:0;
 }
-.chip-btn.more{ width:40px; padding:0; display:grid; place-items:center; }
+
+/* İsim — ince ve G hizasında */
+.phm .phm-name{
+  margin-left: var(--name-align);
+  font-weight:500;            /* ince */
+  font-size:16px;
+  line-height:1.1;
+  max-width:100%;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* Sayaçlar — grup soldan aynı hizada başlar */
+.phm .phm-stats{
+  padding-left: var(--name-align);
+  display:flex;
+  gap:28px;                   /* IG algısına yakın aralık */
+}
+
+/* Her kolon soldan hizalı olsun (G, t, t ile aynı çizgi) */
+.phm .phm-stat{
+  min-width:78px;             /* ekrana göre 74–86 arası oynatılabilir */
+  text-align:left;
+}
+.phm .phm-stat .num{
+  font-weight:700;
+  font-size:16px;
+  line-height:1.15;
+  text-align:left;
+}
+.phm .phm-stat .label{
+  color:var(--ink-3);
+  font-size:12px;
+  line-height:1.1;
+  text-align:left;
+}
+
+/* Aksiyon butonları */
+.phm .phm-actions{
+  padding:6px 16px 12px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+/* avatar/ring/+ rozeti ig-mobile.css’te */

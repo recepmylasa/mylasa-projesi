@@ -1,9 +1,10 @@
+/* src/styles/ig-mobile.css */
 :root{
   --bg:#ffffff;
   --ink:#111111;
   --ink-2:#262626;
   --ink-3:#8e8e8e;
-  --divider:#efefef;
+  --divider:#dbdbdb;    /* IG borderline rengi */
   --chip:#ffffff;
   --chip-border:#dbdbdb;
   --topbar-h:56px;
@@ -11,12 +12,13 @@
   --avatar:96px;        /* profil avatar dış ölçü */
   --ring-w:3px;         /* halka kalınlığı */
   --space:12px;
+  --page-x:16px;        /* TÜM üst bölüm için ortak yatay kenar boşluğu */
 }
 
 html,body{
   background:var(--bg);
   color:var(--ink);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  font-family: system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -48,9 +50,14 @@ html,body{
 
 /* tabs */
 .tabs-row{ display:grid; grid-template-columns:repeat(3,1fr); gap:0; border-top:1px solid var(--divider); }
-.tab-btn{ display:grid; place-items:center; height:48px; color:#8e8e8e; }
-.tab-btn.active{ color:#000; position:relative; }
-.tab-btn.active::after{ content:""; position:absolute; inset:auto 16px -1px 16px; height:2px; background:#000; border-radius:1px; }
+.tab-btn{ display:grid; place-items:center; height:48px; color:#8e8e8e; position:relative; }
+.tab-btn.active{ color:#000; }
+.tab-btn.active::after{
+  content:""; position:absolute;
+  /* ÜSTTE 2px siyah bar (IG) */
+  left:16px; right:16px; top:-1px; height:2px;
+  background:#000; border-radius:1px;
+}
 
 /* avatar ring */
 .avatar-wrap{
@@ -87,7 +94,7 @@ html,body{
 
 /* highlights */
 .hl-row{
-  display:flex; gap:12px; padding:8px 12px 12px; overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none;
+  display:flex; gap:12px; padding:8px var(--page-x) 12px; overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none;
 }
 .hl-row::-webkit-scrollbar{ display:none; }
 .hl-col{ display:flex; flex-direction:column; align-items:center; gap:6px; background:none; border:0; color:inherit; }
