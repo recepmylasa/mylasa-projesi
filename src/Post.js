@@ -1,7 +1,8 @@
 import React from "react";
 import "./Post.css";
-// 🔁 Standart ikonlar (./icons)
-import { CommentIcon, ShareIcon, SaveIcon, KebabIcon } from "./icons";
+// Yalnızca ana akış ikonları: (profil vb. dosyalara dokunmadım)
+import { CommentIcon, ShareIcon, KebabIcon } from "./icons";
+import * as Ph from "@phosphor-icons/react";
 
 import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
 import { usePostLogic } from "./hooks/usePostLogic";
@@ -72,11 +73,7 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
           aria-label={`${username} profilini aç`}
         >
           <img src={avatarUrl} alt={username} className="postDk-avatar" draggable="false" />
-          {showGold && (
-            <span className="postDk-goldStar" aria-hidden="true">
-              ★
-            </span>
-          )}
+          {showGold && <span className="postDk-goldStar" aria-hidden="true">★</span>}
         </div>
 
         <div className="postDk-userMeta" onClick={() => onUserClick?.(post.authorId)}>
@@ -94,64 +91,54 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             aria-haspopup="menu"
             aria-expanded={optionsOpen}
             aria-controls="post-menu"
-            title="Seçenekler"
           >
-            {/* ••• dikey kebab */}
-            <KebabIcon direction="vertical" className="postDk-actionIcon" />
+            <KebabIcon />
           </button>
           {optionsOpen && (
             <div id="post-menu" className="postDk-optionsMenu" role="menu">
-              <button onClick={handleGoToPost} className="option-item" role="menuitem">
-                Gönderiye git
-              </button>
+              <button onClick={handleGoToPost} className="option-item" role="menuitem">Gönderiye git</button>
               {isOwner && (
                 <button onClick={handleToggleComments} className="option-item" role="menuitem">
                   {post?.yorumlarKapali ? "Yorumları aç" : "Yorumları kapat"}
                 </button>
               )}
               {isOwner && (
-                <button onClick={handleDelete} className="option-item delete" role="menuitem">
-                  Sil
-                </button>
+                <button onClick={handleDelete} className="option-item delete" role="menuitem">Sil</button>
               )}
-              <button onClick={() => setOptionsOpen(false)} className="option-item" role="menuitem">
-                Vazgeç
-              </button>
+              <button onClick={() => setOptionsOpen(false)} className="option-item" role="menuitem">Vazgeç</button>
             </div>
           )}
         </div>
       </header>
 
       <div className="postDk-media">
-        {!isMediaLoaded && (
-          <div className="media-placeholder skeleton-media" aria-hidden="true" />
-        )}
-        {mediaUrl &&
-          (mediaType.startsWith("image") ? (
-            <img
-              src={mediaUrl}
-              alt="Gönderi görseli"
-              className={`postDk-image ${isMediaLoaded ? "loaded" : ""}`}
-              onLoad={() => setIsMediaLoaded(true)}
-              onClick={() => onCommentClick?.(post)} // masaüstünde medya tık → modal
-              draggable="false"
-              loading="lazy"
-            />
-          ) : (
-            <video
-              src={mediaUrl}
-              controls
-              className={`postDk-video ${isMediaLoaded ? "loaded" : ""}`}
-              onCanPlay={() => setIsMediaLoaded(true)}
-              onClick={() => onCommentClick?.(post)}
-              playsInline
-            />
-          ))}
+        {!isMediaLoaded && <div className="media-placeholder skeleton-media" aria-hidden="true" />}
+        {mediaUrl && (mediaType.startsWith("image") ? (
+          <img
+            src={mediaUrl}
+            alt="Gönderi görseli"
+            className={`postDk-image ${isMediaLoaded ? "loaded" : ""}`}
+            onLoad={() => setIsMediaLoaded(true)}
+            onClick={() => onCommentClick?.(post)}
+            draggable="false"
+            loading="lazy"
+          />
+        ) : (
+          <video
+            src={mediaUrl}
+            controls
+            className={`postDk-video ${isMediaLoaded ? "loaded" : ""}`}
+            onCanPlay={() => setIsMediaLoaded(true)}
+            onClick={() => onCommentClick?.(post)}
+            playsInline
+          />
+        ))}
       </div>
 
       <div className="postDk-content">
         <div className="postDk-actions">
           <div className="postDk-starWrap">
+            {/* Oy yıldızları: aynı kaldı; sadece boyutu 28 */}
             <StarRatingV2 size={28} readOnly={isOwner} onRate={handleRate} />
             {agg?.avg > 0 && agg?.count > 0 && (
               <span className="postDk-starMeta" aria-label="Bu gönderinin puanı">
@@ -160,31 +147,38 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             )}
           </div>
 
+          {/* --- Yorum --- */}
           <button
             onClick={() => onCommentClick?.(post)}
             className="postDk-actionBtn"
             aria-label="Yorumlar"
             title="Yorumlar"
           >
-            <CommentIcon className="postDk-actionIcon" />
+            <CommentIcon size={28} weight="regular" className="postDk-actionIcon" />
           </button>
 
+          {/* --- Paylaş --- */}
           <button
             className="postDk-actionBtn"
             onClick={handleShare}
             aria-label="Paylaş"
             title="Paylaş"
           >
-            <ShareIcon className="postDk-actionIcon" />
+            <ShareIcon size={28} weight="regular" className="postDk-actionIcon" />
           </button>
 
+          {/* --- Kaydet --- */}
           <button
             onClick={handleToggleSave}
             className="postDk-actionBtn save"
             aria-label={isSaved ? "Kaydedildi" : "Kaydet"}
             title={isSaved ? "Kaydedildi" : "Kaydet"}
           >
-            <SaveIcon className="postDk-actionIcon" active={!!isSaved} />
+            {isSaved ? (
+              <Ph.BookmarkSimple size={28} weight="fill" className="postDk-actionIcon" />
+            ) : (
+              <Ph.BookmarkSimple size={28} weight="regular" className="postDk-actionIcon" />
+            )}
           </button>
         </div>
 
@@ -197,11 +191,7 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             {needsClamp && !showFullCaption && (
               <>
                 <span>… </span>
-                <button
-                  className="postDk-moreBtn"
-                  onClick={() => setShowFullCaption(true)}
-                  aria-label="Devamını göster"
-                >
+                <button className="postDk-moreBtn" onClick={() => setShowFullCaption(true)} aria-label="Devamını göster">
                   devamı
                 </button>
               </>

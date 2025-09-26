@@ -18,11 +18,19 @@ function ts(v) {
 const mediaUrlOf = (it) =>
   it?.mediaUrl || it?.imageUrl || it?.videoUrl || it?.gorselUrl || it?.photoUrl || it?.resimUrl || it?.fileUrl || it?.url || "";
 const isVideoUrl = (url) => !!url && /\.(mp4|webm|mov|ogg)(\?|$)/i.test(url);
-const displayNameOf = (it, fallback = "") =>
-  it?.authorName || it?.userName || it?.username || it?.kullaniciAdi || fallback;
-const avatarOf = (it) =>
-  it?.authorPhoto || it?.userPhoto || it?.photoURL || it?.avatar || "";
 
+/* İSİM: bulabildiğimiz tüm alanları dener, yoksa boş döner (asla “kullanıcı”a zorlamaz) */
+const nameOf = (it) =>
+  it?.author?.name ||
+  it?.authorName ||
+  it?.user?.name ||
+  it?.userName ||
+  it?.username ||
+  it?.kullaniciAdi ||
+  it?.name ||
+  "";
+
+/* sayaç yardımcıları */
 function likeCountOf(it) {
   if (typeof it?.starsCount === "number") return it.starsCount;
   if (typeof it?.likes === "number") return it.likes;
@@ -34,6 +42,16 @@ function commentCountOf(it) {
   if (Array.isArray(it?.yorumlar)) return it.yorumlar.length;
   return 0;
 }
+const shareCountOf = (it) =>
+  (typeof it?.sharesCount === "number" ? it.sharesCount :
+   Array.isArray(it?.paylasimlar) ? it.paylasimlar.length : 0);
+const savedCountOf = (it) =>
+  (typeof it?.savesCount === "number" ? it.savesCount :
+   Array.isArray(it?.savedBy) ? it.savedBy.length : 0);
+
+const nf = new Intl.NumberFormat("tr", { notation: "compact", maximumFractionDigits: 1 });
+const formatCount = (n) => nf.format(Number(n || 0));
+
 function typeOf(it) {
   if (it?.type) return it.type;
   const url = mediaUrlOf(it);
@@ -57,8 +75,6 @@ const pathFor = (it) => `/${(it?.type === "clip" ? "c" : "p")}/${it?.id ?? ""}`;
 
 /**
  * IG-stili mobil gönderi görüntüleyici (profilden açılan).
- * Dikey swipe ile postlar arasında geçiş; yatay swipe ile önceki/sonraki posta atlama.
- * Deep-link senkronu: URL /p/:id veya /c/:id olarak güncellenir.
  */
 export default function ProfilePostViewerMobile({
   items = [],
@@ -118,40 +134,33 @@ export default function ProfilePostViewerMobile({
     });
   }, [list, startIndex]);
 
-  // body-scroll kilidi + popstate (back ile kapat)
+  // body-scroll kilidi + popstate
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
     const onPop = () => { cleanupAndClose(); };
     window.addEventListener("popstate", onPop);
-
     return () => {
       document.body.style.overflow = prevOverflow;
       window.removeEventListener("popstate", onPop);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // DEEP-LINK: İlk pushState (viewer açılırken) — URL'i ilk karta göre ayarla
+  // DEEP-LINK: İlk pushState
   useEffect(() => {
     if (urlPushedRef.current) return;
     if (!list.length) return;
 
     prevUrlRef.current = window.location.pathname + window.location.search + window.location.hash;
-
     const idx = Math.max(0, Math.min(startIndex, list.length - 1));
     const firstPath = pathFor(list[idx]);
-
     try {
       window.history.pushState({ ppv: true, from: prevUrlRef.current }, "", firstPath);
       urlPushedRef.current = true;
-    } catch {
-      // sessiz
-    }
+    } catch {}
   }, [list, startIndex]);
 
-  // DEEP-LINK: Kart değişince URL'i replaceState ile güncelle
+  // DEEP-LINK: Kart değişince URL güncelle
   useEffect(() => {
     if (!urlPushedRef.current) return;
     const it = list[currentIndex];
@@ -159,15 +168,11 @@ export default function ProfilePostViewerMobile({
     const newPath = pathFor(it);
     if (window.location.pathname === newPath) return;
     try {
-      window.history.replaceState(
-        { ppv: true, from: prevUrlRef.current },
-        "",
-        newPath
-      );
+      window.history.replaceState({ ppv: true, from: prevUrlRef.current }, "", newPath);
     } catch {}
   }, [currentIndex, list]);
 
-  // ESC: önce sheet’leri, sonra viewer’ı kapat
+  // ESC
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape") return;
@@ -182,8 +187,8 @@ export default function ProfilePostViewerMobile({
   const doClose = useCallback(() => {
     try {
       if (window.history.state && window.history.state.ppv) {
-        window.history.back();            // önceki sayfaya dön
-        setTimeout(() => cleanupAndClose(), 250); // olası popstate gecikmesine karşı
+        window.history.back();
+        setTimeout(() => cleanupAndClose(), 250);
       } else {
         cleanupAndClose();
       }
@@ -284,8 +289,9 @@ export default function ProfilePostViewerMobile({
     setExpandedMap((m) => ({ ...m, [id]: !m[id] }));
   }, []);
 
+  // ----- isim/avatarda düşecek sağlam fallback -----
   const viewerFallbackName =
-    viewerUser?.name || viewerUser?.username || viewerUser?.kullaniciAdi || "kullanıcı";
+    viewerUser?.name || viewerUser?.username || viewerUser?.kullaniciAdi || "";
   const viewerFallbackAvatar =
     viewerUser?.avatar || viewerUser?.photoURL || viewerUser?.profilFoto || "/avatars/default.png";
 
@@ -385,11 +391,17 @@ export default function ProfilePostViewerMobile({
           const url = mediaUrlOf(it);
           const isVideo = it.type === "clip";
 
-          const name = displayNameOf(it, displayNameOf(list[0], viewerFallbackName));
-          const avatar = avatarOf(it) || avatarOf(list[0]) || viewerFallbackAvatar;
+          const name =
+            nameOf(it) || nameOf(list[0]) || viewerFallbackName;
+          const avatar = it?.authorPhoto || it?.userPhoto || it?.photoURL || it?.avatar ||
+                         list[0]?.authorPhoto || list[0]?.userPhoto || list[0]?.photoURL || list[0]?.avatar ||
+                         viewerFallbackAvatar;
 
           const likeCount = likeCountOf(it);
           const commentCount = commentCountOf(it);
+          const shareCount = shareCountOf(it);
+          const savedCount = savedCountOf(it);
+
           const cap = it?.aciklama || it?.caption || it?.mesaj || "";
           const expanded = !!expandedMap[it.id];
 
@@ -430,47 +442,42 @@ export default function ProfilePostViewerMobile({
                     decoding="async"
                   />
                 )}
-                {/* üst/alt gradient cilası */}
                 <div className="ppv-media-gradients" aria-hidden="true" />
               </div>
 
-              {/* aksiyon satırı */}
+              {/* aksiyon satırı — ikon + sayı birlikte */}
               <div className="ppv-actions">
                 <div className="ppv-actions-left">
-                  <StarRatingV2 size={24} onRate={(v) => rate(it, v)} />
-                  <button className="ppv-btn" aria-label="Yorum" onClick={() => setCommentsFor(it)}>
-                    <CommentIcon />
-                  </button>
-                  <button
-                    className="ppv-btn"
-                    aria-label="Paylaş"
-                    onClick={() => openShare(shareUrl)}
-                  >
-                    <ShareIcon />
-                  </button>
-                </div>
-                <button className="ppv-btn" aria-label="Kaydet" onClick={() => toggleSave(it)}>
-                  <SaveIcon active={!!savedMap[it.id]} />
-                </button>
-              </div>
+                  {/* YILDIZ (oy) */}
+                  <div className="ppv-act">
+                    <StarRatingV2 size={28} onRate={(v) => rate(it, v)} />
+                    {likeCount > 0 && <span className="ppv-num">{formatCount(likeCount)}</span>}
+                  </div>
 
-              {/* sayaçlar */}
-              <div className="ppv-counts">
-                {likeCount > 0 ? (
-                  <strong className="ppv-like-strong">{likeCount} oy</strong>
-                ) : (
-                  <span className="ppv-like-ghost">İlk oyu sen ver</span>
-                )}
-                {commentCount > 0 && (
-                  <button
-                    className="ppv-show-comments"
-                    type="button"
-                    aria-label="Yorumları gör"
-                    onClick={() => setCommentsFor(it)}
-                  >
-                    {commentCount} yorumu gör
+                  {/* YORUM */}
+                  <div className="ppv-act">
+                    <button className="ppv-btn" aria-label="Yorum" onClick={() => setCommentsFor(it)}>
+                      <CommentIcon size={28} />
+                    </button>
+                    {commentCount > 0 && <span className="ppv-num">{formatCount(commentCount)}</span>}
+                  </div>
+
+                  {/* PAYLAŞ */}
+                  <div className="ppv-act">
+                    <button className="ppv-btn" aria-label="Paylaş" onClick={() => openShare(shareUrl)}>
+                      <ShareIcon size={28} />
+                    </button>
+                    {shareCount > 0 && <span className="ppv-num">{formatCount(shareCount)}</span>}
+                  </div>
+                </div>
+
+                {/* KAYDET */}
+                <div className="ppv-act">
+                  <button className="ppv-btn" aria-label="Kaydet" onClick={() => toggleSave(it)}>
+                    <SaveIcon size={28} active={!!savedMap[it.id]} />
                   </button>
-                )}
+                  {savedCount > 0 && <span className="ppv-num">{formatCount(savedCount)}</span>}
+                </div>
               </div>
 
               {/* caption */}

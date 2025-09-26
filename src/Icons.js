@@ -1,121 +1,89 @@
 // src/icons.js
-// Phosphor ikonları için tek giriş noktası.
-// - String tabanlı <Icon name="..."/> (eski kodlar için)
-// - Ad bazlı yardımcı export’lar (GridIcon, CommentIcon vb.)
-
 import React from "react";
-import {
-  SquaresFour,
-  FilmSlate,
-  TagSimple,
-  Chats,
-  PaperPlaneTilt,
-  BookmarkSimple,
-  Star,
-  FilmStrip,
-  QrCode,
-  ArrowSquareOut,
-  Plus,
-  Circle,
-  CircleHalf,
-  Broadcast,
-  MegaphoneSimple,
-  ChatsCircle,
-  DotsThree,
-  DotsThreeVertical,
-  Heart,
-  MapPin,
-  SealCheck,
-  CaretLeft,
-  CaretDown,
-} from "@phosphor-icons/react";
+import * as Ph from "@phosphor-icons/react";
 
-/* Ortak varsayılanlar: yumuşak/ince çizgi */
-const DEF_SIZE = 24;
-const DEF_WEIGHT = "regular";
-const withDefaults = (p = {}) => ({
-  size: p.size ?? DEF_SIZE,
-  weight: p.weight ?? DEF_WEIGHT,
-  color: p.color,
-  className: p.className,
-  alt: p.title,
-});
+/** name -> Phosphor component eşlemesi */
+const registry = {
+  // sekmeler & temel
+  grid: Ph.SquaresFour,
+  reels: Ph.VideoCamera,            // Clips
+  tagged: Ph.Tag,
+  bookmark: Ph.BookmarkSimple,
+  star: Ph.Star,
+  "clip-badge": Ph.Play,
+  qr: Ph.QrCode,
+  "external-link": Ph.ArrowSquareOut,
+  plus: Ph.Plus,
+  story: Ph.Circle,
+  highlight: Ph.HighlighterCircle,
+  live: Ph.Broadcast,
+  ads: Ph.MegaphoneSimple,
+  channel: Ph.Radio,
+  heart: Ph.Heart,
+  message: Ph.Chats,
+  location: Ph.MapPin,
+  menu: Ph.DotsThree,
+  "menu-vertical": Ph.DotsThreeVertical,
 
-/* İsim → Bileşen haritası (string tabanlı <Icon/> için) */
-const ICONS = {
-  grid: SquaresFour,
-  reels: FilmSlate,
-  tagged: TagSimple,
-  comment: Chats,
-  share: PaperPlaneTilt,
-  bookmark: BookmarkSimple,
-  star: Star,
-  "clip-badge": FilmStrip,
-  qr: QrCode,
-  "external-link": ArrowSquareOut,
-  plus: Plus,
-  story: Circle,
-  highlight: CircleHalf,
-  live: Broadcast,
-  ads: MegaphoneSimple,
-  channel: ChatsCircle,
-  menu: DotsThree,
-  "menu-vertical": DotsThreeVertical,
-  heart: Heart,
-  message: Chats,
-  location: MapPin,
-  verified: SealCheck,
-  "chevron-left": CaretLeft,
-  "chevron-down": CaretDown,
+  // aksiyonlar (senin seçtiklerin)
+  comment: Ph.ChatsCircle,      // <ChatsCircle />
+  share: Ph.PaperPlaneTilt,     // <PaperPlaneTilt />
 };
 
-/** String tabanlı API — ör: <Icon name="comment" size={20}/> */
-export function Icon({ name, weight, ...rest }) {
-  const Cmp = ICONS[name];
-  if (!Cmp) return null;
-  // Yorum ikonunu varsayılan duotone yap
-  const w =
-    weight ?? (name === "comment" || name === "message" ? "duotone" : undefined);
-  return <Cmp {...withDefaults({ ...rest, weight: w })} />;
+export function Icon({
+  name,
+  size = 24,
+  color = "currentColor",
+  weight = "regular",             // << kalınlık arttı
+  ...rest
+}) {
+  const Cmp = registry[name];
+  if (!Cmp) {
+    return <Ph.SquaresFour size={size} color={color} weight={weight} {...rest} />;
+  }
+  return <Cmp size={size} color={color} weight={weight} {...rest} />;
 }
 
-/* ---- Eski dosyalarla birebir uyumlu ad bazlı export’lar ---- */
-/** Profil sekmeleri */
-export const GridIcon   = (p) => <SquaresFour {...withDefaults(p)} />;
-export const ClipsIcon  = (p) => <FilmSlate   {...withDefaults(p)} />;
-export const TaggedIcon = (p) => <TagSimple   {...withDefaults(p)} />;
+/* ---- Eski adlarla export’lar (projeyi kırmadan) ---- */
+export const GridIcon         = (p) => <Icon name="grid"         {...p} />;
+export const ClipsIcon        = (p) => <Icon name="reels"        {...p} />;
+export const TaggedIcon       = (p) => <Icon name="tagged"       {...p} />;
 
-/** Aksiyon / UI */
-export const CommentIcon = (p) =>
-  <Chats {...withDefaults({ ...p, weight: "duotone" })} />; // seçimin
-export const ShareIcon   = (p) => <PaperPlaneTilt {...withDefaults(p)} />;
-export const SaveIcon    = ({ active, ...p }) =>
-  <BookmarkSimple {...withDefaults({ ...p, weight: active ? "fill" : DEF_WEIGHT })} />;
-export const SavedIcon   = (p) => <SaveIcon {...p} />;
+export const CommentIcon      = (p) => <Icon name="comment"      {...p} />;
+export const ShareIcon        = (p) => <Icon name="share"        {...p} />;
+export const StarIcon         = (p) => <Icon name="star"         {...p} />;
 
-export const StarIcon    = (p) => <Star {...withDefaults(p)} />;
-export const ClipBadge   = (p) => <FilmStrip {...withDefaults(p)} />;
+/* Kaydet */
+export const SaveIcon = ({ active = false, size = 24, color = "currentColor", ...rest }) => (
+  <Ph.BookmarkSimple
+    size={size}
+    color={color}
+    weight={active ? "fill" : "regular"}
+    {...rest}
+  />
+);
+export const SavedIcon = SaveIcon;
 
-export const QrIcon         = (p) => <QrCode {...withDefaults(p)} />;
-export const ExternalLinkIcon = (p) => <ArrowSquareOut {...withDefaults(p)} />;
+export const ClipBadge        = (p) => <Icon name="clip-badge"   {...p} />;
+export const QrIcon           = (p) => <Icon name="qr"           {...p} />;
+export const ExternalLinkIcon = (p) => <Icon name="external-link"{...p} />;
+export const PlusIcon         = (p) => <Icon name="plus"         {...p} />;
+export const StoryIcon        = (p) => <Icon name="story"        {...p} />;
+export const HighlightIcon    = (p) => <Icon name="highlight"    {...p} />;
+export const LiveIcon         = (p) => <Icon name="live"         {...p} />;
+export const AdsIcon          = (p) => <Icon name="ads"          {...p} />;
+export const ChannelIcon      = (p) => <Icon name="channel"      {...p} />;
 
-export const PlusIcon      = (p) => <Plus {...withDefaults(p)} />;
-export const StoryIcon     = (p) => <Circle {...withDefaults(p)} />;
-export const HighlightIcon = (p) => <CircleHalf {...withDefaults(p)} />;
-export const LiveIcon      = (p) => <Broadcast {...withDefaults(p)} />;
-export const AdsIcon       = (p) => <MegaphoneSimple {...withDefaults(p)} />;
-export const ChannelIcon   = (p) => <ChatsCircle {...withDefaults(p)} />;
+export const HeartIcon        = (p) => <Icon name="heart"        {...p} />;
+export const MessageIcon      = (p) => <Icon name="message"      {...p} />;
+export const LocationIcon     = (p) => <Icon name="location"     {...p} />;
 
-/** Kebab menü */
-export const KebabIcon = ({ direction = "horizontal", ...p }) =>
-  direction === "vertical"
-    ? <DotsThreeVertical {...withDefaults(p)} />
-    : <DotsThree         {...withDefaults(p)} />;
+/* Kebab */
+export const KebabIcon = ({ direction = "horizontal", ...rest }) => (
+  <Icon name={direction === "vertical" ? "menu-vertical" : "menu"} {...rest} />
+);
 
-/** Üst bar / rozeti / oklar */
-export const HeartIcon          = (p) => <Heart {...withDefaults(p)} />;
-export const MessageIcon        = (p) => <Chats {...withDefaults(p)} />;
-export const LocationIcon       = (p) => <MapPin {...withDefaults(p)} />;
-export const VerifiedBadgeIcon  = (p) => <SealCheck {...withDefaults(p)} />;
-export const ChevronLeftIcon    = (p) => <CaretLeft {...withDefaults(p)} />;
-export const ChevronDownIcon    = (p) => <CaretDown {...withDefaults(p)} />;
+/* UI’da sık kullanılan ekstra’lar */
+export const ChevronLeftIcon   = (p) => <Ph.CaretLeft   weight="regular" {...p} />;
+export const ChevronDownIcon   = (p) => <Ph.CaretDown   weight="regular" {...p} />;
+export const VerifiedBadgeIcon = (p) => <Ph.SealCheck   weight="regular" {...p} />;
