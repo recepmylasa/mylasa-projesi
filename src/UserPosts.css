@@ -1,42 +1,44 @@
-/* src/UserPosts.css */
-/* Profil grid — IG mobil görünümüne yakın: 3 sütun, ince beyaz gutter,
+/* Profil grid — IG mobil görünümüne yakın: 3 sütun, beyaz hairline gap,
    oran değişkenleri + a11y odak halkası + skeleton parıltısı. */
 
 .user-posts-grid {
-  /* Oran & boşluk (kolay ayar) */
-  --grid-gap: var(--grid-gap, 2px);   /* container’dan gelebilir; yoksa 2px */
-  --post-ratio: 4 / 5;                /* Gönderiler */
-  --clip-ratio: 9 / 16;               /* Klipler/Reels */
-
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--grid-gap);
-  background: #fff;                   /* gap çizgileri beyaz görünsün */
+
+  /* IG’nin hairline ayırıcıları: beyaz arka plan + 1px gap */
+  gap: 1px;
+  background: #fff;
 }
 
-/* Reels/Klipler: 9:16 kutular */
-.user-posts-grid.clips-mode .post-grid-item { aspect-ratio: var(--clip-ratio); }
+/* Gönderiler: 9:16 dikey kutular (IG görünümü) */
+.user-posts-grid.posts-mode .post-grid-item { aspect-ratio: 9 / 16; }
 
-/* Gönderiler: 4:5 kutular */
-.user-posts-grid.posts-mode .post-grid-item { aspect-ratio: var(--post-ratio); }
+/* Klipler/Reels: 9:16 */
+.user-posts-grid.clips-mode .post-grid-item { aspect-ratio: 9 / 16; }
 
+/* Tablet/desktop’ta hairline biraz büyüsün (görünürlük için) */
 @media (min-width: 768px) {
-  .user-posts-grid { gap: 6px; }
+  .user-posts-grid { gap: 2px; }
 }
 
 .post-grid-item {
   position: relative;
   width: 100%;
   overflow: hidden;
-  background: #f2f2f2;  /* görsel yüklenirken gri alan */
-  border-radius: 0;      /* IG kare görünüm */
+  background: #f2f2f2;   /* görsel yüklenirken gri alan */
+  border-radius: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: rgba(0,0,0,0);
+
+  /* İstenmeyen siyah çerçeveleri kesin biçimde kaldır */
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
-/* Klavye erişilebilirliği: odak halkası + overlay görünür */
+/* Klavye erişilebilirliği */
 .post-grid-item:focus-visible {
-  outline: 2px solid #0095f6; /* IG maviye yakın */
+  outline: 2px solid #0095f6;
   outline-offset: 2px;
 }
 .post-grid-item:focus-visible .post-grid-overlay { opacity: 1; }
@@ -45,8 +47,13 @@
   width: 100%;
   height: 100%;
   object-fit: cover;        /* stretch olmasın; merkezden kırpar */
-  object-position: center;  /* hizayı stabilize et */
+  object-position: center;
   display: block;
+
+  /* Görselin kendi etrafındaki çizgileri de sıfırla */
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* Küçük “video/clip” rozeti */

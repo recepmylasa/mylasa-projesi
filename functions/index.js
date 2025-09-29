@@ -2,7 +2,7 @@
 // Mylasa Cloud Functions (Node 20, v2 API)
 // - Video işleme
 // - Rating agg + reputasyon
-// - backfillContentStubs
+// - Backfill + Labubu Series S1 seeding
 // -----------------------------------------------------
 
 const admin = require("firebase-admin");
@@ -25,7 +25,9 @@ ffmpeg.setFfmpegPath(ffmpeg_static);
 
 const REGION = "europe-west3";
 
-// ================== 1) VIDEO İŞLEME ==================
+/* =====================================================
+ * 1) VIDEO İŞLEME
+ * ===================================================== */
 exports.processUploadedVideo = onObjectFinalized(
   { region: REGION, timeoutSeconds: 540, memory: "1GiB" },
   async (event) => {
@@ -95,12 +97,14 @@ exports.processUploadedVideo = onObjectFinalized(
   }
 );
 
-// ================== 2) RATING AGG + REPUTASYON ==================
-const PRIOR_MEAN = 3.5;     // μ
-thePRIOR_STRENGTH = 100; // K
+/* =====================================================
+ * 2) RATING AGG + REPUTASYON
+ * ===================================================== */
+const PRIOR_MEAN = 3.5;      // μ
+const PRIOR_STRENGTH = 100;  // K
 
 function bayes(sum, count) {
-  return (thePRIOR_STRENGTH * PRIOR_MEAN + sum) / (thePRIOR_STRENGTH + count);
+  return (PRIOR_STRENGTH * PRIOR_MEAN + sum) / (PRIOR_STRENGTH + count);
 }
 function weightOf(count) {
   return Math.log(1 + count);
@@ -210,7 +214,9 @@ exports.recomputeUserReputation = onCall(
   }
 );
 
-// ================== 3) BACKFILL (idempotent) ==================
+/* =====================================================
+ * 3) BACKFILL (idempotent)
+ * ===================================================== */
 exports.backfillContentStubs = onCall(
   { region: REGION, timeoutSeconds: 540 },
   async (req) => {
@@ -265,5 +271,59 @@ exports.backfillContentStubs = onCall(
     const createdClips = await backfill("clips", "clip");
 
     return { ok: true, created: { posts: createdPosts, hikayeler: createdStories, clips: createdClips } };
+  }
+);
+
+/* =====================================================
+ * 4) Labubu Series S1 – SEED callable
+ * ===================================================== */
+exports.seedSeriesS1 = onCall(
+  { region: REGION },
+  async (req) => {
+    // Basit yetkilendirme: sadece giriş yapmış kullanıcı
+    // (İstersen custom claims ile admin kontrolü ekleyebilirsin)
+    if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
+
+    const SERIES_ID = "S1";
+    const assetsBase = "cards/S1/"; // Storage path kökü
+
+    const seriesDoc = {
+      id: SERIES_ID,
+      name: "Series 1",
+      active: true,
+      boxThreshold: 100,
+      pityRareAt: 30,
+      weights: {
+        standardBox: { common: 0.88, rare: 0.12, legendaryHidden: 0.0 },
+        milestoneBox: { common: 0.70, rare: 0.29, legendaryHidden: 0.01 },
+      },
+      legendaryCaps: { AURORA: 250, VOID: 100 },
+      milestones: [5, 1000, 5000, 10000, 25000, 50000],
+      milestoneRewards: { "5": 1, "1000": 1, "5000": 1, "10000": 1, "25000": 1, "50000": 2 },
+      cards: [
+        { code:"S1-LOVE",       name:"LOVE",       rarity:"common",           asset: assetsBase + "LOVE.jpg" },
+        { code:"S1-HAPPINESS",  name:"HAPPINESS",  rarity:"common",           asset: assetsBase + "HAPPINESS.jpg" },
+        { code:"S1-SERENITY",   name:"SERENITY",   rarity:"common",           asset: assetsBase + "SERENITY.jpg" },
+        { code:"S1-HOPE",       name:"HOPE",       rarity:"common",           asset: assetsBase + "HOPE.jpg" },
+        { code:"S1-LOYALTY",    name:"LOYALTY",    rarity:"rare",             asset: assetsBase + "LOYALTY.jpg" },
+        { code:"S1-AURORA",     name:"AURORA",     rarity:"legendaryHidden",  asset: assetsBase + "AURORA.jpg", hidden: true },
+        { code:"S1-VOID",       name:"VOID",       rarity:"legendaryHidden",  asset: assetsBase + "VOID.jpg",   hidden: true },
+      ],
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await db.collection("series").doc(SERIES_ID).set(seriesDoc, { merge: true });
+
+    // Legendary global cap dokümanlarını hazırla
+    const capsCol = db.collection("global_legendary_caps");
+    const capDocs = [
+      { id: "S1-AURORA", left: 250 },
+      { id: "S1-VOID",   left: 100 },
+    ];
+    for (const c of capDocs) {
+      await capsCol.doc(c.id).set({ left: c.left }, { merge: true });
+    }
+
+    return { ok: true, series: SERIES_ID, cards: seriesDoc.cards.length };
   }
 );

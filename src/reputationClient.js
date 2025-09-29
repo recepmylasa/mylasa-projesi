@@ -1,3 +1,4 @@
+// src/reputationClient.js
 // -------------------------------------------------------------
 // Mylasa • Reputation Engine (İstemci Yardımcıları)
 // -------------------------------------------------------------
@@ -82,6 +83,15 @@ export async function rateContent({
     updatedAt: serverTimestamp(),
   }, { merge: true });
 
+  // ✨ Yeni: Kutular için yıldız sayacını artır (Cloud Functions)
+  try {
+    const inc = httpsCallable(functions, "incrementStars");
+    await inc({});
+  } catch (e) {
+    // Sessizce yut: kutu hesabı fail olsa bile rating kaydı bozulmasın
+    console.warn("incrementStars çağrısı başarısız:", e?.message || e);
+  }
+
   return { ok: true };
 }
 
@@ -111,6 +121,14 @@ export async function rateComment({ contentId, commentId, value }) {
     },
     { merge: true }
   );
+
+  // ✨ Yıldız sayaçları yorum oylamasında da ilerlesin (isteğe bağlı)
+  try {
+    const inc = httpsCallable(functions, "incrementStars");
+    await inc({});
+  } catch (e) {
+    console.warn("incrementStars (yorum) başarısız:", e?.message || e);
+  }
 
   return { ok: true };
 }

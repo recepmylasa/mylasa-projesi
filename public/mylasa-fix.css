@@ -1,29 +1,73 @@
-/* ==== Mylasa Global CSS Fix ==== */
-/* JS kapattığında etiketlediğimiz popover/menüleri kesin gizle */
-[data-global-closed="1"] { display: none !important; }
+/* ==== Mylasa Responsive Guard v7 (GLOBAL, LOSSLESS) =================== */
+/* Hedef: Tüm sayfalarda taşmayı tamamen bitir; HİÇBİR içerik kesilmesin. */
 
-/* Menüler ve yıldız panelinin tutarlı z-index sıralaması */
-.clip-cmMenu,
-.comment-menu,
-.cm-menu,
-.menu-popup,
-.popover-menu,
-.dropdown-menu,
-[role="menu"] {
-  z-index: 2605 !important;
+html { box-sizing: border-box; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+*, *::before, *::after { box-sizing: inherit; }
+
+/* Gerçek viewport + güvenlik; taşma güvenlik ağı */
+html, body, #root {
+  width: 100%;
+  max-width: 100vw;
+  min-width: 0;
+  margin: 0;
+  background: var(--bg, #fff);
+  overflow-x: hidden;
+}
+@supports (max-width: 100svw) { html, body, #root { max-width: 100svw; } }
+
+/* ======= Sığdırma: min-width:auto kaynaklı taşmaları sonlandır ======= */
+:where(*) { min-width: 0; min-height: 0; }            /* flex/grid çocukları */
+:where([class*="grid"], [role="grid"]) { grid-auto-columns: minmax(0, 1fr); }
+:where([style*="display:flex"], .flex, [class*="flex"]) > * { min-width: 0; }
+
+/* Medyalar kesmeden sığsın */
+img, video, canvas, svg { display: block; max-width: 100%; height: auto; }
+
+/* Uzun metinler layout’u taşırmasın */
+h1, h2, h3, .username, .bio, [class*="title"], [class*="name"], [class*="caption"] {
+  overflow-wrap: anywhere; word-break: break-word; min-width: 0;
 }
 
-.sr2-panel, .star-popover, .rating-panel, .stars-panel {
-  z-index: 2700 !important;
+/* ======= Kenar boşluğu EKLE-ME (öncekinden farkı: global padding YOK) */
+/* Kenar güvenliği isteyen wrap’lara .safe-x ekleyebilirsin ama gerekmez. */
+.safe-x {
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
 }
 
-/* Mevcut sheet/toast katmanlarına üstte kalma garantisi */
+/* ======= Profil istatistikleri — IG’ye yakın sıkı aralık ============== */
+:where(.profile-mobile, .profile-header) :where(.phm-stats, .stats-row, .profile-stats, [class*="stats"]){
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  column-gap: clamp(6px, 2vw, 14px) !important;
+  align-items: center;
+  min-width: 0;
+}
+:where(.profile-mobile, .profile-header) :where(.phm-stats, .stats-row, .profile-stats, [class*="stats"]) > *{
+  min-width: 0;
+}
+:where(.profile-mobile, .profile-header) :where(.phm-stats, .stats-row, .profile-stats, [class*="stats"]) :where(b, .value){
+  font-weight: 700;
+  font-size: clamp(16px, 4.2vw, 20px);
+  line-height: 1.1;
+}
+:where(.profile-mobile, .profile-header) :where(.phm-stats, .stats-row, .profile-stats, [class*="stats"]) :where(span, .label){
+  color: #8e8e8e;
+  font-size: clamp(11px, 3vw, 13px);
+}
+
+/* ======= Menü/Sheet/Toast z-index (mevcudu koru) ====================== */
+.clip-cmMenu, .comment-menu, .cm-menu, .menu-popup, .popover-menu, [role="menu"] { z-index: 2605 !important; }
+.sr2-panel, .star-popover, .rating-panel, .stars-panel                      { z-index: 2700 !important; }
 .sheet-mask { z-index: 2600 !important; }
 .sheet      { z-index: 2610 !important; }
 .toast-layer{ z-index: 2800 !important; }
-
-/* Bazı kütüphaneler menüyü inline render’lıyor: ölçülebilsin diye blokla */
 .clip-cmMenu, .comment-menu, .cm-menu, .menu-popup, .popover-menu,
 .dropdown-menu, .dropdown.show, .dropdown-menu.show,
-.ant-dropdown, .ant-popover, .MuiPopover-root,
-[role="menu"] { display: block; }
+.ant-dropdown, .ant-popover, .MuiPopover-root, [role="menu"] { display: block; }
+
+/* ======= Son çare: içte 1-2px taşmalar görünmesin ===================== */
+html, body { overflow-x: hidden; }
+
+/* FitWatch işaretlediğinde (100vw vb. yakalanırsa) */
+[data-vw-fix="1"] { width: 100% !important; max-width: 100% !important; }

@@ -1,2 +1,41 @@
 @import "./styles/ig-mobile.css";
-/* tabs-row / tab-btn kuralları ig-mobile.css’te. Burada ekstra stil yok. */
+
+/* IG tarzı sekme satırı: yalnız ikonlar, arka kutu/çerçeve yok */
+.tabs-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+  background: #fff;
+  border-top: 1px solid #efefef;
+  box-shadow: none;
+}
+
+/* Sekme butonu tamamen şeffaf */
+.tab-btn {
+  position: relative;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 10px 0;
+  display: grid;
+  place-items: center;
+  color: #8e8e8e;         /* pasif ikon rengi */
+  cursor: pointer;
+  box-shadow: none;
+}
+
+/* SVG düzgün hizalansın */
+.tab-btn svg { display: block; }
+
+/* Aktif sekme: siyah ikon + üstte ince çizgi (IG) */
+.tab-btn.active { color: #000; }
+.tab-btn.active::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 2px;
+  background: #000;
+  border-radius: 1px;
+}

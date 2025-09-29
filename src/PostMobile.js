@@ -1,179 +1,174 @@
-// Mobil profil: üst bar + avatar/stats + aksiyon şeridi + sekmeler (grid / clips / saved / tagged)
-// Izgaradaki karta dokununca tam ekran mobil viewer açılır.
+import React from "react";
+import "./PostMobile.css";
 
-import React, { useState, useCallback } from "react";
-import "./ProfileMobile.css";
-import { GridIcon, ClipsIcon, SavedIcon, TaggedIcon } from "./icons";
-import UserPosts from "./UserPosts";
-import ProfilePostViewerMobile from "./ProfilePostViewerMobile";
+import { CommentIcon, ShareIcon, SaveIcon, KebabIcon } from "./icons";
+import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
+import { usePostLogic } from "./hooks/usePostLogic";
+import { formatTimeAgo, formatCount } from "./utils";
 
-export default function ProfileMobile({ user = null }) {
-  // user null/undefined gelebilir → güvenli alias
-  const u = user ?? {};
-  // id; farklı alan adları da olabilir
-  const userId = u.id ?? u.uid ?? u.userId ?? u.accountId ?? u._id ?? null;
-  const hasUserId = !!userId;
+/** Mobil ana akış gönderi kartı */
+export default function PostMobile({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
+  const {
+    authorProfile,
+    isSaved,
+    optionsOpen,
+    setOptionsOpen,
+    isMediaLoaded,
+    setIsMediaLoaded,
+    agg,
+    menuRef,
+    isOwner,
+    handleDelete,
+    handleToggleSave,
+    handleShare,
+    handleToggleComments,
+    handleGoToPost,
+    handleRate,
+  } = usePostLogic(post, aktifKullaniciId, onCommentClick);
 
-  const [mode, setMode] = useState("grid");
-  const [viewer, setViewer] = useState(null); // { items, index }
+  if (!authorProfile) {
+    return (
+      <article className="pm-article skeleton" aria-busy="true">
+        <header className="pm-header">
+          <div className="skel-avatar" />
+          <div className="skel-line w80" />
+        </header>
+        <div className="skel-media" />
+      </article>
+    );
+  }
 
+  const username = authorProfile?.kullaniciAdi || "kullanıcı";
   const avatarUrl =
-    u.photoURL || u.profilFoto || u.avatar || "/avatars/default.png";
-  const username = u.username || u.kullaniciAdi || "kullanıcı";
+    authorProfile?.profilFoto || "/avatars/default.png";
 
-  const onOpenFromGrid = useCallback((items, startIndex) => {
-    if (!Array.isArray(items) || items.length === 0) return;
-    setViewer({
-      items,
-      index: Math.max(0, Math.min(startIndex ?? 0, items.length - 1)),
-    });
-  }, []);
+  const mediaUrl = post?.mediaUrl || "";
+  const isVideo = (post?.mediaType || "").startsWith("video");
 
-  const closeViewer = useCallback(() => setViewer(null), []);
+  // sayaçlar (0 ise göstermeyiz)
+  const yorumAdet = Array.isArray(post?.yorumlar) ? post.yorumlar.length : (post?.commentsCount || 0);
+  const paylasAdet = post?.sharesCount || (Array.isArray(post?.paylasimlar) ? post.paylasimlar.length : 0);
 
   return (
-    <div className="profile-mobile">
-      {/* Üst bar */}
-      <div className="mobile-topbar">
+    <article className="pm-article">
+      {/* header */}
+      <header className="pm-header">
         <button
-          type="button"
-          onClick={() =>
-            window.history.length > 1
-              ? window.history.back()
-              : window.location.assign("/")
-          }
-          className="icon-btn"
-          aria-label="Geri"
-          title="Geri"
+          className="pm-user"
+          onClick={() => onUserClick?.(post.authorId)}
+          aria-label={`${username} profilini aç`}
         >
-          ‹
+          <img src={avatarUrl} alt="" className="pm-avatar" />
+          <span className="pm-username">{username}</span>
         </button>
 
-        <div className="mobile-username" aria-live="polite">
-          {username}
-        </div>
+        <div className="pm-more" ref={menuRef}>
+          <button
+            className="pm-kebab"
+            onClick={() => setOptionsOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={!!optionsOpen}
+          >
+            <KebabIcon />
+          </button>
 
-        <div className="topbar-kebab" aria-hidden="true">⋯</div>
+          {optionsOpen && (
+            <div className="pm-menu" role="menu">
+              <button className="pm-menu-item" onClick={handleGoToPost} role="menuitem">Gönderiye git</button>
+              {isOwner && (
+                <button className="pm-menu-item" onClick={handleToggleComments} role="menuitem">
+                  {post?.yorumlarKapali ? "Yorumları aç" : "Yorumları kapat"}
+                </button>
+              )}
+              {isOwner && (
+                <button className="pm-menu-item danger" onClick={handleDelete} role="menuitem">Sil</button>
+              )}
+              <button className="pm-menu-item" onClick={() => setOptionsOpen(false)} role="menuitem">Vazgeç</button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* medya */}
+      <div className="pm-media">
+        {!isMediaLoaded && <div className="skel-media" aria-hidden="true" />}
+        {mediaUrl &&
+          (isVideo ? (
+            <video
+              className={`pm-media-el ${isMediaLoaded ? "loaded" : ""}`}
+              src={mediaUrl}
+              controls
+              playsInline
+              onCanPlay={() => setIsMediaLoaded(true)}
+              onClick={() => onCommentClick?.(post)}
+            />
+          ) : (
+            <img
+              className={`pm-media-el ${isMediaLoaded ? "loaded" : ""}`}
+              src={mediaUrl}
+              alt="Gönderi görseli"
+              loading="lazy"
+              decoding="async"
+              draggable="false"
+              onLoad={() => setIsMediaLoaded(true)}
+              onClick={() => onCommentClick?.(post)}
+            />
+          ))}
       </div>
 
-      {/* Avatar + istatistikler */}
-      <div className="mobile-avatar-row">
-        <div className="avatar-ring-sm">
-          <img alt={`${username} avatar`} src={avatarUrl} />
-        </div>
-
-        <div className="mobile-stats">
-          <div>
-            <div className="count">{u.postsCount ?? 0}</div>
-            <div className="label">gönderi</div>
+      {/* aksiyonlar */}
+      <div className="pm-actions">
+        <div className="pm-actions-left">
+          {/* Yıldız oylama */}
+          <div className="pm-act">
+            <StarRatingV2 size={28} readOnly={isOwner} onRate={handleRate} />
+            {/* Ortalama ve oy adedini küçük göstermeyi istiyorsan aç:
+            {agg?.avg > 0 && agg?.count > 0 && (
+              <span className="pm-meta">{Number(agg.avg).toFixed(1)} · {formatCount(agg.count)}</span>
+            )} */}
           </div>
-          <div>
-            <div className="count">{u.followersCount ?? 0}</div>
-            <div className="label">takipçi</div>
+
+          {/* Yorum */}
+          <div className="pm-act">
+            <button className="pm-btn" onClick={() => onCommentClick?.(post)} aria-label="Yorumlar">
+              <CommentIcon size={28} weight="regular" />
+            </button>
+            {yorumAdet > 0 && <span className="pm-num">{formatCount(yorumAdet)}</span>}
           </div>
-          <div>
-            <div className="count">{u.followingCount ?? 0}</div>
-            <div className="label">takip</div>
+
+          {/* Paylaş */}
+          <div className="pm-act">
+            <button className="pm-btn" onClick={handleShare} aria-label="Paylaş">
+              <ShareIcon size={28} weight="regular" />
+            </button>
+            {paylasAdet > 0 && <span className="pm-num">{formatCount(paylasAdet)}</span>}
           </div>
         </div>
+
+        {/* Kaydet */}
+        <div className="pm-act">
+          <button
+            className="pm-btn"
+            onClick={handleToggleSave}
+            aria-label={isSaved ? "Kaydedildi" : "Kaydet"}
+          >
+            <SaveIcon size={28} active={isSaved} weight="regular" />
+          </button>
+        </div>
       </div>
 
-      {/* Aksiyon buton şeridi (IG stili) */}
-      <div className="profile-actions" role="group" aria-label="Profil aksiyonları">
-        <button type="button" className="action-btn">Profili düzenle</button>
-        <button type="button" className="action-btn">Profili paylaş</button>
-        <button type="button" className="action-btn">Abonelik</button>
-        <button
-          type="button"
-          className="action-btn more"
-          aria-label="Diğer seçenekler"
-          title="Diğer"
-          onClick={() => {}}
-        >
-          ⌄
-        </button>
+      {/* açıklama + zaman */}
+      <div className="pm-footer">
+        {post?.mesaj && (
+          <p className="pm-caption">
+            <strong className="pm-cap-user" onClick={() => onUserClick?.(post.authorId)}>{username}</strong>{" "}
+            <span>{post.mesaj}</span>
+          </p>
+        )}
+        <time className="pm-time" dateTime={String(post?.tarih || "")}>
+          {formatTimeAgo(post?.tarih)}
+        </time>
       </div>
-
-      {/* Sekmeler */}
-      <div className="mobile-tabs" role="tablist" aria-label="Profil sekmeleri">
-        <a
-          href="#"
-          role="tab"
-          aria-selected={mode === "grid"}
-          className={`mobile-tab ${mode === "grid" ? "active" : ""}`}
-          onClick={(e) => { e.preventDefault(); setMode("grid"); }}
-          aria-label="Gönderiler"
-          title="Gönderiler"
-        >
-          <GridIcon size={24} />
-        </a>
-        <a
-          href="#"
-          role="tab"
-          aria-selected={mode === "clips"}
-          className={`mobile-tab ${mode === "clips" ? "active" : ""}`}
-          onClick={(e) => { e.preventDefault(); setMode("clips"); }}
-          aria-label="Klipler"
-          title="Klipler"
-        >
-          <ClipsIcon size={24} />
-        </a>
-        <a
-          href="#"
-          role="tab"
-          aria-selected={mode === "saved"}
-          className={`mobile-tab ${mode === "saved" ? "active" : ""}`}
-          onClick={(e) => { e.preventDefault(); setMode("saved"); }}
-          aria-label="Kaydedilenler"
-          title="Kaydedilenler"
-        >
-          <SavedIcon size={24} active={mode === "saved"} />
-        </a>
-        <a
-          href="#"
-          role="tab"
-          aria-selected={mode === "tagged"}
-          className={`mobile-tab ${mode === "tagged" ? "active" : ""}`}
-          onClick={(e) => { e.preventDefault(); setMode("tagged"); }}
-          aria-label="Etiketlenenler"
-          title="Etiketlenenler"
-        >
-          <TaggedIcon size={24} />
-        </a>
-      </div>
-
-      {/* İçerik */}
-      {mode === "grid" && hasUserId && (
-        <div className="userposts-container">
-          <UserPosts userId={userId} onOpen={onOpenFromGrid} />
-        </div>
-      )}
-
-      {mode === "clips" && hasUserId && (
-        <div className="userposts-container">
-          <UserPosts userId={userId} onlyClips onOpen={onOpenFromGrid} />
-        </div>
-      )}
-
-      {!hasUserId && (
-        <div className="userposts-container">
-          <div className="user-posts-message">Profil yükleniyor…</div>
-        </div>
-      )}
-
-      {mode !== "grid" && mode !== "clips" && (
-        <div className="tab-empty">Bu sekme Sprint 2’de detaylandırılacak.</div>
-      )}
-
-      {/* Tam ekran mobil viewer */}
-      {viewer && (
-        <ProfilePostViewerMobile
-          items={viewer.items}
-          startIndex={viewer.index}
-          onClose={closeViewer}
-          viewerUser={{ name: username, avatar: avatarUrl }}
-        />
-      )}
-    </div>
+    </article>
   );
 }

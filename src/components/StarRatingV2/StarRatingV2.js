@@ -1,11 +1,11 @@
 // src/components/StarRatingV2/StarRatingV2.js
 // Tek ikon yıldız + (masaüstü: tek tıkta panel) (dokunmatik: uzun bas)
-// Panel ve büyük yıldız createPortal ile <body> içine çizilir; z-index/overflow sorunu yok.
+// Panel ve büyük yıldız, BodyPortal ile <body> içine güvenli şekilde çizilir.
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { createPortal } from "react-dom";
 import "./StarRatingV2.css";
 import StarFeedbackAnimation from "./StarFeedbackAnimation";
+import BodyPortal from "../BodyPortal";
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -220,44 +220,40 @@ export default function StarRatingV2({
       {/* Tek ikon (renksiz) */}
       <OutlineStar size={size} title="Yıldız ver" />
 
-      {/* Panel (5 yıldız) — body portal */}
-      {panelOpen &&
-        createPortal(
-          <div
-            className="sr2-panel"
-            ref={panelRef}
-            style={{ left: panelPos.x, top: panelPos.y }}
-          >
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                className="sr2-panel-btn"
-                onMouseEnter={() => setHoverStars(n)}
-                onFocus={() => setHoverStars(n)}
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  closePanel();
-                  await commitVote(n);
-                }}
-                aria-label={`${n} yıldız seç`}
-                type="button"
-              >
-                <OutlineStar size={30} active={n <= hoverStars} />
-              </button>
-            ))}
-          </div>,
-          document.body
-        )}
+      {/* Tüm overlay içerikleri tek ve sabit bir portal konteynerine gider */}
+      {(panelOpen || showFeedback) && (
+        <BodyPortal id="star-rating-v2">
+          {panelOpen && (
+            <div
+              className="sr2-panel"
+              ref={panelRef}
+              style={{ left: panelPos.x, top: panelPos.y }}
+            >
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  className="sr2-panel-btn"
+                  onMouseEnter={() => setHoverStars(n)}
+                  onFocus={() => setHoverStars(n)}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    closePanel();
+                    await commitVote(n);
+                  }}
+                  aria-label={`${n} yıldız seç`}
+                  type="button"
+                >
+                  <OutlineStar size={30} active={n <= hoverStars} />
+                </button>
+              ))}
+            </div>
+          )}
 
-      {/* Büyük geri bildirim (body portal) */}
-      {showFeedback &&
-        createPortal(
-          <StarFeedbackAnimation
-            visible={showFeedback}
-            value={feedbackValue}
-          />,
-          document.body
-        )}
+          {showFeedback && (
+            <StarFeedbackAnimation visible={showFeedback} value={feedbackValue} />
+          )}
+        </BodyPortal>
+      )}
     </div>
   );
 }

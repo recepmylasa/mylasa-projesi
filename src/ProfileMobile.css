@@ -1,3 +1,4 @@
+/* src/ProfileMobile.css */
 @import "./styles/ig-mobile.css";
 
 /* Sayfa kabuğu */
@@ -9,7 +10,7 @@
 
 /* İçerik alanı */
 .userposts-container{
-  padding: var(--grid-gap);
+  padding: var(--grid-gap, 12px);
   background:var(--bg);
 }
 .tab-panel[hidden]{ display:none; }
