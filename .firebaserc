@@ -1,5 +1,7 @@
 {
   "projects": {
     "default": "mylasa-final"
-  }
+  },
+  "targets": {},
+  "etags": {}
 }

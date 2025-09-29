@@ -2,7 +2,7 @@
 // Mylasa Cloud Functions (Node 20, v2 API)
 // - Video işleme
 // - Rating agg + reputasyon
-// - Backfill + Labubu Series S1 seeding
+// - Blind Box (Labubu): incrementStars, openBlindBox, seedSeriesS1
 // -----------------------------------------------------
 
 const admin = require("firebase-admin");
@@ -25,9 +25,7 @@ ffmpeg.setFfmpegPath(ffmpeg_static);
 
 const REGION = "europe-west3";
 
-/* =====================================================
- * 1) VIDEO İŞLEME
- * ===================================================== */
+// ================== 1) VIDEO İŞLEME ==================
 exports.processUploadedVideo = onObjectFinalized(
   { region: REGION, timeoutSeconds: 540, memory: "1GiB" },
   async (event) => {
@@ -97,11 +95,9 @@ exports.processUploadedVideo = onObjectFinalized(
   }
 );
 
-/* =====================================================
- * 2) RATING AGG + REPUTASYON
- * ===================================================== */
-const PRIOR_MEAN = 3.5;      // μ
-const PRIOR_STRENGTH = 100;  // K
+// ================== 2) RATING AGG + REPUTASYON ==================
+const PRIOR_MEAN = 3.5;     // μ
+const PRIOR_STRENGTH = 100; // K
 
 function bayes(sum, count) {
   return (PRIOR_STRENGTH * PRIOR_MEAN + sum) / (PRIOR_STRENGTH + count);
@@ -214,9 +210,7 @@ exports.recomputeUserReputation = onCall(
   }
 );
 
-/* =====================================================
- * 3) BACKFILL (idempotent)
- * ===================================================== */
+// ================== 3) BACKFILL (idempotent) ==================
 exports.backfillContentStubs = onCall(
   { region: REGION, timeoutSeconds: 540 },
   async (req) => {
@@ -274,56 +268,159 @@ exports.backfillContentStubs = onCall(
   }
 );
 
-/* =====================================================
- * 4) Labubu Series S1 – SEED callable
- * ===================================================== */
-exports.seedSeriesS1 = onCall(
-  { region: REGION },
-  async (req) => {
-    // Basit yetkilendirme: sadece giriş yapmış kullanıcı
-    // (İstersen custom claims ile admin kontrolü ekleyebilirsin)
-    if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
+// ================== 4) BLIND BOX (Labubu) ==================
+const SERIES_ID = "S1";
 
-    const SERIES_ID = "S1";
-    const assetsBase = "cards/S1/"; // Storage path kökü
+/* helpers */
+const hashSeed = (s) => { let h = 2166136261>>>0; for (let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return (h>>>0)/4294967295; };
+const pickWeighted = (rng, weights) => {
+  const arr = Object.entries(weights).filter(([,w])=>w>0);
+  const total = arr.reduce((a,[,w])=>a+w,0);
+  let r = rng*total; for (const [k,w] of arr){ if((r-=w)<=0) return k; }
+  return arr[arr.length-1][0];
+};
 
-    const seriesDoc = {
-      id: SERIES_ID,
-      name: "Series 1",
-      active: true,
-      boxThreshold: 100,
-      pityRareAt: 30,
-      weights: {
-        standardBox: { common: 0.88, rare: 0.12, legendaryHidden: 0.0 },
-        milestoneBox: { common: 0.70, rare: 0.29, legendaryHidden: 0.01 },
-      },
-      legendaryCaps: { AURORA: 250, VOID: 100 },
-      milestones: [5, 1000, 5000, 10000, 25000, 50000],
-      milestoneRewards: { "5": 1, "1000": 1, "5000": 1, "10000": 1, "25000": 1, "50000": 2 },
-      cards: [
-        { code:"S1-LOVE",       name:"LOVE",       rarity:"common",           asset: assetsBase + "LOVE.jpg" },
-        { code:"S1-HAPPINESS",  name:"HAPPINESS",  rarity:"common",           asset: assetsBase + "HAPPINESS.jpg" },
-        { code:"S1-SERENITY",   name:"SERENITY",   rarity:"common",           asset: assetsBase + "SERENITY.jpg" },
-        { code:"S1-HOPE",       name:"HOPE",       rarity:"common",           asset: assetsBase + "HOPE.jpg" },
-        { code:"S1-LOYALTY",    name:"LOYALTY",    rarity:"rare",             asset: assetsBase + "LOYALTY.jpg" },
-        { code:"S1-AURORA",     name:"AURORA",     rarity:"legendaryHidden",  asset: assetsBase + "AURORA.jpg", hidden: true },
-        { code:"S1-VOID",       name:"VOID",       rarity:"legendaryHidden",  asset: assetsBase + "VOID.jpg",   hidden: true },
-      ],
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
+async function getSeriesOrThrow() {
+  const s = await db.collection("series").doc(SERIES_ID).get();
+  if (!s.exists) throw new HttpsError("not-found","Series not found");
+  return s.data();
+}
 
-    await db.collection("series").doc(SERIES_ID).set(seriesDoc, { merge: true });
+// 4.1 Seri tohumlama (tek seferlik)
+exports.seedSeriesS1 = onCall({ region: REGION }, async (req) => {
+  if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
 
-    // Legendary global cap dokümanlarını hazırla
-    const capsCol = db.collection("global_legendary_caps");
-    const capDocs = [
-      { id: "S1-AURORA", left: 250 },
-      { id: "S1-VOID",   left: 100 },
-    ];
-    for (const c of capDocs) {
-      await capsCol.doc(c.id).set({ left: c.left }, { merge: true });
+  const ref = db.collection("series").doc(SERIES_ID);
+  const snap = await ref.get();
+  if (snap.exists) return { ok: true, seeded: false, reason: "already-exists" };
+
+  const data = {
+    id: "S1",
+    name: "Series 1",
+    active: true,
+    boxThreshold: 100,
+    pityRareAt: 30,
+    weights: {
+      standardBox: { common: 0.88, rare: 0.12, legendaryHidden: 0.0 },
+      milestoneBox: { common: 0.70, rare: 0.29, legendaryHidden: 0.01 }
+    },
+    legendaryCaps: { AURORA: 250, VOID: 100 },
+    milestones: [5, 1000, 5000, 10000, 25000, 50000],
+    milestoneRewards: { "5": 1, "1000": 1, "5000": 1, "10000": 1, "25000": 1, "50000": 2 },
+    cards: [
+      { code:"S1-LOVE", "name":"LOVE", "rarity":"common", "asset":"/cards/S1/LOVE.jpg" },
+      { code:"S1-HAPPINESS", "name":"HAPPINESS", "rarity":"common", "asset":"/cards/S1/HAPPINESS.jpg" },
+      { code:"S1-SERENITY", "name":"SERENITY", "rarity":"common", "asset":"/cards/S1/SERENITY.jpg" },
+      { code:"S1-HOPE", "name":"HOPE", "rarity":"common", "asset":"/cards/S1/HOPE.jpg" },
+      { code:"S1-LOYALTY", "name":"LOYALTY", "rarity":"rare", "asset":"/cards/S1/LOYALTY.jpg" },
+      { code:"S1-AURORA", "name":"AURORA", "rarity":"legendaryHidden", "asset":"/cards/S1/AURORA.jpg", "hidden":true },
+      { code:"S1-VOID", "name":"VOID", "rarity":"legendaryHidden", "asset":"/cards/S1/VOID.jpg", "hidden":true }
+    ]
+  };
+
+  await ref.set(data, { merge: true });
+  return { ok: true, seeded: true };
+});
+
+// 4.2 Yıldız sayacı: oy verildikçe kutu kazandırır
+exports.incrementStars = onCall({ region: REGION }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated","Login required");
+
+  const series = await getSeriesOrThrow();
+  const userRef = db.collection("users").doc(uid);
+
+  await db.runTransaction(async (tx)=>{
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const uSnap = await tx.get(userRef);
+    const u = uSnap.exists ? uSnap.data() : { starsTotal:0, boxesEarned:0, boxesOpened:0 };
+    const starsTotal = (u.starsTotal||0) + 1;
+    let boxesEarned = u.boxesEarned||0;
+
+    // 100 yıldızda bir standart kutu
+    if (starsTotal % (series.boxThreshold||100) === 0) boxesEarned += 1;
+
+    // milestone kutuları
+    const milestones = series.milestones||[];
+    const rewards = series.milestoneRewards||{};
+    const prev = u.starsTotal||0;
+    for (const ms of milestones) if (prev < ms && starsTotal >= ms) {
+      boxesEarned += (rewards[String(ms)]||1);
+      tx.set(userRef.collection("notifications").doc(), { type:"milestone_box", ms, at: now });
     }
 
-    return { ok: true, series: SERIES_ID, cards: seriesDoc.cards.length };
+    tx.set(userRef, { starsTotal, boxesEarned, updatedAt: now }, { merge: true });
+  });
+
+  return { ok:true };
+});
+
+// 4.3 Kutu açma
+exports.openBlindBox = onCall({ region: REGION }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated","Login required");
+
+  const { boxType="standardBox" } = req.data || {};
+  if (!["standardBox","milestoneBox"].includes(boxType)) {
+    throw new HttpsError("invalid-argument","Invalid box type");
   }
-);
+
+  const series = await getSeriesOrThrow();
+  const userRef = db.collection("users").doc(uid);
+  const cardsCol = userRef.collection("cards");
+  const dropsCol = userRef.collection("drops");
+
+  const now = admin.firestore.Timestamp.now();
+  const seed = `${uid}|${now.seconds}.${now.nanoseconds}|${boxType}`;
+  const rng = hashSeed(seed);
+
+  const result = await db.runTransaction(async (tx)=>{
+    const uSnap = await tx.get(userRef);
+    const u = uSnap.exists ? uSnap.data() : null;
+    const ready = (u?.boxesEarned||0) - (u?.boxesOpened||0);
+    if (ready <= 0) throw new HttpsError("failed-precondition","No boxes ready");
+
+    // günlük limit (opsiyonel): standard için 5
+    const day = new Date().toISOString().slice(0,10);
+    const openedToday = u?.[`opened_${day}`]||0;
+    if (boxType==="standardBox" && openedToday>=5) throw new HttpsError("resource-exhausted","Daily open limit");
+
+    let rarity = pickWeighted(rng, series.weights[boxType]);
+    let chosen = null;
+
+    // Legendary-Hidden ise, global cap kontrolü
+    if (rarity === "legendaryHidden") {
+      const order = [{code:"S1-AURORA",key:"AURORA"},{code:"S1-VOID",key:"VOID"}];
+      for (const o of order) {
+        const capDoc = db.collection("global_legendary_caps").doc(o.code);
+        const capSnap = await tx.get(capDoc);
+        const initial = series.legendaryCaps[o.key]||0;
+        const left = capSnap.exists ? (capSnap.data().left||0) : initial;
+        if (left > 0) { chosen = series.cards.find(c=>c.code===o.code); tx.set(capDoc, { left: left-1 }, { merge:true }); break; }
+      }
+      if (!chosen) rarity = "rare";
+    }
+
+    if (!chosen) {
+      const pool = series.cards.filter(c=>c.rarity===rarity);
+      chosen = pool[Math.floor(rng*pool.length)];
+    }
+
+    const cardRef = cardsCol.doc(chosen.code);
+    const cardSnap = await tx.get(cardRef);
+    const dupe = cardSnap.exists;
+
+    tx.set(cardRef, {
+      seriesId: SERIES_ID, code: chosen.code, name: chosen.name, rarity,
+      asset: chosen.asset, count: (cardSnap.data()?.count||0) + 1,
+      obtainedAt: now, lastSrc: boxType
+    }, { merge:true });
+
+    tx.set(userRef, { boxesOpened: (u?.boxesOpened||0)+1, [`opened_${day}`]: openedToday+1 }, { merge:true });
+    tx.set(dropsCol.doc(), { seriesId: SERIES_ID, code: chosen.code, rarity, dupe, createdAt: now });
+
+    return { ...chosen, rarity, dupe };
+  });
+
+  return { ok:true, drop: result };
+});

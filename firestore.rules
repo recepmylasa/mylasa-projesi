@@ -1,96 +1,24 @@
-// Firestore Security Rules — Mylasa
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /* =================== Helpers =================== */
-    function getUserData(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data;
-    }
-    function isSharingLocation(userData) {
-      return userData.isSharing == true;
-    }
-    function canRequesterSeeLocation(userData, requesterId) {
-      return (userData.sharingMode == 'all_friends' &&
-              userData.takipEdilenler != null &&
-              requesterId in userData.takipEdilenler)
-          || (userData.sharingMode == 'selected_friends' &&
-              userData.sharingWhitelist != null &&
-              requesterId in userData.sharingWhitelist);
-    }
-    function canReadLocation(userId, requesterId) {
-      return isSharingLocation(getUserData(userId))
-          && canRequesterSeeLocation(getUserData(userId), requesterId);
-    }
-
-    // Query'lerde get() kullanmamak için küçük yardımcılar
     function listOrEmpty(x) { return (x is list) ? x : []; }
     function devWindow() { return request.time < timestamp('2025-10-01T00:00:00Z'); }
 
-    /* =================== USERS =================== */
+    /* ===== USERS ===== */
     match /users/{userId} {
       allow read: if request.auth != null;
-
       allow create, delete: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
 
-      allow update: if request.auth != null && (
-        request.auth.uid == userId
-        ||
-        (
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['takipciler'])
-          &&
-          (request.resource.data.takipciler is list)
-          &&
-          (
-            (
-              (request.auth.uid in request.resource.data.takipciler)
-              &&
-              (
-                (resource.data.takipciler is list &&
-                  request.resource.data.takipciler.size() == resource.data.takipciler.size() + 1
-                  && !(request.auth.uid in resource.data.takipciler)
-                  && request.resource.data.takipciler.hasAll(resource.data.takipciler)
-                )
-                ||
-                (!(resource.data.takipciler is list) &&
-                  request.resource.data.takipciler.size() == 1
-                )
-              )
-            )
-            ||
-            (
-              (resource.data.takipciler is list)
-              &&
-              request.resource.data.takipciler.size() == resource.data.takipciler.size() - 1
-              &&  (request.auth.uid in resource.data.takipciler)
-              && !(request.auth.uid in request.resource.data.takipciler)
-              &&  resource.data.takipciler.hasAll(request.resource.data.takipciler)
-            )
-          )
-        )
-      );
-
-      /* ----- SAVED (Bookmark) ----- */
       match /saved/{docId} {
         allow read: if request.auth != null && request.auth.uid == userId;
-
         allow create: if request.auth != null
           && request.auth.uid == userId
           && request.resource.id == request.resource.data.contentId
           && request.resource.data.contentId is string
           && request.resource.data.type in ['post','clip','story']
-          && request.resource.data.authorId is string
-          && ( !('mediaUrl' in request.resource.data) || request.resource.data.mediaUrl is string || request.resource.data.mediaUrl == null )
-          && ( !('caption' in request.resource.data) || request.resource.data.caption is string )
-          && ( !('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp )
-          && (
-               exists(/databases/$(database)/documents/content/$(request.resource.data.contentId)) ||
-               exists(/databases/$(database)/documents/posts/$(request.resource.data.contentId)) ||
-               exists(/databases/$(database)/documents/clips/$(request.resource.data.contentId)) ||
-               exists(/databases/$(database)/documents/hikayeler/$(request.resource.data.contentId))
-             );
-
+          && request.resource.data.authorId is string;
         allow update: if false;
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
@@ -101,133 +29,27 @@ service cloud.firestore {
       allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
     }
 
-    /* =================== LOCATIONS =================== */
+    /* ===== LOCATIONS (özet) ===== */
     match /locations/{userId} {
       allow write: if request.auth != null && request.auth.uid == userId;
-
-      allow read: if request.auth != null && (
-        request.auth.uid == userId
-        ||
-        (
-          resource.data.isSharing == true &&
-          (
-            (resource.data.sharingMode == 'all_friends' &&
-              request.auth.uid in listOrEmpty(resource.data.takipEdilenler))
-            ||
-            (resource.data.sharingMode == 'selected_friends' &&
-              request.auth.uid in listOrEmpty(resource.data.sharingWhitelist))
-          )
-        )
-        ||
-        devWindow()
-      );
+      allow read: if request.auth != null && devWindow();
     }
 
-    /* =================== POSTS =================== */
-    match /posts/{postId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+    /* ===== POSTS/HIKAYELER/CLIPS (özet) ===== */
+    match /posts/{postId}   { allow read: if request.auth != null; allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid; allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid; }
+    match /hikayeler/{id}   { allow read: if request.auth != null; allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid; allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid; }
+    match /clips/{clipId}   { allow read: if request.auth != null; allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid; allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid; }
 
-      allow update: if request.auth != null && (
-        (resource.data.authorId == request.auth.uid)
-        ||
-        (
-          !(resource.data.commentsDisabled == true)
-          &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['yorumlar'])
-          &&
-          (
-            (
-              (resource.data.yorumlar is list) &&
-              (request.resource.data.yorumlar is list) &&
-              request.resource.data.yorumlar.size() == resource.data.yorumlar.size() + 1 &&
-              request.resource.data.yorumlar[resource.data.yorumlar.size()].userId == request.auth.uid &&
-              request.resource.data.yorumlar[resource.data.yorumlar.size()].text is string
-            )
-            ||
-            (
-              !(resource.data.yorumlar is list) &&
-              (request.resource.data.yorumlar is list) &&
-              request.resource.data.yorumlar.size() == 1 &&
-              request.resource.data.yorumlar[0].userId == request.auth.uid &&
-              request.resource.data.yorumlar[0].text is string
-            )
-          )
-        )
-      );
-
-      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
-    }
-
-    /* =================== HİKAYELER =================== */
-    match /hikayeler/{storyId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
-
-      allow update: if request.auth != null && (
-        resource.data.authorId == request.auth.uid ||
-        (
-          !(request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            "authorId","mediaUrl","mediaType","contentType","storagePath",
-            "dosyaBoyutu","tarih","createdAt","authorUsername","authorProfilePic"
-          ]))
-          && request.resource.data.viewersCount >= resource.data.viewersCount
-        )
-      );
-
-      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
-    }
-
-    /* =================== CLIPS =================== */
-    match /clips/{clipId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
-
-      allow update: if request.auth != null && (
-        (resource.data.authorId == request.auth.uid)
-        ||
-        (
-          !(resource.data.commentsDisabled == true)
-          &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['yorumlar'])
-          &&
-          (
-            (
-              (resource.data.yorumlar is list) &&
-              (request.resource.data.yorumlar is list) &&
-              request.resource.data.yorumlar.size() == resource.data.yorumlar.size() + 1 &&
-              request.resource.data.yorumlar[resource.data.yorumlar.size()].userId == request.auth.uid &&
-              request.resource.data.yorumlar[resource.data.yorumlar.size()].text is string
-            )
-            ||
-            (
-              !(resource.data.yorumlar is list) &&
-              (request.resource.data.yorumlar is list) &&
-              request.resource.data.yorumlar.size() == 1 &&
-              request.resource.data.yorumlar[0].userId == request.auth.uid &&
-              request.resource.data.yorumlar[0].text is string
-            )
-          )
-        )
-      );
-
-      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
-    }
-
-    /* =================== CONTENT + RATINGS =================== */
+    /* ===== CONTENT + RATINGS ===== */
     match /content/{contentId} {
       allow read: if request.auth != null;
-
       allow create: if request.auth != null
         && request.resource.data.authorId is string
-        && request.resource.data.type in ['post', 'story', 'clip'];
-
-      allow update, delete: if request.auth != null
-        && resource.data.authorId == request.auth.uid;
+        && request.resource.data.type in ['post','story','clip'];
+      allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid;
 
       match /ratings/{raterId} {
         allow read: if request.auth != null;
-
         allow create: if request.auth != null
           && raterId == request.auth.uid
           && request.resource.data.raterId == request.auth.uid
@@ -235,66 +57,28 @@ service cloud.firestore {
           && request.resource.data.value >= 1
           && request.resource.data.value <= 5
           && exists(/databases/$(database)/documents/content/$(contentId));
-
         allow update: if request.auth != null
           && raterId == request.auth.uid
-          && request.resource.data.raterId == request.auth.uid
           && request.resource.data.value is int
           && request.resource.data.value >= 1
           && request.resource.data.value <= 5;
-
         allow delete: if false;
       }
-
-      /* ----- Comments & their ratings ----- */
-      match /comments/{commentId} {
-        allow read: if request.auth != null;
-
-        allow create: if request.auth != null
-          && request.resource.data.authorId == request.auth.uid
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 2000
-          && request.resource.data.createdAt is timestamp;
-
-        allow update, delete: if false;
-
-        match /ratings/{raterId} {
-          allow read: if request.auth != null;
-
-          allow create: if request.auth != null
-            && raterId == request.auth.uid
-            && request.resource.data.raterId == request.auth.uid
-            && request.resource.data.value is int
-            && request.resource.data.value >= 1
-            && request.resource.data.value <= 5
-            && exists(/databases/$(database)/documents/content/$(contentId)/comments/$(commentId));
-
-          allow update: if request.auth != null
-            && raterId == request.auth.uid
-            && request.resource.data.raterId == request.auth.uid
-            && request.resource.data.value is int
-            && request.resource.data.value >= 1
-            && request.resource.data.value <= 5;
-
-          allow delete: if false;
-        }
-      }
     }
 
-    /* =================== SERIES (Labubu config) =================== */
+    /* ====== LABUBU SERİSİ (public read, admin write) ====== */
     match /series/{seriesId} {
-      allow read: if request.auth != null;
-      allow write: if false; // yönetim callable ile
+      allow read: if true;        // herkes okuyabilir (UI için gerekli)
+      allow write: if false;      // yazma sadece Admin SDK (Functions) ile
     }
 
-    /* =================== USER STATS =================== */
-    match /userStats/{uid} {
-      allow read: if request.auth != null;
+    /* Legendary cap’ler (UI okumazsa bile sorun yok) */
+    match /global_legendary_caps/{docId} {
+      allow read: if request.auth != null || devWindow();
       allow write: if false;
     }
 
-    /* =================== catch-all =================== */
+    /* ===== Catch-all (dev okuma) ===== */
     match /{document=**} {
       allow read: if request.auth != null && devWindow();
       allow write: if false;

@@ -182,12 +182,15 @@ export default function StarRatingV2({
     if (e.cancelable) e.preventDefault(); // panel açıkken sayfayı kaydırma
   };
 
-  // dışa tıklayınca/Escape’te kapat
+  // dışa tıklayınca/Escape’te kapat — ⭐️ root’u da kontrol et!
   useEffect(() => {
     const onDocDown = (e) => {
       if (!panelOpen) return;
       const p = panelRef.current;
-      if (p && !p.contains(e.target)) closePanel();
+      const r = rootRef.current;
+      if (p && p.contains(e.target)) return; // panel içinde: kapatma
+      if (r && r.contains(e.target)) return; // yıldız veya kökü: kapatma
+      closePanel(); // tamamen dışarısı: kapat
     };
     const onKey = (e) => {
       if (e.key === "Escape") closePanel();

@@ -1,27 +1,23 @@
 {
-  "name": "functions",
-  "description": "Cloud Functions for Firebase",
-  "scripts": {
-    "serve": "firebase emulators:start --only functions",
-    "shell": "firebase functions:shell",
-    "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+  "id": "S1",
+  "name": "Series 1",
+  "active": true,
+  "boxThreshold": 100,
+  "pityRareAt": 30,
+  "weights": {
+    "standardBox": { "common": 0.88, "rare": 0.12, "legendaryHidden": 0.0 },
+    "milestoneBox": { "common": 0.70, "rare": 0.29, "legendaryHidden": 0.01 }
   },
-  "engines": {
-    "node": "20"
-  },
-  "main": "index.js",
-  "dependencies": {
-    "@google-cloud/storage": "^7.0.1",
-    "ffmpeg-static": "^5.1.0",
-    "firebase-admin": "^13.4.0",
-    "firebase-functions": "^6.4.0",
-    "fluent-ffmpeg": "^2.1.2",
-    "mylasa-projesi": "file:.."
-  },
-  "devDependencies": {
-    "firebase-functions-test": "^3.1.0"
-  },
-  "private": true
+  "legendaryCaps": { "AURORA": 250, "VOID": 100 },
+  "milestones": [5, 1000, 5000, 10000, 25000, 50000],
+  "milestoneRewards": { "5": 1, "1000": 1, "5000": 1, "10000": 1, "25000": 1, "50000": 2 },
+  "cards": [
+    { "code": "S1-LOVE", "name": "LOVE", "rarity": "common", "asset": "/cards/S1/LOVE.jpg" },
+    { "code": "S1-HAPPINESS", "name": "HAPPINESS", "rarity": "common", "asset": "/cards/S1/HAPPINESS.jpg" },
+    { "code": "S1-SERENITY", "name": "SERENITY", "rarity": "common", "asset": "/cards/S1/SERENITY.jpg" },
+    { "code": "S1-HOPE", "name": "HOPE", "rarity": "common", "asset": "/cards/S1/HOPE.jpg" },
+    { "code": "S1-LOYALTY", "name": "LOYALTY", "rarity": "rare", "asset": "/cards/S1/LOYALTY.jpg" },
+    { "code": "S1-AURORA", "name": "AURORA", "rarity": "legendaryHidden", "asset": "/cards/S1/AURORA.jpg", "hidden": true },
+    { "code": "S1-VOID", "name": "VOID", "rarity": "legendaryHidden", "asset": "/cards/S1/VOID.jpg", "hidden": true }
+  ]
 }
