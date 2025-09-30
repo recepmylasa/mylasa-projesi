@@ -39,19 +39,16 @@ export default function PostMobile({ post, aktifKullaniciId, onUserClick, onComm
   }
 
   const username = authorProfile?.kullaniciAdi || "kullanıcı";
-  const avatarUrl =
-    authorProfile?.profilFoto || "/avatars/default.png";
+  const avatarUrl = authorProfile?.profilFoto || "/avatars/default.png";
 
   const mediaUrl = post?.mediaUrl || "";
   const isVideo = (post?.mediaType || "").startsWith("video");
 
-  // sayaçlar (0 ise göstermeyiz)
   const yorumAdet = Array.isArray(post?.yorumlar) ? post.yorumlar.length : (post?.commentsCount || 0);
   const paylasAdet = post?.sharesCount || (Array.isArray(post?.paylasimlar) ? post.paylasimlar.length : 0);
 
   return (
     <article className="pm-article">
-      {/* header */}
       <header className="pm-header">
         <button
           className="pm-user"
@@ -89,7 +86,6 @@ export default function PostMobile({ post, aktifKullaniciId, onUserClick, onComm
         </div>
       </header>
 
-      {/* medya */}
       <div className="pm-media">
         {!isMediaLoaded && <div className="skel-media" aria-hidden="true" />}
         {mediaUrl &&
@@ -116,19 +112,12 @@ export default function PostMobile({ post, aktifKullaniciId, onUserClick, onComm
           ))}
       </div>
 
-      {/* aksiyonlar */}
       <div className="pm-actions">
         <div className="pm-actions-left">
-          {/* Yıldız oylama */}
           <div className="pm-act">
-            <StarRatingV2 size={28} readOnly={isOwner} onRate={handleRate} />
-            {/* Ortalama ve oy adedini küçük göstermeyi istiyorsan aç:
-            {agg?.avg > 0 && agg?.count > 0 && (
-              <span className="pm-meta">{Number(agg.avg).toFixed(1)} · {formatCount(agg.count)}</span>
-            )} */}
+            <StarRatingV2 className="pm-btn" size={28} onRate={handleRate} />
           </div>
 
-          {/* Yorum */}
           <div className="pm-act">
             <button className="pm-btn" onClick={() => onCommentClick?.(post)} aria-label="Yorumlar">
               <CommentIcon size={28} weight="regular" />
@@ -136,7 +125,6 @@ export default function PostMobile({ post, aktifKullaniciId, onUserClick, onComm
             {yorumAdet > 0 && <span className="pm-num">{formatCount(yorumAdet)}</span>}
           </div>
 
-          {/* Paylaş */}
           <div className="pm-act">
             <button className="pm-btn" onClick={handleShare} aria-label="Paylaş">
               <ShareIcon size={28} weight="regular" />
@@ -145,7 +133,6 @@ export default function PostMobile({ post, aktifKullaniciId, onUserClick, onComm
           </div>
         </div>
 
-        {/* Kaydet */}
         <div className="pm-act">
           <button
             className="pm-btn"
@@ -157,7 +144,6 @@ export default function PostMobile({ post, aktifKullaniciId, onUserClick, onComm
         </div>
       </div>
 
-      {/* açıklama + zaman */}
       <div className="pm-footer">
         {post?.mesaj && (
           <p className="pm-caption">

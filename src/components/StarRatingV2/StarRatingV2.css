@@ -1,14 +1,11 @@
-/* src/components/StarRatingV2/StarRatingV2.css */
 :root{
-  --sr2-red:#ff4d6d;          /* aktif dolgu (varsayılan tema) */
-  --sr2-red-hover:#ff6b81;    /* hover dolgu (varsayılan tema) */
+  --sr2-red:#ff4d6d;
+  --sr2-red-hover:#ff6b81;
   --sr2-stroke:#111;
-  /* Altın tema değişkenleri */
   --sr2-gold:#FFD400;
   --sr2-gold-hover:#FFE066;
 }
 
-/* Altın tema: Bileşene .sr2--gold sınıfı verilirse renkler altına döner */
 .sr2--gold{
   --sr2-red:var(--sr2-gold);
   --sr2-red-hover:var(--sr2-gold-hover);
@@ -23,119 +20,112 @@
   -webkit-tap-highlight-color:transparent;
   cursor:pointer;
   user-select:none;
+  pointer-events:auto; /* tıklamayı her durumda al */
+  background: transparent; border: 0; padding: 0; /* button reset */
 }
 
 .sr2-star{display:block}
 
-/* Kullanıcı oy vermişse küçük ikon dolu görünsün (isteğe bağlı class) */
 .sr2--rated .sr2-star path{
   fill:var(--sr2-red) !important;
   stroke:var(--sr2-stroke) !important;
 }
 
-/* ==== Panel (5’li yıldız) ==== */
-/* BODY’ye portal ile çizildiği için kırpılmaz. İmlecin ALTINA açılır. DİKEY. */
+/* ==== Panel ==== */
 .sr2-panel{
   position:fixed;
-  transform:translate(-50%,8px); /* ↓ alta doğru */
+  transform:translate(-50%,8px);
   background:rgba(255,255,255,.98);
   border:1px solid var(--sr2-stroke);
   border-radius:12px;
   padding:8px 10px;
   display:flex;
-  flex-direction:column;        /* DİKEY */
+  flex-direction:column;
   gap:8px;
-  z-index:5200;                 /* menü/tooltiplerin üstünde dursun */
+  z-index:5200;
   box-shadow:0 8px 24px rgba(0,0,0,.35);
   -webkit-backdrop-filter:saturate(180%) blur(6px);
   backdrop-filter:saturate(180%) blur(6px);
 }
-/* Yukarı açılma (JS sınıfı ekleyecek) */
-.sr2-panel--flipY{ transform:translate(-50%,-8px); }
 
 .sr2-panel-btn{
   appearance:none;
   border:0;
   background:transparent;
-  padding:6px;                  /* daha büyük dokunma alanı */
+  padding:6px;
   margin:0;
   cursor:pointer;
   border-radius:10px;
 }
-
 .sr2-panel-btn:hover{background:rgba(0,0,0,.06)}
-.sr2-panel .sr2-star{
-  width:30px;                   /* panel yıldızlarını biraz büyüt */
-  height:30px;
-  transition:transform .08s ease;
-}
+.sr2-panel .sr2-star{width:30px;height:30px;transition:transform .08s ease}
 .sr2-panel-btn:active .sr2-star,
 .sr2-panel-btn:focus .sr2-star{transform:scale(.92)}
 
-/* Aktif yıldızlar (tema rengi) */
 .sr2-star.active path{
   fill:var(--sr2-red) !important;
   stroke:var(--sr2-stroke) !important;
 }
-/* Hover’da biraz daha canlı ton */
 .sr2-panel-btn:hover .sr2-star path{
   fill:var(--sr2-red-hover) !important;
   stroke:var(--sr2-stroke) !important;
 }
 
-/* ==== Büyük geri bildirim (ekranda ortada pop) ==== */
+/* ==== Büyük geri bildirim ==== */
 .sr2-feedback-wrap{
-  position:fixed;
-  inset:0;
-  pointer-events:none;
-  z-index:5500;
-  display:flex;
-  align-items:center;
-  justify-content:center;
+  position:fixed; inset:0; pointer-events:none; z-index:5500;
+  display:flex; align-items:center; justify-content:center;
 }
-
 .sr2-feedback{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  width:196px;                  /* biraz büyütüldü */
-  height:196px;
-  opacity:0;
-  transform:scale(.7);
-  animation:sr2-pop .95s ease forwards; /* daha görünür/sakin */
+  display:inline-flex; align-items:center; justify-content:center;
+  width:196px; height:196px; opacity:0; transform:scale(.7);
+  animation:sr2-pop .95s ease forwards;
   filter:drop-shadow(0 14px 40px rgba(0,0,0,.35));
-  will-change:opacity,transform;
 }
-
 .sr2-feedback-star{width:100%;height:100%}
-/* Altın görünümü GARANTİ ET (global CSS override edemesin) */
 .sr2-feedback-star path,
 .sr2-feedback-star polygon,
 .sr2-feedback-star g path{
-  fill:var(--sr2-gold, #FFD400) !important;
-  stroke:var(--sr2-stroke, #111) !important;
+  fill:var(--sr2-gold,#FFD400) !important;
+  stroke:var(--sr2-stroke,#111) !important;
 }
-
 .sr2-feedback-value{
-  position:absolute;
-  font-weight:800;
-  font-size:64px;
-  color:#1a1a1a;
-  text-shadow:0 1px 0 rgba(255,255,255,.6);
-  line-height:1;
-  transform:translateY(4px);
+  position:absolute; font-weight:800; font-size:64px; color:#1a1a1a;
+  text-shadow:0 1px 0 rgba(255,255,255,.6); line-height:1; transform:translateY(4px);
 }
-
 @keyframes sr2-pop{
-  0%  {opacity:0;   transform:scale(.7)}
-  15% {opacity:1;   transform:scale(1.06)}
-  40% {opacity:1;   transform:scale(1)}
-  75% {opacity:.98; transform:scale(.96)}
-  100%{opacity:0;   transform:scale(.92)}
+  0%{opacity:0;transform:scale(.7)}
+  15%{opacity:1;transform:scale(1.06)}
+  40%{opacity:1;transform:scale(1)}
+  75%{opacity:.98;transform:scale(.96)}
+  100%{opacity:0;transform:scale(.92)}
+}
+@media (prefers-reduced-motion: reduce){
+  .sr2-panel .sr2-star{transition:none}
+  .sr2-feedback{animation:none;opacity:1;transform:none}
 }
 
-/* Erişilebilirlik — hareketi azalt */
-@media (prefers-reduced-motion: reduce){
-  .sr2-panel .sr2-star{ transition:none; }
-  .sr2-feedback{ animation:none; opacity:1; transform:none; }
+/* Projedeki buton sınıflarıyla uyum */
+.sr2-root.pm-btn,
+.sr2-root.postDk-actionBtn,
+.sr2-root.ppv-btn{
+  background:transparent !important;
+  border:0 !important;
+  padding:0 !important;
+  outline:none !important;
+}
+
+/* ---- DEBUG rozeti: sadece localStorage.sr2Debug="1" iken ---- */
+.sr2-debug-pill{
+  position:absolute;
+  bottom:-18px;
+  left:0;
+  font-size:10px;
+  background:#222;
+  color:#fff;
+  padding:2px 4px;
+  border-radius:4px;
+  z-index:6000;
+  pointer-events:none;
+  opacity:.85;
 }

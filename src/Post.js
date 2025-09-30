@@ -1,6 +1,5 @@
 import React from "react";
 import "./Post.css";
-// Yalnızca ana akış ikonları: (profil vb. dosyalara dokunmadım)
 import { CommentIcon, ShareIcon, KebabIcon } from "./icons";
 import * as Ph from "@phosphor-icons/react";
 
@@ -8,7 +7,6 @@ import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
 import { usePostLogic } from "./hooks/usePostLogic";
 import { formatTimeAgo, formatCount } from "./utils";
 
-/* --------------- SKELETON --------------- */
 const PostSkeleton = () => (
   <article className="postDk-article skeleton" aria-busy="true" aria-live="polite">
     <header className="postDk-header">
@@ -57,9 +55,7 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
   const captionText = post?.mesaj || "";
   const CAPTION_LIMIT = 140;
   const needsClamp = captionText.length > CAPTION_LIMIT;
-  const captionPreview = needsClamp
-    ? captionText.slice(0, CAPTION_LIMIT).trim()
-    : captionText;
+  const captionPreview = needsClamp ? captionText.slice(0, CAPTION_LIMIT).trim() : captionText;
 
   return (
     <article className="postDk-article">
@@ -138,8 +134,7 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
       <div className="postDk-content">
         <div className="postDk-actions">
           <div className="postDk-starWrap">
-            {/* Oy yıldızları: aynı kaldı; sadece boyutu 28 */}
-            <StarRatingV2 size={28} readOnly={isOwner} onRate={handleRate} />
+            <StarRatingV2 className="postDk-actionBtn" size={28} onRate={handleRate} />
             {agg?.avg > 0 && agg?.count > 0 && (
               <span className="postDk-starMeta" aria-label="Bu gönderinin puanı">
                 {Number(agg.avg).toFixed(1)} ★ · {formatCount(agg.count)} oy
@@ -147,7 +142,6 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             )}
           </div>
 
-          {/* --- Yorum --- */}
           <button
             onClick={() => onCommentClick?.(post)}
             className="postDk-actionBtn"
@@ -157,7 +151,6 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             <CommentIcon size={28} weight="regular" className="postDk-actionIcon" />
           </button>
 
-          {/* --- Paylaş --- */}
           <button
             className="postDk-actionBtn"
             onClick={handleShare}
@@ -167,7 +160,6 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
             <ShareIcon size={28} weight="regular" className="postDk-actionIcon" />
           </button>
 
-          {/* --- Kaydet --- */}
           <button
             onClick={handleToggleSave}
             className="postDk-actionBtn save"
@@ -210,5 +202,4 @@ function Post({ post, aktifKullaniciId, onUserClick, onCommentClick }) {
     </article>
   );
 }
-
 export default Post;

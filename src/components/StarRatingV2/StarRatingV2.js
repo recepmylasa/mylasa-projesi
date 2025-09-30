@@ -1,6 +1,5 @@
-// src/components/StarRatingV2/StarRatingV2.js
-// Tek ikon yıldız + (masaüstü: tek tıkta panel) (dokunmatik: uzun bas)
-// Panel ve büyük yıldız, BodyPortal ile <body> içine güvenli şekilde çizilir.
+// Tek ikon -> tıklayınca (mouse) panel; dokunmatikte kısa dokunuş 1★, uzun bas panel.
+// Panel BodyPortal ile <body>’ye çizilir.
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import "./StarRatingV2.css";
@@ -9,7 +8,9 @@ import BodyPortal from "../BodyPortal";
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
-// Bas kontur yıldız (renksiz görünüm)
+const DEBUG = typeof window !== "undefined" && window.localStorage?.sr2Debug === "1";
+const dlog = (...a) => { if (DEBUG) console.log("[SR2]", ...a); };
+
 function OutlineStar({ size = 28, active = false, className = "", title }) {
   return (
     <svg
@@ -34,7 +35,7 @@ function OutlineStar({ size = 28, active = false, className = "", title }) {
 
 /**
  * Props:
- * - onRate: (value: 1..5) => Promise|void
+ * - onRate: (1..5) => Promise|void
  * - size?: number
  * - soundSrc?: string
  * - disabled?: boolean
@@ -50,6 +51,7 @@ export default function StarRatingV2({
   const rootRef = useRef(null);
   const panelRef = useRef(null);
   const holdTimer = useRef(null);
+  const holdFired = useRef(false);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
@@ -57,46 +59,75 @@ export default function StarRatingV2({
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackValue, setFeedbackValue] = useState(0);
 
-  // paneli ekranda imlecin biraz ALTINDA aç (dikey liste)
+  // ---- AJAN: yıldızın merkezinde kim üstte? (her 350ms kontrol) ----
+  const [blocker, setBlocker] = useState(null);
+  useEffect(() => {
+    if (!DEBUG) return;
+    let lastKey = "";
+    const iv = setInterval(() => {
+      const el = rootRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const topEl = document.elementFromPoint(cx, cy);
+      let key = "";
+      if (topEl && !el.contains(topEl)) {
+        key =
+          (topEl.id ? `#${topEl.id}` : "") ||
+          (typeof topEl.className === "string" && topEl.className.split(" ").filter(Boolean)[0]) ||
+          topEl.nodeName?.toLowerCase();
+      }
+      if (key !== lastKey) {
+        lastKey = key;
+        setBlocker(key || null);
+        if (key) dlog("BLOCKED BY:", key, topEl);
+        else dlog("NOT BLOCKED");
+      }
+    }, 350);
+    return () => clearInterval(iv);
+  }, []);
+
+  // belge seviyesinde pointerdown logu (isteğe bağlı yardımcı)
+  useEffect(() => {
+    if (!DEBUG) return;
+    const onDocDown = (e) => {
+      const topEl = document.elementFromPoint(e.clientX, e.clientY);
+      dlog("DOC pointerdown topEl:", topEl?.className || topEl?.id || topEl?.nodeName, topEl);
+    };
+    document.addEventListener("pointerdown", onDocDown, { capture: true });
+    return () => document.removeEventListener("pointerdown", onDocDown, { capture: true });
+  }, []);
+
   const openPanelAt = useCallback((clientX, clientY) => {
     const OFFSET_Y = 12;
     const px = clamp(clientX, 40, window.innerWidth - 40);
     const py = clamp(clientY + OFFSET_Y, 60, window.innerHeight - 80);
     setPanelPos({ x: px, y: py });
-    setHoverStars(0); // başlangıçta dolu olmasın
+    setHoverStars(0);
     setPanelOpen(true);
+    dlog("panel open @", { px, py });
   }, []);
 
   const closePanel = useCallback(() => {
     setPanelOpen(false);
     setHoverStars(0);
+    dlog("panel close");
   }, []);
 
-  // panel içi hangi yıldıza denk geliyor? (dikey veya yatay çalışır)
   const computeStarsFromPointer = useCallback((clientX, clientY) => {
     const el = panelRef.current;
     if (!el) return 0;
     const rect = el.getBoundingClientRect();
-
-    // dikey panelse yükseklik daha baskındır
-    const isVertical = rect.height >= rect.width;
-    if (isVertical) {
-      const relY = clamp(clientY - rect.top, 0, rect.height);
-      const step = rect.height / 5;
-      const idx = Math.ceil(relY / step);
-      return clamp(idx, 1, 5);
-    } else {
-      const relX = clamp(clientX - rect.left, 0, rect.width);
-      const step = rect.width / 5;
-      const idx = Math.ceil(relX / step);
-      return clamp(idx, 1, 5);
-    }
+    const relX = clamp(clientX - rect.left, 0, rect.width);
+    const step = rect.width / 5;
+    return clamp(Math.ceil(relX / step), 1, 5);
   }, []);
 
-  // oy işlemi + animasyon + ses
   const commitVote = useCallback(
     async (value) => {
       if (disabled || !value) return;
+      dlog("commit", value);
       try {
         if (soundSrc && typeof Audio !== "undefined") {
           try {
@@ -115,49 +146,37 @@ export default function StarRatingV2({
     [disabled, onRate, soundSrc]
   );
 
-  // pointer olayları
-  const onPointerDown = (e) => {
-    if (disabled) return;
-    const p = e.touches?.[0] || e;
-
-    // Masaüstü: tek tıkta paneli hemen aç
-    if (!e.touches) {
-      openPanelAt(p.clientX, p.clientY);
-      return;
-    }
-
-    // Dokunmatik: uzun basınca aç
-    holdTimer.current = window.setTimeout(() => {
-      openPanelAt(p.clientX, p.clientY);
-    }, 300);
-  };
-
   const clearHold = () => {
     if (holdTimer.current) {
       clearTimeout(holdTimer.current);
       holdTimer.current = null;
     }
+    holdFired.current = false;
+  };
+
+  const onPointerDown = (e) => {
+    if (disabled) return;
+    // mouse: anında panel
+    if (e.pointerType === "mouse") {
+      openPanelAt(e.clientX, e.clientY);
+      return;
+    }
+    // touch/pen: 300ms uzun bas → panel; kısa dokunuş = 1★
+    holdTimer.current = window.setTimeout(() => {
+      holdFired.current = true;
+      openPanelAt(e.clientX, e.clientY);
+    }, 300);
   };
 
   const onPointerUp = async (e) => {
     if (disabled) return;
-    const up = e.changedTouches?.[0] || e;
-
-    // Panel açıksa bırakma konumuna göre oyla
     if (panelOpen) {
       clearHold();
       const el = panelRef.current;
-      if (!el) {
-        closePanel();
-        return;
-      }
-      const rect = el.getBoundingClientRect();
+      if (!el) return closePanel();
+      const r = el.getBoundingClientRect();
       const inside =
-        up.clientX >= rect.left &&
-        up.clientX <= rect.right &&
-        up.clientY >= rect.top &&
-        up.clientY <= rect.bottom;
-
+        e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
       if (inside && hoverStars > 0) {
         closePanel();
         await commitVote(hoverStars);
@@ -166,35 +185,33 @@ export default function StarRatingV2({
       }
       return;
     }
-
-    // Panel kapalı (dokunmatik kısa dokunuş): 1★ ver
-    if (e.touches) {
+    // panel yoksa ve uzun bas tetiklenmediyse -> hızlı 1★
+    if (!holdFired.current && e.pointerType !== "mouse") {
       clearHold();
       await commitVote(1);
+    } else {
+      clearHold();
     }
   };
 
   const onPointerMove = (e) => {
     if (!panelOpen) return;
-    const move = e.touches?.[0] || e;
-    const stars = computeStarsFromPointer(move.clientX, move.clientY);
+    const stars = computeStarsFromPointer(e.clientX, e.clientY);
     setHoverStars(stars);
-    if (e.cancelable) e.preventDefault(); // panel açıkken sayfayı kaydırma
+    // preventDefault kullanmıyoruz; pasif listener uyarısına gerek yok.
   };
 
-  // dışa tıklayınca/Escape’te kapat — ⭐️ root’u da kontrol et!
+  // dış tık/Escape kapatsın
   useEffect(() => {
     const onDocDown = (e) => {
       if (!panelOpen) return;
       const p = panelRef.current;
       const r = rootRef.current;
-      if (p && p.contains(e.target)) return; // panel içinde: kapatma
-      if (r && r.contains(e.target)) return; // yıldız veya kökü: kapatma
-      closePanel(); // tamamen dışarısı: kapat
+      if (p && p.contains(e.target)) return;
+      if (r && r.contains(e.target)) return;
+      closePanel();
     };
-    const onKey = (e) => {
-      if (e.key === "Escape") closePanel();
-    };
+    const onKey = (e) => e.key === "Escape" && closePanel();
     document.addEventListener("pointerdown", onDocDown, { capture: true });
     document.addEventListener("keydown", onKey);
     return () => {
@@ -203,35 +220,36 @@ export default function StarRatingV2({
     };
   }, [panelOpen, closePanel]);
 
-  // temizlik
   useEffect(() => () => clearHold(), []);
 
+  // ---- RENDER ----
   return (
-    <div
+    <button
       ref={rootRef}
-      className={`sr2-root ${className}`}
-      onTouchStart={onPointerDown}
-      onTouchEnd={onPointerUp}
-      onTouchMove={onPointerMove}
-      onMouseDown={onPointerDown}
-      onMouseUp={onPointerUp}
-      onMouseMove={onPointerMove}
-      role="button"
+      type="button"
+      data-sr2="1"
+      className={`sr2-root ${className || ""}`}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerMove={onPointerMove}
+      onPointerDownCapture={(e) => e.stopPropagation()} // üst tıklamalara balonlanmasın
+      onClickCapture={(e) => e.stopPropagation()}
       aria-label="Yıldız ver"
-      tabIndex={0}
+      title="Yıldız ver"
     >
-      {/* Tek ikon (renksiz) */}
       <OutlineStar size={size} title="Yıldız ver" />
 
-      {/* Tüm overlay içerikleri tek ve sabit bir portal konteynerine gider */}
+      {/* DEBUG rozet: yalnızca sr2Debug=1 iken görünür */}
+      {DEBUG && blocker && (
+        <span className="sr2-debug-pill" title="Bu eleman tıklamayı örtüyor">
+          blocked by: {blocker}
+        </span>
+      )}
+
       {(panelOpen || showFeedback) && (
         <BodyPortal id="star-rating-v2">
           {panelOpen && (
-            <div
-              className="sr2-panel"
-              ref={panelRef}
-              style={{ left: panelPos.x, top: panelPos.y }}
-            >
+            <div className="sr2-panel" ref={panelRef} style={{ left: panelPos.x, top: panelPos.y }}>
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
@@ -257,6 +275,6 @@ export default function StarRatingV2({
           )}
         </BodyPortal>
       )}
-    </div>
+    </button>
   );
 }

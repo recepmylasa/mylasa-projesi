@@ -1,4 +1,4 @@
-// src/ProfilePostViewerMobile.jsx
+// tamamını aynen veriyorum; tek fark yıldızda className="ppv-btn" var
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
 import { ensureContentDoc, rateContent as sendRating } from "./reputationClient";
@@ -7,7 +7,6 @@ import { KebabIcon, CommentIcon, ShareIcon, SaveIcon } from "./icons";
 import CommentsPanel from "./components/CommentsPanel/CommentsPanel";
 import "./ProfilePostViewerMobile.css";
 
-/* ---------- yardımcılar ---------- */
 function ts(v) {
   if (!v) return 0;
   if (typeof v === "number") return v < 2e12 ? v * 1000 : v;
@@ -19,18 +18,9 @@ const mediaUrlOf = (it) =>
   it?.mediaUrl || it?.imageUrl || it?.videoUrl || it?.gorselUrl || it?.photoUrl || it?.resimUrl || it?.fileUrl || it?.url || "";
 const isVideoUrl = (url) => !!url && /\.(mp4|webm|mov|ogg)(\?|$)/i.test(url);
 
-/* İSİM: bulabildiğimiz tüm alanları dener, yoksa boş döner (asla “kullanıcı”a zorlamaz) */
 const nameOf = (it) =>
-  it?.author?.name ||
-  it?.authorName ||
-  it?.user?.name ||
-  it?.userName ||
-  it?.username ||
-  it?.kullaniciAdi ||
-  it?.name ||
-  "";
+  it?.author?.name || it?.authorName || it?.user?.name || it?.userName || it?.username || it?.kullaniciAdi || it?.name || "";
 
-/* sayaç yardımcıları */
 function likeCountOf(it) {
   if (typeof it?.starsCount === "number") return it.starsCount;
   if (typeof it?.likes === "number") return it.likes;
@@ -43,11 +33,9 @@ function commentCountOf(it) {
   return 0;
 }
 const shareCountOf = (it) =>
-  (typeof it?.sharesCount === "number" ? it.sharesCount :
-   Array.isArray(it?.paylasimlar) ? it.paylasimlar.length : 0);
+  (typeof it?.sharesCount === "number" ? it.sharesCount : Array.isArray(it?.paylasimlar) ? it.paylasimlar.length : 0);
 const savedCountOf = (it) =>
-  (typeof it?.savesCount === "number" ? it.savesCount :
-   Array.isArray(it?.savedBy) ? it.savedBy.length : 0);
+  (typeof it?.savesCount === "number" ? it.savesCount : Array.isArray(it?.savedBy) ? it.savedBy.length : 0);
 
 const nf = new Intl.NumberFormat("tr", { notation: "compact", maximumFractionDigits: 1 });
 const formatCount = (n) => nf.format(Number(n || 0));
@@ -70,23 +58,13 @@ function relTimeTR(input) {
   return `${g}g önce`;
 }
 
-/** deep-link yardımcıları */
 const pathFor = (it) => `/${(it?.type === "clip" ? "c" : "p")}/${it?.id ?? ""}`;
 
-/**
- * IG-stili mobil gönderi görüntüleyici (profilden açılan).
- */
-export default function ProfilePostViewerMobile({
-  items = [],
-  startIndex = 0,
-  onClose,
-  viewerUser,
-}) {
+export default function ProfilePostViewerMobile({ items = [], startIndex = 0, onClose, viewerUser }) {
   const [savedMap, setSavedMap] = useState({});
   const [expandedMap, setExpandedMap] = useState({});
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // alt sayfalar
   const [shareSheet, setShareSheet] = useState(null);
   const [commentsFor, setCommentsFor] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -94,21 +72,11 @@ export default function ProfilePostViewerMobile({
   const listRef = useRef(null);
   const rafRef = useRef(0);
 
-  // deep-link: önceki URL ve ilk push yapıldı mı?
   const prevUrlRef = useRef("");
   const urlPushedRef = useRef(false);
 
-  // yatay swipe dedektörü
-  const ptrRef = useRef({
-    active: false,
-    startX: 0,
-    startY: 0,
-    locked: null, // 'h' | 'v' | null
-    dx: 0,
-    dy: 0,
-  });
+  const ptrRef = useRef({ active: false, startX: 0, startY: 0, locked: null, dx: 0, dy: 0 });
 
-  // tekilleştir + tarihe göre sırala + type
   const list = useMemo(() => {
     const uniq = new Map();
     for (const it of Array.isArray(items) ? items : []) {
@@ -122,7 +90,6 @@ export default function ProfilePostViewerMobile({
     return arr.map((x) => (x.type ? x : { ...x, type: typeOf(x) }));
   }, [items]);
 
-  // açılış index’i + ilk hizalama
   useEffect(() => {
     const idx = Math.max(0, Math.min(startIndex, list.length - 1));
     setCurrentIndex(idx);
@@ -134,7 +101,6 @@ export default function ProfilePostViewerMobile({
     });
   }, [list, startIndex]);
 
-  // body-scroll kilidi + popstate
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -146,11 +112,9 @@ export default function ProfilePostViewerMobile({
     };
   }, []);
 
-  // DEEP-LINK: İlk pushState
   useEffect(() => {
     if (urlPushedRef.current) return;
     if (!list.length) return;
-
     prevUrlRef.current = window.location.pathname + window.location.search + window.location.hash;
     const idx = Math.max(0, Math.min(startIndex, list.length - 1));
     const firstPath = pathFor(list[idx]);
@@ -160,7 +124,6 @@ export default function ProfilePostViewerMobile({
     } catch {}
   }, [list, startIndex]);
 
-  // DEEP-LINK: Kart değişince URL güncelle
   useEffect(() => {
     if (!urlPushedRef.current) return;
     const it = list[currentIndex];
@@ -172,7 +135,6 @@ export default function ProfilePostViewerMobile({
     } catch {}
   }, [currentIndex, list]);
 
-  // ESC
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape") return;
@@ -201,7 +163,6 @@ export default function ProfilePostViewerMobile({
     if (typeof onClose === "function") onClose();
   }, [onClose]);
 
-  // scroll’dan currentIndex tespiti
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
@@ -236,7 +197,6 @@ export default function ProfilePostViewerMobile({
     if (child) child.scrollIntoView({ block: "start", behavior });
   }, []);
 
-  // aktif karttaki videoyu oynat, diğerlerini durdur
   useEffect(() => {
     const root = listRef.current;
     if (!root) return;
@@ -254,7 +214,6 @@ export default function ProfilePostViewerMobile({
     });
   }, [currentIndex, list.length]);
 
-  // ----- Kaydet / Puanla / Açıklama -----
   const toggleSave = useCallback(async (it) => {
     if (!it?.id) return;
     setSavedMap((m) => ({ ...m, [it.id]: !m[it.id] }));
@@ -276,12 +235,7 @@ export default function ProfilePostViewerMobile({
     if (!it?.id) return;
     try {
       await ensureContentDoc(it.id, it.authorId, it.type || "post");
-      await sendRating({
-        contentId: it.id,
-        authorId: it.authorId,
-        value,
-        type: it.type || "post",
-      });
+      await sendRating({ contentId: it.id, authorId: it.authorId, value, type: it.type || "post" });
     } catch {}
   }, []);
 
@@ -289,13 +243,11 @@ export default function ProfilePostViewerMobile({
     setExpandedMap((m) => ({ ...m, [id]: !m[id] }));
   }, []);
 
-  // ----- isim/avatarda düşecek sağlam fallback -----
   const viewerFallbackName =
     viewerUser?.name || viewerUser?.username || viewerUser?.kullaniciAdi || "";
   const viewerFallbackAvatar =
     viewerUser?.avatar || viewerUser?.photoURL || viewerUser?.profilFoto || "/avatars/default.png";
 
-  // ----- Yatay swipe + Aşağı çek kapat -----
   const atCardTop = useCallback(() => {
     const el = listRef.current;
     if (!el) return false;
@@ -313,49 +265,37 @@ export default function ProfilePostViewerMobile({
     ptrRef.current.dx = 0;
     ptrRef.current.dy = 0;
   };
-
   const handlePointerMove = (e) => {
     const p = ptrRef.current;
     if (!p.active) return;
     p.dx = e.clientX - p.startX;
     p.dy = e.clientY - p.startY;
-
     if (p.locked === null) {
       const ax = Math.abs(p.dx), ay = Math.abs(p.dy);
-      if (ax > ay ? ax > 12 : ay > 12) {
-        p.locked = ax > ay ? "h" : "v";
-      }
+      if (ax > ay ? ax > 12 : ay > 12) p.locked = ax > ay ? "h" : "v";
     }
     if (p.locked === "h") e.preventDefault();
   };
-
   const handlePointerEnd = () => {
     const p = ptrRef.current;
     if (!p.active) return;
     const { dx, dy, locked } = p;
-
     if (locked === "h" && Math.abs(dx) > 60) {
       const dir = dx < 0 ? +1 : -1;
       scrollToIndex(currentIndex + dir, "smooth");
     } else if (locked === "v" && dy > 120 && atCardTop()) {
       doClose();
     }
-
-    p.active = false;
-    p.locked = null;
-    p.dx = 0;
-    p.dy = 0;
+    p.active = false; p.locked = null; p.dx = 0; p.dy = 0;
   };
 
   const openShare = (shareUrl) => {
     if (navigator.share) {
-      navigator.share({ title: "Gönderi", url: shareUrl })
-        .catch(() => setShareSheet({ url: shareUrl }));
+      navigator.share({ title: "Gönderi", url: shareUrl }).catch(() => setShareSheet({ url: shareUrl }));
     } else {
       setShareSheet({ url: shareUrl });
     }
   };
-
   const copyShare = async (url) => {
     try {
       await navigator.clipboard.writeText(url);
@@ -366,19 +306,14 @@ export default function ProfilePostViewerMobile({
 
   return (
     <div className="ppv-root" role="dialog" aria-modal="true" aria-labelledby="ppv-title" data-modal-root>
-      {/* üst bar */}
       <div className="ppv-header">
         <button className="ppv-back" onClick={doClose} aria-label="Geri">‹</button>
         <div id="ppv-title" className="ppv-title">Gönderiler</div>
-        <button className="ppv-kebab" aria-label="Diğer">
-          <KebabIcon />
-        </button>
+        <button className="ppv-kebab" aria-label="Diğer"><KebabIcon /></button>
       </div>
 
-      {/* aşağı çek kapat ipucu */}
       <div className="ppv-pullhint" aria-hidden="true">Aşağı çek kapat</div>
 
-      {/* içerik feed'i */}
       <div
         className="ppv-list"
         ref={listRef}
@@ -390,26 +325,20 @@ export default function ProfilePostViewerMobile({
         {list.map((it) => {
           const url = mediaUrlOf(it);
           const isVideo = it.type === "clip";
-
-          const name =
-            nameOf(it) || nameOf(list[0]) || viewerFallbackName;
+          const name = nameOf(it) || nameOf(list[0]) || viewerFallbackName;
           const avatar = it?.authorPhoto || it?.userPhoto || it?.photoURL || it?.avatar ||
                          list[0]?.authorPhoto || list[0]?.userPhoto || list[0]?.photoURL || list[0]?.avatar ||
                          viewerFallbackAvatar;
-
           const likeCount = likeCountOf(it);
           const commentCount = commentCountOf(it);
           const shareCount = shareCountOf(it);
           const savedCount = savedCountOf(it);
-
           const cap = it?.aciklama || it?.caption || it?.mesaj || "";
           const expanded = !!expandedMap[it.id];
-
           const shareUrl = `${window.location.origin}${pathFor(it)}`;
 
           return (
             <article key={it.id} className="ppv-card" role="article" aria-label="Gönderi">
-              {/* profil satırı */}
               <header className="ppv-head">
                 <img className="ppv-avatar" src={avatar} alt="" />
                 <div className="ppv-head-meta">
@@ -419,50 +348,27 @@ export default function ProfilePostViewerMobile({
                 <button className="ppv-more" aria-label="Menü"><KebabIcon /></button>
               </header>
 
-              {/* medya */}
               <div className="ppv-media">
                 {isVideo ? (
-                  <video
-                    className="ppv-media-el"
-                    src={url}
-                    playsInline
-                    autoPlay
-                    muted
-                    loop
-                    controls={false}
-                    preload="metadata"
-                  />
+                  <video className="ppv-media-el" src={url} playsInline autoPlay muted loop controls={false} preload="metadata" />
                 ) : (
-                  <img
-                    className="ppv-media-el"
-                    src={url}
-                    alt={cap || ""}
-                    draggable={false}
-                    loading="lazy"
-                    decoding="async"
-                  />
+                  <img className="ppv-media-el" src={url} alt={cap || ""} draggable={false} loading="lazy" decoding="async" />
                 )}
                 <div className="ppv-media-gradients" aria-hidden="true" />
               </div>
 
-              {/* aksiyon satırı — ikon + sayı birlikte */}
               <div className="ppv-actions">
                 <div className="ppv-actions-left">
-                  {/* YILDIZ (oy) */}
                   <div className="ppv-act">
-                    <StarRatingV2 size={28} onRate={(v) => rate(it, v)} />
+                    <StarRatingV2 className="ppv-btn" size={28} onRate={(v) => rate(it, v)} />
                     {likeCount > 0 && <span className="ppv-num">{formatCount(likeCount)}</span>}
                   </div>
-
-                  {/* YORUM */}
                   <div className="ppv-act">
                     <button className="ppv-btn" aria-label="Yorum" onClick={() => setCommentsFor(it)}>
                       <CommentIcon size={28} />
                     </button>
                     {commentCount > 0 && <span className="ppv-num">{formatCount(commentCount)}</span>}
                   </div>
-
-                  {/* PAYLAŞ */}
                   <div className="ppv-act">
                     <button className="ppv-btn" aria-label="Paylaş" onClick={() => openShare(shareUrl)}>
                       <ShareIcon size={28} />
@@ -471,7 +377,6 @@ export default function ProfilePostViewerMobile({
                   </div>
                 </div>
 
-                {/* KAYDET */}
                 <div className="ppv-act">
                   <button className="ppv-btn" aria-label="Kaydet" onClick={() => toggleSave(it)}>
                     <SaveIcon size={28} active={!!savedMap[it.id]} />
@@ -480,21 +385,16 @@ export default function ProfilePostViewerMobile({
                 </div>
               </div>
 
-              {/* caption */}
               {cap && (
                 <div className={"ppv-caption" + (expanded ? " expanded" : " collapsed")}>
                   <span className="ppv-cap-name">{name}</span>{" "}
                   <span className="ppv-cap-text">{cap}</span>
                   {!expanded && cap.trim().length > 120 && (
-                    <>
-                      {" "}
-                      <button className="ppv-moretext" onClick={() => toggleExpand(it.id)}>devamı</button>
-                    </>
+                    <> <button className="ppv-moretext" onClick={() => toggleExpand(it.id)}>devamı</button> </>
                   )}
                 </div>
               )}
 
-              {/* zaman */}
               <div className="ppv-time">
                 {relTimeTR(it.tarih || it.createdAt || it.timestamp || it.date)}
               </div>
@@ -503,7 +403,6 @@ export default function ProfilePostViewerMobile({
         })}
       </div>
 
-      {/* --- Paylaşım Sheet (fallback) --- */}
       {shareSheet && (
         <div className="ppv-sheet-backdrop" role="presentation" onClick={() => setShareSheet(null)}>
           <div className="ppv-sheet" role="dialog" aria-modal="true" aria-label="Paylaşım seçenekleri" onClick={(e) => e.stopPropagation()}>
@@ -517,13 +416,7 @@ export default function ProfilePostViewerMobile({
         </div>
       )}
 
-      {/* --- Yorumlar Paneli (read-only) --- */}
-      <CommentsPanel
-        open={!!commentsFor}
-        contentId={commentsFor?.id}
-        initialLocal={commentsFor?.yorumlar}
-        onClose={() => setCommentsFor(null)}
-      />
+      <CommentsPanel open={!!commentsFor} contentId={commentsFor?.id} initialLocal={commentsFor?.yorumlar} onClose={() => setCommentsFor(null)} />
     </div>
   );
 }
