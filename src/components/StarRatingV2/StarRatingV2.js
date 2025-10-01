@@ -177,12 +177,15 @@ export default function StarRatingV2({
       const r = el.getBoundingClientRect();
       const inside =
         e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-      if (inside && hoverStars > 0) {
-        closePanel();
-        await commitVote(hoverStars);
-      } else {
-        closePanel();
+      if (inside) {
+        const stars = hoverStars > 0 ? hoverStars : computeStarsFromPointer(e.clientX, e.clientY);
+        if (stars > 0) {
+          closePanel();
+          await commitVote(stars);
+          return;
+        }
       }
+      closePanel();
       return;
     }
     // panel yoksa ve uzun bas tetiklenmediyse -> hızlı 1★
