@@ -2,15 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ---- Helpers
     function listOrEmpty(x) { return (x is list) ? x : []; }
-    function devWindow() { return request.time < timestamp('2025-10-01T00:00:00Z'); }
+    // DEV okuma penceresi (UZATILDI)
+    function devWindow() { return request.time < timestamp('2030-01-01T00:00:00Z'); }
 
-    /* ===== USERS ===== */
+    /* =================== USERS =================== */
     match /users/{userId} {
       allow read: if request.auth != null;
       allow create, delete: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && request.auth.uid == userId;
 
+      // /users/{uid}/saved/{contentId}
       match /saved/{docId} {
         allow read: if request.auth != null && request.auth.uid == userId;
         allow create: if request.auth != null
@@ -29,27 +32,46 @@ service cloud.firestore {
       allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
     }
 
-    /* ===== LOCATIONS (özet) ===== */
+    /* =================== LOCATIONS (özet) =================== */
     match /locations/{userId} {
       allow write: if request.auth != null && request.auth.uid == userId;
       allow read: if request.auth != null && devWindow();
     }
 
-    /* ===== POSTS/HIKAYELER/CLIPS (özet) ===== */
-    match /posts/{postId}   { allow read: if request.auth != null; allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid; allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid; }
-    match /hikayeler/{id}   { allow read: if request.auth != null; allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid; allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid; }
-    match /clips/{clipId}   { allow read: if request.auth != null; allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid; allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid; }
+    /* ===== POSTS / HIKAYELER / CLIPS (özet) ===== */
+    match /posts/{postId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+    }
 
-    /* ===== CONTENT + RATINGS ===== */
+    match /hikayeler/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+    }
+
+    match /clips/{clipId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+    }
+
+    /* =================== CONTENT + RATINGS =================== */
     match /content/{contentId} {
       allow read: if request.auth != null;
+
+      // İçeriği oluşturan herkes oluşturabilir (id kontrolünü backend yapıyorsan orada tut)
       allow create: if request.auth != null
         && request.resource.data.authorId is string
         && request.resource.data.type in ['post','story','clip'];
+
       allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid;
 
+      // /content/{contentId}/ratings/{raterId}
       match /ratings/{raterId} {
         allow read: if request.auth != null;
+
         allow create: if request.auth != null
           && raterId == request.auth.uid
           && request.resource.data.raterId == request.auth.uid
@@ -57,30 +79,33 @@ service cloud.firestore {
           && request.resource.data.value >= 1
           && request.resource.data.value <= 5
           && exists(/databases/$(database)/documents/content/$(contentId));
+
         allow update: if request.auth != null
           && raterId == request.auth.uid
           && request.resource.data.value is int
           && request.resource.data.value >= 1
           && request.resource.data.value <= 5;
+
         allow delete: if false;
       }
     }
 
-    /* ====== LABUBU SERİSİ (public read, admin write) ====== */
+    /* ===== LABUBU SERİSİ (public read, admin write yok) ===== */
     match /series/{seriesId} {
-      allow read: if true;        // herkes okuyabilir (UI için gerekli)
-      allow write: if false;      // yazma sadece Admin SDK (Functions) ile
+      allow read: if true;
+      allow write: if false;
     }
 
-    /* Legendary cap’ler (UI okumazsa bile sorun yok) */
+    /* Legendary cap’ler (UI için okuma serbest/DEV’te de açık) */
     match /global_legendary_caps/{docId} {
       allow read: if request.auth != null || devWindow();
       allow write: if false;
     }
 
-    /* ===== Catch-all (dev okuma) ===== */
+    /* =================== CATCH-ALL (DEV OKUMA) =================== */
     match /{document=**} {
-      allow read: if request.auth != null && devWindow();
+      // Kimlik varsa her zaman; yoksa sadece dev penceresinde oku
+      allow read: if (request.auth != null) || devWindow();
       allow write: if false;
     }
   }
