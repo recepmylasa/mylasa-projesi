@@ -272,7 +272,9 @@ exports.backfillContentStubs = onCall(
 const SERIES_ID = "S1";
 
 /* helpers */
-const hashSeed = (s) => { let h = 2166136261>>>0; for (let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return (h>>>0)/4294967295; };
+// RNG'yi [0,1) aralığına oturt: 2^32 = 4294967296
+const hashSeed = (s) => { let h = 2166136261>>>0; for (let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return (h>>>0)/4294967296; };
+
 const pickWeighted = (rng, weights) => {
   const arr = Object.entries(weights).filter(([,w])=>w>0);
   const total = arr.reduce((a,[,w])=>a+w,0);
@@ -308,13 +310,14 @@ exports.seedSeriesS1 = onCall({ region: REGION }, async (req) => {
     milestones: [5, 1000, 5000, 10000, 25000, 50000],
     milestoneRewards: { "5": 1, "1000": 1, "5000": 1, "10000": 1, "25000": 1, "50000": 2 },
     cards: [
-      { code:"S1-LOVE", "name":"LOVE", "rarity":"common", "asset":"/cards/S1/LOVE.jpg" },
-      { code:"S1-HAPPINESS", "name":"HAPPINESS", "rarity":"common", "asset":"/cards/S1/HAPPINESS.jpg" },
-      { code:"S1-SERENITY", "name":"SERENITY", "rarity":"common", "asset":"/cards/S1/SERENITY.jpg" },
-      { code:"S1-HOPE", "name":"HOPE", "rarity":"common", "asset":"/cards/S1/HOPE.jpg" },
-      { code:"S1-LOYALTY", "name":"LOYALTY", "rarity":"rare", "asset":"/cards/S1/LOYALTY.jpg" },
-      { code:"S1-AURORA", "name":"AURORA", "rarity":"legendaryHidden", "asset":"/cards/S1/AURORA.jpg", "hidden":true },
-      { code:"S1-VOID", "name":"VOID", "rarity":"legendaryHidden", "asset":"/cards/S1/VOID.jpg", "hidden":true }
+      // Asset yolları repo içeriğiyle hizalandı:
+      { code:"S1-LOVE",      name:"LOVE",      rarity:"common",          asset:"/cards/S1/LOVE.png" },
+      { code:"S1-HAPPINESS", name:"HAPPINESS", rarity:"common",          asset:"/cards/S1/HAPPINESS.jpg.png" },
+      { code:"S1-SERENITY",  name:"SERENITY",  rarity:"common",          asset:"/cards/S1/SERENITY.jpg.png" },
+      { code:"S1-HOPE",      name:"HOPE",      rarity:"common",          asset:"/cards/S1/HOPE.png" },
+      { code:"S1-LOYALTY",   name:"LOYALTY",   rarity:"rare",            asset:"/cards/S1/LOYALTY.jpg.png" },
+      { code:"S1-AURORA",    name:"AURORA",    rarity:"legendaryHidden", asset:"/cards/S1/AURORA.jpg.png", hidden:true },
+      { code:"S1-VOID",      name:"VOID",      rarity:"legendaryHidden", asset:"/cards/S1/VOID.jpg.png",   hidden:true }
     ]
   };
 
@@ -403,7 +406,16 @@ exports.openBlindBox = onCall({ region: REGION }, async (req) => {
 
     if (!chosen) {
       const pool = series.cards.filter(c=>c.rarity===rarity);
-      chosen = pool[Math.floor(rng*pool.length)];
+      if (!pool.length) {
+        throw new HttpsError("failed-precondition", `No cards available in pool for rarity "${rarity}"`);
+      }
+      // rng [0,1) olduğu halde, çifte emniyet:
+      const idx = Math.min(pool.length - 1, Math.floor(rng * pool.length));
+      chosen = pool[idx];
+    }
+
+    if (!chosen) {
+      throw new HttpsError("internal", "Drop selection failed");
     }
 
     const cardRef = cardsCol.doc(chosen.code);

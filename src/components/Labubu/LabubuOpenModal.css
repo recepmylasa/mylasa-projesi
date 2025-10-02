@@ -15,27 +15,21 @@
   padding: 12px 14px;
   border-bottom: 1px solid #efefef;
 }
-.labubu-title {
-  font-weight: 800;
-  letter-spacing: .2px;
-}
-.labubu-close {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-}
+.labubu-title { font-weight: 800; letter-spacing: .2px; }
+.labubu-close { appearance: none; border: 0; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; }
 
-.labubu-body {
-  padding: 14px;
-}
+.labubu-body { padding: 14px; }
 
+/* --- Görüntü her zaman görülsün + cihaza sığsın --- */
 .card-frame {
   position: relative;
   width: 100%;
+  /* 9:16 oran — modern tarayıcılar */
   aspect-ratio: 9 / 16;
+
+  /* Eski/iOS tarayıcılar için güvenlik: en az yükseklik ver, boş görünmesin */
+  min-height: 320px;
+
   border-radius: 12px;
   overflow: hidden;
   background: linear-gradient(180deg, #f7f7f7, #ececec);
@@ -43,11 +37,34 @@
   place-items: center;
 }
 
+/* Aspect-ratio desteklemeyen tarayıcılar için kesin fallback */
+@supports not (aspect-ratio: 1 / 1) {
+  .card-frame::before {
+    content: "";
+    display: block;
+    padding-top: 177.78%; /* 9:16 */
+  }
+  .card-frame {
+    height: auto;        /* ::before padding yüksekliği tanımlar */
+  }
+}
+
+/* <picture> kullansak da kullanmasak da aynı kural geçerli olsun */
+.card-frame picture,
 .card-frame img {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;   /* TAŞMAYI ÖNLE: kırpmadan, her formata sığdır */
+  image-rendering: auto;
+}
+
+/* Çok kısa ekranlarda (yatay/mini pencereler) daha iyi sığdırma */
+@media (max-height: 640px) {
+  .labubu-modal { max-height: 92vh; }
+  .card-frame { min-height: 240px; }
 }
 
 .card-name {
@@ -72,7 +89,6 @@
   color: #555;
   font-weight: 600;
 }
-
 .badge {
   display: inline-flex;
   align-items: center;
