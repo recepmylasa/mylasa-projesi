@@ -29,7 +29,7 @@ export default function useLabubu(uid) {
   const openBox = async (type = "standardBox") => {
     const fn = httpsCallable(functions, "openBlindBox");
     const res = await fn({ boxType: type });
-    return res.data.drop;
+    return res.data.drop; // {code,name,asset,rarity,dupe}
   };
 
   const incStar = async () => {

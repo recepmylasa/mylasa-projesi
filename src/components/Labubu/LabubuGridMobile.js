@@ -15,18 +15,15 @@ export default function LabubuGridMobile({
 
   const runOpenAnimation = useCallback(async () => {
     if (!boxesReady || opening) return;
-
     setOpening(true);
-
     try {
       const maybeDrop = await (onOpenBox ? onOpenBox("standardBox") : null);
       if (maybeDrop?.asset) {
         const url = await safeResolve(maybeDrop.asset);
         setPreviewUrl(url);
       }
-    } catch {
-      /* noop */
-    } finally {
+    } catch {/* noop */}
+    finally {
       setTimeout(() => {
         setOpening(false);
         setPreviewUrl(null);
@@ -48,22 +45,22 @@ export default function LabubuGridMobile({
     <div className="labubu-grid labubu-grid--mobile">
       <button
         type="button"
-        className={`labubu-cell labubu-cell--box ${boxesReady > 0 ? "ready" : ""} ${opening ? "is-opening" : ""}`}
+        className={`labubu-cell labubu-cell--box ${boxesReady>0?"ready":""} ${opening?"is-opening":""}`}
         onClick={handleDoubleTap}
-        onDoubleClick={(e) => { e.preventDefault(); runOpenAnimation(); }}
-        title={boxesReady > 0 ? "Çift dokun: Kutuyu aç" : "Kutu yok"}
+        onDoubleClick={(e)=>{ e.preventDefault(); runOpenAnimation(); }}
+        title={boxesReady>0 ? "Çift dokun: Kutuyu aç" : "Kutu yok"}
         disabled={opening}
       >
         <div className="labubu-box-illu" />
         <div className="labubu-box-label">
-          {boxesReady > 0 ? `Kutu: ${boxesReady}` : "Kutu yok"}
+          {boxesReady>0 ? `Kutu: ${boxesReady}` : "Kutu yok"}
           <span className="labubu-hint">çift dokun</span>
         </div>
 
         {opening && (
           <div className="labubu-opening" aria-hidden="true">
             <div
-              className="labubu-opening-card card-pop"
+              className="labubu-opening-card"
               style={{ backgroundImage: `url(${previewUrl || "/cards/_SILHOUETTE.jpg"})` }}
             />
           </div>
@@ -74,12 +71,12 @@ export default function LabubuGridMobile({
         <button
           key={c.code}
           className={`labubu-cell labubu-cell--card rarity-${c.rarity}`}
-          onClick={() => onOpenCard?.(c)}
+          onClick={()=>onOpenCard?.(c)}
           title={c.name}
         >
-          <div className="labubu-thumb" style={{ backgroundImage: `url(${c.asset})` }} />
+          <div className="labubu-thumb" style={{ backgroundImage:`url(${c.asset})` }} />
           <div className="labubu-name">{c.name}</div>
-          {c.count > 1 && <span className="labubu-count">×{c.count}</span>}
+          {c.count>1 && <span className="labubu-count">×{c.count}</span>}
         </button>
       ))}
     </div>

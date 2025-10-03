@@ -3,19 +3,17 @@ import React, { useEffect, useState } from "react";
 import "./LabubuOpenModal.css";
 import { safeResolve } from "../../utils/cardAssets";
 
-/**
- * Props:
- * - drop: { name, rarity, asset }  // openBlindBox dönüşü
- * - onClose: () => void
- */
 export default function LabubuOpenModalDesktop({ drop = null, onClose = () => {} }) {
   const [url, setUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       const resolved = await safeResolve(drop?.asset);
-      if (alive) setUrl(resolved);
+      if (!alive) return;
+      setUrl(resolved);
+      setLoading(false);
     })();
     return () => { alive = false; };
   }, [drop?.asset]);
@@ -30,9 +28,7 @@ export default function LabubuOpenModalDesktop({ drop = null, onClose = () => {}
       text: `${drop?.name || "Card"} — ${rarityLabel}`,
       url: typeof window !== "undefined" ? window.location.href : "",
     };
-    if (navigator?.share) {
-      try { await navigator.share(shareData); } catch {}
-    }
+    if (navigator?.share) { try { await navigator.share(shareData); } catch {} }
   };
 
   return (
@@ -44,16 +40,13 @@ export default function LabubuOpenModalDesktop({ drop = null, onClose = () => {}
 
       <div className="labubu-body">
         <div className="card-frame" aria-live="polite">
-          {url ? (
-            <img src={url} alt={drop?.name || "Card"} />
-          ) : (
-            // Silüet varsa göster, yoksa gradient skeleton’da beklet
-            <img
-              src={"/cards/_SILHOUETTE.jpg"}
-              alt="placeholder"
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-            />
-          )}
+          {loading && <div className="card-skeleton" />}
+          <img
+            key={url || "fallback"}
+            src={url}
+            alt={drop?.name || "Card"}
+            onError={(e)=>{ e.currentTarget.src = url; }}
+          />
           <div className="card-name">{drop?.name || "UNKNOWN"}</div>
         </div>
 

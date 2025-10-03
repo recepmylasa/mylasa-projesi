@@ -1,98 +1,70 @@
 // src/utils/cardAssets.js
-// Kart görsel yolunu (jpg/png) güvenle çözen yardımcı.
-// Amaç: Firestore'da .jpg dursa bile public'te .png varsa onu otomatik bulup döndürmek.
-// Kullanım: const url = await safeResolve(drop.asset);
+// Her formatı (png/jpg/jpeg/webp/gif/avif) sırayla dener.
+// Bulamazsa gömülü base64 placeholder döndürür (beyaz ekran yok!).
 
 const CACHE = new Map();
+const CANDIDATE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"];
 
-// İsteğe bağlı placeholderlar (varsa kullanır, yoksa ilk bulunan adayı döndürür)
-const PLACEHOLDERS = ["/cards/_SILHOUETTE.jpg", "/cards/_SILHOUETTE.png"];
+// 600x1066 gri placeholder (SVG → data URL)
+const FALLBACK_DATA_URL =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='600' height='1066' viewBox='0 0 600 1066'>
+      <defs>
+        <linearGradient id='g' x1='0' x2='1'>
+          <stop offset='0' stop-color='#f3f3f3'/>
+          <stop offset='1' stop-color='#e9e9e9'/>
+        </linearGradient>
+      </defs>
+      <rect fill='url(#g)' width='100%' height='100%'/>
+      <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle'
+            fill='#999' font-family='Arial,Helvetica,sans-serif' font-size='32'>image</text>
+    </svg>`
+  );
 
-/** Bir URL gerçekten yüklenebiliyor mu, hızlı görüntü yoklaması */
-function probeImage(url) {
+function normPath(input) {
+  if (!input) return "";
+  const s = String(input).replace(/^public\//, "");
+  return s.startsWith("/") ? s : `/${s}`;
+}
+
+function uniq(arr) {
+  return [...new Set(arr)];
+}
+
+function tryLoad(url) {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve(true);
-    img.onerror = () => resolve(false);
-    // İlk yoklamada cache takılmasın diye küçük bir sorgu eki
-    img.src = url + (url.includes("?") ? "&" : "?") + "v=" + Date.now();
+    img.onload = () => resolve(url);
+    img.onerror = () => resolve(null);
+    const sep = url.includes("?") ? "&" : "?";
+    img.src = `${url}${sep}v=${Date.now()}`; // dev cache kır
   });
 }
 
-/** Verilen asset için denenebilecek tüm aday yolları üretir */
-export function buildCandidates(asset) {
-  if (!asset || typeof asset !== "string") return [...PLACEHOLDERS];
-
-  let a = asset.trim();
-
-  // Yanlış çift uzantıları düzelt (.jpg.png / .png.jpg)
-  a = a.replace(/\.jpg\.png$/i, ".png").replace(/\.png\.jpg$/i, ".jpg");
-
-  // Başında protokol yoksa ve / ile başlamıyorsa root'a sabitle
-  if (!/^([a-z]+:|\/)/i.test(a)) a = "/" + a;
-
-  // Mutlak URL ise (http, data, blob, gs) doğrudan aday
-  if (/^(https?:|data:|blob:|gs:)/i.test(a)) return [a];
-
-  const m = a.match(/\.(jpg|jpeg|png)$/i);
-  const root = m ? a.slice(0, m.index) : a;
-  const list = new Set();
-
-  // Orijinal (küçük harf uzantı)
-  if (m) list.add(root + m[0].toLowerCase());
-  else list.add(a);
-
-  // Uzantı varyasyonları
-  [".png", ".jpg", ".jpeg"].forEach((e) => list.add(root + e));
-  [".PNG", ".JPG", ".JPEG"].forEach((e) => list.add(root + e));
-
-  // Hic uzantı yoksa
-  if (!m) {
-    list.add(a + ".png");
-    list.add(a + ".jpg");
-  }
-
-  return Array.from(list);
-}
-
-/** Asenkron ve cache’li çözümleyici */
 export async function safeResolve(asset) {
-  const key = String(asset || "");
+  if (!asset) return FALLBACK_DATA_URL;
+
+  const key = String(asset);
   if (CACHE.has(key)) return CACHE.get(key);
 
-  const candidates = buildCandidates(key);
+  const base = normPath(asset);
+  const publicUrl =
+    (typeof process !== "undefined" && process?.env?.PUBLIC_URL) || "";
 
-  for (const url of candidates) {
-    // Mutlak http/data/blob ise yoklama yapmadan kabul et
-    if (!url.startsWith("/")) {
-      CACHE.set(key, url);
-      return url;
-    }
-    // Sadece aynı origin altında görsel yoklaması yap
-    /* eslint-disable no-await-in-loop */
-    const ok = await probeImage(url);
+  const hasExt = /\.[a-z0-9]{2,5}$/i.test(base);
+  const candidates = hasExt ? [base] : CANDIDATE_EXTS.map((ext) => `${base}${ext}`);
+
+  const urls = uniq(candidates.flatMap((u) => [u, `${publicUrl}${u}`]));
+
+  for (const u of urls) {
+    const ok = await tryLoad(u);
     if (ok) {
-      CACHE.set(key, url);
-      return url;
+      CACHE.set(key, ok);
+      return ok;
     }
   }
 
-  // Placeholder denemesi (varsa)
-  for (const ph of PLACEHOLDERS) {
-    const ok = await probeImage(ph);
-    if (ok) {
-      CACHE.set(key, ph);
-      return ph;
-    }
-  }
-
-  // Son çare: ilk adayı döndür (404 olursa <img onError> zaten saklayabilir)
-  const fallback = candidates[0];
-  CACHE.set(key, fallback);
-  return fallback;
-}
-
-/** Test veya debug için cache temizleyici */
-export function resetCardAssetCache() {
-  CACHE.clear();
+  CACHE.set(key, FALLBACK_DATA_URL);
+  return FALLBACK_DATA_URL;
 }

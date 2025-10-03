@@ -6,6 +6,8 @@
   background: #fff;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0,0,0,.35);
+  display: flex;
+  flex-direction: column;
 }
 
 .labubu-header {
@@ -16,20 +18,14 @@
   border-bottom: 1px solid #efefef;
 }
 .labubu-title { font-weight: 800; letter-spacing: .2px; }
-.labubu-close { appearance: none; border: 0; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; }
+.labubu-close { appearance:none; border:0; background:transparent; font-size:22px; line-height:1; cursor:pointer; }
 
-.labubu-body { padding: 14px; }
+.labubu-body { padding: 14px; overflow:auto; }
 
-/* --- Görüntü her zaman görülsün + cihaza sığsın --- */
 .card-frame {
   position: relative;
   width: 100%;
-  /* 9:16 oran — modern tarayıcılar */
   aspect-ratio: 9 / 16;
-
-  /* Eski/iOS tarayıcılar için güvenlik: en az yükseklik ver, boş görünmesin */
-  min-height: 320px;
-
   border-radius: 12px;
   overflow: hidden;
   background: linear-gradient(180deg, #f7f7f7, #ececec);
@@ -37,85 +33,41 @@
   place-items: center;
 }
 
-/* Aspect-ratio desteklemeyen tarayıcılar için kesin fallback */
-@supports not (aspect-ratio: 1 / 1) {
-  .card-frame::before {
-    content: "";
-    display: block;
-    padding-top: 177.78%; /* 9:16 */
-  }
-  .card-frame {
-    height: auto;        /* ::before padding yüksekliği tanımlar */
-  }
+/* yükleme iskeleti */
+.card-skeleton {
+  position:absolute; inset:0;
+  background: linear-gradient(90deg,#f2f2f2, #e8e8e8, #f2f2f2);
+  background-size: 200% 100%;
+  animation: card-skel 1.3s ease-in-out infinite;
+}
+@keyframes card-skel {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
-/* <picture> kullansak da kullanmasak da aynı kural geçerli olsun */
-.card-frame picture,
 .card-frame img {
-  display: block;
   width: 100%;
   height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;   /* TAŞMAYI ÖNLE: kırpmadan, her formata sığdır */
-  image-rendering: auto;
-}
-
-/* Çok kısa ekranlarda (yatay/mini pencereler) daha iyi sığdırma */
-@media (max-height: 640px) {
-  .labubu-modal { max-height: 92vh; }
-  .card-frame { min-height: 240px; }
+  object-fit: contain; /* ekrana sığdır */
+  display: block;
 }
 
 .card-name {
   position: absolute;
-  left: 10px;
-  bottom: 10px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: rgba(0,0,0,.55);
-  color: #fff;
-  font-weight: 800;
-  font-size: 14px;
-  letter-spacing: .5px;
+  left: 10px; bottom: 10px;
+  padding: 6px 10px; border-radius: 10px;
+  background: rgba(0,0,0,.55); color: #fff; font-weight: 800; font-size: 14px;
 }
 
 .card-meta {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-  margin-top: 12px;
-  color: #555;
-  font-weight: 600;
+  display:flex; gap:8px; align-items:center; justify-content:center;
+  margin-top: 12px; color:#555; font-weight:600;
 }
 .badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid #ddd;
-  background: #fafafa;
-  font-size: 12px;
+  display:inline-flex; align-items:center; gap:6px; padding:4px 10px;
+  border-radius:999px; border:1px solid #ddd; background:#fafafa; font-size:12px;
 }
 
-.actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 14px;
-}
-.actions .btn {
-  height: 44px;
-  border-radius: 12px;
-  border: 1px solid #ddd;
-  font-weight: 700;
-  background: #fff;
-  cursor: pointer;
-}
-.actions .btn.primary {
-  background: #111;
-  color: #fff;
-  border-color: #111;
-}
+.actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+.actions .btn { height:44px; border-radius:12px; border:1px solid #ddd; font-weight:700; background:#fff; cursor:pointer; }
+.actions .btn.primary { background:#111; color:#fff; border-color:#111; }
