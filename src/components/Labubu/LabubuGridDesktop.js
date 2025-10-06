@@ -1,70 +1,72 @@
 // src/components/Labubu/LabubuGridDesktop.js
-import React, { useCallback, useState } from "react";
+import React, { useEffect, useState } from "react";
 import "./Labubu.css";
-import { safeResolve } from "../../utils/cardAssets";
 
-export default function LabubuGridDesktop({
-  cards = [],
-  boxesReady = 0,
-  onOpenBox,
-  onOpenCard,
-}) {
-  const [opening, setOpening] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState(null);
+/** Tek işlevi: kart görselini güvenli yüklemek (LOVE önizleme sorunu dâhil). */
+function ThumbBG({ asset }) {
+  const [url, setUrl] = useState(asset || "/cards/_SILHOUETTE.jpg");
 
-  const runOpenAnimation = useCallback(async () => {
-    if (!boxesReady || opening) return;
-    setOpening(true);
-    try {
-      const maybeDrop = await (onOpenBox ? onOpenBox("standardBox") : null);
-      if (maybeDrop?.asset) {
-        const url = await safeResolve(maybeDrop.asset);
-        setPreviewUrl(url);
-      }
-    } catch {/* noop */}
-    finally {
-      setTimeout(() => {
-        setOpening(false);
-        setPreviewUrl(null);
-      }, 1200);
+  useEffect(() => {
+    let cancelled = false;
+
+    const norm = (s) => (s || "").trim();
+    const primary = norm(asset);
+
+    // Adaylar: verilen URL + uzantı değişimleri (png/jpg/jpeg)
+    const candidates = [];
+    if (primary) {
+      candidates.push(primary);
+      if (/\.png$/i.test(primary)) candidates.push(primary.replace(/\.png$/i, ".jpg"));
+      if (/\.jpe?g$/i.test(primary)) candidates.push(primary.replace(/\.jpe?g$/i, ".png"));
     }
-  }, [boxesReady, opening, onOpenBox]);
+    // Hiçbiri tutmazsa silüet
+    candidates.push("/cards/_SILHOUETTE.jpg");
 
+    let i = 0;
+    const tryNext = () => {
+      const src = candidates[i++];
+      if (!src) return;
+      const img = new Image();
+      img.onload = () => { if (!cancelled) setUrl(src); };
+      img.onerror = () => tryNext();
+      img.src = src;
+    };
+
+    tryNext();
+    return () => { cancelled = true; };
+  }, [asset]);
+
+  return <div className="labubu-thumb" style={{ backgroundImage: `url(${url})` }} />;
+}
+
+export default function LabubuGridDesktop({ cards = [], boxesReady = 0, onOpenBox, onOpenCard }) {
   return (
     <div className="labubu-grid labubu-grid--desktop">
+      {/* KUTU – mevcut stillerine dokunmadım */}
       <button
         type="button"
-        className={`labubu-cell labubu-cell--box ${boxesReady>0?"ready":""} ${opening?"is-opening":""}`}
-        onDoubleClick={runOpenAnimation}
-        title={boxesReady>0 ? "Çift tık: Kutuyu aç" : "Kutu yok"}
-        disabled={opening}
+        className={`labubu-cell labubu-cell--box ${boxesReady > 0 ? "ready" : ""}`}
+        onDoubleClick={() => { if (boxesReady > 0) onOpenBox?.("standardBox"); }}
+        title={boxesReady > 0 ? "Çift tık: Kutuyu aç" : "Kutu yok"}
       >
         <div className="labubu-box-illu" />
         <div className="labubu-box-label">
-          {boxesReady>0 ? `Kutu: ${boxesReady}` : "Kutu yok"}
+          {boxesReady > 0 ? `Kutu: ${boxesReady}` : "Kutu yok"}
           <span className="labubu-hint">double-click</span>
         </div>
-
-        {opening && (
-          <div className="labubu-opening" aria-hidden="true">
-            <div
-              className="labubu-opening-card"
-              style={{ backgroundImage: `url(${previewUrl || "/cards/_SILHOUETTE.jpg"})` }}
-            />
-          </div>
-        )}
       </button>
 
+      {/* KARTLAR */}
       {cards.map((c) => (
         <button
           key={c.code}
           className={`labubu-cell labubu-cell--card rarity-${c.rarity}`}
-          onClick={()=>onOpenCard?.(c)}
+          onClick={() => onOpenCard?.(c)}
           title={c.name}
         >
-          <div className="labubu-thumb" style={{ backgroundImage:`url(${c.asset})` }} />
+          <ThumbBG asset={c.asset} />
           <div className="labubu-name">{c.name}</div>
-          {c.count>1 && <span className="labubu-count">×{c.count}</span>}
+          {c.count > 1 && <span className="labubu-count">×{c.count}</span>}
         </button>
       ))}
     </div>

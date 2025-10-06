@@ -1,73 +1,61 @@
 /* src/components/Labubu/LabubuOpenModal.css */
-.labubu-modal {
-  width: min(92vw, 520px);
-  max-height: 86vh;
+
+.labubu-modal{
+  width: min(92vw, 720px);
+  max-height: 90dvh;
   border-radius: 16px;
   background: #fff;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0,0,0,.35);
-  display: flex;
-  flex-direction: column;
+  display:flex; flex-direction:column;
 }
 
-.labubu-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid #efefef;
+.labubu-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 12px 14px; border-bottom:1px solid #efefef;
 }
-.labubu-title { font-weight: 800; letter-spacing: .2px; }
-.labubu-close { appearance:none; border:0; background:transparent; font-size:22px; line-height:1; cursor:pointer; }
+.labubu-title{ font-weight:800; letter-spacing:.2px; }
+.labubu-close{ appearance:none; border:0; background:transparent; font-size:22px; line-height:1; cursor:pointer; }
 
-.labubu-body { padding: 14px; overflow:auto; }
+.labubu-body{ padding: 14px; display:flex; flex-direction:column; }
 
-.card-frame {
+.card-frame{
   position: relative;
   width: 100%;
-  aspect-ratio: 9 / 16;
-  border-radius: 12px;
+  /* Kart oranı ve yükseklik sınırı */
+  aspect-ratio: 2 / 3;
+  max-height: min(72dvh, 78vh);
+  border-radius: 14px;
   overflow: hidden;
-  background: linear-gradient(180deg, #f7f7f7, #ececec);
-  display: grid;
-  place-items: center;
+  background: linear-gradient(180deg,#f7f7f7,#ececec);
+  display:grid; place-items:center;
 }
-
-/* yükleme iskeleti */
-.card-skeleton {
-  position:absolute; inset:0;
-  background: linear-gradient(90deg,#f2f2f2, #e8e8e8, #f2f2f2);
-  background-size: 200% 100%;
-  animation: card-skel 1.3s ease-in-out infinite;
-}
-@keyframes card-skel {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.card-frame img {
+.card-frame img{
   width: 100%;
   height: 100%;
-  object-fit: contain; /* ekrana sığdır */
-  display: block;
+  object-fit: contain;   /* görüntüyü kırpmadan sığdır */
+  display:block;
 }
 
-.card-name {
-  position: absolute;
-  left: 10px; bottom: 10px;
+.card-name{
+  position:absolute; left:10px; top:10px;
   padding: 6px 10px; border-radius: 10px;
-  background: rgba(0,0,0,.55); color: #fff; font-weight: 800; font-size: 14px;
+  background: rgba(0,0,0,.55); color:#fff; font-weight:800; font-size:13px; letter-spacing:.5px;
 }
 
-.card-meta {
+.card-meta{
   display:flex; gap:8px; align-items:center; justify-content:center;
-  margin-top: 12px; color:#555; font-weight:600;
+  margin-top: 10px; color:#555; font-weight:600; flex-wrap:wrap;
 }
-.badge {
+.badge{
   display:inline-flex; align-items:center; gap:6px; padding:4px 10px;
   border-radius:999px; border:1px solid #ddd; background:#fafafa; font-size:12px;
 }
 
-.actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
-.actions .btn { height:44px; border-radius:12px; border:1px solid #ddd; font-weight:700; background:#fff; cursor:pointer; }
-.actions .btn.primary { background:#111; color:#fff; border-color:#111; }
+.actions{
+  display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:12px;
+}
+.actions .btn{
+  height: 44px; border-radius: 12px; border: 1px solid #ddd; font-weight:700; background:#fff; cursor:pointer;
+}
+.actions .btn.primary{ background:#111; color:#fff; border-color:#111; }

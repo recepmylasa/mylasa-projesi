@@ -1,27 +1,66 @@
-/* src/components/Labubu/Labubu.css (ilgili kısımlar) */
-.labubu-grid{ display:grid; gap:8px; grid-template-columns: repeat(3, 1fr); padding: var(--grid-gap, 8px); }
-.labubu-grid--desktop{ grid-template-columns: repeat(6, 1fr); padding: 16px 0; }
+/* src/components/Labubu/Labubu.css */
 
+/* === GRID =============================================================== */
+.labubu-grid{
+  /* her kutu/kart için minimum genişlik; ekran küçüldükçe kolon sayısı azalır */
+  --tileMin: 150px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(var(--tileMin), 1fr));
+  align-items: stretch;     /* tüm hücreler aynı yükseklikte hizalansın */
+}
+.labubu-grid--desktop{ padding: 14px 0; }
+.labubu-grid--mobile{  padding: 10px 0; }
+
+/* === HÜCRE GENEL ======================================================== */
 .labubu-cell{
-  position:relative; border:1px solid #efefef; border-radius:12px; overflow:hidden;
-  background:#fff; min-height: 140px;
-  display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+  position: relative;
+  border: 1px solid #eee;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
 }
 
-/* kutu */
-.labubu-cell--box{ background: linear-gradient(180deg,#fafafa,#fff); }
-.labubu-box-illu{ width:90px; height:66px; margin-top:16px; margin-bottom:8px;
-  background: linear-gradient(135deg,#ffcc66,#ff9a3c); border-radius:10px; box-shadow: inset 0 2px 8px rgba(0,0,0,.12), 0 18px 28px rgba(0,0,0,.12); }
-.labubu-box-label{ font-weight:700; margin-bottom:10px; text-align:center; }
-.labubu-hint{ display:block; font-weight:600; color:#8e8e8e; font-size:12px; margin-top:2px; }
+/* === KART =============================================================== */
+.labubu-cell--card{
+  padding: 8px;
+  background: linear-gradient(180deg, #fcfcfc, #fff);
+}
 
-/* kart önizleme */
-.labubu-thumb{ width:100%; height:0; padding-bottom:160%; background:#eee; position:relative; }
-.labubu-thumb > img{
-  position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;
+.labubu-thumb{
+  width: 100%;
+  aspect-ratio: 2 / 3;             /* kart oranı sabit */
+  background: #eee center/cover no-repeat;
+  border-radius: 12px;
+  transition: transform .18s ease;
 }
-.labubu-name{
-  position:absolute; bottom:8px; left:8px; right:8px; background:rgba(255,255,255,.9);
-  border-radius:8px; padding:4px 6px; font-weight:700; text-align:center;
+
+/* hover büyüme (masaüstü) */
+@media (hover:hover){
+  .labubu-cell--card:hover .labubu-thumb{ transform: scale(1.035); }
 }
-.labubu-count{ position:absolute; top:8px; right:8px; background:#111; color:#fff; border-radius:999px; padding:2px 8px; font-size:12px; font-weight:800; }
+/* mobil basılı tutma */
+.labubu-cell--card:active .labubu-thumb{ transform: scale(1.02); }
+
+/* Kart üzerindeki isimleri gridden kaldırıyoruz; modal içinde gösterilecek */
+.labubu-name{ display: none; }
+
+.labubu-count{
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #111;
+  color: #fff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* rarity vurgusu (hafif iç çerçeve) */
+.rarity-rare .labubu-thumb{            box-shadow: 0 0 0 3px #5ab0ff inset; }
+.rarity-legendaryHidden .labubu-thumb{ box-shadow: 0 0 0 3px #ffd166 inset; }

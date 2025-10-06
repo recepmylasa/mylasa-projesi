@@ -1,19 +1,17 @@
 // src/components/Labubu/LabubuOpenModalDesktop.js
 import React, { useEffect, useState } from "react";
 import "./LabubuOpenModal.css";
-import { safeResolve } from "../../utils/cardAssets";
+import { safeResolve, preload } from "../../utils/cardAssets";
 
 export default function LabubuOpenModalDesktop({ drop = null, onClose = () => {} }) {
   const [url, setUrl] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       const resolved = await safeResolve(drop?.asset);
-      if (!alive) return;
-      setUrl(resolved);
-      setLoading(false);
+      preload(resolved);
+      if (alive) setUrl(resolved);
     })();
     return () => { alive = false; };
   }, [drop?.asset]);
@@ -40,13 +38,11 @@ export default function LabubuOpenModalDesktop({ drop = null, onClose = () => {}
 
       <div className="labubu-body">
         <div className="card-frame" aria-live="polite">
-          {loading && <div className="card-skeleton" />}
-          <img
-            key={url || "fallback"}
-            src={url}
-            alt={drop?.name || "Card"}
-            onError={(e)=>{ e.currentTarget.src = url; }}
-          />
+          {url ? (
+            <img src={url} alt={drop?.name || "Card"} />
+          ) : (
+            <img src={"/cards/_SILHOUETTE.jpg"} alt="placeholder" />
+          )}
           <div className="card-name">{drop?.name || "UNKNOWN"}</div>
         </div>
 
