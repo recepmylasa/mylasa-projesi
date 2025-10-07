@@ -1,45 +1,52 @@
-// src/components/Labubu/BoxTile.jsx
-import React, { useRef, useState } from "react";
+import React, { useRef } from "react";
 import "./BoxTile.css";
 
+/**
+ * Kutuyu gösteren hücre
+ * - count > 0 ise sağ üstte rozet görünür ve çift tık/çift dokun ile açılır.
+ * - count == 0 olsa da kutu hep “nefes alır”; sadece rozet çıkmaz.
+ */
 export default function BoxTile({ count = 0, onOpen = () => {} }) {
-  const [opening, setOpening] = useState(false);
-  const lastTap = useRef(0);
+  const lastTapRef = useRef(0);
+  const ready = count > 0;
 
-  const run = async () => {
-    if (!count || opening) return;
-    setOpening(true);
-    try { await onOpen(); } finally { setTimeout(() => setOpening(false), 600); }
+  const handleDoubleClick = () => {
+    if (ready) onOpen();
   };
 
-  // mobile double-tap
+  // Mobil “double tap”
   const handleTap = () => {
     const now = Date.now();
-    if (now - lastTap.current < 350) {
-      run();
-      lastTap.current = 0;
+    if (now - lastTapRef.current < 350) {
+      handleDoubleClick();
+      lastTapRef.current = 0;
     } else {
-      lastTap.current = now;
+      lastTapRef.current = now;
     }
   };
 
   return (
     <button
       type="button"
-      className={`labubu-cell labubu-box ${count > 0 ? "ready" : "disabled"} ${opening ? "opening" : ""}`}
-      onDoubleClick={run}
+      className={`labubu-cell labubu-cell--box breathing ${ready ? "ready" : ""}`}
+      onDoubleClick={handleDoubleClick}
       onClick={handleTap}
-      title={count > 0 ? "MY BOX • çift tık/dokun: aç" : "Kutu yok"}
-      aria-label={count > 0 ? "My Box, açmak için çift tıkla" : "Kutu yok"}
-      disabled={!count || opening}
+      title={ready ? "Çift tıkla: Kutuyu aç" : "Kutu"}
+      aria-label={ready ? "Kutu: açılmaya hazır" : "Kutu"}
     >
-      {count > 1 && <span className="labubu-count">×{count}</span>}
+      {/* Bildirim rozeti (yalnızca hazırsa) */}
+      {ready && <span className="labubu-box-badge">{count}</span>}
 
-      <div className="box-wrap">
-        {/* IMG ile getiriyoruz; public/boxes/mystic-box.png */}
-        <img className="box-img" src="/boxes/mystic-box.png" alt="" />
-        <div className="box-shadow" />
-      </div>
+      {/* Görsel */}
+      <img
+        className="labubu-box-img"
+        src="/boxes/mystic-box.png"
+        alt="MyBox"
+        draggable={false}
+      />
+
+      {/* Hafif gölge */}
+      <span className="labubu-box-shadow" aria-hidden="true" />
     </button>
   );
 }

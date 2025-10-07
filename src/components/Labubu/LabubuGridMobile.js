@@ -1,82 +1,39 @@
-// src/components/Labubu/LabubuGridMobile.js
-import React, { useEffect, useState } from "react";
+import React from "react";
 import "./Labubu.css";
+import BoxTile from "./BoxTile";
 
-/** Tek işlevi: kart görselini güvenli yüklemek (LOVE önizleme sorunu dâhil). */
-function ThumbBG({ asset }) {
-  const [url, setUrl] = useState(asset || "/cards/_SILHOUETTE.jpg");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const norm = (s) => (s || "").trim();
-    const primary = norm(asset);
-
-    const candidates = [];
-    if (primary) {
-      candidates.push(primary);
-      if (/\.png$/i.test(primary)) candidates.push(primary.replace(/\.png$/i, ".jpg"));
-      if (/\.jpe?g$/i.test(primary)) candidates.push(primary.replace(/\.jpe?g$/i, ".png"));
-    }
-    candidates.push("/cards/_SILHOUETTE.jpg");
-
-    let i = 0;
-    const tryNext = () => {
-      const src = candidates[i++];
-      if (!src) return;
-      const img = new Image();
-      img.onload = () => { if (!cancelled) setUrl(src); };
-      img.onerror = () => tryNext();
-      img.src = src;
-    };
-
-    tryNext();
-    return () => { cancelled = true; };
-  }, [asset]);
-
-  return <div className="labubu-thumb" style={{ backgroundImage: `url(${url})` }} />;
-}
-
-export default function LabubuGridMobile({ cards = [], boxesReady = 0, onOpenBox, onOpenCard }) {
-  const [tapTs, setTapTs] = useState(0);
-
-  const handleDoubleTap = () => {
-    const now = Date.now();
-    if (now - tapTs < 350) {
-      if (boxesReady > 0) onOpenBox?.("standardBox");
-      setTapTs(0);
-    } else {
-      setTapTs(now);
-    }
-  };
-
+/**
+ * Mobil grid:
+ * - Aynı görünüm; hover yok, tap’te hafif scale
+ */
+export default function LabubuGridMobile({
+  cards = [],
+  boxesReady = 0,
+  onOpenBox,
+  onOpenCard,
+}) {
   return (
     <div className="labubu-grid labubu-grid--mobile">
-      {/* KUTU – mevcut stillerine dokunmadım */}
-      <button
-        type="button"
-        className={`labubu-cell labubu-cell--box ${boxesReady > 0 ? "ready" : ""}`}
-        onClick={handleDoubleTap}
-        onDoubleClick={(e) => { e.preventDefault(); if (boxesReady > 0) onOpenBox?.("standardBox"); }}
-        title={boxesReady > 0 ? "Çift dokun: Kutuyu aç" : "Kutu yok"}
-      >
-        <div className="labubu-box-illu" />
-        <div className="labubu-box-label">
-          {boxesReady > 0 ? `Kutu: ${boxesReady}` : "Kutu yok"}
-          <span className="labubu-hint">çift dokun</span>
-        </div>
-      </button>
+      <BoxTile
+        count={boxesReady}
+        onOpen={() => onOpenBox?.("standardBox")}
+      />
 
-      {/* KARTLAR */}
       {cards.map((c) => (
         <button
           key={c.code}
-          className={`labubu-cell labubu-cell--card rarity-${c.rarity}`}
+          className={`labubu-cell labubu-card labubu-card--mobile rarity-${c.rarity}`}
           onClick={() => onOpenCard?.(c)}
           title={c.name}
         >
-          <ThumbBG asset={c.asset} />
-          <div className="labubu-name">{c.name}</div>
+          <img
+            className="labubu-thumb-img"
+            src={c.asset}
+            alt={c.name}
+            loading="lazy"
+            onError={(e) => { e.currentTarget.src = "/cards/_SILHOUETTE.jpg"; }}
+            draggable={false}
+          />
           {c.count > 1 && <span className="labubu-count">×{c.count}</span>}
         </button>
       ))}

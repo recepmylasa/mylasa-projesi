@@ -1,66 +1,83 @@
-/* src/components/Labubu/Labubu.css */
-
-/* === GRID =============================================================== */
+/* Grid yerleşimi */
 .labubu-grid{
-  /* her kutu/kart için minimum genişlik; ekran küçüldükçe kolon sayısı azalır */
-  --tileMin: 150px;
-  display: grid;
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(var(--tileMin), 1fr));
-  align-items: stretch;     /* tüm hücreler aynı yükseklikte hizalansın */
+  padding: 12px 0;
 }
-.labubu-grid--desktop{ padding: 14px 0; }
-.labubu-grid--mobile{  padding: 10px 0; }
+.labubu-grid--desktop{ grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.labubu-grid--mobile{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
-/* === HÜCRE GENEL ======================================================== */
+/* Hücre tabanı */
 .labubu-cell{
-  position: relative;
-  border: 1px solid #eee;
+  position:relative;
+  border: 1px solid #efefef;
   border-radius: 14px;
   background: #fff;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
+  min-height: 140px;
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden;
 }
 
-/* === KART =============================================================== */
-.labubu-cell--card{
-  padding: 8px;
-  background: linear-gradient(180deg, #fcfcfc, #fff);
+/* Kart hücresi (isim yok) */
+.labubu-card{
+  border:0;
+  background: transparent;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.labubu-card:hover{
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 10px 22px rgba(0,0,0,.12);
+}
+.labubu-card--mobile:active{
+  transform: scale(.98);
 }
 
-.labubu-thumb{
+/* Kart görseli */
+.labubu-thumb-img{
   width: 100%;
-  aspect-ratio: 2 / 3;             /* kart oranı sabit */
-  background: #eee center/cover no-repeat;
+  height: auto;
+  aspect-ratio: 9/16;
+  object-fit: cover;
+  display:block;
   border-radius: 12px;
-  transition: transform .18s ease;
+  background: #eee;
 }
 
-/* hover büyüme (masaüstü) */
-@media (hover:hover){
-  .labubu-cell--card:hover .labubu-thumb{ transform: scale(1.035); }
-}
-/* mobil basılı tutma */
-.labubu-cell--card:active .labubu-thumb{ transform: scale(1.02); }
-
-/* Kart üzerindeki isimleri gridden kaldırıyoruz; modal içinde gösterilecek */
-.labubu-name{ display: none; }
-
+/* Çoğaltma adedi */
 .labubu-count{
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: #111;
-  color: #fff;
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 800;
+  position:absolute; top:8px; right:8px;
+  background:#111; color:#fff; border-radius:999px;
+  padding: 2px 8px; font-size:12px; font-weight:800;
 }
 
-/* rarity vurgusu (hafif iç çerçeve) */
-.rarity-rare .labubu-thumb{            box-shadow: 0 0 0 3px #5ab0ff inset; }
-.rarity-legendaryHidden .labubu-thumb{ box-shadow: 0 0 0 3px #ffd166 inset; }
+/* Nadirlik bordürleri (istersen kalsın) */
+.rarity-rare .labubu-thumb-img{ box-shadow: 0 0 0 3px #5ab0ff inset; border-radius:12px; }
+.rarity-legendaryHidden .labubu-thumb-img{ box-shadow: 0 0 0 3px #ffd166 inset; border-radius:12px; }
+
+/* Sadece placeholder varsa görünmesin (ortadaki boş sütun). İstersen kullan. */
+.labubu-cell--empty{
+  border:0; background:transparent; pointer-events:none;
+}
+
+/* -------- Modal (elindeki CSS mevcutsa devam) -------- */
+.labubu-modal-overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,.65);
+  display:flex; align-items:center; justify-content:center; z-index:3000;
+}
+.labubu-modal{
+  background:#fff; border-radius:16px; padding:12px; width:min(92vw, 520px);
+  max-height: 86vh; overflow:auto;
+  box-shadow: 0 8px 40px rgba(0,0,0,.35);
+}
+.labubu-cardbig{
+  width:100%; padding-bottom: 177.7%; border-radius:12px;
+  background: #eee center/cover no-repeat;
+}
+.labubu-modal-footer{
+  display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px;
+}
+.labubu-modal-title{ font-weight:800; }
+.labubu-share, .labubu-close{
+  appearance:none; border:1px solid #dbdbdb; background:#fff; padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer;
+}
