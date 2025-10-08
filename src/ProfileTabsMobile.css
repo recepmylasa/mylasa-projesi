@@ -1,27 +1,32 @@
 @import "./styles/ig-mobile.css";
 
-/* IG tarzı sekme satırı: yalnız ikonlar, arka kutu/çerçeve yok */
+/* IG tarzı sekme satırı: yalnız ikonlar, arka kutu/çerçeve yok
+   -> tek satırda sığdır, eşit genişlik; alta KESİNLİKLE düşmesin */
 .tabs-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  flex-wrap: nowrap;          /* kırılma yok */
   align-items: center;
+  width: 100%;
   background: #fff;
   border-top: 1px solid #efefef;
   box-shadow: none;
 }
 
-/* Sekme butonu tamamen şeffaf */
+/* Sekme butonu tamamen şeffaf, her tab eşit genişlik */
 .tab-btn {
   position: relative;
+  flex: 1 1 0%;               /* tüm butonlar eşit alan */
+  min-width: 0;               /* metrikler taşmasın */
   appearance: none;
   border: 0;
   background: transparent;
   padding: 10px 0;
   display: grid;
   place-items: center;
-  color: #8e8e8e;         /* pasif ikon rengi */
+  color: #8e8e8e;             /* pasif ikon rengi */
   cursor: pointer;
   box-shadow: none;
+  touch-action: manipulation;
 }
 
 /* SVG düzgün hizalansın */

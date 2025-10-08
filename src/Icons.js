@@ -10,6 +10,7 @@ const registry = {
   tagged: Ph.User,                // (uyumluluk için tutuluyor)
   bookmark: Ph.BookmarkSimple,
   star: Ph.Star,
+  cards: Ph.StackSimple,          // **Kart/Kutu sekmesi (yeni)**
   "clip-badge": Ph.Play,
   qr: Ph.QrCode,
   "external-link": Ph.ArrowSquareOut,
@@ -63,6 +64,9 @@ export const CommentIcon = (p) => <Icon name="comment" {...p} />;
 export const ShareIcon   = (p) => <Icon name="share"   {...p} />;
 export const StarIcon    = (p) => <Icon name="star"    {...p} />;
 
+/* Kart/Kutu sekmesi kısa yolu (StackSimple) */
+export const CardsIcon   = (p) => <Icon name="cards"   {...p} />;
+
 /* Kaydet (aktifken fill) */
 export const SaveIcon = ({ active = false, size = 24, color = "currentColor", ...rest }) => (
   <Ph.BookmarkSimple size={size} color={color} weight={active ? "fill" : "regular"} {...rest} />
@@ -88,7 +92,7 @@ export const MessageIcon      = (p) => <Icon name="message"       {...p} />;
 export const LocationIcon     = (p) => <Icon name="location"      {...p} />;
 
 /* Kebab */
-export const KebabIcon = ({ direction = "horizontal", ...rest }) => (
+export const KebabIcon = ({ direction = "vertical", ...rest }) => (
   <Icon name={direction === "vertical" ? "menu-vertical" : "menu"} {...rest} />
 );
 

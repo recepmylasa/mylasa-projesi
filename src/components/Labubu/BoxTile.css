@@ -1,50 +1,78 @@
+/* src/components/Labubu/BoxTile.css */
+
 /* Kutu hep nefes alsın; hazır olduğunda ek bir glow ve rozet gelir */
-.labubu-cell--box {
+.labubu-cell--box{
+  /* UA/ortak stillerden gelebilecek arka plan & çerçeveyi tamamen kapat */
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none;
+
   position: relative;
-  border: 0;
-  background: transparent;
   display: grid;
   place-items: center;
   padding: 0;
+  /* Kart hücresindeki overflow:hidden’ı kutu için iptal */
+  overflow: visible !important;
+}
+
+/* Kutu butonu, kombinasyon seçici ile de sıfırla (öncelik yüksek) */
+.labubu-cell.labubu-cell--box{
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Herhangi bir pseudo arka plan kullanılıyorsa kapat */
+.labubu-cell--box::before,
+.labubu-cell--box::after{
+  content: none !important;
 }
 
 /* Nefes alma animasyonu (her zaman) */
-.breathing .labubu-box-img {
+.breathing .labubu-box-img{
   animation: lb-breath 2.4s ease-in-out infinite;
   transform-origin: 50% 60%;
 }
 
-@keyframes lb-breath {
+@keyframes lb-breath{
   0%   { transform: scale(0.98); filter: drop-shadow(0 2px 6px rgba(0,0,0,.25)); }
   50%  { transform: scale(1.02); filter: drop-shadow(0 6px 14px rgba(0,0,0,.25)); }
   100% { transform: scale(0.98); filter: drop-shadow(0 2px 6px rgba(0,0,0,.25)); }
 }
 
 /* Hazır olduğunda yumuşak mavi aura */
-.labubu-cell--box.ready .labubu-box-img {
+.labubu-cell--box.ready .labubu-box-img{
   animation-name: lb-breath, lb-glow;
   animation-duration: 2.4s, 2.4s;
   animation-timing-function: ease-in-out, ease-in-out;
   animation-iteration-count: infinite, infinite;
 }
 
-@keyframes lb-glow {
-  0%   { filter: drop-shadow(0 0 0 rgba(111, 197, 255, .0)); }
-  50%  { filter: drop-shadow(0 0 14px rgba(111, 197, 255, .5)); }
-  100% { filter: drop-shadow(0 0 0 rgba(111, 197, 255, .0)); }
+@keyframes lb-glow{
+  0%   { filter: drop-shadow(0 0 0 rgba(111,197,255,.0)); }
+  50%  { filter: drop-shadow(0 0 14px rgba(111,197,255,.5)); }
+  100% { filter: drop-shadow(0 0 0 rgba(111,197,255,.0)); }
 }
 
-/* Görsel boyutu: ekrana duyarlı */
+/* Görsel, hücre genişliğini tam doldurur (kutu 2 sütun olduğundan otomatik büyük) */
 .labubu-box-img{
-  width: clamp(84px, 12vw, 180px);
+  width: 100%;
   height: auto;
   user-select: none;
+  -webkit-user-drag: none;
+  display: block;
 }
 
 /* Kutunun altında hafif oval gölge */
 .labubu-box-shadow{
   position:absolute; bottom: 6px; left:50%; transform: translateX(-50%);
-  width: clamp(72px, 10vw, 160px); height: clamp(10px, 1.7vw, 18px);
+  width: 82%;
+  height: clamp(20px, 3.4vw, 36px);
   background: radial-gradient(ellipse at center, rgba(0,0,0,.18), rgba(0,0,0,0) 70%);
   filter: blur(2px);
   pointer-events:none;

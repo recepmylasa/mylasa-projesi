@@ -1,3 +1,5 @@
+/* src/components/Labubu/Labubu.css */
+
 /* Grid yerleşimi */
 .labubu-grid{
   display:grid;
@@ -6,7 +8,12 @@
   padding: 12px 0;
 }
 .labubu-grid--desktop{ grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.labubu-grid--mobile{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.labubu-grid--mobile{  grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* >>> KUTU: 2× büyüt (2 sütun kaplasın) <<< */
+.labubu-grid--desktop .labubu-cell--box{ grid-column: span 2; }
+.labubu-grid--mobile  .labubu-cell--box{ grid-column: span 2; }
+.labubu-cell--box{ min-height: 280px; } /* önce 140px idi */
 
 /* Hücre tabanı */
 .labubu-cell{
@@ -29,9 +36,7 @@
   transform: translateY(-2px) scale(1.03);
   box-shadow: 0 10px 22px rgba(0,0,0,.12);
 }
-.labubu-card--mobile:active{
-  transform: scale(.98);
-}
+.labubu-card--mobile:active{ transform: scale(.98); }
 
 /* Kart görseli */
 .labubu-thumb-img{
@@ -51,16 +56,14 @@
   padding: 2px 8px; font-size:12px; font-weight:800;
 }
 
-/* Nadirlik bordürleri (istersen kalsın) */
+/* Nadirlik bordürleri */
 .rarity-rare .labubu-thumb-img{ box-shadow: 0 0 0 3px #5ab0ff inset; border-radius:12px; }
 .rarity-legendaryHidden .labubu-thumb-img{ box-shadow: 0 0 0 3px #ffd166 inset; border-radius:12px; }
 
-/* Sadece placeholder varsa görünmesin (ortadaki boş sütun). İstersen kullan. */
-.labubu-cell--empty{
-  border:0; background:transparent; pointer-events:none;
-}
+/* Sadece placeholder varsa görünmesin (opsiyonel) */
+.labubu-cell--empty{ border:0; background:transparent; pointer-events:none; }
 
-/* -------- Modal (elindeki CSS mevcutsa devam) -------- */
+/* -------- Modal -------- */
 .labubu-modal-overlay{
   position:fixed; inset:0; background:rgba(0,0,0,.65);
   display:flex; align-items:center; justify-content:center; z-index:3000;
