@@ -111,7 +111,6 @@
           if (dateFixScheduled) return;
           dateFixScheduled = true;
           idle(() => {
-            dateFixScheduled = false;
             const nodes = document.querySelectorAll(".clip-time, .clipdesk__time, .clip-comment-time, .clipdesk__cmtTime, .comment-time");
             nodes.forEach((n) => { const v = onlyDate(n.textContent); if (v !== n.textContent) n.textContent = v; });
           });
