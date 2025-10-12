@@ -1,4 +1,3 @@
-// src/MapMobile.js
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { auth, db } from "./firebase";
 import {
@@ -9,14 +8,83 @@ import AvatarModal from "./AvatarModal";
 import MapSettingsModal from "./MapSettingsModal";
 
 /* ================================
-   Sabitler / Ayarlar
+   Google Maps Loader — Tek Nokta (callback tabanlı, stabil)
 ==================================*/
-const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
-const MAP_ID = "820d1b6d96bb2adc224b9924"; // senin Map ID
-
 const GMAPS_SCRIPT_ID = "gmaps-js-sdk";
 let _gmapsPromise = null;
 
+const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
+const MAP_ID  = process.env.REACT_APP_GMAPS_MAP_ID || ""; // <-- .env’den okunur
+
+function buildGMapsUrl() {
+  // Map ID yoksa marker lib'i yüklemiyoruz (overlay/hata engellenir)
+  const libs = MAP_ID ? "places,marker" : "places";
+  const params = new URLSearchParams({
+    key: API_KEY,
+    language: "tr",
+    region: "TR",
+    v: "weekly",
+    libraries: libs,
+    callback: "mylasaInitMap",
+    // Google'ın yeni önerisi: loading=async (uyarıyı susturur)
+    loading: "async"
+  });
+  return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
+}
+
+function removeExistingGMapsScript() {
+  const s = document.getElementById(GMAPS_SCRIPT_ID);
+  if (s && s.parentNode) s.parentNode.removeChild(s);
+  _gmapsPromise = null;
+}
+
+function loadGoogleMaps() {
+  if (window.google?.maps?.Map) return Promise.resolve(window.google.maps);
+  if (!API_KEY) return Promise.reject(new Error("NO_API_KEY"));
+  if (_gmapsPromise) return _gmapsPromise;
+
+  _gmapsPromise = new Promise((resolve, reject) => {
+    removeExistingGMapsScript();
+
+    let resolved = false;
+    window.mylasaInitMap = async () => {
+      try {
+        // Advanced marker sadece vector (mapId) ile mantıklı.
+        // importLibrary bazı ortamlarda sorun çıkarabiliyor; varsa dene, yoksa global'den alırız.
+        try { 
+          if (MAP_ID) {
+            await window.google?.maps?.importLibrary?.("marker");
+          }
+        } catch {/* no-op */}
+
+        if (!window.google?.maps?.Map) throw new Error("LIB_NOT_READY");
+        resolved = true;
+        resolve(window.google.maps);
+      } catch (e) {
+        reject(e);
+      } finally {
+        try { delete window.mylasaInitMap; } catch {}
+      }
+    };
+
+    const script = document.createElement("script");
+    script.id = GMAPS_SCRIPT_ID;
+    script.async = true;
+    script.defer = true;
+    script.src = buildGMapsUrl();
+    script.onerror = () => reject(new Error("NETWORK_OR_BLOCKED"));
+    document.head.appendChild(script);
+
+    setTimeout(() => { if (!resolved) reject(new Error("TIMEOUT")); }, 20000);
+    window.gm_authFailure = () => reject(new Error("AUTH_FAILED"));
+  });
+
+  return _gmapsPromise;
+}
+
+/* ================================
+   Sabitler
+==================================*/
 const DEFAULT_CENTER = { lat: 39.0, lng: 35.0 };
 const DEFAULT_ZOOM = 5;
 const MOBILE_ZOOM = 14;
@@ -56,64 +124,16 @@ const MAP_TYPES = {
 };
 
 /* ================================
-   Google Maps Loader (klasik)
-==================================*/
-function buildGMapsUrl() {
-  // ÖNEMLİ: loading=async KULLANMIYORUZ
-  const params = new URLSearchParams({
-    key: API_KEY,
-    language: "tr",
-    region: "TR",
-    v: "weekly",
-    libraries: "places", // AdvancedMarker yerine klasik Marker kullanacağız
-  });
-  return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
-}
-
-function removeExistingGMapsScript() {
-  const s = document.getElementById(GMAPS_SCRIPT_ID);
-  if (s && s.parentNode) s.parentNode.removeChild(s);
-  _gmapsPromise = null;
-}
-
-function loadGoogleMaps() {
-  if (window.google && window.google.maps) return Promise.resolve(window.google.maps);
-  if (!API_KEY) return Promise.reject(new Error("NO_API_KEY"));
-  if (_gmapsPromise) return _gmapsPromise;
-
-  _gmapsPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.id = GMAPS_SCRIPT_ID;
-    script.async = true;
-    script.defer = true;
-    script.src = buildGMapsUrl();
-
-    script.onload = () => {
-      if (window.google && window.google.maps) resolve(window.google.maps);
-      else reject(new Error("LOAD_FAILED"));
-    };
-    script.onerror = () => reject(new Error("NETWORK_OR_BLOCKED"));
-
-    document.head.appendChild(script);
-
-    setTimeout(() => {
-      if (!(window.google && window.google.maps)) reject(new Error("TIMEOUT"));
-    }, 20000);
-  });
-
-  return _gmapsPromise;
-}
-
-/* ================================
    Bileşen
 ==================================*/
 function MapMobile({ currentUserProfile, onUserClick }) {
-  const [gmapsStatus, setGmapsStatus] = useState("idle"); // idle | no-key | loading | ready | error
+  // "idle" | "no-key" | "loading" | "ready" | "error"
+  const [gmapsStatus, setGmapsStatus] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef(new Map()); // uid -> marker
+  const markersRef = useRef(new Map());
   const selfMarkerKey = "__self__";
 
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
@@ -130,7 +150,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
 
       if (!API_KEY) {
         setGmapsStatus("no-key");
-        setErrorMsg(".env dosyasında REACT_APP_GOOGLE_MAPS_API_KEY yok.");
+        setErrorMsg(".env içinde REACT_APP_GOOGLE_MAPS_API_KEY yok.");
         return;
       }
 
@@ -141,7 +161,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
         const gmaps = await loadGoogleMaps();
 
         if (!mapRef.current && mapDivRef.current) {
-          mapRef.current = new gmaps.Map(mapDivRef.current, {
+          const opts = {
             center: DEFAULT_CENTER,
             zoom: DEFAULT_ZOOM,
             mapTypeId: mapType,
@@ -149,33 +169,30 @@ function MapMobile({ currentUserProfile, onUserClick }) {
             streetViewControl: false,
             fullscreenControl: false,
             gestureHandling: "greedy",
-            mapId: MAP_ID, // MAP ID ZORUNLU
-          });
+          };
+          if (MAP_ID) opts.mapId = MAP_ID; // <-- vector + advanced marker için
+          mapRef.current = new gmaps.Map(mapDivRef.current, opts);
         }
-
-        // Key yetki hatası hook'u
-        window.gm_authFailure = () => {
-          setErrorMsg("Google Maps anahtarı bu origin için yetkili değil (Key restrictions).");
-          setGmapsStatus("error");
-        };
 
         setGmapsStatus("ready");
       } catch (err) {
-        setErrorMsg(err?.message || "Harita yüklenemedi.");
-        setGmapsStatus("error");
+        let msg = err?.message || "Harita yüklenemedi.";
+        if (msg === "NO_API_KEY") { setGmapsStatus("no-key"); msg = "API anahtarı yok (.env)."; }
+        else if (msg === "AUTH_FAILED") { setGmapsStatus("error"); msg = "Key restrictions hatası (origin yetkisi)."; }
+        else if (msg === "NETWORK_OR_BLOCKED") { setGmapsStatus("error"); msg = "Ağ/engelleyici nedeniyle indirilemedi."; }
+        else if (msg === "TIMEOUT") { setGmapsStatus("error"); msg = "Google Maps zaman aşımı."; }
+        else if (msg === "LIB_NOT_READY") { setGmapsStatus("error"); msg = "Google Maps kütüphanesi hazır değil."; }
+        else { setGmapsStatus("error"); }
+        setErrorMsg(msg);
       }
     },
     [mapType]
   );
 
-  useEffect(() => {
-    attemptLoad(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { attemptLoad(false); /* eslint-disable-next-line */ }, []);
 
-  // MapType değişince uygula
   useEffect(() => {
-    if (mapRef.current && window.google && window.google.maps) {
+    if (mapRef.current && window.google?.maps) {
       mapRef.current.setMapTypeId(mapType);
     }
   }, [mapType]);
@@ -197,8 +214,17 @@ function MapMobile({ currentUserProfile, onUserClick }) {
 
       if (user && currentUserProfile?.isSharing !== false) {
         const locationRef = doc(db, "locations", user.uid);
-        updateDoc(locationRef, { longitude: loc.lng, latitude: loc.lat, timestamp: new Date() })
-          .catch(() => setDoc(locationRef, { longitude: loc.lng, latitude: loc.lat, timestamp: new Date() }));
+        updateDoc(locationRef, {
+          longitude: loc.lng,
+          latitude: loc.lat,
+          timestamp: new Date(),
+        }).catch(() => {
+          setDoc(locationRef, {
+            longitude: loc.lng,
+            latitude: loc.lat,
+            timestamp: new Date(),
+          });
+        });
       }
     };
 
@@ -209,7 +235,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
     );
   }, [gmapsStatus, currentUserProfile?.isSharing]);
 
-  // Arkadaş konumlarını dinle
+  // Arkadaş konumlarını dinle (izinli kullanıcılar)
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
 
@@ -227,7 +253,6 @@ function MapMobile({ currentUserProfile, onUserClick }) {
           return;
         }
 
-        // users profillerini 10'luk gruplarla çek
         const batches = [];
         for (let i = 0; i < followings.length; i += 10) {
           batches.push(followings.slice(i, i + 10));
@@ -256,7 +281,6 @@ function MapMobile({ currentUserProfile, onUserClick }) {
           return;
         }
 
-        // locations'ı izinli UID'ler için dinle (10'luk IN limiti)
         const locBatches = [];
         for (let i = 0; i < allowedUIDs.length; i += 10) {
           locBatches.push(allowedUIDs.slice(i, i + 10));
@@ -281,35 +305,54 @@ function MapMobile({ currentUserProfile, onUserClick }) {
             });
           });
         });
-      } catch (_err) {
+      } catch {
         setFriendsOnMap([]);
       }
     };
 
     run();
 
-    return () => {
-      unsubscribes.forEach((u) => { try { u(); } catch {} });
-    };
+    return () => { unsubscribes.forEach((u) => { try { u(); } catch {} }); };
   }, [gmapsStatus, currentUserProfile]);
 
-  // ---- Marker yönetimi (klasik Marker ile) ----
+  // ---- Marker yönetimi (AdvancedMarkerElement sadece MAP_ID varsa) ----
   const upsertMarker = useCallback((key, position, opts = {}) => {
     if (!mapRef.current || !(window.google && window.google.maps)) return;
+
+    const Advanced = MAP_ID ? window.google?.maps?.marker?.AdvancedMarkerElement : null;
     const existing = markersRef.current.get(key);
+
     if (existing) {
-      existing.setPosition(position);
-      if (opts.title) existing.setTitle(opts.title);
+      if (Advanced && existing.position) {
+        existing.position = position;
+      } else if (existing.setPosition) {
+        existing.setPosition(position);
+      }
+      if (opts.title && existing.setTitle) existing.setTitle(opts.title);
       return existing;
     }
-    const marker = new window.google.maps.Marker({
-      position,
-      map: mapRef.current,
-      title: opts.title || "",
-    });
-    if (typeof opts.onClick === "function") {
-      marker.addListener("click", opts.onClick);
+
+    let marker;
+    if (Advanced) {
+      marker = new Advanced({
+        map: mapRef.current,
+        position,
+        title: opts.title || "",
+      });
+      if (typeof opts.onClick === "function") {
+        marker.addListener?.("gmp-click", opts.onClick);
+      }
+    } else {
+      marker = new window.google.maps.Marker({
+        position,
+        map: mapRef.current,
+        title: opts.title || "",
+      });
+      if (typeof opts.onClick === "function") {
+        marker.addListener("click", opts.onClick);
+      }
     }
+
     markersRef.current.set(key, marker);
     return marker;
   }, []);
@@ -317,7 +360,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
   const removeMarker = useCallback((key) => {
     const m = markersRef.current.get(key);
     if (m) {
-      try { m.setMap(null); } catch {}
+      try { if (m.setMap) m.setMap(null); else if (m.map) m.map = null; } catch {}
       markersRef.current.delete(key);
     }
   }, []);
@@ -325,8 +368,11 @@ function MapMobile({ currentUserProfile, onUserClick }) {
   // Kendi marker'ını güncelle
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
-    if (userLocation) upsertMarker(selfMarkerKey, userLocation, { title: "Konumun" });
-    else removeMarker(selfMarkerKey);
+    if (userLocation) {
+      upsertMarker(selfMarkerKey, userLocation, { title: "Konumun" });
+    } else {
+      removeMarker(selfMarkerKey);
+    }
   }, [gmapsStatus, userLocation, upsertMarker, removeMarker]);
 
   // Arkadaş marker'larını güncelle
@@ -345,7 +391,6 @@ function MapMobile({ currentUserProfile, onUserClick }) {
       }
     });
 
-    // Artık görünmeyenleri temizle
     Array.from(markersRef.current.keys()).forEach((key) => {
       if (key === selfMarkerKey) return;
       if (!liveKeys.has(key)) removeMarker(key);
@@ -359,7 +404,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
         <div style={{ fontSize: 18, fontWeight: 700 }}>Harita yapılandırması eksik</div>
         <div style={{ maxWidth: 520, opacity: 0.85 }}>
           <code>.env</code> dosyasında <code>REACT_APP_GOOGLE_MAPS_API_KEY</code> bulunamadı.
-          Geliştirme sunucusunu durdurup yeniden başlatman gerekebilir.
+          Sunucuyu durdurup yeniden başlat.
         </div>
       </div>
     );
@@ -369,10 +414,19 @@ function MapMobile({ currentUserProfile, onUserClick }) {
     return (
       <div style={FALLBACK_STYLE}>
         <div style={{ fontSize: 18, fontWeight: 700 }}>Harita yüklenemedi</div>
-        <div style={{ maxWidth: 520, opacity: 0.85 }}>{errorMsg || "Beklenmeyen bir hata oluştu."}</div>
+        <div style={{ maxWidth: 520, opacity: 0.85 }}>
+          {errorMsg || "Beklenmeyen bir hata oluştu."}
+        </div>
         <button
           onClick={() => attemptLoad(true)}
-          style={{ marginTop: 8, padding: "10px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", cursor: "pointer" }}
+          style={{
+            marginTop: 8,
+            padding: "10px 16px",
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            background: "#fff",
+            cursor: "pointer",
+          }}
         >
           Tekrar dene
         </button>
@@ -383,7 +437,17 @@ function MapMobile({ currentUserProfile, onUserClick }) {
   return (
     <div style={containerStyle}>
       {/* Sağ üst butonlar */}
-      <div style={{ position: "absolute", top: "70px", right: "10px", zIndex: 10, display: "flex", flexDirection: "column", gap: "10px" }}>
+      <div
+        style={{
+          position: "absolute",
+          top: "70px",
+          right: "10px",
+          zIndex: 10,
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+        }}
+      >
         <button style={buttonStyle} onClick={() => setIsAvatarModalOpen(true)} title="Avatarını Değiştir">
           <span role="img" aria-label="profile">👤</span>
         </button>
@@ -396,12 +460,36 @@ function MapMobile({ currentUserProfile, onUserClick }) {
             <span role="img" aria-label="layers">🗺️</span>
           </button>
           {isStyleMenuOpen && (
-            <div style={{ position: "absolute", top: "0", right: "50px", backgroundColor: "white", borderRadius: "8px", boxShadow: "0 2px 10px rgba(0,0,0,0.2)", overflow: "hidden", width: "150px", zIndex: 20 }}>
+            <div
+              style={{
+                position: "absolute",
+                top: "0",
+                right: "50px",
+                backgroundColor: "white",
+                borderRadius: "8px",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
+                overflow: "hidden",
+                width: "150px",
+                zIndex: 20,
+              }}
+            >
               {Object.keys(MAP_TYPES).map((label) => (
                 <button
                   key={label}
-                  onClick={() => { setMapType(MAP_TYPES[label]); setIsStyleMenuOpen(false); }}
-                  style={{ display: "block", width: "100%", padding: "12px 16px", background: "none", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "1px solid #efefef" }}
+                  onClick={() => {
+                    setMapType(MAP_TYPES[label]);
+                    setIsStyleMenuOpen(false);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "12px 16px",
+                    background: "none",
+                    border: "none",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    borderBottom: "1px solid #efefef",
+                  }}
                 >
                   {label}
                 </button>
