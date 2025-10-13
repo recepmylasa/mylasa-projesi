@@ -62,6 +62,65 @@ function App() {
   // Post/Clip modallarında pushState bizim mi yaptı?
   const pushedByAppRef = useRef(false);
 
+  // === NEW: Service Worker update toast state (mevcut düzeni bozmaz) ===
+  const [swWaiting, setSwWaiting] = useState(null);
+  const [showUpdateToast, setShowUpdateToast] = useState(false);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+
+    let regUnsub = null;
+    let refreshing = false;
+
+    // Yeni worker kontrol & dinleme
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      if (!reg) return;
+
+      // Eğer yüklenmiş ve bekleyen bir worker varsa doğrudan bildir
+      if (reg.waiting) {
+        setSwWaiting(reg.waiting);
+        setShowUpdateToast(true);
+      }
+
+      // install → installed → waiting
+      const onUpdateFound = () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener("statechange", () => {
+          // controller varsa ve yeni worker "installed" ise güncelleme hazır
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            setSwWaiting(newWorker);
+            setShowUpdateToast(true);
+          }
+        });
+      };
+
+      reg.addEventListener("updatefound", onUpdateFound);
+      regUnsub = () => reg.removeEventListener("updatefound", onUpdateFound);
+    });
+
+    // SkipWaiting sonrası controller değişip yeni sürüm aktif olunca otomatik yenile
+    const onControllerChange = () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+
+    return () => {
+      if (regUnsub) regUnsub();
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+    };
+  }, []);
+
+  const acceptUpdateAndReload = () => {
+    try {
+      swWaiting?.postMessage?.("SKIP_WAITING");
+    } catch {}
+    // UI gizle; controllerchange dinleyicisi reload edecek
+    setShowUpdateToast(false);
+  };
+
   // Modal varken body scroll kilidi
   useEffect(() => {
     if (modalContent) {
@@ -534,6 +593,55 @@ function App() {
       ? "main-content-wide"
       : "main-content-narrow";
 
+  // === NEW: Update toast render ===
+  const renderUpdateToast = () => {
+    if (!showUpdateToast) return null;
+    const wrap = {
+      position: "fixed",
+      left: 12,
+      right: 12,
+      bottom: 12,
+      zIndex: 5000, // overlay'in üstünde
+      display: "flex",
+      justifyContent: "center",
+      pointerEvents: "none",
+    };
+    const card = {
+      pointerEvents: "auto",
+      maxWidth: 560,
+      width: "100%",
+      background: "#111",
+      color: "#fff",
+      padding: "12px 14px",
+      borderRadius: 12,
+      boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+    };
+    const btn = {
+      marginLeft: "auto",
+      background: "#6b5cff",
+      color: "#fff",
+      border: "none",
+      borderRadius: 10,
+      padding: "10px 14px",
+      fontWeight: 700,
+      cursor: "pointer",
+    };
+    return (
+      <div style={wrap}>
+        <div style={card}>
+          <span role="img" aria-label="update">⬆️</span>
+          <div style={{fontSize: 14}}>
+            Yeni bir sürüm hazır. Uygulamayı güncellemek için “Yenile”ye dokun.
+          </div>
+          <button style={btn} onClick={acceptUpdateAndReload}>Yenile</button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={`app-container ${!isMobile ? "desktop-layout" : ""}`}>
       {isMobile && (
@@ -563,6 +671,7 @@ function App() {
         {renderPageContent()}
       </main>
       {renderModal()}
+      {renderUpdateToast()}
     </div>
   );
 }

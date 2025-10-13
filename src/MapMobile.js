@@ -1,4 +1,8 @@
-// src/MapMobile.js — TAM DOSYA
+// src/MapMobile.js — TAM DOSYA (Mobil)
+// - Konuma git FAB: daima alt navigasyonun ÜSTÜNDE (dinamik ölçüm)
+// - FAB çevresindeki beyaz çerçeve kaldırıldı (transparent, sadece pin)
+// - Avatar marker full-body ve alt merkezde durur
+// - Sağ üst avatar ikonu taşmadan görünür
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { auth, db } from "./firebase";
@@ -12,7 +16,6 @@ import NewCheckInDetailMobile from "./NewCheckInDetailMobile";
 
 /* ================================
    DEV-only: Google’un gürültülü uyarılarını sessize al
-   PROD’da çalışmaz; davranışı değiştirmez.
 ==================================*/
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
   const _warn = console.warn;
@@ -30,7 +33,7 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
 }
 
 /* ================================
-   Google Maps Loader — Tek Nokta (callback tabanlı, stabil)
+   Google Maps Loader — Tek Nokta
 ==================================*/
 const GMAPS_SCRIPT_ID = "gmaps-js-sdk";
 let _gmapsPromise = null;
@@ -51,13 +54,11 @@ function buildGMapsUrl() {
   });
   return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
 }
-
 function removeExistingGMapsScript() {
   const s = document.getElementById(GMAPS_SCRIPT_ID);
   if (s && s.parentNode) s.parentNode.removeChild(s);
   _gmapsPromise = null;
 }
-
 function loadGoogleMaps() {
   if (window.google?.maps?.Map) return Promise.resolve(window.google.maps);
   if (!API_KEY) return Promise.reject(new Error("NO_API_KEY"));
@@ -137,6 +138,53 @@ const MAP_TYPES = {
 };
 
 const SELECTED_MARKER_KEY = "__selected_place__";
+const SELF_MARKER_KEY = "__self__";
+
+/* ================================
+   Yardımcılar — full-body avatar içerik + uçuş
+==================================*/
+function makeFullBodyAvatarContent(url, heightPx = 64) {
+  const wrap = document.createElement("div");
+  wrap.style.position = "relative";
+  wrap.style.transform = "translate(-50%, -100%)"; // alt merkez
+  wrap.style.willChange = "transform";
+
+  const img = document.createElement("img");
+  img.src = url;
+  img.alt = "avatar";
+  img.style.height = `${heightPx}px`;
+  img.style.width = "auto";
+  img.style.display = "block";
+  img.style.objectFit = "contain";
+  img.style.filter = "drop-shadow(0 6px 12px rgba(0,0,0,.35))";
+  wrap.appendChild(img);
+
+  return wrap;
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2; }
+function animateFlyTo(map, fromCenter, toCenter, fromZoom, toZoom, totalMs = 1150) {
+  if (!map) return;
+  const start = performance.now();
+  const midZoom = Math.max(3, Math.min(8, (fromZoom ?? 12) - 3));
+
+  function frame(now) {
+    const t = Math.min(1, (now - start) / totalMs);
+    const e = easeInOut(t);
+
+    let zoom;
+    if (t < 0.3) zoom = lerp(fromZoom ?? 12, midZoom, t / 0.3);
+    else if (t < 0.7) zoom = midZoom;
+    else zoom = lerp(midZoom, toZoom ?? MOBILE_ZOOM, (t - 0.7) / 0.3);
+
+    const lat = lerp(fromCenter.lat, toCenter.lat, e);
+    const lng = lerp(fromCenter.lng, toCenter.lng, e);
+
+    try { map.setCenter({ lat, lng }); map.setZoom(zoom); } catch {}
+    if (t < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
 
 /* ================================
    Bileşen
@@ -149,7 +197,6 @@ function MapMobile({ currentUserProfile, onUserClick }) {
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef(new Map());
-  const selfMarkerKey = "__self__";
 
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -158,6 +205,8 @@ function MapMobile({ currentUserProfile, onUserClick }) {
 
   const [userLocation, setUserLocation] = useState(null);
   const [friendsOnMap,  setFriendsOnMap]  = useState([]);
+
+  const [selfAvatarUrl, setSelfAvatarUrl] = useState("/avatars/avatar 1.png"); // fallback
 
   // Autocomplete
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -171,9 +220,60 @@ function MapMobile({ currentUserProfile, onUserClick }) {
   const sessionTokenRef = useRef(null);
   const debounceRef = useRef(null);
 
-  // UX: haritayı oynatan kullanıcıyı rahatsız etme
+  // UX
   const [firstFixDone, setFirstFixDone] = useState(false);
   const [userMovedMap, setUserMovedMap] = useState(false);
+
+  // FAB: her zaman alt navigasyonun üstünde
+  const [fabBottom, setFabBottom] = useState(110);
+  const measureBottomNav = useCallback(() => {
+    const selectors = [
+      ".bottom-nav",
+      "nav.bottom-nav",
+      "#bottom-nav",
+      '[data-bottom-nav]',
+      ".BottomNav",
+      'div[class*="BottomNav"]',
+      'div[class*="bottom-nav"]',
+      'div[class*="bottomNav"]',
+      'nav[role="navigation"]',
+    ];
+    let h = 0;
+    selectors.forEach((sel) => {
+      const el = document.querySelector(sel);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        if (r.height > h) h = r.height;
+      }
+    });
+    if (h === 0) h = 72; // güvenli varsayılan
+    const padding = 28;  // nav ile tampon
+    setFabBottom(h + padding);
+  }, []);
+  useEffect(() => {
+    measureBottomNav();
+    const ro = window.ResizeObserver ? new ResizeObserver(measureBottomNav) : null;
+    const nav = document.querySelector(".bottom-nav") || document.querySelector("nav.bottom-nav");
+    if (ro && nav) ro.observe(nav);
+    window.addEventListener("resize", measureBottomNav);
+    window.addEventListener("orientationchange", measureBottomNav);
+    return () => {
+      window.removeEventListener("resize", measureBottomNav);
+      window.removeEventListener("orientationchange", measureBottomNav);
+      if (ro) ro.disconnect();
+    };
+  }, [measureBottomNav]);
+
+  // Avatar’ı canlı dinle
+  useEffect(() => {
+    const u = auth.currentUser;
+    if (!u) return;
+    const unsub = onSnapshot(doc(db, "users", u.uid), (snap) => {
+      const url = snap.data()?.avatarUrl;
+      if (url) setSelfAvatarUrl(url);
+    });
+    return () => unsub && unsub();
+  }, []);
 
   const attemptLoad = useCallback(
     async (force = false) => {
@@ -203,12 +303,10 @@ function MapMobile({ currentUserProfile, onUserClick }) {
           };
           if (MAP_ID) opts.mapId = MAP_ID;
           mapRef.current = new gmaps.Map(mapDivRef.current, opts);
-
-          // Kullanıcı haritayı eline aldı mı?
           mapRef.current.addListener("dragstart", () => setUserMovedMap(true));
         }
 
-        // Places servisleri
+        // Places
         if (window.google?.maps && mapRef.current) {
           const { places } = window.google.maps;
           if (!autocompleteServiceRef.current) {
@@ -243,7 +341,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
     }
   }, [mapType]);
 
-  // Konumu al & Firestore'a yaz
+  // Konum
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
 
@@ -255,7 +353,6 @@ function MapMobile({ currentUserProfile, onUserClick }) {
       setUserLocation(loc);
 
       if (mapRef.current) {
-        // İlk sabitlemede ya da kullanıcı haritayı hareket ettirmediyse ortala
         if (!firstFixDone || !userMovedMap) {
           try {
             mapRef.current.setCenter(loc);
@@ -289,7 +386,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
     return () => { try { navigator.geolocation.clearWatch(watchId); } catch {} };
   }, [gmapsStatus, currentUserProfile?.isSharing, firstFixDone, userMovedMap]);
 
-  // ---- Marker yönetimi ----
+  // Marker yönetimi
   const upsertMarker = useCallback((key, position, opts = {}) => {
     if (!mapRef.current || !(window.google && window.google.maps)) return;
 
@@ -300,11 +397,29 @@ function MapMobile({ currentUserProfile, onUserClick }) {
 
     const existing = markersRef.current.get(key);
 
+    // avatar içerik/icon
+    const heightPx = opts.heightPx || 64;
+    let content = null;
+    let icon = null;
+    if (opts.avatarUrl) {
+      if (Advanced) {
+        content = makeFullBodyAvatarContent(opts.avatarUrl, heightPx);
+      } else {
+        icon = {
+          url: opts.avatarUrl,
+          scaledSize: new window.google.maps.Size(heightPx, heightPx),
+          anchor: new window.google.maps.Point(heightPx / 2, heightPx), // alt merkez
+        };
+      }
+    }
+
     if (existing) {
       if (Advanced && existing.position) {
         existing.position = position;
+        if (content) existing.content = content;
       } else if (existing.setPosition) {
         existing.setPosition(position);
+        if (icon && existing.setIcon) existing.setIcon(icon);
       }
       if (opts.title && existing.setTitle) existing.setTitle(opts.title);
       return existing;
@@ -316,6 +431,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
         map: mapRef.current,
         position,
         title: opts.title || "",
+        content: content || undefined,
       });
       if (typeof opts.onClick === "function") {
         marker.addListener?.("gmp-click", opts.onClick);
@@ -325,6 +441,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
         position,
         map: mapRef.current,
         title: opts.title || "",
+        icon: icon || undefined,
       });
       if (typeof opts.onClick === "function") {
         marker.addListener("click", opts.onClick);
@@ -333,7 +450,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
 
     markersRef.current.set(key, marker);
     return marker;
-  }, [MAP_ID]);
+  }, []);
 
   const removeMarker = useCallback((key) => {
     const m = markersRef.current.get(key);
@@ -343,17 +460,22 @@ function MapMobile({ currentUserProfile, onUserClick }) {
     }
   }, []);
 
-  // Kendi marker'ını güncelle
+  // Kendi marker'ı
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
     if (userLocation) {
-      upsertMarker(selfMarkerKey, userLocation, { title: "Konumun" });
+      upsertMarker(SELF_MARKER_KEY, userLocation, {
+        title: "Konumun",
+        avatarUrl: selfAvatarUrl,
+        heightPx: 68,
+        onClick: () => setIsAvatarModalOpen(true),
+      });
     } else {
-      removeMarker(selfMarkerKey);
+      removeMarker(SELF_MARKER_KEY);
     }
-  }, [gmapsStatus, userLocation, upsertMarker, removeMarker]);
+  }, [gmapsStatus, userLocation, selfAvatarUrl, upsertMarker, removeMarker]);
 
-  // Arkadaş marker'larını güncelle
+  // Arkadaş marker'ları
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
 
@@ -364,13 +486,15 @@ function MapMobile({ currentUserProfile, onUserClick }) {
         liveKeys.add(key);
         upsertMarker(key, { lat: f.latitude, lng: f.longitude }, {
           title: f.kullaniciAdi || f.displayName || "Arkadaş",
+          avatarUrl: f.avatarUrl || "/avatars/avatar 1.png",
+          heightPx: 60,
           onClick: () => { if (typeof onUserClick === "function") onUserClick({ uid: f.uid }); },
         });
       }
     });
 
     Array.from(markersRef.current.keys()).forEach((key) => {
-      if (key === selfMarkerKey) return;
+      if (key === SELF_MARKER_KEY || key === SELECTED_MARKER_KEY) return;
       if (!liveKeys.has(key)) removeMarker(key);
     });
   }, [gmapsStatus, friendsOnMap, upsertMarker, removeMarker, onUserClick]);
@@ -506,26 +630,28 @@ function MapMobile({ currentUserProfile, onUserClick }) {
           gap: "10px",
         }}
       >
-        {/* Konumuma git */}
+        {/* Avatar değiştir — dairesel ikon, taşma yok */}
         <button
           style={buttonStyle}
-          onClick={() => {
-            if (userLocation && mapRef.current) {
-              try {
-                mapRef.current.panTo(userLocation);
-                mapRef.current.setZoom(MOBILE_ZOOM);
-                setUserMovedMap(false);
-              } catch {}
-            }
-          }}
-          title="Konumuma git"
+          onClick={() => setIsAvatarModalOpen(true)}
+          title="Avatarını Değiştir"
         >
-          <span role="img" aria-label="loc">📍</span>
+          <img
+            src={selfAvatarUrl}
+            alt="avatar"
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: "50%",
+              border: "0",
+              boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+              objectFit: "contain",
+              objectPosition: "center",
+              background: "transparent",
+            }}
+          />
         </button>
 
-        <button style={buttonStyle} onClick={() => setIsAvatarModalOpen(true)} title="Avatarını Değiştir">
-          <span role="img" aria-label="profile">👤</span>
-        </button>
         <button style={buttonStyle} onClick={() => setIsSettingsModalOpen(true)} title="Konum Ayarları">
           <span role="img" aria-label="settings">⚙️</span>
         </button>
@@ -582,6 +708,43 @@ function MapMobile({ currentUserProfile, onUserClick }) {
           <span role="img" aria-label="search">🔍</span>
         </button>
       </div>
+
+      {/* Sağ-alt FAB: Konumuma Git — nav üstünde ve beyaz çerçevesiz */}
+      <button
+        style={{
+          position: "absolute",
+          right: 14,
+          bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))`,
+          zIndex: 20,
+          width: 56,
+          height: 56,
+          borderRadius: "50%",
+          // İSTEK: beyaz çerçeveyi kaldır
+          background: "transparent",
+          border: "0",
+          boxShadow: "none",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          // ikonu öne çıkarmak için hafif gölge
+          textShadow: "0 1px 3px rgba(0,0,0,.35)",
+        }}
+        onClick={() => {
+          if (userLocation && mapRef.current) {
+            try {
+              const map = mapRef.current;
+              const cur = map.getCenter()?.toJSON?.() || DEFAULT_CENTER;
+              const z   = map.getZoom?.() ?? MOBILE_ZOOM;
+              animateFlyTo(map, cur, userLocation, z, MOBILE_ZOOM, 1200);
+              setUserMovedMap(false);
+            } catch {}
+          }
+        }}
+        title="Konumuma git"
+        aria-label="Konumuma git"
+      >
+        <span role="img" aria-label="loc" style={{ fontSize: 26 }}>📍</span>
+      </button>
 
       {/* Arama paneli */}
       {isSearchOpen && (
@@ -674,7 +837,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
           </div>
           <div style={{
             display: "flex", justifyContent: "space-between",
-            borderTop: "1px solid #efefef", padding: "8px 10px"
+            borderTop: "1px solid #efefef", padding: "8px 10px",
           }}>
             <button
               onClick={() => setIsCheckInOpen(true)}
