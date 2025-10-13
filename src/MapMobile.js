@@ -1,3 +1,5 @@
+// src/MapMobile.js — TAM DOSYA
+
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { auth, db } from "./firebase";
 import {
@@ -6,6 +8,26 @@ import {
 
 import AvatarModal from "./AvatarModal";
 import MapSettingsModal from "./MapSettingsModal";
+import NewCheckInDetailMobile from "./NewCheckInDetailMobile";
+
+/* ================================
+   DEV-only: Google’un gürültülü uyarılarını sessize al
+   PROD’da çalışmaz; davranışı değiştirmez.
+==================================*/
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+  const _warn = console.warn;
+  console.warn = (...args) => {
+    const first = (args && args[0] ? String(args[0]) : "");
+    if (
+      /google\.maps\.Marker is deprecated/i.test(first) ||
+      /places\.AutocompleteService is not available to new customers/i.test(first) ||
+      /places\.PlacesService is not available to new customers/i.test(first)
+    ) {
+      return;
+    }
+    _warn(...args);
+  };
+}
 
 /* ================================
    Google Maps Loader — Tek Nokta (callback tabanlı, stabil)
@@ -14,11 +36,10 @@ const GMAPS_SCRIPT_ID = "gmaps-js-sdk";
 let _gmapsPromise = null;
 
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
-const MAP_ID  = process.env.REACT_APP_GMAPS_MAP_ID || ""; // <-- .env’den okunur
+const MAP_ID  = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
 
 function buildGMapsUrl() {
-  // Map ID yoksa marker lib'i yüklemiyoruz (overlay/hata engellenir)
-  const libs = MAP_ID ? "places,marker" : "places";
+  const libs = "places,marker";
   const params = new URLSearchParams({
     key: API_KEY,
     language: "tr",
@@ -26,8 +47,7 @@ function buildGMapsUrl() {
     v: "weekly",
     libraries: libs,
     callback: "mylasaInitMap",
-    // Google'ın yeni önerisi: loading=async (uyarıyı susturur)
-    loading: "async"
+    loading: "async",
   });
   return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
 }
@@ -49,14 +69,7 @@ function loadGoogleMaps() {
     let resolved = false;
     window.mylasaInitMap = async () => {
       try {
-        // Advanced marker sadece vector (mapId) ile mantıklı.
-        // importLibrary bazı ortamlarda sorun çıkarabiliyor; varsa dene, yoksa global'den alırız.
-        try { 
-          if (MAP_ID) {
-            await window.google?.maps?.importLibrary?.("marker");
-          }
-        } catch {/* no-op */}
-
+        try { await window.google?.maps?.importLibrary?.("marker"); } catch {}
         if (!window.google?.maps?.Map) throw new Error("LIB_NOT_READY");
         resolved = true;
         resolve(window.google.maps);
@@ -123,6 +136,8 @@ const MAP_TYPES = {
   "Hibrit": "hybrid",
 };
 
+const SELECTED_MARKER_KEY = "__selected_place__";
+
 /* ================================
    Bileşen
 ==================================*/
@@ -142,7 +157,23 @@ function MapMobile({ currentUserProfile, onUserClick }) {
   const [mapType, setMapType] = useState(MAP_TYPES["Yol Haritası"]);
 
   const [userLocation, setUserLocation] = useState(null);
-  const [friendsOnMap, setFriendsOnMap] = useState([]);
+  const [friendsOnMap,  setFriendsOnMap]  = useState([]);
+
+  // Autocomplete
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [predictions, setPredictions] = useState([]);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [isCheckInOpen, setIsCheckInOpen] = useState(false);
+
+  const autocompleteServiceRef = useRef(null);
+  const placesServiceRef = useRef(null);
+  const sessionTokenRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  // UX: haritayı oynatan kullanıcıyı rahatsız etme
+  const [firstFixDone, setFirstFixDone] = useState(false);
+  const [userMovedMap, setUserMovedMap] = useState(false);
 
   const attemptLoad = useCallback(
     async (force = false) => {
@@ -170,8 +201,23 @@ function MapMobile({ currentUserProfile, onUserClick }) {
             fullscreenControl: false,
             gestureHandling: "greedy",
           };
-          if (MAP_ID) opts.mapId = MAP_ID; // <-- vector + advanced marker için
+          if (MAP_ID) opts.mapId = MAP_ID;
           mapRef.current = new gmaps.Map(mapDivRef.current, opts);
+
+          // Kullanıcı haritayı eline aldı mı?
+          mapRef.current.addListener("dragstart", () => setUserMovedMap(true));
+        }
+
+        // Places servisleri
+        if (window.google?.maps && mapRef.current) {
+          const { places } = window.google.maps;
+          if (!autocompleteServiceRef.current) {
+            autocompleteServiceRef.current = new places.AutocompleteService();
+          }
+          if (!placesServiceRef.current) {
+            placesServiceRef.current = new places.PlacesService(mapRef.current);
+          }
+          sessionTokenRef.current = new places.AutocompleteSessionToken();
         }
 
         setGmapsStatus("ready");
@@ -202,124 +248,56 @@ function MapMobile({ currentUserProfile, onUserClick }) {
     if (gmapsStatus !== "ready") return;
 
     const geoOptions = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
-    const updateUserLocation = (position) => {
+
+    const onPos = (position) => {
       const user = auth.currentUser;
       const loc = { lat: position.coords.latitude, lng: position.coords.longitude };
       setUserLocation(loc);
 
       if (mapRef.current) {
-        mapRef.current.setCenter(loc);
-        mapRef.current.setZoom(MOBILE_ZOOM);
+        // İlk sabitlemede ya da kullanıcı haritayı hareket ettirmediyse ortala
+        if (!firstFixDone || !userMovedMap) {
+          try {
+            mapRef.current.setCenter(loc);
+            mapRef.current.setZoom(MOBILE_ZOOM);
+          } catch {}
+        }
       }
+      if (!firstFixDone) setFirstFixDone(true);
 
       if (user && currentUserProfile?.isSharing !== false) {
         const locationRef = doc(db, "locations", user.uid);
         updateDoc(locationRef, {
           longitude: loc.lng,
-          latitude: loc.lat,
+          latitude:  loc.lat,
           timestamp: new Date(),
         }).catch(() => {
           setDoc(locationRef, {
             longitude: loc.lng,
-            latitude: loc.lat,
+            latitude:  loc.lat,
             timestamp: new Date(),
           });
         });
       }
     };
 
-    navigator.geolocation.getCurrentPosition(
-      updateUserLocation,
-      () => setUserLocation(null),
-      geoOptions
-    );
-  }, [gmapsStatus, currentUserProfile?.isSharing]);
+    const onErr = () => setUserLocation(null);
 
-  // Arkadaş konumlarını dinle (izinli kullanıcılar)
-  useEffect(() => {
-    if (gmapsStatus !== "ready") return;
+    navigator.geolocation.getCurrentPosition(onPos, onErr, geoOptions);
+    const watchId = navigator.geolocation.watchPosition(onPos, onErr, geoOptions);
 
-    let unsubscribes = [];
+    return () => { try { navigator.geolocation.clearWatch(watchId); } catch {} };
+  }, [gmapsStatus, currentUserProfile?.isSharing, firstFixDone, userMovedMap]);
 
-    const run = async () => {
-      try {
-        const myId = auth.currentUser?.uid;
-        const followings = Array.isArray(currentUserProfile?.takipEdilenler)
-          ? currentUserProfile.takipEdilenler
-          : [];
-
-        if (!myId || followings.length === 0) {
-          setFriendsOnMap([]);
-          return;
-        }
-
-        const batches = [];
-        for (let i = 0; i < followings.length; i += 10) {
-          batches.push(followings.slice(i, i + 10));
-        }
-
-        const profileMap = new Map();
-        for (const batch of batches) {
-          const snap = await getDocs(query(collection(db, "users"), where("uid", "in", batch)));
-          snap.forEach((d) => profileMap.set(d.id, { id: d.id, ...d.data() }));
-        }
-
-        const allowedUIDs = followings.filter((uid) => {
-          const p = profileMap.get(uid);
-          if (!p || p.isSharing === false) return false;
-          if (p.sharingMode === "all_friends") {
-            return Array.isArray(p.takipEdilenler) && p.takipEdilenler.includes(myId);
-          }
-          if (p.sharingMode === "selected_friends") {
-            return Array.isArray(p.sharingWhitelist) && p.sharingWhitelist.includes(myId);
-          }
-          return false;
-        });
-
-        if (allowedUIDs.length === 0) {
-          setFriendsOnMap([]);
-          return;
-        }
-
-        const locBatches = [];
-        for (let i = 0; i < allowedUIDs.length; i += 10) {
-          locBatches.push(allowedUIDs.slice(i, i + 10));
-        }
-
-        unsubscribes = locBatches.map((batch) => {
-          const qLoc = query(collection(db, "locations"), where("__name__", "in", batch));
-          return onSnapshot(qLoc, (snap) => {
-            const locs = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-            const merged = locs
-              .map((loc) => {
-                const prof = profileMap.get(loc.uid);
-                if (!prof) return null;
-                return { ...loc, ...prof };
-              })
-              .filter(Boolean);
-
-            setFriendsOnMap((prev) => {
-              const map = new Map(prev.map((x) => [x.uid, x]));
-              merged.forEach((x) => map.set(x.uid, x));
-              return Array.from(map.values());
-            });
-          });
-        });
-      } catch {
-        setFriendsOnMap([]);
-      }
-    };
-
-    run();
-
-    return () => { unsubscribes.forEach((u) => { try { u(); } catch {} }); };
-  }, [gmapsStatus, currentUserProfile]);
-
-  // ---- Marker yönetimi (AdvancedMarkerElement sadece MAP_ID varsa) ----
+  // ---- Marker yönetimi ----
   const upsertMarker = useCallback((key, position, opts = {}) => {
     if (!mapRef.current || !(window.google && window.google.maps)) return;
 
-    const Advanced = MAP_ID ? window.google?.maps?.marker?.AdvancedMarkerElement : null;
+    const Advanced =
+      (MAP_ID && window.google?.maps?.marker?.AdvancedMarkerElement)
+        ? window.google.maps.marker.AdvancedMarkerElement
+        : null;
+
     const existing = markersRef.current.get(key);
 
     if (existing) {
@@ -355,12 +333,12 @@ function MapMobile({ currentUserProfile, onUserClick }) {
 
     markersRef.current.set(key, marker);
     return marker;
-  }, []);
+  }, [MAP_ID]);
 
   const removeMarker = useCallback((key) => {
     const m = markersRef.current.get(key);
     if (m) {
-      try { if (m.setMap) m.setMap(null); else if (m.map) m.map = null; } catch {}
+      try { if (m.setMap) m.setMap(null); else if ("map" in m) m.map = null; } catch {}
       markersRef.current.delete(key);
     }
   }, []);
@@ -396,6 +374,86 @@ function MapMobile({ currentUserProfile, onUserClick }) {
       if (!liveKeys.has(key)) removeMarker(key);
     });
   }, [gmapsStatus, friendsOnMap, upsertMarker, removeMarker, onUserClick]);
+
+  // ========= Autocomplete =========
+  useEffect(() => {
+    if (!isSearchOpen || gmapsStatus !== "ready") return;
+    if (!searchText.trim()) { setPredictions([]); return; }
+
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const svc = autocompleteServiceRef.current;
+      const token = sessionTokenRef.current;
+      if (!svc || !token) return;
+
+      svc.getPlacePredictions(
+        {
+          input: searchText,
+          sessionToken: token,
+          componentRestrictions: { country: ["tr"] },
+          types: ["establishment", "geocode"],
+        },
+        (res, status) => {
+          const ok = window.google.maps.places.PlacesServiceStatus.OK;
+          if (status !== ok || !res) { setPredictions([]); return; }
+          setPredictions(res);
+        }
+      );
+    }, 300);
+
+    return () => clearTimeout(debounceRef.current);
+  }, [searchText, isSearchOpen, gmapsStatus]);
+
+  const handleSelectPrediction = (pred) => {
+    const svc = placesServiceRef.current;
+    const token = sessionTokenRef.current;
+    if (!svc) return;
+
+    svc.getDetails(
+      {
+        placeId: pred.place_id,
+        fields: ["place_id", "name", "geometry", "formatted_address"],
+        sessionToken: token,
+      },
+      (place, status) => {
+        const ok = window.google.maps.places.PlacesServiceStatus.OK;
+        if (status !== ok || !place || !place.geometry?.location) {
+          return;
+        }
+        const pos = {
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+        };
+
+        setSelectedPlace({
+          id: place.place_id,
+          name: place.name,
+          lat: pos.lat,
+          lng: pos.lng,
+          address: place.formatted_address || "",
+        });
+
+        try {
+          mapRef.current?.panTo(pos);
+          mapRef.current?.setZoom(17);
+        } catch {}
+
+        upsertMarker(SELECTED_MARKER_KEY, pos, { title: place.name });
+
+        setPredictions([]);
+        setIsSearchOpen(false);
+        setSearchText(place.name);
+
+        try {
+          sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+        } catch {}
+      }
+    );
+  };
+
+  useEffect(() => {
+    if (!isSearchOpen) setPredictions([]);
+  }, [isSearchOpen]);
 
   /* ============ Render ============ */
   if (gmapsStatus === "no-key") {
@@ -448,6 +506,23 @@ function MapMobile({ currentUserProfile, onUserClick }) {
           gap: "10px",
         }}
       >
+        {/* Konumuma git */}
+        <button
+          style={buttonStyle}
+          onClick={() => {
+            if (userLocation && mapRef.current) {
+              try {
+                mapRef.current.panTo(userLocation);
+                mapRef.current.setZoom(MOBILE_ZOOM);
+                setUserMovedMap(false);
+              } catch {}
+            }
+          }}
+          title="Konumuma git"
+        >
+          <span role="img" aria-label="loc">📍</span>
+        </button>
+
         <button style={buttonStyle} onClick={() => setIsAvatarModalOpen(true)} title="Avatarını Değiştir">
           <span role="img" aria-label="profile">👤</span>
         </button>
@@ -497,13 +572,150 @@ function MapMobile({ currentUserProfile, onUserClick }) {
             </div>
           )}
         </div>
+
+        {/* Arama butonu */}
+        <button
+          style={buttonStyle}
+          onClick={() => setIsSearchOpen(true)}
+          title="Yer Ara"
+        >
+          <span role="img" aria-label="search">🔍</span>
+        </button>
       </div>
+
+      {/* Arama paneli */}
+      {isSearchOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            right: 12,
+            zIndex: 20,
+            background: "white",
+            borderRadius: 12,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.2)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 8 }}>
+            <span>🔎</span>
+            <input
+              autoFocus
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Yer ara…"
+              style={{
+                flex: 1,
+                border: "none",
+                outline: "none",
+                fontSize: 16,
+              }}
+            />
+            <button
+              onClick={() => { setIsSearchOpen(false); setPredictions([]); }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}
+              title="Kapat"
+            >
+              ✖
+            </button>
+          </div>
+
+          {predictions.length > 0 && (
+            <div style={{ borderTop: "1px solid #efefef", maxHeight: 260, overflowY: "auto" }}>
+              {predictions.map((p) => (
+                <button
+                  key={p.place_id}
+                  onClick={() => handleSelectPrediction(p)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "10px 14px",
+                    background: "white",
+                    border: "none",
+                    borderBottom: "1px solid #f3f3f3",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>{p.structured_formatting?.main_text || p.description}</div>
+                  {p.structured_formatting?.secondary_text && (
+                    <div style={{ fontSize: 12, color: "#777" }}>
+                      {p.structured_formatting.secondary_text}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Seçili yer üst kartı + Check-in */}
+      {selectedPlace && (
+        <div
+          style={{
+            position: "absolute",
+            top: 56,
+            left: 12,
+            right: 12,
+            zIndex: 12,
+            background: "white",
+            borderRadius: 12,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "10px 12px" }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{selectedPlace.name}</div>
+            {selectedPlace.address && (
+              <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{selectedPlace.address}</div>
+            )}
+          </div>
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            borderTop: "1px solid #efefef", padding: "8px 10px"
+          }}>
+            <button
+              onClick={() => setIsCheckInOpen(true)}
+              style={{
+                padding: "8px 12px",
+                background: "#0095f6",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Check-in
+            </button>
+            <button
+              onClick={() => { setSelectedPlace(null); removeMarker(SELECTED_MARKER_KEY); }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}
+              title="Kapat"
+            >
+              ✖
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Google Map tuvali */}
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", paddingBottom: 55 }} />
 
+      {/* Modallar */}
       {isAvatarModalOpen && <AvatarModal onClose={() => setIsAvatarModalOpen(false)} />}
       {isSettingsModalOpen && <MapSettingsModal onClose={() => setIsSettingsModalOpen(false)} />}
+
+      {/* Check-in modalı */}
+      {isCheckInOpen && selectedPlace && (
+        <NewCheckInDetailMobile
+          selectedPlace={selectedPlace}
+          currentUser={auth.currentUser}
+          onClose={() => setIsCheckInOpen(false)}
+        />
+      )}
     </div>
   );
 }

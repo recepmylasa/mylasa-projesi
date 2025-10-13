@@ -1,7 +1,9 @@
+// storage.rules — Mylasa (tam içerik)
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // Profil fotoğrafları
     match /profile_photos/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null
@@ -10,22 +12,34 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
-    // Gönderi/Check-in görselleri (uygulama zaten 8MB ve image/* ile sınırlıyor)
+    // Gönderi görselleri
     match /post_media/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // *** MOBİL CHECK-IN görselleri ***
+    // Kod: `checkins/${uid}/${timestamp}-${file.name}`
+    match /checkins/{userId}/{fileName} {
+      allow read; // yer detayında/akışta herkese açık görüntüleme
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Ham yüklemeler (geçici)
     match /raw-uploads/{userId}/{fileName} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // İşlenmiş klipler (read-only)
+    // İşlenmiş klipler (sadece okunur)
     match /clips_media/{userId}/{fileName} {
       allow read;
     }
 
-    // HİKAYELER: sahibi yükler/siler, herkes okur
+    // Hikayeler
     match /hikaye_media/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null && request.auth.uid == userId

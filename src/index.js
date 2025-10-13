@@ -29,3 +29,15 @@ if (!isPermalink) {
 
 // Performans ölçümü (opsiyonel)
 reportWebVitals();
+
+// === Offline Modu: Service Worker Kaydı (mevcut akışa dokunmaz) ===
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .catch((err) => {
+        // Prod/develop fark etmeksizin localhost'ta da çalışır
+        console.warn('Service worker register failed:', err);
+      });
+  });
+}
