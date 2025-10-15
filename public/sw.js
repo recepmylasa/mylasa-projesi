@@ -1,8 +1,8 @@
-/* public/sw.js – Mylasa Offline SW (minimal, güvenli)
-   - App shell önbelleğe alınır (index.html, temel statikler).
-   - JS/CSS/IMG için stale-while-revalidate.
-   - Navigations: network-first, offline'da cache'teki index.html.
-   - Google Maps / Firebase / 3rd party API'ler önbelleğe alınmaz (sorunsuz kalır).
+/* public/sw.js – Mylasa Offline SW (sağlam ve güvenli)
+   - App shell önbelleği (index.html ve temel statikler)
+   - JS/CSS/IMG için stale-while-revalidate
+   - Navigations: network-first; offline'da cache'teki index.html
+   - Google Maps / Firebase / 3rd-party ve HTTP(S) dışı şemalar BYPASS (özellikle chrome-extension:// hatasını önler)
 */
 
 const CACHE_NAME = 'mylasa-cache-v1-' + (self.registration?.scope || 'root');
@@ -19,26 +19,26 @@ const CORE_ASSETS = [
 
 // Hangi istekler kesinlikle önbelleğe dahil edilmeyecek?
 function shouldBypass(request) {
-  const url = new URL(request.url);
+  try {
+    const url = new URL(request.url);
 
-  // Yalnızca GET önbelleğe alınır
-  if (request.method !== 'GET') return true;
+    // Yalnızca http/https destekle — chrome-extension:// vb. şemalarda HİÇ dokunma
+    if (!/^https?:$/.test(url.protocol)) return true;
 
-  // Üçüncü parti kritik alanlar: Maps/Firebase/Google
-  const blockHosts = [
-    'googleapis.com',
-    'gstatic.com',
-    'google.com',
-    'firebaseio.com',
-    'firebasestorage.googleapis.com',
-    'accounts.google.com'
-  ];
-  if (blockHosts.some((h) => url.hostname.endsWith(h))) return true;
+    // Yalnızca GET önbelleğe alınır
+    if (request.method !== 'GET') return true;
 
-  // No-cors opaque istekleri es geç (genelde faydasız olur)
-  if (request.mode === 'no-cors') return true;
+    // Farklı origin'leri tamamen BYPASS et (Maps, Firebase, 3rd party)
+    if (url.origin !== self.location.origin) return true;
 
-  return false;
+    // No-cors opaque istekleri es geç
+    if (request.mode === 'no-cors') return true;
+
+    return false;
+  } catch {
+    // URL parse edilemezse BYPASS et
+    return true;
+  }
 }
 
 self.addEventListener('install', (event) => {
@@ -115,8 +115,7 @@ async function handleGenericGet(event) {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
-  if (request.method !== 'GET') return;
-  if (shouldBypass(request)) return;
+  if (shouldBypass(request)) return; // dışarıyı ve desteklenmeyenleri BYPASS
 
   const url = new URL(request.url);
 
@@ -127,15 +126,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Aynı origin statik dosyalar (js, css, img, font)
-  if (
-    url.origin === self.location.origin &&
-    /\.(?:js|css|png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf|otf)$/.test(url.pathname)
-  ) {
+  if (/\.(?:js|css|png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf|otf)$/.test(url.pathname)) {
     event.respondWith(handleStatic(event));
     return;
   }
 
-  // Geri kalan GET istekleri
+  // Geri kalan aynı-origin GET istekleri
   event.respondWith(handleGenericGet(event));
 });
 

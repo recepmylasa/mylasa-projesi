@@ -1,8 +1,10 @@
 // src/MapMobile.js — TAM DOSYA (Mobil)
 // - Sağ üstteki butonlar: şeffaf siyah daire
 // - Arama: ikon TOGGLE (açıksa kapatır), her açılışta input temiz; kutu dar başlar, yazdıkça genişler
-// - Kendi marker’ı: alt etiket (profil ismi + pil ikonu), pusula konisi (cihaz yönüne göre döner)
+// - Kendi marker’ı: alt etiket (profil ismi + pil ikonu + yüzde), pusula konisi (cihaz yönüne göre döner)
 // - Avatar marker’ları: orijinal oran korunur, diğer davranışlar aynı
+// - AdvancedMarkerElement: SADECE geçerli MAP_ID varsa kullan (aksi halde klasik Marker) —
+//   böylece "Harita, geçerli bir harita kimliği olmadan başlatıldı" uyarısı ortadan kalkar.
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { auth, db } from "./firebase";
@@ -13,7 +15,7 @@ import {
 import AvatarModal from "./AvatarModal";
 import MapSettingsModal from "./MapSettingsModal";
 import NewCheckInDetailMobile from "./NewCheckInDetailMobile";
-import { SearchIcon, LayersIcon, SettingsIcon, LocateIcon } from "./icons";
+import { SearchIcon, LayersIcon, SettingsIcon, LocateIcon } from "./icons"; // dikkat: k\u00fc\u00e7\u00fck i
 
 /* ================================
    DEV-only: Google’un gürültülü uyarılarını sessize al
@@ -167,7 +169,7 @@ function makeAvatarOnlyContent(url, heightPx = 64) {
   return wrap;
 }
 
-/** Kendi marker’ı için: pusula konisi + avatar + alt etiket (isim + pil) */
+/** Kendi marker’ı için: pusula konisi + avatar + alt etiket (isim + pil + yüzde) */
 function makeSelfContent({ url, heightPx = 68, name = "Ben", battery = null, headingDeg = null }) {
   const wrap = document.createElement("div");
   wrap.style.position = "relative";
@@ -175,7 +177,7 @@ function makeSelfContent({ url, heightPx = 68, name = "Ben", battery = null, hea
   wrap.style.willChange = "transform";
   wrap.style.pointerEvents = "none"; // haritayı engellemesin
 
-  // --- Pusula konisi (avatarın altından çıkar)
+  // --- Pusula konisi (avatarın altından çıkar) — sarı ton
   const cone = document.createElement("div");
   cone.style.position = "absolute";
   cone.style.left = "50%";
@@ -184,7 +186,7 @@ function makeSelfContent({ url, heightPx = 68, name = "Ben", battery = null, hea
   cone.style.height = "0";
   cone.style.borderLeft = "14px solid transparent";
   cone.style.borderRight = "14px solid transparent";
-  cone.style.borderTop = "34px solid rgba(0,153,255,0.35)";
+  cone.style.borderTop = "34px solid rgba(250, 204, 21, 0.35)"; // #facc15 ~ sarı
   cone.style.transformOrigin = "50% 0%";
   cone.style.transform = `translate(-50%, -6px) rotate(${headingDeg ?? 0}deg)`;
   cone.style.filter = "blur(0.2px)";
@@ -202,7 +204,7 @@ function makeSelfContent({ url, heightPx = 68, name = "Ben", battery = null, hea
   img.style.filter = "drop-shadow(0 6px 12px rgba(0,0,0,.35))";
   wrap.appendChild(img);
 
-  // --- Alt etiket (isim + pil)
+  // --- Alt etiket (isim + pil + yüzde)
   const label = document.createElement("div");
   label.style.position = "absolute";
   label.style.left = "50%";
@@ -252,14 +254,22 @@ function makeSelfContent({ url, heightPx = 68, name = "Ben", battery = null, hea
   const color = battery == null ? "#888" : (battery > 0.5 ? "#16a34a" : battery > 0.2 ? "#d97706" : "#ef4444");
   fill.style.background = color;
   fill.style.borderRadius = "1px";
+  if (battery == null) { fill.style.opacity = "0.55"; }
   batWrap.appendChild(fill);
 
-  if (battery == null) { fill.style.opacity = "0.55"; }
-
   label.appendChild(batWrap);
+
+  const pct = document.createElement("span");
+  pct.style.fontWeight = "700";
+  pct.style.fontSize = "11px";
+  pct.style.minWidth = "26px";
+  pct.style.textAlign = "right";
+  pct.textContent = battery == null ? "—" : `${Math.round((battery || 0) * 100)}%`;
+  label.appendChild(pct);
+
   wrap.appendChild(label);
 
-  return { node: wrap, refs: { cone, nameSpan, fill } };
+  return { node: wrap, refs: { cone, nameSpan, fill, pct } };
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -299,6 +309,9 @@ function MapMobile({ currentUserProfile, onUserClick }) {
   const mapRef = useRef(null);
   const markersRef = useRef(new Map());
 
+  // Advanced marker kullanılabilir mi? (MAP_ID zorunlu)
+  const advancedAllowedRef = useRef(false);
+
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isStyleMenuOpen, setIsStyleMenuOpen] = useState(false);
@@ -313,7 +326,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
   // pil & pusula
   const [batteryLevel, setBatteryLevel] = useState(null); // 0..1 veya null
   const [headingDeg, setHeadingDeg] = useState(null);     // derece veya null
-  const selfUIRef = useRef({ cone: null, nameSpan: null, fill: null });
+  const selfUIRef = useRef({ cone: null, nameSpan: null, fill: null, pct: null });
 
   // Autocomplete
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -495,9 +508,12 @@ function MapMobile({ currentUserProfile, onUserClick }) {
             fullscreenControl: false,
             gestureHandling: "greedy",
           };
-          if (MAP_ID) opts.mapId = MAP_ID;
+          if (MAP_ID) opts.mapId = MAP_ID; // AdvancedMarker kullanımı için şart
           mapRef.current = new gmaps.Map(mapDivRef.current, opts);
           mapRef.current.addListener("dragstart", () => setUserMovedMap(true));
+
+          // Advanced marker kullanılabilirliğini belirle
+          advancedAllowedRef.current = !!(gmaps?.marker?.AdvancedMarkerElement) && !!MAP_ID;
         }
 
         // Places
@@ -516,7 +532,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
       } catch (err) {
         let msg = err?.message || "Harita yüklenemedi.";
         if (msg === "NO_API_KEY") { setGmapsStatus("no-key"); msg = "API anahtarı yok (.env)."; }
-        else if (msg === "AUTH_FAILED") { setGmapsStatus("error"); msg = "Key restrictions hatası (origin yetkisi)."; }
+        else if (msg === "AUTH_FAILED") { setGmapsStatus("error"); msg = "Key restrictions hatası (origin yetkisi/billing)."; }
         else if (msg === "NETWORK_OR_BLOCKED") { setGmapsStatus("error"); msg = "Ağ/engelleyici nedeniyle indirilemedi."; }
         else if (msg === "TIMEOUT") { setGmapsStatus("error"); msg = "Google Maps zaman aşımı."; }
         else if (msg === "LIB_NOT_READY") { setGmapsStatus("error"); msg = "Google Maps kütüphanesi hazır değil."; }
@@ -587,8 +603,10 @@ function MapMobile({ currentUserProfile, onUserClick }) {
   const upsertMarker = useCallback((key, position, opts = {}) => {
     if (!mapRef.current || !(window.google && window.google.maps)) return;
 
-    // 🔧 ÖNEMLİ DÜZELTME: AdvancedMarker her zaman varsa kullan (MAP_ID şart değil)
-    const Advanced = window.google?.maps?.marker?.AdvancedMarkerElement || null;
+    // AdvancedMarker, SADECE izinliyse
+    const Advanced = (advancedAllowedRef.current && window.google?.maps?.marker?.AdvancedMarkerElement)
+      ? window.google.maps.marker.AdvancedMarkerElement
+      : null;
 
     const existing = markersRef.current.get(key);
 
@@ -713,9 +731,9 @@ function MapMobile({ currentUserProfile, onUserClick }) {
     }
   }, [gmapsStatus, userLocation, selfAvatarUrl, selfDisplayName, batteryLevel, headingDeg, upsertMarker, removeMarker]);
 
-  // Self UI canlı güncellemeleri (pil / pusula / isim)
+  // Self UI canlı güncellemeleri (pil / pusula / isim / yüzde)
   useEffect(() => {
-    const { cone, nameSpan, fill } = selfUIRef.current || {};
+    const { cone, nameSpan, fill, pct } = selfUIRef.current || {};
     if (nameSpan) nameSpan.textContent = selfDisplayName || "Ben";
     if (fill) {
       const level = batteryLevel == null ? 1 : Math.max(0, Math.min(1, batteryLevel));
@@ -723,6 +741,7 @@ function MapMobile({ currentUserProfile, onUserClick }) {
       fill.style.opacity = batteryLevel == null ? "0.55" : "1";
       fill.style.background = batteryLevel == null ? "#888" : (level > 0.5 ? "#16a34a" : level > 0.2 ? "#d97706" : "#ef4444");
     }
+    if (pct) pct.textContent = batteryLevel == null ? "—" : `${Math.round((batteryLevel || 0) * 100)}%`;
     if (cone) {
       cone.style.display = headingDeg == null ? "none" : "block";
       if (headingDeg != null) cone.style.transform = `translate(-50%, -6px) rotate(${headingDeg}deg)`;
