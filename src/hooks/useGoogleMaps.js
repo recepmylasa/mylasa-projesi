@@ -17,11 +17,18 @@ function buildGMapsUrl(API_KEY) {
   });
   return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
 }
+
 function removeExistingGMapsScript() {
   const s = document.getElementById(GMAPS_SCRIPT_ID);
   if (s && s.parentNode) s.parentNode.removeChild(s);
   _gmapsPromise = null;
 }
+
+/**
+ * Google Maps'i yükler.
+ * ÖNEMLİ FİKS: "marker" kütüphanesini import edip global namespace'e (google.maps.marker) bağl weyoruz.
+ * Böylece AdvancedMarkerElement kesin olarak mevcut olur ve useMarkers içinde HTML içerikli marker çizilebilir.
+ */
 function loadGoogleMaps(API_KEY) {
   if (window.google?.maps?.Map) return Promise.resolve(window.google.maps);
   if (!API_KEY) return Promise.reject(new Error("NO_API_KEY"));
@@ -33,7 +40,19 @@ function loadGoogleMaps(API_KEY) {
     let resolved = false;
     window.mylasaInitMap = async () => {
       try {
-        try { await window.google?.maps?.importLibrary?.("marker"); } catch {}
+        // Marker & Places kütüphanelerini yükle
+        try {
+          if (window.google?.maps?.importLibrary) {
+            const markerLib = await window.google.maps.importLibrary("marker");
+            // Bazı sürümlerde global namespace otomatik oluşmuyor → elle bağla
+            if (markerLib && !window.google.maps.marker) {
+              window.google.maps.marker = markerLib;
+            }
+            // Places da garanti olsun
+            try { await window.google.maps.importLibrary("places"); } catch {}
+          }
+        } catch {}
+
         if (!window.google?.maps?.Map) throw new Error("LIB_NOT_READY");
         resolved = true;
         resolve(window.google.maps);
@@ -85,6 +104,7 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
     try {
       const gmaps = await loadGoogleMaps(API_KEY);
 
+      // Haritayı oluştur
       if (!mapRef.current && mapDivRef.current) {
         const opts = {
           center: { lat: 39.0, lng: 35.0 },
@@ -95,12 +115,15 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
           fullscreenControl: false,
           gestureHandling: "greedy",
         };
-        if (MAP_ID) opts.mapId = MAP_ID;
+        if (MAP_ID) opts.mapId = MAP_ID; // vektör harita zorunlu (Advanced Marker için)
         mapRef.current = new gmaps.Map(mapDivRef.current, opts);
-
-        advancedAllowedRef.current = !!(gmaps?.marker?.AdvancedMarkerElement) && !!MAP_ID;
       }
 
+      // Advanced Marker kullanılabilir mi? (global namespace kesinleştirildi)
+      advancedAllowedRef.current =
+        !!(window.google?.maps?.marker?.AdvancedMarkerElement) && !!MAP_ID;
+
+      // Places servisleri
       if (window.google?.maps && mapRef.current) {
         const { places } = window.google.maps;
         if (!autocompleteServiceRef.current) {
