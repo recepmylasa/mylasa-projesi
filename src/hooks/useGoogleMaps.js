@@ -24,11 +24,6 @@ function removeExistingGMapsScript() {
   _gmapsPromise = null;
 }
 
-/**
- * Google Maps'i yükler.
- * ÖNEMLİ FİKS: "marker" kütüphanesini import edip global namespace'e (google.maps.marker) bağl weyoruz.
- * Böylece AdvancedMarkerElement kesin olarak mevcut olur ve useMarkers içinde HTML içerikli marker çizilebilir.
- */
 function loadGoogleMaps(API_KEY) {
   if (window.google?.maps?.Map) return Promise.resolve(window.google.maps);
   if (!API_KEY) return Promise.reject(new Error("NO_API_KEY"));
@@ -40,19 +35,13 @@ function loadGoogleMaps(API_KEY) {
     let resolved = false;
     window.mylasaInitMap = async () => {
       try {
-        // Marker & Places kütüphanelerini yükle
-        try {
-          if (window.google?.maps?.importLibrary) {
-            const markerLib = await window.google.maps.importLibrary("marker");
-            // Bazı sürümlerde global namespace otomatik oluşmuyor → elle bağla
-            if (markerLib && !window.google.maps.marker) {
-              window.google.maps.marker = markerLib;
-            }
-            // Places da garanti olsun
-            try { await window.google.maps.importLibrary("places"); } catch {}
+        if (window.google?.maps?.importLibrary) {
+          const markerLib = await window.google.maps.importLibrary("marker");
+          if (markerLib && !window.google.maps.marker) {
+            window.google.maps.marker = markerLib;
           }
-        } catch {}
-
+          try { await window.google.maps.importLibrary("places"); } catch {}
+        }
         if (!window.google?.maps?.Map) throw new Error("LIB_NOT_READY");
         resolved = true;
         resolve(window.google.maps);
@@ -104,22 +93,23 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
     try {
       const gmaps = await loadGoogleMaps(API_KEY);
 
-      // Haritayı oluştur
+      // Harita
       if (!mapRef.current && mapDivRef.current) {
         const opts = {
           center: { lat: 39.0, lng: 35.0 },
           zoom: 5,
           mapTypeId: "roadmap",
           disableDefaultUI: true,
+          clickableIcons: true,      // << POI tıklamalarını alabilmek için TRUE olmalı
           streetViewControl: false,
           fullscreenControl: false,
           gestureHandling: "greedy",
         };
-        if (MAP_ID) opts.mapId = MAP_ID; // vektör harita zorunlu (Advanced Marker için)
+        if (MAP_ID) opts.mapId = MAP_ID;
         mapRef.current = new gmaps.Map(mapDivRef.current, opts);
       }
 
-      // Advanced Marker kullanılabilir mi? (global namespace kesinleştirildi)
+      // Advanced Marker
       advancedAllowedRef.current =
         !!(window.google?.maps?.marker?.AdvancedMarkerElement) && !!MAP_ID;
 

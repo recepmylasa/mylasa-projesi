@@ -1,5 +1,5 @@
-// src/MapMobile.js — İNCELTİLMİŞ ANA BİLEŞEN
-import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
+// src/MapMobile.js — TAM DOSYA
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { auth, db } from "./firebase";
 import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
 
@@ -12,8 +12,11 @@ import {
   MIN_FAB_BOTTOM, FAB_EXTRA_LIFT, containerStyle, FALLBACK_STYLE,
 } from "./constants/map";
 
-import { animateFlyTo } from "./utils/anim";
-import { PANEL_NONE, PANEL_SEARCH, PANEL_LAYERS, PANEL_SETTINGS, initialPanelsState, panelsReducer } from "./store/panels";
+import { animateFlyTo, distanceMeters } from "./utils/anim";
+import {
+  PANEL_NONE, PANEL_SEARCH, PANEL_LAYERS, PANEL_SETTINGS,
+  initialPanelsState, panelsReducer
+} from "./store/panels";
 
 import MapTopControls from "./components/MapTopControls";
 import MapTypeMenu from "./components/MapTypeMenu";
@@ -23,6 +26,11 @@ import AvatarModal from "./AvatarModal";
 import MapSettingsModal from "./MapSettingsModal";
 import NewCheckInDetailMobile from "./NewCheckInDetailMobile";
 import { LocateIcon } from "./icons";
+
+// ---- Sabitler
+const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
+const MAP_ID  = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
+const CHECKIN_RADIUS_M = 500; // ← menzil
 
 // DEV log temizliği
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
@@ -38,10 +46,7 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
   };
 }
 
-const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
-const MAP_ID  = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
-
-export default function MapMobile({ currentUserProfile, onUserClick }) {
+export default function MapMobile({ currentUserProfile }) {
   const [{ overlay }, dispatchPanels] = useReducer(panelsReducer, initialPanelsState);
 
   const [selfAvatarUrl, setSelfAvatarUrl] = useState("/avatars/avatar 1.png");
@@ -62,6 +67,9 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
   const [inputWidth, setInputWidth]       = useState(220);
   const sizerRef = useRef(null);
 
+  // alt-sol toast
+  const [rangeToast, setRangeToast] = useState(false);
+
   const {
     gmapsStatus, errorMsg,
     mapDivRef, mapRef, advancedAllowedRef,
@@ -80,7 +88,53 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
   const searchPanelRef = useRef(null);
   const layersMenuRef  = useRef(null);
 
-  // dış tık & ESC
+  // MAP: kullanıcı etkileşimi ve boşluğa tıkta paneli kapat
+  useEffect(() => {
+    if (gmapsStatus !== "ready" || !mapRef.current) return;
+    const map = mapRef.current;
+
+    const onClick = (e) => {
+      try {
+        // POI'ye basıldıysa kendi penceremizi açalım (Google penceresi zaten kapalı)
+        if (e.placeId) {
+          e.stop && e.stop(); // Google'ın default davranışını durdur
+          const svc = placesServiceRef.current;
+          if (!svc) return;
+          svc.getDetails(
+            { placeId: e.placeId, fields: ["place_id", "name", "geometry", "formatted_address"], sessionToken: sessionTokenRef.current },
+            (place, status) => {
+              const ok = window.google.maps.places.PlacesServiceStatus.OK;
+              if (status !== ok || !place?.geometry?.location) return;
+              const pos = {
+                lat: typeof place.geometry.location.lat === "function" ? place.geometry.location.lat() : place.geometry.location.lat,
+                lng: typeof place.geometry.location.lng === "function" ? place.geometry.location.lng() : place.geometry.location.lng,
+              };
+              setSelectedPlace({
+                id: place.place_id, name: place.name, lat: pos.lat, lng: pos.lng,
+                address: place.formatted_address || "",
+              });
+              upsertMarker(SELECTED_MARKER_KEY, pos, { title: place.name });
+              setRangeToast(true);
+              setTimeout(() => setRangeToast(false), 5000);
+            }
+          );
+          return;
+        }
+      } catch {}
+      // Boş tık: kapat
+      setSelectedPlace(null);
+      removeMarker(SELECTED_MARKER_KEY);
+    };
+
+    const onDragStart = () => setUserMovedMap(true);
+
+    const clickL = map.addListener("click", onClick);
+    const dragL  = map.addListener("dragstart", onDragStart);
+
+    return () => { clickL?.remove?.(); dragL?.remove?.(); };
+  }, [gmapsStatus, mapRef, placesServiceRef, sessionTokenRef, upsertMarker, removeMarker]);
+
+  // dış tık & ESC (UI panelleri)
   useEffect(() => {
     const onPointerDown = (e) => {
       if (overlay === PANEL_NONE) return;
@@ -166,7 +220,7 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
     };
   }, []);
 
-  // profil: sadece avatar url dinliyoruz
+  // profil: avatar
   useEffect(() => {
     const u = auth.currentUser;
     if (!u) return;
@@ -215,7 +269,7 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
     return () => { if (handler) window.removeEventListener("deviceorientation", handler, true); };
   }, []);
 
-  // Konum
+  // Konum (watch)
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
     const geoOptions = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
@@ -237,6 +291,10 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
         updateDoc(locationRef, { longitude: loc.lng, latitude: loc.lat, timestamp: new Date() })
           .catch(() => { setDoc(locationRef, { longitude: loc.lng, latitude: loc.lat, timestamp: new Date() }); });
       }
+
+      // bilgilendirici toast
+      setRangeToast(true);
+      setTimeout(() => setRangeToast(false), 5000);
     };
     const onErr = () => setUserLocation(null);
 
@@ -266,7 +324,7 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
 
   // Canlı UI (batarya, %, koni)
   useEffect(() => {
-    const { cone, nameSpan, fill, pct, valueWrap } = selfUIRef.current || {};
+    const { cone, nameSpan, fill, pct } = selfUIRef.current || {};
     if (nameSpan) nameSpan.textContent = "Ben";
 
     if (fill) {
@@ -276,15 +334,11 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
       fill.style.background = batteryLevel == null ? "#888" : (level > 0.5 ? "#16a34a" : level > 0.2 ? "#d97706" : "#ef4444");
     }
     if (pct) {
-      const text = (batteryLevel == null) ? "—" : `${Math.round((batteryLevel || 0) * 100)}%`;
-      pct.textContent = text;
-      // aralık: tek/çift/üç hane için 4/6/8px
-      const digits = (text.match(/\d/g) || []).length;
-      if (valueWrap) valueWrap.style.gap = digits >= 3 ? "8px" : (digits === 2 ? "6px" : "4px");
+      pct.textContent = (batteryLevel == null) ? "—" : `${Math.round((batteryLevel || 0) * 100)}%`;
     }
     if (cone) {
       cone.style.display = headingDeg == null ? "none" : "block";
-      if (headingDeg != null) cone.style.transform = `translate(-50%, -4px) rotate(${headingDeg}deg)`;
+      if (headingDeg != null) cone.style.transform = `translate(-50%, -6px) rotate(${headingDeg}deg)`;
     }
   }, [batteryLevel, headingDeg, selfUIRef]);
 
@@ -325,14 +379,30 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
         const pos = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
         setSelectedPlace({ id: place.place_id, name: place.name, lat: pos.lat, lng: pos.lng, address: place.formatted_address || "" });
 
-        try { mapRef.current?.panTo(pos); mapRef.current?.setZoom(17); } catch {}
+        try {
+          const map = mapRef.current;
+          const cur = map.getCenter()?.toJSON?.() || DEFAULT_CENTER;
+          const z   = map.getZoom?.() ?? MOBILE_ZOOM;
+          animateFlyTo(map, cur, pos, z, 17, 900);
+        } catch {}
         upsertMarker(SELECTED_MARKER_KEY, pos, { title: place.name });
 
         setPredictions([]); dispatchPanels({ type: "CLOSE_ALL" }); setSearchText("");
         try { sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken(); } catch {}
+
+        setRangeToast(true);
+        setTimeout(() => setRangeToast(false), 5000);
       }
     );
   }, [placesServiceRef, sessionTokenRef, mapRef, upsertMarker]);
+
+  // seçili yer için hesaplar
+  const selectedDist = useMemo(() => {
+    if (!selectedPlace || !userLocation) return null;
+    return Math.round(distanceMeters(userLocation, { lat: selectedPlace.lat, lng: selectedPlace.lng }));
+  }, [selectedPlace, userLocation]);
+
+  const inRange = selectedDist != null && selectedDist <= CHECKIN_RADIUS_M;
 
   // Render
   if (gmapsStatus === "no-key") {
@@ -366,15 +436,21 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
         .mylasa-search-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
       `}</style>
 
+      {/* üst bar */}
       <MapTopControls
         selfAvatarUrl={selfAvatarUrl}
         onOpenAvatar={() => setIsAvatarModalOpen(true)}
         onToggleSettings={() => dispatchPanels({ type: "TOGGLE", payload: PANEL_SETTINGS })}
         onToggleLayers={() => dispatchPanels({ type: "TOGGLE", payload: PANEL_LAYERS })}
-        onToggleSearch={() => { dispatchPanels({ type: "TOGGLE", payload: PANEL_SEARCH }); setSearchText(""); setPredictions([]); setTimeout(() => { const evt = new Event("resize"); window.dispatchEvent(evt); }, 0); }}
+        onToggleSearch={() => {
+          dispatchPanels({ type: "TOGGLE", payload: PANEL_SEARCH });
+          setSearchText(""); setPredictions([]);
+          setTimeout(() => { const evt = new Event("resize"); window.dispatchEvent(evt); }, 0);
+        }}
         searchBtnRef={searchBtnRef} layersBtnRef={layersBtnRef} settingsBtnRef={settingsBtnRef}
       />
 
+      {/* katman menüsü */}
       <div style={{ position: "absolute", top: "70px", right: "10px", zIndex: 20 }}>
         <MapTypeMenu
           open={overlay === PANEL_LAYERS}
@@ -384,6 +460,7 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
         />
       </div>
 
+      {/* arama paneli */}
       <SearchOverlay
         open={overlay === PANEL_SEARCH}
         inputWidth={inputWidth}
@@ -396,32 +473,90 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
       />
       <span ref={sizerRef} style={{ position: "absolute", visibility: "hidden", whiteSpace: "pre", fontSize: 16, fontFamily: "inherit", fontWeight: 400 }} />
 
+      {/* yer kartı */}
       {selectedPlace && (
-        <div style={{ position: "absolute", top: 56, left: 12, right: 12, zIndex: 12, background: "white", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.28)", overflow: "hidden" }}>
+        <div style={{
+          position: "absolute", top: 56, left: 12, right: 12, zIndex: 22,
+          background: "white", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.28)", overflow: "hidden"
+        }}>
           <div style={{ padding: "10px 12px" }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{selectedPlace.name}</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedPlace.name}</div>
             {selectedPlace.address && (<div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{selectedPlace.address}</div>)}
+            <div style={{ fontSize: 12, color: "#444", marginTop: 6 }}>
+              Uzaklık: {selectedDist != null ? `${selectedDist} m` : "—"} — Menzil: {CHECKIN_RADIUS_M / 1000 >= 1 ? `${CHECKIN_RADIUS_M/1000} km` : `${CHECKIN_RADIUS_M} m`} — {inRange ? "Menzil içinde" : "Menzil dışında"}
+            </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #efefef", padding: "8px 10px" }}>
-            <button onClick={() => setIsCheckInOpen(true)} style={{ padding: "8px 12px", background: "#0095f6", color: "white", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>
-              Check-in
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            borderTop: "1px solid #efefef", padding: "8px 10px"
+          }}>
+            <button
+              onClick={() => setIsCheckInOpen(true)}
+              disabled={!inRange}
+              style={{
+                padding: "10px 14px",
+                background: inRange ? "#0095f6" : "#d1d5db",
+                color: inRange ? "white" : "#555",
+                border: "none", borderRadius: 8, fontWeight: 700, cursor: inRange ? "pointer" : "not-allowed"
+              }}
+              title={inRange ? "Check-in yap" : "Check-in için menzil dışı"}
+            >
+              {inRange ? "Check-in yap" : "Check-in için menzil dışı"}
             </button>
-            <button onClick={() => { setSelectedPlace(null); removeMarker(SELECTED_MARKER_KEY); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }} title="Kapat">✖</button>
+            <button
+              onClick={() => { setSelectedPlace(null); removeMarker(SELECTED_MARKER_KEY); }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}
+              title="Kapat"
+            >✖</button>
           </div>
         </div>
       )}
 
+      {/* Google Map */}
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", paddingBottom: 55 }} />
 
+      {/* alt-sol menzil tostu */}
+      {rangeToast && (
+        <div style={{
+          position: "absolute",
+          left: 14,
+          bottom: `calc(${fabBottom + 8}px + env(safe-area-inset-bottom, 0px))`,
+          zIndex: 21,
+          background: "rgba(0,0,0,0.68)",
+          color: "#fff",
+          padding: "8px 10px",
+          borderRadius: 8,
+          fontSize: 12,
+          boxShadow: "0 6px 16px rgba(0,0,0,.35)"
+        }}>
+          ±{CHECKIN_RADIUS_M} m içinde check-in
+        </div>
+      )}
+
+      {/* Sağ-alt Konumuma Git */}
       <button
-        style={{ position: "absolute", right: 14, bottom: `calc(${fabBottom + FAB_EXTRA_LIFT}px + env(safe-area-inset-bottom, 0px))`, zIndex: 20, width: 56, height: 56, borderRadius: "50%", background: "rgba(0,0,0,0.28)", border: "0", boxShadow: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+        style={{
+          position: "absolute",
+          right: 14,
+          bottom: `calc(${fabBottom + FAB_EXTRA_LIFT}px + env(safe-area-inset-bottom, 0px))`,
+          zIndex: 23,
+          width: 56, height: 56, borderRadius: "50%",
+          background: "rgba(0,0,0,0.28)",
+          border: "0", boxShadow: "none",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer"
+        }}
         onClick={() => {
           if (userLocation && mapRef.current) {
+            // yer kartı açıksa kapat
+            setSelectedPlace(null);
+            removeMarker(SELECTED_MARKER_KEY);
+
             try {
               const map = mapRef.current;
               const cur = map.getCenter()?.toJSON?.() || DEFAULT_CENTER;
               const z   = map.getZoom?.() ?? MOBILE_ZOOM;
-              animateFlyTo(map, cur, userLocation, z, MOBILE_ZOOM, 1200);
+              animateFlyTo(map, cur, userLocation, z, MOBILE_ZOOM, 900);
               setUserMovedMap(false);
             } catch {}
           }
@@ -429,17 +564,25 @@ export default function MapMobile({ currentUserProfile, onUserClick }) {
             const D = window.DeviceOrientationEvent;
             if (D && typeof D.requestPermission === "function") D.requestPermission().catch(() => {});
           } catch {}
+          setRangeToast(true);
+          setTimeout(() => setRangeToast(false), 5000);
         }}
         title="Konumuma git" aria-label="Konumuma git"
       >
         <LocateIcon size={28} color="#fff" weight="bold" />
       </button>
 
+      {/* Modallar */}
       {isAvatarModalOpen && <AvatarModal onClose={() => setIsAvatarModalOpen(false)} />}
       {overlay === PANEL_SETTINGS && <MapSettingsModal onClose={() => dispatchPanels({ type: "CLOSE_ALL" })} />}
 
+      {/* Check-in modalı */}
       {isCheckInOpen && selectedPlace && (
-        <NewCheckInDetailMobile selectedPlace={selectedPlace} currentUser={auth.currentUser} onClose={() => setIsCheckInOpen(false)} />
+        <NewCheckInDetailMobile
+          selectedPlace={selectedPlace}
+          currentUser={auth.currentUser}
+          onClose={() => setIsCheckInOpen(false)}
+        />
       )}
     </div>
   );

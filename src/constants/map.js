@@ -1,4 +1,3 @@
-// src/constants/map.js
 export const DEFAULT_CENTER = { lat: 39.0, lng: 35.0 };
 export const DEFAULT_ZOOM = 5;
 export const MOBILE_ZOOM = 14;
@@ -42,3 +41,6 @@ export const FALLBACK_STYLE = {
   textAlign: "center",
   padding: 16,
 };
+
+// >>> Check-in yarıçapı (metre)
+export const CHECKIN_RADIUS_M = 1000;
