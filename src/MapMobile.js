@@ -1,4 +1,4 @@
-// src/MapMobile.js — TAM DOSYA
+// src/MapMobile.js — TAM DOSYA (500 m toast düzeltildi)
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { auth, db } from "./firebase";
 import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
@@ -31,6 +31,10 @@ import { LocateIcon } from "./icons";
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 const MAP_ID  = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
 const CHECKIN_RADIUS_M = 500; // ← menzil
+
+// Toast ayarları
+const TOAST_LIFETIME_MS = 2600;
+const TOAST_COOLDOWN_MS = 15000;
 
 // DEV log temizliği
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
@@ -69,6 +73,18 @@ export default function MapMobile({ currentUserProfile }) {
 
   // alt-sol toast
   const [rangeToast, setRangeToast] = useState(false);
+  const toastStateRef = useRef({ lastAt: 0, hideTimer: null });
+  const showRangeToast = useCallback(() => {
+    const now = Date.now();
+    if (now - toastStateRef.current.lastAt < TOAST_COOLDOWN_MS) return; // cooldown
+    toastStateRef.current.lastAt = now;
+    setRangeToast(true);
+    if (toastStateRef.current.hideTimer) clearTimeout(toastStateRef.current.hideTimer);
+    toastStateRef.current.hideTimer = setTimeout(() => setRangeToast(false), TOAST_LIFETIME_MS);
+  }, []);
+  useEffect(() => () => { // unmount
+    if (toastStateRef.current.hideTimer) clearTimeout(toastStateRef.current.hideTimer);
+  }, []);
 
   const {
     gmapsStatus, errorMsg,
@@ -95,9 +111,8 @@ export default function MapMobile({ currentUserProfile }) {
 
     const onClick = (e) => {
       try {
-        // POI'ye basıldıysa kendi penceremizi açalım (Google penceresi zaten kapalı)
         if (e.placeId) {
-          e.stop && e.stop(); // Google'ın default davranışını durdur
+          e.stop && e.stop(); // Google varsayılan InfoWindow'u durdur
           const svc = placesServiceRef.current;
           if (!svc) return;
           svc.getDetails(
@@ -114,8 +129,7 @@ export default function MapMobile({ currentUserProfile }) {
                 address: place.formatted_address || "",
               });
               upsertMarker(SELECTED_MARKER_KEY, pos, { title: place.name });
-              setRangeToast(true);
-              setTimeout(() => setRangeToast(false), 5000);
+              showRangeToast(); // sadece etkileşimde ve cooldown'lı
             }
           );
           return;
@@ -132,7 +146,7 @@ export default function MapMobile({ currentUserProfile }) {
     const dragL  = map.addListener("dragstart", onDragStart);
 
     return () => { clickL?.remove?.(); dragL?.remove?.(); };
-  }, [gmapsStatus, mapRef, placesServiceRef, sessionTokenRef, upsertMarker, removeMarker]);
+  }, [gmapsStatus, mapRef, placesServiceRef, sessionTokenRef, upsertMarker, removeMarker, showRangeToast]);
 
   // dış tık & ESC (UI panelleri)
   useEffect(() => {
@@ -292,9 +306,7 @@ export default function MapMobile({ currentUserProfile }) {
           .catch(() => { setDoc(locationRef, { longitude: loc.lng, latitude: loc.lat, timestamp: new Date() }); });
       }
 
-      // bilgilendirici toast
-      setRangeToast(true);
-      setTimeout(() => setRangeToast(false), 5000);
+      // *** ÖNEMLİ: Burada toast YOK (tekrarlamayı engelledik) ***
     };
     const onErr = () => setUserLocation(null);
 
@@ -302,6 +314,11 @@ export default function MapMobile({ currentUserProfile }) {
     const watchId = navigator.geolocation.watchPosition(onPos, onErr, geoOptions);
     return () => { try { navigator.geolocation.clearWatch(watchId); } catch {} };
   }, [gmapsStatus, currentUserProfile?.isSharing, firstFixDone, userMovedMap, mapRef]);
+
+  // İlk GPS fix alındığında bir kez tost göster
+  useEffect(() => {
+    if (firstFixDone) showRangeToast();
+  }, [firstFixDone, showRangeToast]);
 
   // Kendi marker'ı yerleştir/güncelle
   useEffect(() => {
@@ -390,11 +407,10 @@ export default function MapMobile({ currentUserProfile }) {
         setPredictions([]); dispatchPanels({ type: "CLOSE_ALL" }); setSearchText("");
         try { sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken(); } catch {}
 
-        setRangeToast(true);
-        setTimeout(() => setRangeToast(false), 5000);
+        showRangeToast(); // cooldown'lı
       }
     );
-  }, [placesServiceRef, sessionTokenRef, mapRef, upsertMarker]);
+  }, [placesServiceRef, sessionTokenRef, mapRef, upsertMarker, dispatchPanels, showRangeToast]);
 
   // seçili yer için hesaplar
   const selectedDist = useMemo(() => {
@@ -516,22 +532,33 @@ export default function MapMobile({ currentUserProfile }) {
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", paddingBottom: 55 }} />
 
       {/* alt-sol menzil tostu */}
-      {rangeToast && (
-        <div style={{
+      <div
+        style={{
           position: "absolute",
           left: 14,
           bottom: `calc(${fabBottom + 8}px + env(safe-area-inset-bottom, 0px))`,
           zIndex: 21,
+          pointerEvents: "none",
+          transition: "opacity .2s ease, transform .2s ease",
+          opacity: rangeToast ? 1 : 0,
+          transform: rangeToast ? "translateY(0)" : "translateY(6px)"
+        }}
+      >
+        <div style={{
           background: "rgba(0,0,0,0.68)",
           color: "#fff",
           padding: "8px 10px",
           borderRadius: 8,
           fontSize: 12,
-          boxShadow: "0 6px 16px rgba(0,0,0,.35)"
+          boxShadow: "0 6px 16px rgba(0,0,0,.35)",
+          maxWidth: 200,
+          whiteSpace: "nowrap",
+          textOverflow: "ellipsis",
+          overflow: "hidden"
         }}>
           ±{CHECKIN_RADIUS_M} m içinde check-in
         </div>
-      )}
+      </div>
 
       {/* Sağ-alt Konumuma Git */}
       <button
@@ -564,8 +591,7 @@ export default function MapMobile({ currentUserProfile }) {
             const D = window.DeviceOrientationEvent;
             if (D && typeof D.requestPermission === "function") D.requestPermission().catch(() => {});
           } catch {}
-          setRangeToast(true);
-          setTimeout(() => setRangeToast(false), 5000);
+          // Not: artık burada toast tetiklemiyoruz (tekrar sorununa neden oluyordu)
         }}
         title="Konumuma git" aria-label="Konumuma git"
       >
