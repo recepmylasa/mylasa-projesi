@@ -1,4 +1,4 @@
-// src/MapMobile.js — TAM DOSYA (500 m toast düzeltildi)
+// src/MapMobile.js — TAM DOSYA (Cluster + Reverse Geocoding kısa adres)
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { auth, db } from "./firebase";
 import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
@@ -26,11 +26,20 @@ import AvatarModal from "./AvatarModal";
 import MapSettingsModal from "./MapSettingsModal";
 import NewCheckInDetailMobile from "./NewCheckInDetailMobile";
 import { LocateIcon } from "./icons";
+import { subscribeFriendLocations } from "./services/locationStream";
+import { createClusterer } from "./services/clusterer";
+import { reverseGeocode } from "./services/reverseGeocode"; // ← YENİ
 
 // ---- Sabitler
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 const MAP_ID  = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
 const CHECKIN_RADIUS_M = 500; // ← menzil
+
+// Cluster politikası
+const CLUSTER_ZOOM_THRESHOLD = 15; // < 15 → cluster açık, ≥ 15 → kapalı
+
+// Kısa adres güncelleme eşiği
+const SELF_ADDR_DISTANCE_THRESHOLD_M = 120; // 120 m hareket etmeden reverse geocode çağırma
 
 // Toast ayarları
 const TOAST_LIFETIME_MS = 2600;
@@ -50,7 +59,8 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
   };
 }
 
-export default function MapMobile({ currentUserProfile }) {
+// friends entegrasyonu: varsayılan props ekledik (geri uyumlu)
+export default function MapMobile({ currentUserProfile, friendsUids = [], friendsMeta = {} }) {
   const [{ overlay }, dispatchPanels] = useReducer(panelsReducer, initialPanelsState);
 
   const [selfAvatarUrl, setSelfAvatarUrl] = useState("/avatars/avatar 1.png");
@@ -61,6 +71,10 @@ export default function MapMobile({ currentUserProfile }) {
   const [firstFixDone, setFirstFixDone]   = useState(false);
   const [userMovedMap, setUserMovedMap]   = useState(false);
   const [fabBottom, setFabBottom]         = useState(MIN_FAB_BOTTOM);
+
+  // Kısa adres durumları
+  const [selfShortAddr, setSelfShortAddr] = useState("");          // Ben
+  const [placeShortAddr, setPlaceShortAddr] = useState("");        // Seçili yer (kısa)
 
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isCheckInOpen,   setIsCheckInOpen]   = useState(false);
@@ -82,7 +96,7 @@ export default function MapMobile({ currentUserProfile }) {
     if (toastStateRef.current.hideTimer) clearTimeout(toastStateRef.current.hideTimer);
     toastStateRef.current.hideTimer = setTimeout(() => setRangeToast(false), TOAST_LIFETIME_MS);
   }, []);
-  useEffect(() => () => { // unmount
+  useEffect(() => () => {
     if (toastStateRef.current.hideTimer) clearTimeout(toastStateRef.current.hideTimer);
   }, []);
 
@@ -103,6 +117,203 @@ export default function MapMobile({ currentUserProfile }) {
   const settingsBtnRef = useRef(null);
   const searchPanelRef = useRef(null);
   const layersMenuRef  = useRef(null);
+
+  // --- Arkadaş Marker Havuzu (yalnız mobil)
+  /** @type {React.MutableRefObject<Map<string, any>>} */
+  const friendMarkersRef = useRef(new Map());
+  const stopFriendsRef = useRef(null);
+
+  // --- Cluster controller
+  const clusterCtrlRef = useRef(null);
+
+  // Arkadaş marker HTML içeriği (AdvancedMarker) — sadece avatar
+  const createFriendEl = useCallback((avatarUrl, title) => {
+    const wrap = document.createElement("div");
+    wrap.style.width = "44px";
+    wrap.style.height = "44px";
+    wrap.style.borderRadius = "50%";
+    wrap.style.overflow = "hidden";
+    wrap.style.boxShadow = "0 4px 10px rgba(0,0,0,.35)";
+    wrap.style.border = "2px solid #fff";
+    wrap.style.background = "#f3f4f6";
+    wrap.style.transform = "translateY(-2px)";
+    wrap.title = title || "";
+    const img = document.createElement("img");
+    img.src = avatarUrl || "/avatars/avatar 1.png";
+    img.alt = title || "Arkadaş";
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.objectFit = "cover";
+    wrap.appendChild(img);
+    return wrap;
+  }, []);
+
+  // Arkadaş marker oluştur / güncelle
+  const upsertFriendMarker = useCallback((uid, pos, meta = {}) => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+    const m = friendMarkersRef.current.get(uid);
+    const avatarUrl = meta.avatarUrl || "/avatars/avatar 1.png";
+    const title = meta.displayName ? String(meta.displayName) : "Arkadaş";
+
+    if (m) {
+      try { m.setPosition?.(pos); } catch {}
+      return m;
+    }
+
+    let marker = null;
+    try {
+      if (advancedAllowedRef.current && window.google?.maps?.marker?.AdvancedMarkerElement) {
+        const el = createFriendEl(avatarUrl, title);
+        marker = new window.google.maps.marker.AdvancedMarkerElement({
+          position: pos,
+          map,
+          content: el,
+          title,
+          zIndex: 10,
+        });
+      } else {
+        // Fallback: klasik Marker
+        marker = new window.google.maps.Marker({
+          position: pos,
+          map,
+          title,
+          icon: {
+            url: avatarUrl,
+            scaledSize: new window.google.maps.Size(44, 44),
+          },
+          zIndex: 10,
+        });
+      }
+    } catch {
+      // Son çare: basit default marker
+      try {
+        marker = new window.google.maps.Marker({ position: pos, map, title, zIndex: 10 });
+      } catch {}
+    }
+
+    if (marker) friendMarkersRef.current.set(uid, marker);
+    return marker;
+  }, [advancedAllowedRef, mapRef, createFriendEl]);
+
+  // Arkadaş marker temizliği
+  const removeFriendMarker = useCallback((uid) => {
+    const m = friendMarkersRef.current.get(uid);
+    if (!m) return;
+    try { m.setMap?.(null); } catch {}
+    friendMarkersRef.current.delete(uid);
+  }, []);
+
+  const clearAllFriendMarkers = useCallback(() => {
+    friendMarkersRef.current.forEach((m) => {
+      try { m.setMap?.(null); } catch {}
+    });
+    friendMarkersRef.current.clear();
+  }, []);
+
+  // Cluster kur / yok et (map hazır olduğunda)
+  useEffect(() => {
+    if (gmapsStatus !== "ready" || !mapRef.current) {
+      // Harita yokken cluster'ı kapat
+      if (clusterCtrlRef.current) { try { clusterCtrlRef.current.destroy(); } catch {} ; clusterCtrlRef.current = null; }
+      return;
+    }
+    if (!clusterCtrlRef.current) {
+      clusterCtrlRef.current = createClusterer(mapRef.current, [], {
+        // Clusterer kendi maxZoom'unu bilsin fakat esas kontrol bizde (zoom threshold ile)
+        maxZoom: CLUSTER_ZOOM_THRESHOLD - 1,
+        gridSize: 60,
+      });
+    }
+    return () => {
+      // Bileşen unmount/harita kapanırken temizle
+      if (clusterCtrlRef.current) { try { clusterCtrlRef.current.destroy(); } catch {} ; clusterCtrlRef.current = null; }
+    };
+  }, [gmapsStatus, mapRef]);
+
+  // Cluster güncelleme (zoom veya arkadaş listesi değişince)
+  const updateClusters = useCallback(() => {
+    const map = mapRef.current;
+    const ctrl = clusterCtrlRef.current;
+    if (!map || !ctrl) return;
+
+    const zoom = map.getZoom?.() ?? MOBILE_ZOOM;
+    // Clustera girecek markerlar: SADECE arkadaş markerları
+    const friendMarkers = Array.from(friendMarkersRef.current.values()).filter(Boolean);
+
+    if (zoom < CLUSTER_ZOOM_THRESHOLD) {
+      // Cluster AÇIK → bireysel görünümü kapat, cluster'a ver
+      friendMarkers.forEach((mk) => { try { mk.setMap?.(null); } catch {} });
+      ctrl.setMarkers(friendMarkers);
+    } else {
+      // Cluster KAPALI → cluster temizle, bireysel görünümü map'e ver
+      ctrl.clear();
+      friendMarkers.forEach((mk) => { try { mk.setMap?.(map); } catch {} });
+    }
+  }, [mapRef]);
+
+  // Zoom değişimini izle → clusterı güncelle
+  useEffect(() => {
+    if (gmapsStatus !== "ready" || !mapRef.current) return;
+    const map = mapRef.current;
+    const l = map.addListener("zoom_changed", () => {
+      try { updateClusters(); } catch {}
+    });
+    // İlk kurulumda bir kez dengele
+    setTimeout(() => { try { updateClusters(); } catch {} }, 0);
+    return () => { try { l?.remove?.(); } catch {} };
+  }, [gmapsStatus, mapRef, updateClusters]);
+
+  // Friends canlı akışı: subscribe + marker güncellemeleri (cluster ile entegre)
+  useEffect(() => {
+    // Harita hazır değilse, açık akış varsa kapat ve markerları temizle
+    if (gmapsStatus !== "ready" || !mapRef.current) {
+      if (stopFriendsRef.current) { try { stopFriendsRef.current(); } catch {} ; stopFriendsRef.current = null; }
+      clearAllFriendMarkers();
+      // Cluster'ı da sıfırla
+      if (clusterCtrlRef.current) { try { clusterCtrlRef.current.clear(); } catch {} }
+      return;
+    }
+
+    // Boş liste: temizle
+    if (!Array.isArray(friendsUids) || friendsUids.length === 0) {
+      if (stopFriendsRef.current) { try { stopFriendsRef.current(); } catch {} ; stopFriendsRef.current = null; }
+      clearAllFriendMarkers();
+      if (clusterCtrlRef.current) { try { clusterCtrlRef.current.clear(); } catch {} }
+      return;
+    }
+
+    // Yeniden kur
+    if (stopFriendsRef.current) { try { stopFriendsRef.current(); } catch {} ; stopFriendsRef.current = null; }
+    const unsub = subscribeFriendLocations(friendsUids, (points) => {
+      try {
+        const seen = new Set();
+        for (const p of points) {
+          if (!p || typeof p.uid !== "string" || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) continue;
+          seen.add(p.uid);
+          const meta = friendsMeta && typeof friendsMeta === "object" ? (friendsMeta[p.uid] || {}) : {};
+          upsertFriendMarker(p.uid, { lat: p.lat, lng: p.lng }, meta);
+        }
+        // Listede olmayan markerları temizle (veya friendsUids dışındakileri)
+        friendMarkersRef.current.forEach((_marker, uid) => {
+          if (!seen.has(uid) || !friendsUids.includes(uid)) removeFriendMarker(uid);
+        });
+
+        // Arkadaş markerları güncellendi → clusterı yeniden hesapla
+        updateClusters();
+      } catch {
+        // Sessiz düş
+      }
+    }, { throttleMs: 100 });
+
+    stopFriendsRef.current = () => { try { unsub(); } catch {} };
+    // İlk state’te de dengele
+    setTimeout(() => { try { updateClusters(); } catch {} }, 0);
+
+    return () => {
+      try { unsub(); } catch {}
+    };
+  }, [gmapsStatus, mapRef, friendsUids, friendsMeta, upsertFriendMarker, removeFriendMarker, clearAllFriendMarkers, updateClusters]);
 
   // MAP: kullanıcı etkileşimi ve boşluğa tıkta paneli kapat
   useEffect(() => {
@@ -128,6 +339,7 @@ export default function MapMobile({ currentUserProfile }) {
                 id: place.place_id, name: place.name, lat: pos.lat, lng: pos.lng,
                 address: place.formatted_address || "",
               });
+              setPlaceShortAddr(""); // yeni yer için kısa adresi sonra hesaplayacağız
               upsertMarker(SELECTED_MARKER_KEY, pos, { title: place.name });
               showRangeToast(); // sadece etkileşimde ve cooldown'lı
             }
@@ -137,6 +349,7 @@ export default function MapMobile({ currentUserProfile }) {
       } catch {}
       // Boş tık: kapat
       setSelectedPlace(null);
+      setPlaceShortAddr("");
       removeMarker(SELECTED_MARKER_KEY);
     };
 
@@ -320,7 +533,7 @@ export default function MapMobile({ currentUserProfile }) {
     if (firstFixDone) showRangeToast();
   }, [firstFixDone, showRangeToast]);
 
-  // Kendi marker'ı yerleştir/güncelle
+  // Kendi marker'ı yerleştir/güncelle (SELF clustera dahil edilmez)
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
     if (userLocation) {
@@ -395,6 +608,7 @@ export default function MapMobile({ currentUserProfile }) {
 
         const pos = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
         setSelectedPlace({ id: place.place_id, name: place.name, lat: pos.lat, lng: pos.lng, address: place.formatted_address || "" });
+        setPlaceShortAddr(""); // yeni yer için kısa adresi sonra hesaplayacağız
 
         try {
           const map = mapRef.current;
@@ -412,7 +626,46 @@ export default function MapMobile({ currentUserProfile }) {
     );
   }, [placesServiceRef, sessionTokenRef, mapRef, upsertMarker, dispatchPanels, showRangeToast]);
 
-  // seçili yer için hesaplar
+  // seçili yer için kısa adresi doldur (adres yoksa da reverse geocode ile al)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!selectedPlace) { setPlaceShortAddr(""); return; }
+        const { lat, lng } = selectedPlace || {};
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) { setPlaceShortAddr(""); return; }
+        const short = await reverseGeocode(lat, lng);
+        if (!cancelled) setPlaceShortAddr(short || "");
+      } catch {
+        if (!cancelled) setPlaceShortAddr("");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPlace]);
+
+  // Kendi konumu için kısa adres (120 m hareket eşiği ile)
+  const lastAddrLocRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!userLocation) { setSelfShortAddr(""); lastAddrLocRef.current = null; return; }
+        const prev = lastAddrLocRef.current;
+        if (prev) {
+          const d = distanceMeters(prev, userLocation);
+          if (d < SELF_ADDR_DISTANCE_THRESHOLD_M) return; // çok yakında, çağırmaya gerek yok
+        }
+        lastAddrLocRef.current = userLocation;
+        const short = await reverseGeocode(userLocation.lat, userLocation.lng);
+        if (!cancelled && short) setSelfShortAddr(short);
+      } catch {
+        if (!cancelled) setSelfShortAddr("");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userLocation]);
+
+  // seçili yer için uzaklık
   const selectedDist = useMemo(() => {
     if (!selectedPlace || !userLocation) return null;
     return Math.round(distanceMeters(userLocation, { lat: selectedPlace.lat, lng: selectedPlace.lng }));
@@ -497,7 +750,11 @@ export default function MapMobile({ currentUserProfile }) {
         }}>
           <div style={{ padding: "10px 12px" }}>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedPlace.name}</div>
-            {selectedPlace.address && (<div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{selectedPlace.address}</div>)}
+            {(placeShortAddr || selectedPlace.address) && (
+              <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                {placeShortAddr || selectedPlace.address}
+              </div>
+            )}
             <div style={{ fontSize: 12, color: "#444", marginTop: 6 }}>
               Uzaklık: {selectedDist != null ? `${selectedDist} m` : "—"} — Menzil: {CHECKIN_RADIUS_M / 1000 >= 1 ? `${CHECKIN_RADIUS_M/1000} km` : `${CHECKIN_RADIUS_M} m`} — {inRange ? "Menzil içinde" : "Menzil dışında"}
             </div>
@@ -520,7 +777,7 @@ export default function MapMobile({ currentUserProfile }) {
               {inRange ? "Check-in yap" : "Check-in için menzil dışı"}
             </button>
             <button
-              onClick={() => { setSelectedPlace(null); removeMarker(SELECTED_MARKER_KEY); }}
+              onClick={() => { setSelectedPlace(null); setPlaceShortAddr(""); removeMarker(SELECTED_MARKER_KEY); }}
               style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}
               title="Kapat"
             >✖</button>
@@ -530,6 +787,32 @@ export default function MapMobile({ currentUserProfile }) {
 
       {/* Google Map */}
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", paddingBottom: 55 }} />
+
+      {/* BEN için kısa adres chip */}
+      {selfShortAddr && (
+        <div
+          style={{
+            position: "absolute",
+            left: 12,
+            top: 18,
+            zIndex: 21,
+            pointerEvents: "none",
+            background: "rgba(0,0,0,0.68)",
+            color: "#fff",
+            padding: "6px 10px",
+            borderRadius: 10,
+            fontSize: 12,
+            boxShadow: "0 6px 16px rgba(0,0,0,.35)",
+            maxWidth: 260,
+            whiteSpace: "nowrap",
+            textOverflow: "ellipsis",
+            overflow: "hidden"
+          }}
+          title={selfShortAddr}
+        >
+          {selfShortAddr}
+        </div>
+      )}
 
       {/* alt-sol menzil tostu */}
       <div
@@ -577,6 +860,7 @@ export default function MapMobile({ currentUserProfile }) {
           if (userLocation && mapRef.current) {
             // yer kartı açıksa kapat
             setSelectedPlace(null);
+            setPlaceShortAddr("");
             removeMarker(SELECTED_MARKER_KEY);
 
             try {
@@ -591,7 +875,7 @@ export default function MapMobile({ currentUserProfile }) {
             const D = window.DeviceOrientationEvent;
             if (D && typeof D.requestPermission === "function") D.requestPermission().catch(() => {});
           } catch {}
-          // Not: artık burada toast tetiklemiyoruz (tekrar sorununa neden oluyordu)
+          // Not: burada toast tetiklemiyoruz
         }}
         title="Konumuma git" aria-label="Konumuma git"
       >
