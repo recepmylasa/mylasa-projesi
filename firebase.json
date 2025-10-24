@@ -33,7 +33,7 @@
         "headers": [
           {
             "key": "Permissions-Policy",
-            "value": "geolocation=(self), accelerometer=(self), magnetometer=(self), gyroscope=(self)"
+            "value": "geolocation=(self), accelerometer=*, gyroscope=*, magnetometer=*"
           },
           {
             "key": "Referrer-Policy",

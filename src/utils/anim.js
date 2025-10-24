@@ -1,4 +1,3 @@
-// src/utils/anim.js
 import { MOBILE_ZOOM } from "../constants/map";
 
 /** küçük yardımcılar */
@@ -21,6 +20,83 @@ export function distanceMeters(a, b) {
 
 /**
  * Akıllı uçuş animasyonu.
+ * - Yakın hedeflerde sadece yumuşak pan (zoom değiştirmez).
+ * - Orta hedeflerde tek aşamalı nazik yakınlaşma.
+ * - Uzak hedeflerde mevcut iki aşamalı davranış (animateFlyTo).
+ */
+export function animateFlySmart(
+  map,
+  fromCenter,
+  toCenter,
+  opts = {}
+) {
+  if (!map || !fromCenter || !toCenter) return;
+
+  const {
+    fromZoom: _fromZoom,      // opsiyonel: vermezsen map.getZoom kullanılır
+    nearThresholdM = 120,     // ≤120 m → yakın
+    midThresholdM  = 450,     // 121–450 m → orta
+    nearDurationMs = 450,
+    midDurationMs  = 700,
+    farDurationMs  = 900,
+    nearZoomDeltaMax = 0,     // yakında zoom değişimi yok
+    midZoomTo = 16.5,         // orta hedef zoom
+    farZoomTo = 17            // uzak hedef zoom
+  } = opts;
+
+  const dist = distanceMeters(fromCenter, toCenter);
+  const currentZoom = Number.isFinite(_fromZoom) ? _fromZoom : (map.getZoom?.() ?? MOBILE_ZOOM);
+
+  // --- YAKIN: sadece yumuşak pan, zoom sabit ---
+  if (dist <= nearThresholdM) {
+    const start = performance.now();
+    const dur = Math.max(100, nearDurationMs);
+
+    function frame(now) {
+      const t = Math.min(1, (now - start) / dur);
+      const e = easeInOut(t);
+      const lat = lerp(fromCenter.lat, toCenter.lat, e);
+      const lng = lerp(fromCenter.lng, toCenter.lng, e);
+      try {
+        map.setCenter({ lat, lng });
+        // yakın hareket için zoom sabit tut (opsiyonel min delta kontrolü)
+        const targetZoom = currentZoom;
+        if (Math.abs((map.getZoom?.() ?? targetZoom) - targetZoom) > nearZoomDeltaMax) {
+          map.setZoom(targetZoom);
+        }
+      } catch {}
+      if (t < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    return;
+  }
+
+  // --- ORTA: tek aşamalı nazik yakınlaşma (current → midZoomTo) ---
+  if (dist <= midThresholdM) {
+    const start = performance.now();
+    const dur = Math.max(200, midDurationMs);
+    // nazik yakınlaşma: eğer zaten daha yakınsa (zoom büyükse) zoom'u düşürme
+    const targetZoom = Math.max(currentZoom, midZoomTo);
+
+    function frame(now) {
+      const t = Math.min(1, (now - start) / dur);
+      const e = easeInOut(t);
+      const lat = lerp(fromCenter.lat, toCenter.lat, e);
+      const lng = lerp(fromCenter.lng, toCenter.lng, e);
+      const z   = lerp(currentZoom, targetZoom, e);
+      try { map.setCenter({ lat, lng }); map.setZoom(z); } catch {}
+      if (t < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    return;
+  }
+
+  // --- UZAK: mevcut iki aşamalı davranışa delege et ---
+  animateFlyTo(map, fromCenter, toCenter, currentZoom, farZoomTo, farDurationMs);
+}
+
+/**
+ * Mevcut iki aşamalı uçuş animasyonu.
  * - Yakın hedeflerde zoom dışarı-İÇERİ yapmaz; sadece yumuşak pan.
  * - Uzak hedeflerde kısa bir dışa, sonra hedefe yakın içe zoom.
  * - Çok yakınsa ( <80 m ) direkt panTo.

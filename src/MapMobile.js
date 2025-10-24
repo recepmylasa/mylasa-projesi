@@ -1,4 +1,3 @@
-// src/MapMobile.js — TAM DOSYA (Cluster + Reverse Geocoding kısa adres)
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { auth, db } from "./firebase";
 import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
@@ -12,7 +11,7 @@ import {
   MIN_FAB_BOTTOM, FAB_EXTRA_LIFT, containerStyle, FALLBACK_STYLE,
 } from "./constants/map";
 
-import { animateFlyTo, distanceMeters } from "./utils/anim";
+import { animateFlySmart, distanceMeters } from "./utils/anim";
 import {
   PANEL_NONE, PANEL_SEARCH, PANEL_LAYERS, PANEL_SETTINGS,
   initialPanelsState, panelsReducer
@@ -614,7 +613,8 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
           const map = mapRef.current;
           const cur = map.getCenter()?.toJSON?.() || DEFAULT_CENTER;
           const z   = map.getZoom?.() ?? MOBILE_ZOOM;
-          animateFlyTo(map, cur, pos, z, 17, 900);
+          // YENİ: yakın/orta/uzak akıllı uçuş
+          animateFlySmart(map, cur, pos, { fromZoom: z, midZoomTo: 16.5, farZoomTo: 17, farDurationMs: 900 });
         } catch {}
         upsertMarker(SELECTED_MARKER_KEY, pos, { title: place.name });
 
@@ -867,7 +867,8 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
               const map = mapRef.current;
               const cur = map.getCenter()?.toJSON?.() || DEFAULT_CENTER;
               const z   = map.getZoom?.() ?? MOBILE_ZOOM;
-              animateFlyTo(map, cur, userLocation, z, MOBILE_ZOOM, 900);
+              // YENİ: yakın/orta/uzak akıllı uçuş
+              animateFlySmart(map, cur, userLocation, { fromZoom: z, midZoomTo: 16.5, farZoomTo: MOBILE_ZOOM, farDurationMs: 900 });
               setUserMovedMap(false);
             } catch {}
           }
