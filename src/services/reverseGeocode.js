@@ -1,5 +1,6 @@
 // src/services/reverseGeocode.js
 // Reverse geocode (kısa adres) — hatada kalıcı kapatma + konsol sessiz
+// Ek olarak getCityCountry & formatCityCountry export eder (Adım 7 ihtiyacı).
 
 let _geocoder = null;
 let _disabled = false;           // Bu oturumda kill-switch
@@ -153,4 +154,34 @@ export async function reverseGeocode(lat, lng) {
   } catch {
     return "";
   }
+}
+
+/* ------------------- Ek: şehir/ülke çıkarımı + format ------------------- */
+export async function getCityCountry(lat, lng) {
+  try {
+    const G = window.google?.maps;
+    if (!G?.Geocoder || _disabled) {
+      return { city: "", admin1: "", country: "", countryCode: "" };
+    }
+    if (!_geocoder) _geocoder = new G.Geocoder();
+    const resp = await _geocoder.geocode({ location: { lat, lng } }).catch(() => null);
+    const comps = (resp?.results?.[0]?.address_components) || [];
+    const find = (type) => comps.find(c => Array.isArray(c.types) && c.types.includes(type));
+    const city =
+      find("locality")?.long_name ||
+      find("sublocality")?.long_name ||
+      find("administrative_area_level_2")?.long_name ||
+      "";
+    const admin1 = find("administrative_area_level_1")?.long_name || "";
+    const country = find("country")?.long_name || "";
+    const countryCode = find("country")?.short_name || "";
+    return { city, admin1, country, countryCode };
+  } catch {
+    return { city: "", admin1: "", country: "", countryCode: "" };
+  }
+}
+
+export function formatCityCountry(areas) {
+  if (!areas) return "";
+  return [areas.city, areas.country].filter(Boolean).join(", ");
 }

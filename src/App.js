@@ -1,5 +1,6 @@
 // src/App.js
-// Tek overlay App’te, /p/:id ve /c/:id permalink uyumlu, profil sekmesi /u/<username> rotasına taşıyor.
+// Tek overlay App’te, /p/:id - /c/:id - /r/:id (?follow=1) permalink uyumlu,
+// profil sekmesi /u/<username> rotasına taşıyor.
 
 import { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
@@ -33,9 +34,13 @@ import StoryModal from "./StoryModal";
 import MapSettingsModal from "./MapSettingsModal";
 import FriendPickerModal from "./FriendPickerModal";
 
-// >>> NEW: Clips modal bileşenleri (Kural-6: ayrı dosyalar)
+// Clips modal bileşenleri
 import ClipDetailModalDesktop from "./ClipDetailModalDesktop";
 import ClipDetailModalMobile from "./ClipDetailModalMobile";
+
+// Rota: detay modal ve keşfet listesi
+import RouteDetailMobile from "./pages/RouteDetailMobile";
+import RoutesExploreMobile from "./pages/RoutesExploreMobile";
 
 import "./App.css";
 
@@ -59,47 +64,40 @@ function App() {
   const [width] = useWindowSize();
   const isMobile = width <= 768;
 
-  // Post/Clip modallarında pushState bizim mi yaptı?
+  // Post/Clip/Route modallarında pushState bizim mi yaptı?
   const pushedByAppRef = useRef(false);
 
-  // === NEW: Service Worker update toast state (mevcut düzeni bozmaz) ===
+  // SW update toast state
   const [swWaiting, setSwWaiting] = useState(null);
   const [showUpdateToast, setShowUpdateToast] = useState(false);
 
+  /* ===== Service Worker update toast ===== */
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
     let regUnsub = null;
     let refreshing = false;
 
-    // Yeni worker kontrol & dinleme
     navigator.serviceWorker.getRegistration().then((reg) => {
       if (!reg) return;
-
-      // Eğer yüklenmiş ve bekleyen bir worker varsa doğrudan bildir
       if (reg.waiting) {
         setSwWaiting(reg.waiting);
         setShowUpdateToast(true);
       }
-
-      // install → installed → waiting
       const onUpdateFound = () => {
         const newWorker = reg.installing;
         if (!newWorker) return;
         newWorker.addEventListener("statechange", () => {
-          // controller varsa ve yeni worker "installed" ise güncelleme hazır
           if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
             setSwWaiting(newWorker);
             setShowUpdateToast(true);
           }
         });
       };
-
       reg.addEventListener("updatefound", onUpdateFound);
       regUnsub = () => reg.removeEventListener("updatefound", onUpdateFound);
     });
 
-    // SkipWaiting sonrası controller değişip yeni sürüm aktif olunca otomatik yenile
     const onControllerChange = () => {
       if (refreshing) return;
       refreshing = true;
@@ -114,25 +112,19 @@ function App() {
   }, []);
 
   const acceptUpdateAndReload = () => {
-    try {
-      swWaiting?.postMessage?.("SKIP_WAITING");
-    } catch {}
-    // UI gizle; controllerchange dinleyicisi reload edecek
+    try { swWaiting?.postMessage?.("SKIP_WAITING"); } catch {}
     setShowUpdateToast(false);
   };
 
   // Modal varken body scroll kilidi
   useEffect(() => {
-    if (modalContent) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = prev;
-      };
-    }
+    if (!modalContent) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
   }, [modalContent]);
 
-  // Kimlik + kullanıcı profili dinleyicisi
+  // Kimlik + profil dinleyicisi
   useEffect(() => {
     let unsubscribeProfile = () => {};
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -150,177 +142,205 @@ function App() {
             }
             setLoading(false);
           },
-          (error) => {
-            console.error("Profil dinlenirken hata:", error);
-            setLoading(false);
-          }
+          () => setLoading(false)
         );
       } else {
         setCurrentUserProfile(null);
         setLoading(false);
       }
     });
-    return () => {
-      unsubscribeAuth();
-      unsubscribeProfile();
-    };
+    return () => { unsubscribeAuth(); unsubscribeProfile(); };
   }, []);
 
-  // URL doğrudan /p/:id ise post modalı aç
+  const urlFollowFlag = () => {
+    try {
+      const u = new URL(window.location.href);
+      const v = u.searchParams.get("follow");
+      return v === "1" || v === "true";
+    } catch { return false; }
+  };
+
+  /* ====== DEEP LINKS on mount: /p/:id , /c/:id , /r/:id (?follow=1) ====== */
   useEffect(() => {
     if (loading || !user) return;
-    const match = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]+)$/);
-    if (!match) return;
 
-    const openFromUrl = async () => {
-      const id = match[1];
+    const openPostFromUrl = async (id) => {
       try {
-        const postSnap = await getDoc(doc(db, "posts", id));
-        if (postSnap.exists()) {
-          setModalData({ id: postSnap.id, type: "post", ...postSnap.data() });
+        const snap = await getDoc(doc(db, "posts", id));
+        if (snap.exists()) {
+          setModalData({ id: snap.id, type: "post", ...snap.data() });
           setModalContent("viewingComments");
-          pushedByAppRef.current = false; // doğrudan geldi
+          pushedByAppRef.current = false;
         } else {
           window.history.replaceState({}, "", "/");
         }
-      } catch (e) {
-        console.error("Permalink yüklenirken hata:", e);
+      } catch {
         window.history.replaceState({}, "", "/");
       }
     };
-    openFromUrl();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user]);
 
-  // >>> NEW: URL doğrudan /c/:id ise clip modalı aç
-  useEffect(() => {
-    if (loading || !user) return;
-    const match = window.location.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/);
-    if (!match) return;
-
-    const openClipFromUrl = async () => {
-      const id = match[1];
+    const openClipFromUrl = async (id) => {
       try {
-        const clipSnap = await getDoc(doc(db, "clips", id));
-        if (clipSnap.exists()) {
-          setModalData({ id: clipSnap.id, type: "clip", ...clipSnap.data() });
+        const snap = await getDoc(doc(db, "clips", id));
+        if (snap.exists()) {
+          setModalData({ id: snap.id, type: "clip", ...snap.data() });
           setModalContent("viewingClip");
-          pushedByAppRef.current = false; // doğrudan geldi
+          pushedByAppRef.current = false;
         } else {
           window.history.replaceState({}, "", "/");
         }
-      } catch (e) {
-        console.error("Clip permalink yüklenirken hata:", e);
+      } catch {
         window.history.replaceState({}, "", "/");
       }
     };
-    openClipFromUrl();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    const openRouteFromUrl = async (id) => {
+      try {
+        const snap = await getDoc(doc(db, "routes", id));
+        if (!snap.exists()) { window.history.replaceState({}, "", "/"); return; }
+        const d = snap.data() || {};
+        const isOwner = d.ownerId === auth.currentUser?.uid;
+        const canRead = d.visibility === "public" || isOwner;
+        if (!canRead) {
+          setModalData({ error: "Erişim yok veya rota bulunamadı." });
+          setModalContent("viewingRouteError");
+          pushedByAppRef.current = false;
+          return;
+        }
+        setModalData({ id: snap.id, follow: urlFollowFlag() });
+        setModalContent("viewingRoute");
+        pushedByAppRef.current = false;
+      } catch {
+        window.history.replaceState({}, "", "/");
+      }
+    };
+
+    const path = window.location.pathname;
+    const mPost  = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+    const mClip  = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+    const mRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
+
+    if (mPost)  { openPostFromUrl(mPost[1]);  return; }
+    if (mClip)  { openClipFromUrl(mClip[1]);  return; }
+    if (mRoute) { openRouteFromUrl(mRoute[1]); return; }
+
+    // /u/:username ise Profile aktif
+    const mProfile = path.match(/^\/u\/([^/]+)\/?$/);
+    if (mProfile) setActivePage("profile");
   }, [loading, user]);
 
-  // App ilk açılışta /u/:username ise Profile sayfasını aktive et
-  useEffect(() => {
-    if (loading || !user) return;
-    const m = window.location.pathname.match(/^\/u\/([^/]+)\/?$/);
-    if (m) {
-      setActivePage("profile");
-    }
-  }, [loading, user]);
-
-  // Geri tuşu / URL değişimleri
+  /* ====== POPSTATE (geri/ileri) ====== */
   useEffect(() => {
     const onPop = async () => {
       const path = window.location.pathname;
-      const matchPost = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
-      const matchClip = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+      const matchPost  = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+      const matchClip  = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+      const matchRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
       const matchProfile = path.match(/^\/u\/([^/]+)\/?$/);
 
-      // Post permalink -> modal aç
-      if (matchPost) {
-        if (modalContent !== "viewingComments") {
-          try {
-            const id = matchPost[1];
-            const postSnap = await getDoc(doc(db, "posts", id));
-            if (postSnap.exists()) {
-              setModalData({ id: postSnap.id, type: "post", ...postSnap.data() });
-              setModalContent("viewingComments");
-              pushedByAppRef.current = false;
-            } else {
-              window.history.replaceState({}, "", "/");
-            }
-          } catch (e) {
-            console.error("Popstate yüklenirken hata (post):", e);
+      const openPost = async (id) => {
+        try {
+          const snap = await getDoc(doc(db, "posts", id));
+          if (snap.exists()) {
+            setModalData({ id: snap.id, type: "post", ...snap.data() });
+            setModalContent("viewingComments");
+            pushedByAppRef.current = false;
+          } else {
             window.history.replaceState({}, "", "/");
           }
+        } catch {
+          window.history.replaceState({}, "", "/");
         }
-        return;
-      }
-
-      // >>> NEW: Clip permalink -> modal aç
-      if (matchClip) {
-        if (modalContent !== "viewingClip") {
-          try {
-            const id = matchClip[1];
-            const clipSnap = await getDoc(doc(db, "clips", id));
-            if (clipSnap.exists()) {
-              setModalData({ id: clipSnap.id, type: "clip", ...clipSnap.data() });
-              setModalContent("viewingClip");
-              pushedByAppRef.current = false;
-            } else {
-              window.history.replaceState({}, "", "/");
-            }
-          } catch (e) {
-            console.error("Popstate yüklenirken hata (clip):", e);
+      };
+      const openClip = async (id) => {
+        try {
+          const snap = await getDoc(doc(db, "clips", id));
+          if (snap.exists()) {
+            setModalData({ id: snap.id, type: "clip", ...snap.data() });
+            setModalContent("viewingClip");
+            pushedByAppRef.current = false;
+          } else {
             window.history.replaceState({}, "", "/");
           }
+        } catch {
+          window.history.replaceState({}, "", "/");
         }
-        return;
-      }
+      };
+      const openRoute = async (id) => {
+        try {
+          const snap = await getDoc(doc(db, "routes", id));
+          if (!snap.exists()) { window.history.replaceState({}, "", "/"); return; }
+          const d = snap.data() || {};
+          const isOwner = d.ownerId === auth.currentUser?.uid;
+          const canRead = d.visibility === "public" || isOwner;
+          if (!canRead) {
+            setModalData({ error: "Erişim yok veya rota bulunamadı." });
+            setModalContent("viewingRouteError");
+            pushedByAppRef.current = false;
+            return;
+          }
+          setModalData({ id: snap.id, follow: urlFollowFlag() });
+          setModalContent("viewingRoute");
+          pushedByAppRef.current = false;
+        } catch {
+          window.history.replaceState({}, "", "/");
+        }
+      };
 
-      // Post/Clip değilse modalı kapat
-      if (modalContent === "viewingComments" || modalContent === "viewingClip") {
+      if (matchPost)  { await openPost(matchPost[1]);  return; }
+      if (matchClip)  { await openClip(matchClip[1]);  return; }
+      if (matchRoute) { await openRoute(matchRoute[1]); return; }
+
+      // Modal açıkken ve permalinkte değilsek → kapat
+      if (["viewingComments","viewingClip","viewingRoute","viewingRouteError"].includes(modalContent)) {
         setModalContent(null);
         setModalData(null);
         pushedByAppRef.current = false;
       }
 
-      // Profil URL'sindeysek sol menü de Profile aktif kalsın
-      if (matchProfile) {
-        setActivePage("profile");
-      }
+      if (matchProfile) setActivePage("profile");
     };
 
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [modalContent]);
 
-  // ► Nav değişiminde URL’yi normalize et
+  /* ===== Custom event: Route kart tık → modal aç ===== */
+  useEffect(() => {
+    const handler = (e) => {
+      const routeId = e?.detail?.routeId;
+      const follow = !!e?.detail?.follow;
+      if (!routeId) return;
+      setModalData({ id: routeId, follow });
+      setModalContent("viewingRoute");
+      // follow paramını da URL'ye yaz
+      const url = follow ? `/r/${routeId}?follow=1` : `/r/${routeId}`;
+      window.history.pushState({ modal: "route", id: routeId }, "", url);
+      pushedByAppRef.current = true;
+    };
+    window.addEventListener("open-route-modal", handler);
+    return () => window.removeEventListener("open-route-modal", handler);
+  }, []);
+
+  /* ===== Nav değişimi ===== */
   const handleNavChange = (tab) => {
     const path = window.location.pathname;
-    const isPermalink = /^\/(p|c)\/[A-Za-z0-9_-]+$/.test(path);
+    const isPermalink = /^\/(p|c|r)\/[A-Za-z0-9_-]+/.test(path);
     if (isPermalink) {
-      if (pushedByAppRef.current) {
-        window.history.back();
-      } else {
-        window.history.replaceState({}, "", "/");
-      }
+      if (pushedByAppRef.current) window.history.back();
+      else window.history.replaceState({}, "", "/");
       pushedByAppRef.current = false;
     }
 
-    // Modal açılan sekmeler
     if (["createMenu", "messages", "notifications", "checkin"].includes(tab)) {
       setModalContent(tab);
       return;
     }
 
-    // PROFiL sekmesi → /u/<kullanıcı>
     if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
       const target = `/u/${encodeURIComponent(currentUserProfile.kullaniciAdi)}`;
-      if (window.location.pathname !== target) {
-        window.history.pushState({}, "", target);
-      }
-    } else if (!/^\/(p|c|u)\//.test(window.location.pathname)) {
-      // Diğer sekmelerde ana sayfa path'ine dön
+      if (window.location.pathname !== target) window.history.pushState({}, "", target);
+    } else if (!/^\/(p|c|r|u)\//.test(window.location.pathname)) {
       window.history.replaceState({}, "", "/");
     }
 
@@ -334,7 +354,6 @@ function App() {
     setModalContent("viewingProfile");
   };
 
-  // Yorum modalını aç → pushState /p/:id
   const handleViewComments = (post) => {
     if (!post?.id) return;
     setModalData(post);
@@ -343,7 +362,6 @@ function App() {
     pushedByAppRef.current = true;
   };
 
-  // Feed’den Clips sekmesine geçiş (eski davranışı koruyoruz)
   const handleViewClip = () => setActivePage("clips");
 
   const handleStartMessage = (targetUserId) => {
@@ -376,7 +394,7 @@ function App() {
   const handleOpenFriendPicker = () => setModalContent("friendPicker");
 
   const handleSaveFriendSelection = async (selectedFriendIds) => {
-    if (!user) return console.error("Kullanıcı bulunamadı!");
+    if (!user) return;
     const userDocRef = doc(db, "users", user.uid);
     try {
       await updateDoc(userDocRef, {
@@ -385,9 +403,7 @@ function App() {
         isSharing: true,
       });
       setModalContent("mapSettings");
-    } catch (error) {
-      console.error("Arkadaş seçim listesi güncellenemedi:", error);
-    }
+    } catch {}
   };
 
   const renderPageContent = () => {
@@ -402,8 +418,14 @@ function App() {
             aktifKullaniciId={user.uid}
           />
         );
-      case "explore":
+      case "explore": {
+        // Basit derin link: /explore/routes ise rota keşfet sayfasını göster
+        const path = window.location.pathname;
+        if (/^\/explore\/routes\/?$/.test(path)) {
+          return <RoutesExploreMobile />;
+        }
         return <Explore onUserClick={handleViewProfile} />;
+      }
       case "map":
         return isMobile ? (
           <MapMobile
@@ -444,15 +466,12 @@ function App() {
     if (!modalContent) return null;
 
     const closeModal = () => {
-      // /p/:id veya /c/:id üzerindeysek URL’i temizle
-      const path = window.location.pathname;
-      const isPermalink = /^\/(p|c)\/[A-Za-z0-9_-]+$/.test(path);
+      // /p/:id /c/:id /r/:id üzerindeysek URL’i temizle
+      const path = window.location.pathname + window.location.search;
+      const isPermalink = /^\/(p|c|r)\/[A-Za-z0-9_-]+/.test(path);
       if (isPermalink) {
-        if (pushedByAppRef.current) {
-          window.history.back();
-        } else {
-          window.history.replaceState({}, "", "/");
-        }
+        if (pushedByAppRef.current) window.history.back();
+        else window.history.replaceState({}, "", "/");
       }
       setModalContent(null);
       setModalData(null);
@@ -543,6 +562,7 @@ function App() {
       <div style={currentStyle} onMouseDown={closeModal}>
         <div onMouseDown={(e) => e.stopPropagation()}>
           {modalContent === "newpost" && <NewPost onClose={closeModal} />}
+
           {modalContent === "messages" && (
             <Messages
               aktifKullaniciInfo={currentUserProfile}
@@ -550,6 +570,7 @@ function App() {
               onClose={closeModal}
             />
           )}
+
           {modalContent === "viewingProfile" && (
             <KullaniciProfili
               userId={modalData}
@@ -559,6 +580,7 @@ function App() {
               onSendMessage={handleStartMessage}
             />
           )}
+
           {modalContent === "viewingComments" && (
             <PostDetailModal
               post={modalData}
@@ -570,7 +592,8 @@ function App() {
               }}
             />
           )}
-          {/* >>> NEW: Clips modal (desktop/mobile ayrı dosya) */}
+
+          {/* CLIP */}
           {modalContent === "viewingClip" && (
             <>
               {isMobile ? (
@@ -579,6 +602,27 @@ function App() {
                 <ClipDetailModalDesktop clip={modalData} onClose={closeModal} />
               )}
             </>
+          )}
+
+          {/* ROUTE DETAIL */}
+          {modalContent === "viewingRoute" && (
+            <RouteDetailMobile
+              routeId={modalData?.id}
+              followInitially={!!modalData?.follow}
+              onClose={closeModal}
+            />
+          )}
+          {modalContent === "viewingRouteError" && (
+            <div style={{
+              width: "min(100vw, 520px)", background:"#fff", borderRadius:12, padding:"16px 14px",
+              boxShadow:"0 10px 28px rgba(0,0,0,.35)"
+            }}>
+              <div style={{fontWeight:800, marginBottom:6}}>Erişim yok</div>
+              <div style={{color:"#444"}}>Bu rota ya özel ya da bulunamadı.</div>
+              <div style={{marginTop:12, display:"flex", justifyContent:"flex-end"}}>
+                <button onClick={closeModal} style={{border:"1px solid #ddd", borderRadius:10, padding:"8px 12px", fontWeight:700, cursor:"pointer"}}>Kapat</button>
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -593,7 +637,7 @@ function App() {
       ? "main-content-wide"
       : "main-content-narrow";
 
-  // === NEW: Update toast render ===
+  // Update toast render
   const renderUpdateToast = () => {
     if (!showUpdateToast) return null;
     const wrap = {
@@ -601,7 +645,7 @@ function App() {
       left: 12,
       right: 12,
       bottom: 12,
-      zIndex: 5000, // overlay'in üstünde
+      zIndex: 5000,
       display: "flex",
       justifyContent: "center",
       pointerEvents: "none",

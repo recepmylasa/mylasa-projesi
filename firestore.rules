@@ -135,5 +135,74 @@ service cloud.firestore {
       allow read: if isSignedIn() || devWindow();
       allow write: if false;
     }
+
+    // ============================================================
+    // ====================  ADIM-3 EK BLOKLAR  ===================
+    // ============================================================
+
+    // ——— ROUTES (READ/WRITE GUARD) ———
+    match /routes/{routeId} {
+      // public ise herkes okuyabilir; private/followers basitçe owner'a açık (ileri adımlarda genişler)
+      allow read: if resource.data.visibility == "public"
+                  || (request.auth != null && resource.data.ownerId == request.auth.uid);
+
+      // Sadece sahibi oluşturabilir/güncelleyebilir/silebilir
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+
+      // stops alt koleksiyonu
+      match /stops/{stopId} {
+        allow read: if get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
+                    || (request.auth != null && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid);
+        allow create, update, delete: if request.auth != null &&
+          get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
+
+        // ====== ADIM-6: MEDIA alt koleksiyonu ======
+        match /media/{mediaId} {
+          // Rota public ise herkes okuyabilir, değilse yalnızca sahibi
+          allow read: if get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
+                      || (request.auth != null
+                          && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid);
+
+          // Sadece rota sahibi yazabilir/güncelleyebilir/silebilir
+          allow create, update, delete: if request.auth != null
+            && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid
+            // alan doğrulamaları
+            && request.resource.data.type in ['image','video']
+            && request.resource.data.url is string
+            && request.resource.data.ownerId == request.auth.uid
+            && request.resource.data.w is number
+            && request.resource.data.h is number
+            && request.resource.data.size is number
+            && request.resource.data.createdAt is timestamp;
+        }
+      }
+    }
+
+    // ——— RATINGS ———
+    match /route_ratings/{rid_uid} {
+      allow read: if true; // oylama toplamları UI için okunabilir
+      allow create, update: if request.auth != null
+        && request.resource.data.routeId is string
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.value is int
+        && request.resource.data.value >= 1 && request.resource.data.value <= 5
+        // Kendi rotana oy verme:
+        && (get(/databases/$(database)/documents/routes/$(request.resource.data.routeId)).data.ownerId != request.auth.uid);
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    match /stop_ratings/{sid_uid} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.resource.data.stopId is string
+        && request.resource.data.routeId is string
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.value is int
+        && request.resource.data.value >= 1 && request.resource.data.value <= 5
+        // Kendi durak/rotana oy verme:
+        && (get(/databases/$(database)/documents/routes/$(request.resource.data.routeId)).data.ownerId != request.auth.uid);
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
   }
 }

@@ -1,7 +1,25 @@
-// storage.rules — Mylasa (tam içerik)
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+
+    // ---------- Helpers ----------
+    function routeDoc(routeId) {
+      return firestore.get(/databases/(default)/documents/routes/$(routeId));
+    }
+    function isRouteOwner(routeId) {
+      return request.auth != null && routeDoc(routeId).data.ownerId == request.auth.uid;
+    }
+    function routePublic(routeId) {
+      return routeDoc(routeId).data.visibility == 'public';
+    }
+    function contentTypeOk() {
+      return request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*');
+    }
+    function sizeOk() {
+      return (request.resource.contentType.matches('image/.*') && request.resource.size <= 10 * 1024 * 1024)
+          || (request.resource.contentType.matches('video/.*') && request.resource.size <= 50 * 1024 * 1024);
+    }
 
     // Profil fotoğrafları
     match /profile_photos/{userId}/{fileName} {
@@ -47,6 +65,16 @@ service firebase.storage {
                     && (request.resource.contentType.matches('image/.*')
                         || request.resource.contentType.matches('video/.*'));
       allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ---------- ADIM-6: Rota durak medyası ----------
+    // Path: route_media/{routeId}/{stopId}/{filename}
+    match /route_media/{routeId}/{stopId}/{fileName} {
+      // Okuma: rota public ise herkes; değilse sadece sahibi
+      allow read: if routePublic(routeId) || isRouteOwner(routeId);
+
+      // Yazma: sadece rota sahibi + tip/boyut kontrolleri
+      allow write: if isRouteOwner(routeId) && contentTypeOk() && sizeOk();
     }
 
     // Varsayılan: kapalı

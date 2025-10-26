@@ -1,3 +1,4 @@
+// src/MapMobile.js — TAM DOSYA (Cluster + Reverse Geocoding + Rota Kaydı MVP)
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { auth, db } from "./firebase";
 import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
@@ -11,7 +12,7 @@ import {
   MIN_FAB_BOTTOM, FAB_EXTRA_LIFT, containerStyle, FALLBACK_STYLE,
 } from "./constants/map";
 
-import { animateFlySmart, distanceMeters } from "./utils/anim";
+import { animateFlyTo, distanceMeters } from "./utils/anim";
 import {
   PANEL_NONE, PANEL_SEARCH, PANEL_LAYERS, PANEL_SETTINGS,
   initialPanelsState, panelsReducer
@@ -27,7 +28,11 @@ import NewCheckInDetailMobile from "./NewCheckInDetailMobile";
 import { LocateIcon } from "./icons";
 import { subscribeFriendLocations } from "./services/locationStream";
 import { createClusterer } from "./services/clusterer";
-import { reverseGeocode } from "./services/reverseGeocode"; // ← YENİ
+import { reverseGeocode } from "./services/reverseGeocode";
+
+// === ROTA: yeni servisler ===
+import { routeRecorder } from "./services/routeRecorder";
+import * as routeStore from "./services/routeStore";
 
 // ---- Sabitler
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
@@ -124,6 +129,12 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
 
   // --- Cluster controller
   const clusterCtrlRef = useRef(null);
+
+  // === ROTA: durumlar
+  const [routeStatus, setRouteStatus] = useState("idle"); // idle | recording | finishing
+  const activeRouteIdRef = useRef(null);
+  const lastSyncedIndexRef = useRef(0);
+  const polylineRef = useRef(null);
 
   // Arkadaş marker HTML içeriği (AdvancedMarker) — sadece avatar
   const createFriendEl = useCallback((avatarUrl, title) => {
@@ -495,6 +506,37 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
     return () => { if (handler) window.removeEventListener("deviceorientation", handler, true); };
   }, []);
 
+  // === ROTA: polyline oluştur/temizle
+  const createPolyline = useCallback(() => {
+    if (!mapRef.current || !window.google?.maps || polylineRef.current) return;
+    try {
+      polylineRef.current = new window.google.maps.Polyline({
+        map: mapRef.current,
+        clickable: false,
+        strokeColor: "#1a73e8",
+        strokeOpacity: 0.95,
+        strokeWeight: 4,
+        geodesic: true,
+      });
+    } catch {}
+  }, [mapRef]);
+
+  const clearPolyline = useCallback(() => {
+    try {
+      if (polylineRef.current) {
+        polylineRef.current.setMap(null);
+        polylineRef.current = null;
+      }
+    } catch {}
+  }, []);
+
+  // Harita yeniden hazır olduğunda polyline'ı map'e bağla (kayıt sürüyorsa)
+  useEffect(() => {
+    if (gmapsStatus === "ready" && routeStatus === "recording" && polylineRef.current) {
+      try { polylineRef.current.setMap(mapRef.current); } catch {}
+    }
+  }, [gmapsStatus, routeStatus, mapRef]);
+
   // Konum (watch)
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
@@ -518,6 +560,32 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
           .catch(() => { setDoc(locationRef, { longitude: loc.lng, latitude: loc.lat, timestamp: new Date() }); });
       }
 
+      // === ROTA: kayıt aktifse noktayı ekle ve artımlı yaz
+      if (routeStatus === "recording" && activeRouteIdRef.current) {
+        try {
+          routeRecorder.onPoint(loc.lat, loc.lng, Date.now());
+
+          // Polyline'a sadece yeni noktaları ekle
+          const path = routeRecorder.getPath();
+          const start = lastSyncedIndexRef.current || 0;
+          const newChunk = path.slice(start);
+          if (newChunk.length) {
+            // harita çizgisi
+            try {
+              createPolyline();
+              const arr = polylineRef.current?.getPath?.();
+              if (arr && window.google?.maps) {
+                newChunk.forEach(p => arr.push(new window.google.maps.LatLng(p.lat, p.lng)));
+              }
+            } catch {}
+
+            // Firestore'a artımlı yazım (async, beklemeden)
+            routeStore.appendPath(activeRouteIdRef.current, newChunk).catch(() => {});
+            lastSyncedIndexRef.current = path.length;
+          }
+        } catch {}
+      }
+
       // *** ÖNEMLİ: Burada toast YOK (tekrarlamayı engelledik) ***
     };
     const onErr = () => setUserLocation(null);
@@ -525,7 +593,7 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
     navigator.geolocation.getCurrentPosition(onPos, onErr, geoOptions);
     const watchId = navigator.geolocation.watchPosition(onPos, onErr, geoOptions);
     return () => { try { navigator.geolocation.clearWatch(watchId); } catch {} };
-  }, [gmapsStatus, currentUserProfile?.isSharing, firstFixDone, userMovedMap, mapRef]);
+  }, [gmapsStatus, currentUserProfile?.isSharing, firstFixDone, userMovedMap, mapRef, routeStatus, createPolyline]);
 
   // İlk GPS fix alındığında bir kez tost göster
   useEffect(() => {
@@ -613,8 +681,8 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
           const map = mapRef.current;
           const cur = map.getCenter()?.toJSON?.() || DEFAULT_CENTER;
           const z   = map.getZoom?.() ?? MOBILE_ZOOM;
-          // YENİ: yakın/orta/uzak akıllı uçuş
-          animateFlySmart(map, cur, pos, { fromZoom: z, midZoomTo: 16.5, farZoomTo: 17, farDurationMs: 900 });
+          // Not: animasyon politikasında değişiklik yok (MVP), mevcut fonksiyonla
+          animateFlyTo(map, cur, pos, z, 17, 900);
         } catch {}
         upsertMarker(SELECTED_MARKER_KEY, pos, { title: place.name });
 
@@ -672,6 +740,74 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
   }, [selectedPlace, userLocation]);
 
   const inRange = selectedDist != null && selectedDist <= CHECKIN_RADIUS_M;
+
+  // === ROTA: UI Aksiyonları
+  const handleStartRoute = useCallback(async () => {
+    if (routeStatus !== "idle") return;
+    try {
+      const ownerId = auth.currentUser?.uid || "";
+      const title = `Rota ${new Date().toLocaleTimeString("tr-TR")}`;
+      routeRecorder.start({ title, visibility: "public" });
+      setRouteStatus("recording");
+      const routeId = await routeStore.createRoute({ ownerId, title, visibility: "public" });
+      activeRouteIdRef.current = routeId;
+      lastSyncedIndexRef.current = 0;
+      createPolyline();
+
+      // İlk nokta mevcutsa hemen kaydet
+      if (userLocation) {
+        routeRecorder.onPoint(userLocation.lat, userLocation.lng, Date.now());
+        const p = routeRecorder.getPath();
+        if (p.length) {
+          try {
+            const arr = polylineRef.current?.getPath?.();
+            if (arr && window.google?.maps) {
+              arr.push(new window.google.maps.LatLng(userLocation.lat, userLocation.lng));
+            }
+          } catch {}
+          routeStore.appendPath(routeId, p).catch(() => {});
+          lastSyncedIndexRef.current = p.length;
+        }
+      }
+    } catch {
+      setRouteStatus("idle");
+      activeRouteIdRef.current = null;
+      clearPolyline();
+    }
+  }, [routeStatus, userLocation, createPolyline, clearPolyline]);
+
+  const handleAddStop = useCallback(async () => {
+    if (routeStatus !== "recording" || !activeRouteIdRef.current || !userLocation) return;
+    const defaultTitle = `Durak ${Date.now() % 10000}`;
+    const title = window.prompt("Durak başlığı", defaultTitle);
+    if (title == null) return; // iptal
+    const note = window.prompt("Not (opsiyonel)", "") || "";
+    try {
+      const stop = routeRecorder.addStop({ title, note, lat: userLocation.lat, lng: userLocation.lng, t: Date.now() });
+      if (stop) await routeStore.addStop(activeRouteIdRef.current, stop);
+    } catch {}
+  }, [routeStatus, userLocation]);
+
+  const handleFinishRoute = useCallback(async () => {
+    if (routeStatus !== "recording" || !activeRouteIdRef.current) return;
+    setRouteStatus("finishing");
+    try {
+      // Gönderilmemiş path varsa yaz
+      const full = routeRecorder.getPath();
+      const start = lastSyncedIndexRef.current || 0;
+      const remain = full.slice(start);
+      if (remain.length) await routeStore.appendPath(activeRouteIdRef.current, remain);
+
+      const stats = routeRecorder.finish(); // recorder sıfırlanır
+      if (stats) await routeStore.finishRoute(activeRouteIdRef.current, stats);
+    } catch {}
+    finally {
+      activeRouteIdRef.current = null;
+      lastSyncedIndexRef.current = 0;
+      clearPolyline();
+      setRouteStatus("idle");
+    }
+  }, [routeStatus, clearPolyline]);
 
   // Render
   if (gmapsStatus === "no-key") {
@@ -867,8 +1003,8 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
               const map = mapRef.current;
               const cur = map.getCenter()?.toJSON?.() || DEFAULT_CENTER;
               const z   = map.getZoom?.() ?? MOBILE_ZOOM;
-              // YENİ: yakın/orta/uzak akıllı uçuş
-              animateFlySmart(map, cur, userLocation, { fromZoom: z, midZoomTo: 16.5, farZoomTo: MOBILE_ZOOM, farDurationMs: 900 });
+              // Mevcut politikayla uçuş
+              animateFlyTo(map, cur, userLocation, z, MOBILE_ZOOM, 900);
               setUserMovedMap(false);
             } catch {}
           }
@@ -882,6 +1018,64 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
       >
         <LocateIcon size={28} color="#fff" weight="bold" />
       </button>
+
+      {/* === ROTA Mini Panel (Locate'in SOLU) === */}
+      <div
+        style={{
+          position: "absolute",
+          right: 82,
+          bottom: `calc(${fabBottom + FAB_EXTRA_LIFT}px + env(safe-area-inset-bottom, 0px))`,
+          zIndex: 23,
+          display: "flex",
+          gap: 8,
+          alignItems: "center"
+        }}
+      >
+        {routeStatus === "idle" && (
+          <button
+            onClick={handleStartRoute}
+            style={{
+              height: 40, padding: "0 14px", borderRadius: 20,
+              background: "rgba(0,0,0,0.68)", color: "#fff",
+              border: "none", fontWeight: 700, cursor: "pointer"
+            }}
+            title="Rota Başlat"
+          >
+            Rota Başlat
+          </button>
+        )}
+        {routeStatus !== "idle" && (
+          <>
+            <button
+              onClick={handleAddStop}
+              disabled={!userLocation || routeStatus === "finishing"}
+              style={{
+                height: 40, padding: "0 12px", borderRadius: 20,
+                background: "rgba(0,0,0,0.68)", color: "#fff",
+                border: "none", fontWeight: 700,
+                cursor: routeStatus === "finishing" ? "not-allowed" : "pointer",
+                opacity: routeStatus === "finishing" ? 0.65 : 1
+              }}
+              title="Durak Ekle"
+            >
+              Durak Ekle
+            </button>
+            <button
+              onClick={handleFinishRoute}
+              disabled={routeStatus === "finishing"}
+              style={{
+                height: 40, padding: "0 12px", borderRadius: 20,
+                background: routeStatus === "finishing" ? "#ef4444AA" : "#ef4444",
+                color: "#fff", border: "none", fontWeight: 800,
+                cursor: routeStatus === "finishing" ? "not-allowed" : "pointer"
+              }}
+              title="Bitir"
+            >
+              {routeStatus === "finishing" ? "Bitiriliyor…" : "Bitir"}
+            </button>
+          </>
+        )}
+      </div>
 
       {/* Modallar */}
       {isAvatarModalOpen && <AvatarModal onClose={() => setIsAvatarModalOpen(false)} />}
