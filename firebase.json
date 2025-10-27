@@ -58,5 +58,7 @@
       { "source": "**", "destination": "/index.html" }
     ]
   },
-  "storage": { "rules": "storage.rules" }
+  "storage": {
+    "rules": "storage.rules"
+  }
 }

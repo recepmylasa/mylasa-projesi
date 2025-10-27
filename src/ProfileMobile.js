@@ -1,11 +1,15 @@
 // src/ProfileMobile.js
 // Mobil profil: header + highlights + sekmeler + içerik + CreateSheet + QR Modal + ActionsSheet + Saved + Labubu
+// Adım 9: Takip Et / Takibi Bırak eklendi (followers/following sayaçları opsiyonel gösterim)
+
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import "./ProfileMobile.css";
 import { auth, db } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { listSaved } from "./savesClient";
-import { collection, query, where, orderBy, getDocs, limit } from "firebase/firestore";
+import {
+  collection, query, where, orderBy, getDocs, limit,
+  doc, onSnapshot, setDoc, deleteDoc, serverTimestamp
+} from "firebase/firestore";
 
 import UserPosts from "./UserPosts";
 import UserCheckIns from "./UserCheckIns";
@@ -17,6 +21,9 @@ import CreateSheet from "./CreateSheet";
 import ProfileShareQRModal from "./ProfileShareQRModal";
 import ProfileActionsSheetMobile from "./ProfileActionsSheetMobile";
 import SavedGrid from "./SavedGrid";
+
+// Saved API (HATA düzeltmesi: listSaved buradan geliyor)
+import { listSaved } from "./savesClient";
 
 // Labubu
 import useLabubu from "./hooks/useLabubu";
@@ -36,6 +43,25 @@ export default function ProfileMobile({ user = null }) {
 
   const [myUid, setMyUid] = useState(auth?.currentUser?.uid || null);
   const isSelf = !!myUid && !!userId && myUid === userId;
+
+  // --- Adım 9: Following state ---
+  const [isFollowing, setIsFollowing] = useState(false);
+  useEffect(() => {
+    if (!myUid || !userId || myUid === userId) { setIsFollowing(false); return; }
+    const ref = doc(db, "follows", `${myUid}_${userId}`);
+    const off = onSnapshot(ref, (snap) => setIsFollowing(snap.exists()), () => setIsFollowing(false));
+    return () => off && off();
+  }, [myUid, userId]);
+
+  const toggleFollow = useCallback(async () => {
+    if (!myUid || !userId || myUid === userId) return;
+    const ref = doc(db, "follows", `${myUid}_${userId}`);
+    if (isFollowing) {
+      try { await deleteDoc(ref); } catch {}
+    } else {
+      try { await setDoc(ref, { followerId: myUid, followeeId: userId, createdAt: serverTimestamp() }); } catch {}
+    }
+  }, [myUid, userId, isFollowing]);
 
   // Labubu state (yalnız profil sahibi için kutu açma izni)
   const { cards, boxesReady, openBox } = useLabubu(isSelf ? myUid : userId);
@@ -202,9 +228,27 @@ export default function ProfileMobile({ user = null }) {
         onCreate={() => setCreateOpen(true)}
       />
 
+      {/* Adım 9: Takip Et / Takibi Bırak + sayaçlar */}
+      {!isSelf && hasUserId && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px" }}>
+          <button
+            onClick={toggleFollow}
+            style={{
+              padding: "8px 12px", borderRadius: 10, fontWeight: 800, cursor: "pointer",
+              border: "1px solid #ddd", background: isFollowing ? "#111" : "#fff", color: isFollowing ? "#fff" : "#111"
+            }}
+          >
+            {isFollowing ? "Takibi Bırak" : "Takip Et"}
+          </button>
+          <div style={{ fontSize: 12, opacity: .7 }}>
+            <b>{Number(u.followersCount || 0)}</b> takipçi • <b>{Number(u.followingCount || 0)}</b> takip
+          </div>
+        </div>
+      )}
+
       <ProfileHighlightsMobile
-        items={highlights}
-        username={username}
+        items={u.highlights || u.oneCikanlar || u.arsivOneCikanlar || []}
+        username={typeof u.username === "string" ? u.username.toLowerCase() : "kullanıcı"}
         onAdd={() => {}}
         onOpen={(item) => { console.log("highlight open:", item); }}
       />
@@ -249,7 +293,7 @@ export default function ProfileMobile({ user = null }) {
       <div id="tab-panel-collection" role="tabpanel" hidden={mode !== "collection"} className="tab-panel">
         <div className="userposts-container">
           <LabubuGridMobile
-            cards={cards}
+            cards={cards}   
             boxesReady={isSelf ? boxesReady : 0}
             onOpenBox={isSelf ? handleOpenStandard : undefined}
             onOpenCard={(c)=>setLastDrop(c)}
@@ -276,7 +320,7 @@ export default function ProfileMobile({ user = null }) {
           items={viewer.items}
           startIndex={viewer.index}
           onClose={closeViewer}
-          viewerUser={{ name: username, avatar: avatarUrl }}
+          viewerUser={{ name: typeof u.username === "string" ? u.username.toLowerCase() : "kullanıcı", avatar: avatarUrl }}
         />
       )}
 
@@ -287,10 +331,17 @@ export default function ProfileMobile({ user = null }) {
       <CreateSheet open={createOpen} onClose={() => setCreateOpen(false)} onSelect={(t) => { setCreateOpen(false); }} />
 
       {/* QR Modal */}
-      <ProfileShareQRModal open={qrOpen} onClose={() => setQrOpen(false)} url={profileUrl} username={username} />
+      <ProfileShareQRModal open={qrOpen} onClose={() => setQrOpen(false)} url={profileUrl} username={typeof u.username === "string" ? u.username.toLowerCase() : "kullanıcı"} />
 
       {/* Actions sheet */}
-      <ProfileActionsSheetMobile open={actionsOpen} onClose={closeActions} onSelect={handleActionSelect} />
+      <ProfileActionsSheetMobile open={actionsOpen} onClose={closeActions} onSelect={(id) => {
+        switch (id) {
+          case "qr": setQrOpen(true); closeActions(); break;
+          case "share_experience": handleShare(); closeActions(); break;
+          case "saved": setMode("saved"); closeActions(); break;
+          default: console.log("action:", id); closeActions(); break;
+        }
+      }} />
     </div>
   );
 }

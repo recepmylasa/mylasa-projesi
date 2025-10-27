@@ -1,14 +1,13 @@
 // src/services/routeRatings.js
-// Rota ve durak puanlama servisleri (1..5). Transaction ile tutarlı sayım.
-
-// Not: Kurallar tarafında kendi rotana/durağına oy verme zaten engelleniyor.
-// Burada da basit bir koruma var (owner check), fakat nihai otorite rules.
+// Rota ve durak puanlama servisleri (1..5).
+// Not: Agregasyon artık tamamen **Cloud Functions** tarafında.
+// Burada sadece *_ratings koleksiyonlarına idempotent yazım yapıyoruz.
 
 import { auth, db } from "../firebase";
 import {
   doc,
   getDoc,
-  runTransaction,
+  setDoc,
   serverTimestamp,
 } from "firebase/firestore";
 
@@ -30,43 +29,20 @@ export async function setRouteRating(routeId, value) {
   const routeRef = doc(db, "routes", String(routeId));
   const myRatingRef = doc(db, "route_ratings", `${routeId}_${user.uid}`);
 
-  await runTransaction(db, async (tx) => {
-    const routeSnap = await tx.get(routeRef);
-    if (!routeSnap.exists()) throw new Error("Route not found");
+  // (Opsiyonel) Sahiplik kontrolü: kullanıcı kendi rotasını oylamasın
+  const routeSnap = await getDoc(routeRef);
+  if (!routeSnap.exists()) throw new Error("Route not found");
+  const route = routeSnap.data() || {};
+  if (route.ownerId === user.uid) throw new Error("Cannot rate own route");
 
-    const route = routeSnap.data() || {};
-    // Sahibi kendi rotasına oy veremesin (UI’da da kapatıyoruz; rules da engelliyor)
-    if (route.ownerId === user.uid) throw new Error("Cannot rate own route");
+  await setDoc(myRatingRef, {
+    routeId: String(routeId),
+    userId: user.uid,
+    value: val,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 
-    const ratingSnap = await tx.get(myRatingRef);
-    const prev = ratingSnap.exists() ? Number(ratingSnap.data().value) : null;
-
-    let ratingSum = Number(route.ratingSum || 0);
-    let ratingCount = Number(route.ratingCount || 0);
-
-    if (prev == null) {
-      ratingSum += val;
-      ratingCount += 1;
-    } else {
-      ratingSum += (val - prev);
-    }
-
-    const ratingAvg = ratingCount > 0 ? ratingSum / ratingCount : 0;
-
-    tx.update(routeRef, {
-      ratingSum,
-      ratingCount,
-      ratingAvg, // hız için saklıyoruz
-      ratingUpdatedAt: serverTimestamp(),
-    });
-
-    tx.set(myRatingRef, {
-      routeId: String(routeId),
-      userId: user.uid,
-      value: val,
-      updatedAt: serverTimestamp(),
-    });
-  });
+  // Not: Ortalama/sayım güncellemesi backend tetiklerinden gelir.
 }
 
 /** Durak oyu ver / güncelle (idempotent) */
@@ -75,45 +51,34 @@ export async function setStopRating(stopId, routeId, value) {
   if (!user) throw new Error("Not authenticated");
   const val = normValue(value);
 
-  const stopRef = doc(db, "routes", String(routeId), "stops", String(stopId));
-  const routeRef = doc(db, "routes", String(routeId)); // owner kontrolü
+  const routeRef = doc(db, "routes", String(routeId)); // owner check
+  const stopRefPath = ["routes", String(routeId), "stops", String(stopId)];
   const myRatingRef = doc(db, "stop_ratings", `${stopId}_${user.uid}`);
 
-  await runTransaction(db, async (tx) => {
-    const [routeSnap, stopSnap, ratingSnap] = await Promise.all([
-      tx.get(routeRef),
-      tx.get(stopRef),
-      tx.get(myRatingRef),
-    ]);
+  // (Opsiyonel) Sahiplik kontrolü
+  const routeSnap = await getDoc(routeRef);
+  if (!routeSnap.exists()) throw new Error("Route not found");
+  const route = routeSnap.data() || {};
+  if (route.ownerId === user.uid) throw new Error("Cannot rate own stop");
 
-    if (!stopSnap.exists()) throw new Error("Stop not found");
-    if (!routeSnap.exists()) throw new Error("Route not found");
+  // Stop var mı (hata mesajını erken vermek için hafif kontrol)
+  // Kurallar zaten korur; yoksa bu kontrol atlanabilir.
+  // eslint-disable-next-line no-unused-vars
+  const [_c1, rid, _c2, sid] = stopRefPath; // sadece path kurmak için
+  // Firestore SDK'da stop varlığını okumak masraflı olabilir; kurallara güveniyoruz.
 
-    const route = routeSnap.data() || {};
-    if (route.ownerId === user.uid) throw new Error("Cannot rate own stop");
+  await setDoc(myRatingRef, {
+    stopId: String(stopId),
+    routeId: String(routeId),
+    userId: user.uid,
+    value: val,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 
-    const stop = stopSnap.data() || {};
-    let ratingSum = Number(stop.ratingSum || 0);
-    let ratingCount = Number(stop.ratingCount || 0);
-
-    const prev = ratingSnap.exists() ? Number(ratingSnap.data().value) : null;
-    if (prev == null) { ratingSum += val; ratingCount += 1; }
-    else { ratingSum += (val - prev); }
-
-    const ratingAvg = ratingCount > 0 ? ratingSum / ratingCount : 0;
-
-    tx.update(stopRef, { ratingSum, ratingCount, ratingAvg, ratingUpdatedAt: serverTimestamp() });
-    tx.set(myRatingRef, {
-      stopId: String(stopId),
-      routeId: String(routeId),
-      userId: user.uid,
-      value: val,
-      updatedAt: serverTimestamp(),
-    });
-  });
+  // Not: Ortalama/sayım güncellemesi backend tetiklerinden gelir.
 }
 
-/** Yardımcılar: Belgeden avg hesaplamak için */
+/** Yardımcı: Belgeden avg hesaplamak için (UI tarafında iyimser gösterim için) */
 export function computeAvg(sum, count) {
   const s = Number(sum || 0);
   const c = Number(count || 0);

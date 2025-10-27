@@ -18,7 +18,7 @@ import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 // 3. adımda eklettiğimiz puan servisleri (mevcutta var sayıyoruz)
 import { setRouteRating, setStopRating } from "../services/routeRatings";
 
-// 2. adımda eklettiğimiz okuma servisleri (mevcutta var sayıyoruz)
+// 2. adımda eklediğimiz okuma servisleri (mevcutta var sayıyoruz)
 import { watchRoute, watchStops } from "../services/routesRead";
 
 // Adım 5'te eklediğimiz GPX servisleri (mevcutta var sayıyoruz)
@@ -290,6 +290,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   const [routeDoc, setRouteDoc] = useState(null);
   const [stops, setStops] = useState([]); // [{id, order, title, note, lat,lng,t}]
   const [owner, setOwner] = useState(null);
+  const [permError, setPermError] = useState(null); // followers/private → 403 mesajı için
 
   // Medya cache: { stopId: [media...] }
   const mediaCacheRef = useRef({});
@@ -312,6 +313,32 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   // Haritaya polyline & durak markerları
   const polylineRef = useRef(null);
   const stopMarkersRef = useRef([]);
+
+  // ========== İzin (403) kontrolü ==========
+  useEffect(() => {
+    if (!routeId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const s = await getDoc(doc(db, "routes", routeId));
+        if (!alive) return;
+        if (!s.exists()) {
+          setPermError("not-found");
+        } else {
+          setPermError(null);
+        }
+      } catch (e) {
+        const code = String(e?.code || e?.message || "");
+        if (!alive) return;
+        if (code.includes("permission") || code.includes("denied")) {
+          setPermError("forbidden");
+        } else {
+          setPermError(null);
+        }
+      }
+    })();
+    return () => { alive = false; };
+  }, [routeId]);
 
   // ========== Veri izleme ==========
   useEffect(() => {
@@ -518,6 +545,23 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     }
     return "—";
   }, [routeDoc?.ratingSum, routeDoc?.ratingCount]);
+
+  // İzin reddi: followers/private ve kullanıcı takip etmiyor → 403 uyarısı
+  if (permError === "forbidden") {
+    return (
+      <div style={wrapModal()}>
+        <div style={card()}>
+          <div style={header()}>
+            <div style={titleCss()}>Rota</div>
+            <button style={closeBtn()} onClick={onClose}>✕</button>
+          </div>
+          <div style={{padding:"14px", fontSize:14}}>
+            Bu rota <b>yalnızca takipçilere</b> açık veya özeldir.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!routeDoc) {
     return (

@@ -160,7 +160,7 @@ function App() {
     } catch { return false; }
   };
 
-  /* ====== DEEP LINKS on mount: /p/:id , /c/:id , /r/:id (?follow=1) ====== */
+  /* ====== DEEP LINKS on mount: /p/:id , /c/:id , /r/:id (?follow=1)  +  /explore/routes ====== */
   useEffect(() => {
     if (loading || !user) return;
 
@@ -219,24 +219,29 @@ function App() {
     const mPost  = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
     const mClip  = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
     const mRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
+    const mProfile = path.match(/^\/u\/([^/]+)\/?$/);
+    const mExploreRoutes = path.match(/^\/explore\/routes\/?$/);
 
     if (mPost)  { openPostFromUrl(mPost[1]);  return; }
     if (mClip)  { openClipFromUrl(mClip[1]);  return; }
     if (mRoute) { openRouteFromUrl(mRoute[1]); return; }
 
     // /u/:username ise Profile aktif
-    const mProfile = path.match(/^\/u\/([^/]+)\/?$/);
-    if (mProfile) setActivePage("profile");
+    if (mProfile) { setActivePage("profile"); return; }
+
+    // /explore/routes ise Keşfet-Rotalar aktif
+    if (mExploreRoutes) { setActivePage("explore"); return; }
   }, [loading, user]);
 
   /* ====== POPSTATE (geri/ileri) ====== */
   useEffect(() => {
     const onPop = async () => {
       const path = window.location.pathname;
-      const matchPost  = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
-      const matchClip  = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
-      const matchRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
-      const matchProfile = path.match(/^\/u\/([^/]+)\/?$/);
+      const matchPost     = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+      const matchClip     = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+      const matchRoute    = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
+      const matchProfile  = path.match(/^\/u\/([^/]+)\/?$/);
+      const matchExploreRoutes = path.match(/^\/explore\/routes\/?$/);
 
       const openPost = async (id) => {
         try {
@@ -298,7 +303,8 @@ function App() {
         pushedByAppRef.current = false;
       }
 
-      if (matchProfile) setActivePage("profile");
+      if (matchProfile) { setActivePage("profile"); return; }
+      if (matchExploreRoutes) { setActivePage("explore"); return; }
     };
 
     window.addEventListener("popstate", onPop);
@@ -337,10 +343,16 @@ function App() {
       return;
     }
 
-    if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
+    // Keşfet sekmesini açarken varsayılan olarak /explore/routes'a yönlendir
+    if (tab === "explore") {
+      const target = "/explore/routes";
+      if (window.location.pathname !== target) {
+        window.history.pushState({}, "", target);
+      }
+    } else if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
       const target = `/u/${encodeURIComponent(currentUserProfile.kullaniciAdi)}`;
       if (window.location.pathname !== target) window.history.pushState({}, "", target);
-    } else if (!/^\/(p|c|r|u)\//.test(window.location.pathname)) {
+    } else if (!/^\/(p|c|r|u|explore\/routes)/.test(window.location.pathname)) {
       window.history.replaceState({}, "", "/");
     }
 

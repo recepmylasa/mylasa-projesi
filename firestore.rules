@@ -3,8 +3,6 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ---- Helpers
-    function listOrEmpty(x) { return (x is list) ? x : []; }
-    // DEV okuma penceresi (UZATILDI)
     function devWindow() { return request.time < timestamp('2030-01-01T00:00:00Z'); }
     function isSignedIn() { return request.auth != null; }
     function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
@@ -26,6 +24,18 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if isOwner(userId);
       }
+
+      // badges: PUBLIC READ
+      match /badges/{badgeId} {
+        allow read: if true;
+        allow create, update, delete: if false;
+      }
+
+      // stats: owner-only read
+      match /stats/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
     }
 
     match /usernames/{username} {
@@ -40,15 +50,12 @@ service cloud.firestore {
     }
 
     /* ============ CHECK-INS (mobil akış) ============ */
-    // Kullanıcılar kendi check-in kayıtlarını oluşturabilir/silebilir.
-    // Kayıtlar büyük oranda immutable; update kapalıdır.
     match /checkins/{checkinId} {
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.placeId is string
-        // coordinates: [lng, lat]
         && (request.resource.data.coordinates is list)
         && (request.resource.data.coordinates.size() == 2)
         && (request.resource.data.coordinates[0] is number)
@@ -82,18 +89,15 @@ service cloud.firestore {
     match /content/{contentId} {
       allow read: if isSignedIn();
 
-      // İçeriği sadece sahibi oluşturabilsin (kimlik taklidi engeli)
       allow create: if isSignedIn()
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.type in ['post','story','clip'];
 
       allow update, delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
 
-      // /content/{contentId}/ratings/{raterId}
       match /ratings/{raterId} {
         allow read: if isSignedIn();
 
-        // Yeni oy: sadece kendi adına, 1..5 puan ve kendi içeriğini oylayamaz
         allow create: if isSignedIn()
           && raterId == request.auth.uid
           && request.resource.data.raterId == request.auth.uid
@@ -103,7 +107,6 @@ service cloud.firestore {
           && exists(/databases/$(database)/documents/content/$(contentId))
           && get(/databases/$(database)/documents/content/$(contentId)).data.authorId != request.auth.uid;
 
-        // Güncelleme: yalnızca puan değişebilir, rater sabit; yine 1..5 ve kendi içeriği değil
         allow update: if isSignedIn()
           && raterId == request.auth.uid
           && request.resource.data.raterId == resource.data.raterId
@@ -129,80 +132,96 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    /* =================== CATCH-ALL (DEV OKUMA) =================== */
-    match /{document=**} {
-      // Kimlik varsa her zaman; yoksa sadece dev penceresinde oku
-      allow read: if isSignedIn() || devWindow();
-      allow write: if false;
+    // ==================== ADIM-9: FOLLOWS ====================
+    match /follows/{pairId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.followerId == request.auth.uid
+        && request.resource.data.followeeId is string
+        && request.resource.data.followerId != request.resource.data.followeeId
+        && request.resource.id == (request.auth.uid + "_" + request.resource.data.followeeId);
+      allow delete: if isSignedIn() && resource.data.followerId == request.auth.uid;
+      allow update: if false;
     }
 
-    // ============================================================
-    // ====================  ADIM-3 EK BLOKLAR  ===================
-    // ============================================================
-
-    // ——— ROUTES (READ/WRITE GUARD) ———
+    // ==================== ROUTES + STOPS =====================
     match /routes/{routeId} {
-      // public ise herkes okuyabilir; private/followers basitçe owner'a açık (ileri adımlarda genişler)
-      allow read: if resource.data.visibility == "public"
-                  || (request.auth != null && resource.data.ownerId == request.auth.uid);
+      // public OR owner OR followers visibility + follow relation
+      allow read: if
+        resource.data.visibility == "public"
+        || (isSignedIn() && resource.data.ownerId == request.auth.uid)
+        || (isSignedIn()
+            && resource.data.visibility == "followers"
+            && exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + resource.data.ownerId)));
 
-      // Sadece sahibi oluşturabilir/güncelleyebilir/silebilir
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
 
-      // stops alt koleksiyonu
       match /stops/{stopId} {
-        allow read: if get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
-                    || (request.auth != null && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid);
-        allow create, update, delete: if request.auth != null &&
-          get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
+        allow read: if
+          get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
+          || (isSignedIn()
+              && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid)
+          || (isSignedIn()
+              && get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "followers"
+              && exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId)));
 
-        // ====== ADIM-6: MEDIA alt koleksiyonu ======
+        allow create, update, delete: if isSignedIn()
+          && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
+
+        // --- media alt koleksiyonu ---
         match /media/{mediaId} {
-          // Rota public ise herkes okuyabilir, değilse yalnızca sahibi
-          allow read: if get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
-                      || (request.auth != null
-                          && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid);
+          allow read: if
+            get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
+            || (isSignedIn()
+                && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid)
+            || (isSignedIn()
+                && get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "followers"
+                && exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId)));
 
-          // Sadece rota sahibi yazabilir/güncelleyebilir/silebilir
-          allow create, update, delete: if request.auth != null
+          allow create, update, delete: if isSignedIn()
             && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid
-            // alan doğrulamaları
             && request.resource.data.type in ['image','video']
             && request.resource.data.url is string
-            && request.resource.data.ownerId == request.auth.uid
-            && request.resource.data.w is number
-            && request.resource.data.h is number
-            && request.resource.data.size is number
-            && request.resource.data.createdAt is timestamp;
+            && request.resource.data.ownerId == request.auth.uid;
         }
       }
     }
 
-    // ——— RATINGS ———
+    // ==================== RATINGS ====================
     match /route_ratings/{rid_uid} {
-      allow read: if true; // oylama toplamları UI için okunabilir
-      allow create, update: if request.auth != null
+      allow read: if true;
+      allow create, update: if isSignedIn()
         && request.resource.data.routeId is string
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.value is int
         && request.resource.data.value >= 1 && request.resource.data.value <= 5
-        // Kendi rotana oy verme:
         && (get(/databases/$(database)/documents/routes/$(request.resource.data.routeId)).data.ownerId != request.auth.uid);
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /stop_ratings/{sid_uid} {
       allow read: if true;
-      allow create, update: if request.auth != null
+      allow create, update: if isSignedIn()
         && request.resource.data.stopId is string
         && request.resource.data.routeId is string
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.value is int
         && request.resource.data.value >= 1 && request.resource.data.value <= 5
-        // Kendi durak/rotana oy verme:
         && (get(/databases/$(database)/documents/routes/$(request.resource.data.routeId)).data.ownerId != request.auth.uid);
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ==================== BADGE CATALOG ====================
+    match /badge_catalog/{badgeId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    /* =================== CATCH-ALL (DEV OKUMA) =================== */
+    match /{document=**} {
+      allow read: if isSignedIn() || devWindow();
+      allow write: if false;
     }
   }
 }
