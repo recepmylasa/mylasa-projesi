@@ -160,7 +160,7 @@ function App() {
     } catch { return false; }
   };
 
-  /* ====== DEEP LINKS on mount: /p/:id , /c/:id , /r/:id (?follow=1)  +  /explore/routes ====== */
+  /* ====== DEEP LINKS on mount: /p/:id , /c/:id , /r/:id (?follow=1)  +  /explore , /explore/routes ====== */
   useEffect(() => {
     if (loading || !user) return;
 
@@ -221,6 +221,7 @@ function App() {
     const mRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
     const mProfile = path.match(/^\/u\/([^/]+)\/?$/);
     const mExploreRoutes = path.match(/^\/explore\/routes\/?$/);
+    const mExplore = path.match(/^\/explore\/?$/);
 
     if (mPost)  { openPostFromUrl(mPost[1]);  return; }
     if (mClip)  { openClipFromUrl(mClip[1]);  return; }
@@ -229,8 +230,8 @@ function App() {
     // /u/:username ise Profile aktif
     if (mProfile) { setActivePage("profile"); return; }
 
-    // /explore/routes ise Keşfet-Rotalar aktif
-    if (mExploreRoutes) { setActivePage("explore"); return; }
+    // /explore veya /explore/routes ise Keşfet aktif
+    if (mExploreRoutes || mExplore) { setActivePage("explore"); return; }
   }, [loading, user]);
 
   /* ====== POPSTATE (geri/ileri) ====== */
@@ -242,6 +243,7 @@ function App() {
       const matchRoute    = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
       const matchProfile  = path.match(/^\/u\/([^/]+)\/?$/);
       const matchExploreRoutes = path.match(/^\/explore\/routes\/?$/);
+      const matchExplore = path.match(/^\/explore\/?$/);
 
       const openPost = async (id) => {
         try {
@@ -304,7 +306,7 @@ function App() {
       }
 
       if (matchProfile) { setActivePage("profile"); return; }
-      if (matchExploreRoutes) { setActivePage("explore"); return; }
+      if (matchExploreRoutes || matchExplore) { setActivePage("explore"); return; }
     };
 
     window.addEventListener("popstate", onPop);
@@ -343,16 +345,17 @@ function App() {
       return;
     }
 
-    // Keşfet sekmesini açarken varsayılan olarak /explore/routes'a yönlendir
+    // Keşfet sekmesi: varsayılan hedef /explore
     if (tab === "explore") {
-      const target = "/explore/routes";
+      const target = "/explore";
       if (window.location.pathname !== target) {
         window.history.pushState({}, "", target);
       }
     } else if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
       const target = `/u/${encodeURIComponent(currentUserProfile.kullaniciAdi)}`;
       if (window.location.pathname !== target) window.history.pushState({}, "", target);
-    } else if (!/^\/(p|c|r|u|explore\/routes)/.test(window.location.pathname)) {
+    } else if (!/^\/(p|c|r|u|explore(\/routes)?)/.test(window.location.pathname)) {
+      // explore ve explore/routes izinli
       window.history.replaceState({}, "", "/");
     }
 

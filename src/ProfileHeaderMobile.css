@@ -69,4 +69,42 @@
   gap:8px;
 }
 
-/* avatar/ring/+ rozeti ig-mobile.css’te */
+/* --- EK: chip butonları (IG benzeri) --- */
+.chip-btn{
+  height:40px;
+  padding:0 14px;
+  border-radius:10px;
+  border:1px solid var(--divider, #dbdbdb);
+  background:#fff;
+  font-weight:600;
+  font-size:14px;
+  line-height:40px;
+  text-align:center;
+  cursor:pointer;
+}
+.chip-btn:disabled{
+  opacity:.6;
+  cursor:default;
+}
+.chip-primary{
+  background:#111;
+  color:#fff;
+  border-color:#111;
+}
+.chip-outline{
+  background:#fff;
+  color:#111;
+  border-color:var(--divider, #dbdbdb);
+}
+
+/* Toast (hata/geri alma bilgisi) */
+.phm-toast{
+  margin:4px 16px 12px;
+  background:#111;
+  color:#fff;
+  padding:8px 10px;
+  border-radius:10px;
+  font-size:12px;
+}
+
+/* avatar/ring/+ rozet stilleri ig-mobile.css’te tanımlıdır */

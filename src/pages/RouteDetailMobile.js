@@ -1,7 +1,7 @@
-// RouteDetailMobile.js — Mobil Rota Detayı (Duraklar | Galeri | Rapor)
+// RouteDetailMobile.js — Mobil Rota Detayı (Duraklar | Galeri | Rapor | Görsel Paylaş)
 // NOT: Ek dosya YOK. Lightbox, StarBars, upload & rating-agg yardımcıları bu dosyanın içindedir.
 // Bağımlılıklar: firebase config (auth, db, storage), StarRatingV2, routeRatings, routesRead, gpx (Adım 5)
-// Mevcut takip/puanlama/paylaş davranışlarına DOKUNMAZ, yalnız sekmeler + medya + rapor ekler.
+// Mevcut takip/puanlama/paylaş davranışlarına DOKUNMAZ, yalnız sekmeler + medya + rapor + “Görsel Paylaş” ekler.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { auth, db, storage } from "../firebase";
@@ -30,6 +30,9 @@ import StarRatingV2 from "../components/StarRatingV2/StarRatingV2";
 // Google Maps hook’u (projede mevcut)
 import { useGoogleMaps } from "../hooks/useGoogleMaps";
 
+// Adım 13: Görsel paylaşım sheet’i (YENİ bileşen)
+import ShareSheetMobile from "../components/ShareSheetMobile";
+
 // Ufak yardımcılar
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 const MAP_ID  = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
@@ -48,6 +51,31 @@ function fmtDur(ms) {
 }
 function calcAvg(sum, count) {
   return (Number(count)||0) > 0 ? (Number(sum||0)/Number(count)).toFixed(1) : "—";
+}
+
+// Adım 13: renderRouteShare için rota payload’unu zenginleştir
+function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
+  const r = { ...(routeDoc || {}), id: routeId };
+  if (ownerDoc) {
+    r.ownerUsername =
+      ownerDoc.username ||
+      ownerDoc.userName ||
+      ownerDoc.handle ||
+      ownerDoc.name ||
+      r.ownerUsername ||
+      r.ownerName;
+    r.ownerName =
+      ownerDoc.name ||
+      ownerDoc.fullName ||
+      r.ownerName ||
+      r.ownerUsername;
+    r.ownerAvatar =
+      ownerDoc.photoURL ||
+      ownerDoc.profilFoto ||
+      ownerDoc.avatar ||
+      r.ownerAvatar;
+  }
+  return r;
 }
 
 // ======================= INLINE: Lightbox =======================
@@ -158,8 +186,9 @@ async function getStopsStarsAgg(routeId, max = 1000) {
   snap.forEach((d) => {
     const data = d.data() || {};
     const sid = String(data.stopId || "");
+    if (!sid) return;
     const v = Number(data.value);
-    if (!sid || !(v >= 1 && v <= 5)) return;
+    if (!(v >= 1 && v <= 5)) return;
     if (!map[sid]) map[sid] = { counts: {1:0,2:0,3:0,4:0,5:0}, total: 0, avg: 0, __sum:0 };
     map[sid].counts[v] += 1;
     map[sid].__sum += v;
@@ -299,6 +328,9 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   // Lightbox state (galeri)
   const [lightboxItems, setLightboxItems] = useState(null); // [{url,type}]
   const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  // Adım 13: Görsel paylaşım sheet görünürlüğü
+  const [showShareSheet, setShowShareSheet] = useState(false);
 
   // Rating dağılımı (rapor sekmesinde lazy)
   const [routeAgg, setRouteAgg] = useState(null); // {counts,total,avg}
@@ -491,7 +523,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     setUploadState((s)=>{ const ns = { ...s }; delete ns[stopId]; return ns; });
   }, [uploadState]);
 
-  // ========== Paylaş ==========
+  // ========== Link Paylaşımı ==========
   const onShare = useCallback(async () => {
     const url = `${window.location.origin}/r/${routeId}`;
     const title = routeDoc?.title || "Rota";
@@ -503,6 +535,11 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
       }
     } catch {}
   }, [routeId, routeDoc?.title]);
+
+  // ========== Görsel Paylaşımı (Adım 13) ==========
+  const onShareVisual = useCallback(() => {
+    setShowShareSheet(true);
+  }, []);
 
   // ========== GPX ==========
   const onExportGpx = useCallback(async () => {
@@ -616,13 +653,14 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
           </div>
           <div style={{display:"flex", gap:8}}>
             <button style={pillBtn()} onClick={onShare}>Paylaş</button>
+            <button style={pillBtn()} onClick={onShareVisual}>Görsel Paylaş</button>
             <button style={pillBtn()} onClick={onExportGpx}>GPX</button>
             <button style={closeBtn()} onClick={onClose} title="Kapat">✕</button>
           </div>
         </div>
 
         {/* HARİTA */}
-        <div style={{ width:"100%", height: 280, background:"#f1f5f9" }}>
+        <div style={{ width:"100%", height: 280, background:"#f1f5f9", position:"relative" }}>
           <div ref={mapDivRef} style={{ width:"100%", height:"100%" }} />
           {gmapsStatus === "error" && (
             <div style={{position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#555"}}>
@@ -830,6 +868,17 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
         </div>
       </div>
 
+      {/* Adım 13: Görsel Paylaşım Sheet (overlay) */}
+      {showShareSheet && (
+        <div style={shareOverlay()}>
+          <ShareSheetMobile
+            route={buildShareRoutePayload(routeDoc, owner, routeId)}
+            stops={stops}
+            onClose={() => setShowShareSheet(false)}
+          />
+        </div>
+      )}
+
       {/* Lightbox */}
       {lightboxItems && (
         <Lightbox
@@ -880,4 +929,11 @@ function pillBtn() {
 }
 function closeBtn() {
   return { border:"none", background:"#111", color:"#fff", borderRadius:10, padding:"8px 12px", fontWeight:800, cursor:"pointer" };
+}
+function shareOverlay() {
+  return {
+    position:"fixed", inset:0, zIndex:2500,
+    display:"flex", alignItems:"center", justifyContent:"center",
+    background:"rgba(0,0,0,.45)", padding:"12px"
+  };
 }

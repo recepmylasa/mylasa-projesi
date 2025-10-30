@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ---- Helpers
-    function devWindow() { return request.time < timestamp('2030-01-01T00:00:00Z'); }
+    function devWindow() { return request.time < timestamp.date(2030, 1, 1); }
     function isSignedIn() { return request.auth != null; }
     function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
 
@@ -12,6 +12,31 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, delete: if isOwner(userId);
       allow update: if isOwner(userId);
+
+      // Takipçiler (followers) — yeni şema
+      match /followers/{followerUid} {
+        // Sadece hesap sahibi (userId) listeyi okuyabilir
+        allow read: if isOwner(userId);
+
+        // Takip et: sadece giriş yapan kendi UID'siyle oluşturabilir, self-follow yasak
+        allow create: if isSignedIn()
+          && followerUid == request.auth.uid
+          && followerUid != userId
+          && request.resource.id == request.auth.uid
+          && request.resource.data.followerId == request.auth.uid
+          && request.resource.data.createdAt is timestamp;
+
+        // Takibi bırak: sadece kendi takibini silebilir
+        allow delete: if isSignedIn() && followerUid == request.auth.uid;
+
+        allow update: if false;
+      }
+
+      // (Opsiyonel) following alt koleksiyonu — istemci yazamaz, sadece sahibi okuyabilir
+      match /following/{targetUid} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
 
       // /users/{uid}/saved/{contentId}
       match /saved/{docId} {
@@ -132,7 +157,8 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // ==================== ADIM-9: FOLLOWS ====================
+    // ==================== ADIM-9: FOLLOWS (legacy) ====================
+    // Geçiş süreci boyunca açık kalıyor (read + create/delete)
     match /follows/{pairId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
@@ -146,13 +172,19 @@ service cloud.firestore {
 
     // ==================== ROUTES + STOPS =====================
     match /routes/{routeId} {
-      // public OR owner OR followers visibility + follow relation
+      // public OR owner OR followers visibility (+ dual check: new & legacy)
       allow read: if
         resource.data.visibility == "public"
         || (isSignedIn() && resource.data.ownerId == request.auth.uid)
         || (isSignedIn()
             && resource.data.visibility == "followers"
-            && exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + resource.data.ownerId)));
+            && (
+              // Yeni şema
+              exists(/databases/$(database)/documents/users/$(resource.data.ownerId)/followers/$(request.auth.uid))
+              // Geçiş için legacy şema
+              || exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + resource.data.ownerId))
+            )
+        );
 
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
@@ -164,7 +196,11 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid)
           || (isSignedIn()
               && get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "followers"
-              && exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId)));
+              && (
+                exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId)/followers/$(request.auth.uid))
+                || exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId))
+              )
+          );
 
         allow create, update, delete: if isSignedIn()
           && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
@@ -177,7 +213,11 @@ service cloud.firestore {
                 && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid)
             || (isSignedIn()
                 && get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "followers"
-                && exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId)));
+                && (
+                  exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId)/followers/$(request.auth.uid))
+                  || exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId))
+                )
+            );
 
           allow create, update, delete: if isSignedIn()
             && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid

@@ -1,89 +1,231 @@
 // functions/src/index.ts
+// Node 20 / TS
+
+import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { onCall } from "firebase-functions/v2/https";
-import { onDocumentWritten, onDocumentUpdated } from "firebase-functions/v2/firestore";
-import {
-  applyRouteFinishedStats,
-  checkFiveStarBadge,
-  seedBadgeCatalog,
-  backfillUserStatsAndBadges,
-  RouteDoc,
-} from "./badges";
-import { onRouteRatingWrite, onStopRatingWrite } from "./ratings";
+import { reverseGeocode } from "./geo";
 
-admin.initializeApp();
+if (admin.apps.length === 0) admin.initializeApp();
+const db = admin.firestore();
 
-// ------ Firestore Triggers ------
+/* =========================
+   Adım 11 — Areas (reverse geocode)
+   ========================= */
+type Areas = { city?: string; admin1?: string; country?: string; countryCode?: string };
+const SLOW_THROTTLE_MS = 350;
 
-// routes: finish'e geçişte istatistik + rozetler
-export const onRouteWrite = onDocumentWritten("routes/{routeId}", async (event) => {
-  const before = event.data?.before?.data() as RouteDoc | undefined;
-  const after = event.data?.after?.data() as RouteDoc | undefined;
-  const routeId = event.params.routeId as string;
+const isDone = (x: any) => (x?.areasStatus || "").toString() === "done";
+const isFinished = (x: any) => (x?.status || "").toString() === "finished";
 
-  if (!after) return; // delete
-
-  // finish geçişi
-  const wasFinished = before?.status === "finished";
-  const isFinished = after.status === "finished";
-  if (!wasFinished && isFinished) {
-    await applyRouteFinishedStats(routeId, after);
+function asPoint(p: any): { lat: number; lng: number } | null {
+  if (!p) return null;
+  if (Array.isArray(p) && p.length >= 2) {
+    const [lat, lng] = p;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
   }
-});
+  if (typeof p === "object") {
+    const lat = p.lat ?? p.latitude;
+    const lng = p.lng ?? p.longitude ?? p.lon;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+  return null;
+}
+function sample3FromPath(path: any[]): Array<{ lat: number; lng: number }> {
+  const pts: Array<{ lat: number; lng: number }> = [];
+  if (!Array.isArray(path) || path.length === 0) return pts;
+  const first = asPoint(path[0]);
+  const mid = asPoint(path[Math.floor(path.length / 2)]);
+  const last = asPoint(path[path.length - 1]);
+  if (first) pts.push(first);
+  if (mid && (pts.length === 0 || mid.lat !== pts[0].lat || mid.lng !== pts[0].lng)) pts.push(mid);
+  if (last && (pts.length === 0 || last.lat !== pts[pts.length - 1].lat || last.lng !== pts[pts.length - 1].lng)) pts.push(last);
+  return pts;
+}
+function centroidOfStops(stops: any[]): { lat: number; lng: number } | null {
+  if (!Array.isArray(stops) || stops.length === 0) return null;
+  let sx = 0, sy = 0, n = 0;
+  for (const s of stops) {
+    const p = asPoint(s?.location || s);
+    if (p) { sx += p.lat; sy += p.lng; n++; }
+  }
+  if (!n) return null;
+  return { lat: sx / n, lng: sy / n };
+}
+function majority<T extends string | undefined>(vals: T[]): T | undefined {
+  const c = new Map<string, number>();
+  for (const v of vals) if (v) c.set(v, (c.get(v) || 0) + 1);
+  let best: string | undefined; let bestN = 0;
+  for (const [k, n] of c) if (n > bestN) { best = k; bestN = n; }
+  return best as T | undefined;
+}
+async function geocodeForRoute(data: any): Promise<Areas> {
+  let points: Array<{ lat: number; lng: number }> = [];
+  if (Array.isArray(data?.path)) points = sample3FromPath(data.path);
+  if (points.length === 0 && Array.isArray(data?.stops)) {
+    const c = centroidOfStops(data.stops);
+    if (c) points = [c];
+  }
+  if (points.length === 0) {
+    const a = asPoint(data?.start) || asPoint(data?.from);
+    const b = asPoint(data?.end) || asPoint(data?.to);
+    if (a) points.push(a);
+    if (b && (points.length === 0 || b.lat !== points[0].lat || b.lng !== points[0].lng)) points.push(b);
+  }
+  if (points.length === 0) return {};
+  const results: Areas[] = [];
+  for (const p of points) {
+    await new Promise((r) => setTimeout(r, 80));
+    const r = await reverseGeocode(p.lat, p.lng);
+    results.push(r);
+  }
+  const city = majority(results.map((x) => x.city)) || results[0]?.city;
+  const admin1 = majority(results.map((x) => x.admin1)) || results[0]?.admin1;
+  const country = majority(results.map((x) => x.country)) || results[0]?.country;
+  const countryCode = majority(results.map((x) => x.countryCode)) || results[0]?.countryCode;
+  return { city, admin1, country, countryCode };
+}
 
-// routes: rating güncellemeleri -> five_star_route
-export const onRouteUpdate = onDocumentUpdated("routes/{routeId}", async (event) => {
-  const after = event.data?.after?.data() as RouteDoc | undefined;
-  const routeId = event.params.routeId as string;
-  if (!after) return;
-  await checkFiveStarBadge(routeId, after);
-});
+export const onRouteAreasFinish = functions
+  .runWith({ secrets: ["GEOCODING_API_KEY", "GEOCODING_PROVIDER"] })
+  .firestore.document("routes/{routeId}")
+  .onUpdate(async (change) => {
+    const before = change.before.data() || {};
+    const after = change.after.data() || {};
+    if (!isFinished(after) || isDone(after) || isDone(before)) return;
 
-// ratings (server-side aggregation)
-export { onRouteRatingWrite, onStopRatingWrite };
-
-// follows: sayaçlar (followersCount / followingCount)
-export const onFollowWrite = onDocumentWritten("follows/{pairId}", async (event) => {
-  const beforeExists = !!event.data?.before.exists;
-  const afterExists = !!event.data?.after.exists;
-
-  // Sadece create/delete (update zaten rules ile engelli)
-  if (beforeExists && afterExists) return;
-
-  const snapData = (afterExists
-    ? event.data!.after!.data()
-    : event.data!.before!.data()) as { followerId?: string; followeeId?: string } | undefined;
-
-  const followerId = String(snapData?.followerId || "").trim();
-  const followeeId = String(snapData?.followeeId || "").trim();
-  if (!followerId || !followeeId) return;
-
-  const db = admin.firestore();
-  const followerRef = db.collection("users").doc(followerId);
-  const followeeRef = db.collection("users").doc(followeeId);
-
-  const delta = afterExists && !beforeExists ? 1 : -1;
-
-  await db.runTransaction(async (tx) => {
-    const [followerSnap, followeeSnap] = await Promise.all([tx.get(followerRef), tx.get(followeeRef)]);
-    const follower = followerSnap.exists ? followerSnap.data()! : {};
-    const followee = followeeSnap.exists ? followeeSnap.data()! : {};
-
-    const nextFollowing = Math.max(0, Number(follower.followingCount || 0) + delta);
-    const nextFollowers = Math.max(0, Number(followee.followersCount || 0) + delta);
-
-    tx.set(followerRef, { followingCount: nextFollowing }, { merge: true });
-    tx.set(followeeRef, { followersCount: nextFollowers }, { merge: true });
+    if (after?.areas && (after.areas.city || after.areas.countryCode)) {
+      await change.after.ref.set({ areasStatus: "done" }, { merge: true });
+      return;
+    }
+    try {
+      const areas = await geocodeForRoute(after);
+      if (!areas.city && !areas.countryCode) {
+        await change.after.ref.set({ areasStatus: "error", areasErrorCode: "NO_RESULT" }, { merge: true });
+        return;
+      }
+      await change.after.ref.set(
+        { areas, areasStatus: "done", areasErrorCode: admin.firestore.FieldValue.delete() },
+        { merge: true }
+      );
+    } catch (e: any) {
+      await change.after.ref.set(
+        { areasStatus: "error", areasErrorCode: String(e?.message || e || "ERR") },
+        { merge: true }
+      );
+    }
   });
-});
 
-// ------ Callable Admin helpers (V2 onCall) ------
-export const seedBadgeCatalogCallable = onCall(async () => {
-  await seedBadgeCatalog();
-  return { ok: true };
-});
+export const backfillAreasCallable = functions
+  .runWith({ secrets: ["GEOCODING_API_KEY", "GEOCODING_PROVIDER"] })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+    const pageSize = Math.min(Number(data?.pageSize || 40), 100);
+    let scanned = 0, updated = 0, errors = 0;
+    let last: FirebaseFirestore.QueryDocumentSnapshot | undefined;
 
-export const backfillBadgesCallable = onCall(async () => {
-  const res = await backfillUserStatsAndBadges();
-  return { ok: true, ...res };
-});
+    for (let page = 0; page < 5; page++) {
+      let q = db.collection("routes").where("status", "==", "finished").limit(pageSize);
+      if (last) q = q.startAfter(last);
+      const snap = await q.get();
+      if (snap.empty) break;
+
+      for (const docSnap of snap.docs) {
+        scanned++; last = docSnap;
+        const d = docSnap.data() || {};
+        if (isDone(d)) continue;
+
+        if (d?.areas && (d.areas.city || d.areas.countryCode)) {
+          await docSnap.ref.set({ areasStatus: "done" }, { merge: true });
+          continue;
+        }
+        try {
+          const areas = await geocodeForRoute(d);
+          if (!areas.city && !areas.countryCode) {
+            await docSnap.ref.set({ areasStatus: "error", areasErrorCode: "NO_RESULT" }, { merge: true });
+          } else {
+            await docSnap.ref.set(
+              { areas, areasStatus: "done", areasErrorCode: admin.firestore.FieldValue.delete() },
+              { merge: true }
+            );
+            updated++;
+          }
+        } catch {
+          errors++;
+          await docSnap.ref.set({ areasStatus: "error", areasErrorCode: "EXC" }, { merge: true });
+        }
+        await new Promise((r) => setTimeout(r, SLOW_THROTTLE_MS));
+      }
+      if (snap.size < pageSize) break;
+    }
+    return { scanned, updated, errors };
+  });
+
+/* =========================
+   Adım 12 — Followers counters
+   ========================= */
+
+// Ortak sayaç güncelleme
+async function adjustCounts(targetUid: string, followerUid: string, delta: 1 | -1) {
+  if (!targetUid || !followerUid || targetUid === followerUid) return;
+  const targetRef = db.collection("users").doc(String(targetUid));
+  const followerRef = db.collection("users").doc(String(followerUid));
+  await db.runTransaction(async (t) => {
+    t.set(targetRef, { followersCount: admin.firestore.FieldValue.increment(delta) }, { merge: true });
+    t.set(followerRef, { followingCount: admin.firestore.FieldValue.increment(delta) }, { merge: true });
+  });
+}
+
+// 1) Birincil model: users/{target}/followers/{follower}
+export const onFollowersCreate = functions.firestore
+  .document("users/{targetUid}/followers/{followerUid}")
+  .onCreate(async (_snap, ctx) => {
+    const { targetUid, followerUid } = ctx.params as any;
+    await adjustCounts(targetUid, followerUid, 1);
+  });
+
+export const onFollowersDelete = functions.firestore
+  .document("users/{targetUid}/followers/{followerUid}")
+  .onDelete(async (_snap, ctx) => {
+    const { targetUid, followerUid } = ctx.params as any;
+    await adjustCounts(targetUid, followerUid, -1);
+  });
+
+// 2) Alternatif model: kök /follows/{follower_followee}
+export const onFollowsCreate = functions.firestore
+  .document("follows/{pairId}")
+  .onCreate(async (snap, ctx) => {
+    const d = snap.data() || {};
+    let follower = d.followerId as string | undefined;
+    let followee = d.followeeId as string | undefined;
+    if (!follower || !followee) {
+      const pair = String((ctx.params as any).pairId || "");
+      const [a, b] = pair.split("_");
+      if (!follower) follower = a;
+      if (!followee) followee = b;
+    }
+    if (follower && followee) await adjustCounts(followee, follower, 1);
+  });
+
+export const onFollowsDelete = functions.firestore
+  .document("follows/{pairId}")
+  .onDelete(async (snap, ctx) => {
+    const d = snap.data() || {};
+    let follower = d.followerId as string | undefined;
+    let followee = d.followeeId as string | undefined;
+    if (!follower || !followee) {
+      const pair = String((ctx.params as any).pairId || "");
+      const [a, b] = pair.split("_");
+      if (!follower) follower = a;
+      if (!followee) followee = b;
+    }
+    if (follower && followee) await adjustCounts(followee, follower, -1);
+  });
+
+/* =========================
+   Mevcut modülleri bind et
+   ========================= */
+try { Object.assign(exports, require("../reputation-engine")); } catch {}
+try { Object.assign(exports, require("../calculator")); } catch {}
+try { Object.assign(exports, require("../configs")); } catch {}
+try { Object.assign(exports, require("../data-access")); } catch {}
+try { Object.assign(exports, require("../validators")); } catch {}
