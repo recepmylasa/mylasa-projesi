@@ -1,6 +1,5 @@
-// RouteDetailMobile.js — Mobil Rota Detayı (Duraklar | Galeri | Rapor | Görsel Paylaş)
-// NOT: Ek dosya YOK. Lightbox, StarBars, upload & rating-agg yardımcıları bu dosyanın içindedir.
-// Bağımlılıklar: firebase config (auth, db, storage), StarRatingV2, routeRatings, routesRead, gpx (Adım 5)
+// src/pages/RouteDetailMobile.js
+// Mobil Rota Detayı (Duraklar | Galeri | Rapor | Görsel Paylaş)
 // Mevcut takip/puanlama/paylaş davranışlarına DOKUNMAZ, yalnız sekmeler + medya + rapor + “Görsel Paylaş” ekler.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,22 +14,22 @@ import {
 // Storage
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
-// 3. adımda eklettiğimiz puan servisleri (mevcutta var sayıyoruz)
+// Puan servisleri (projede mevcut sayıyoruz)
 import { setRouteRating, setStopRating } from "../services/routeRatings";
 
-// 2. adımda eklediğimiz okuma servisleri (mevcutta var sayıyoruz)
+// Okuma servisleri (projede mevcut sayıyoruz)
 import { watchRoute, watchStops } from "../services/routesRead";
 
-// Adım 5'te eklediğimiz GPX servisleri (mevcutta var sayıyoruz)
+// GPX servisleri (projede mevcut sayıyoruz)
 import { buildGpx, downloadGpx } from "../services/gpx";
 
-// Rota üstü yıldız bileşeni (projede mevcut)
+// Yıldız bileşeni (projede mevcut)
 import StarRatingV2 from "../components/StarRatingV2/StarRatingV2";
 
 // Google Maps hook’u (projede mevcut)
 import { useGoogleMaps } from "../hooks/useGoogleMaps";
 
-// Adım 13: Görsel paylaşım sheet’i (YENİ bileşen)
+// Görsel paylaşım sheet’i (projede mevcut)
 import ShareSheetMobile from "../components/ShareSheetMobile";
 
 // Ufak yardımcılar
@@ -53,32 +52,22 @@ function calcAvg(sum, count) {
   return (Number(count)||0) > 0 ? (Number(sum||0)/Number(count)).toFixed(1) : "—";
 }
 
-// Adım 13: renderRouteShare için rota payload’unu zenginleştir
+// Paylaşım için rota payload’unu zenginleştir
 function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
   const r = { ...(routeDoc || {}), id: routeId };
   if (ownerDoc) {
     r.ownerUsername =
-      ownerDoc.username ||
-      ownerDoc.userName ||
-      ownerDoc.handle ||
-      ownerDoc.name ||
-      r.ownerUsername ||
-      r.ownerName;
+      ownerDoc.username || ownerDoc.userName || ownerDoc.handle || ownerDoc.name ||
+      r.ownerUsername || r.ownerName;
     r.ownerName =
-      ownerDoc.name ||
-      ownerDoc.fullName ||
-      r.ownerName ||
-      r.ownerUsername;
+      ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
     r.ownerAvatar =
-      ownerDoc.photoURL ||
-      ownerDoc.profilFoto ||
-      ownerDoc.avatar ||
-      r.ownerAvatar;
+      ownerDoc.photoURL || ownerDoc.profilFoto || ownerDoc.avatar || r.ownerAvatar;
   }
   return r;
 }
 
-// ======================= INLINE: Lightbox =======================
+/* ======================= Lightbox (inline) ======================= */
 function Lightbox({ items = [], index = 0, onClose = () => {} }) {
   const [i, setI] = useState(Math.min(Math.max(0, index), Math.max(0, items.length - 1)));
   const goPrev = useCallback(() => setI((p) => Math.max(0, p - 1)), []);
@@ -123,7 +112,7 @@ function Lightbox({ items = [], index = 0, onClose = () => {} }) {
   );
 }
 
-// ======================= INLINE: StarBars =======================
+/* ======================= StarBars (inline) ======================= */
 function StarBars({ counts = {1:0,2:0,3:0,4:0,5:0}, total = 0, compact = false, showNumbers = true, height = 10 }) {
   const rows = [5,4,3,2,1];
   const maxCount = Math.max(...rows.map(r => counts[r] || 0), 1);
@@ -161,7 +150,7 @@ function StarBars({ counts = {1:0,2:0,3:0,4:0,5:0}, total = 0, compact = false, 
   );
 }
 
-// ======================= INLINE: Ratings Aggregation =======================
+/* ======================= Ratings Aggregation (inline) ======================= */
 async function getRouteStarsAgg(routeId, max = 1000) {
   const col = collection(db, "route_ratings");
   const q = query(col, where("routeId", "==", routeId), qlimit(Math.max(1, max)));
@@ -202,7 +191,7 @@ async function getStopsStarsAgg(routeId, max = 1000) {
   return map;
 }
 
-// ======================= INLINE: Media Upload/List =======================
+/* ======================= Media Upload/List (inline) ======================= */
 function sanitizeName(name = "") {
   return name.replace(/[^\w.-]+/g, "_").slice(0, 120);
 }
@@ -251,10 +240,9 @@ async function uploadStopMediaInline({ routeId, stopId, file, onProgress, signal
   let toUpload = file;
   let dims = { w: 0, h: 0 };
 
-  // compress (opsiyonel: projede browser-image-compression varsa)
+  // compress (opsiyonel)
   if (isImage) {
     try {
-      // Dinamik import, paket yoksa patlatmamak için
       const mod = await import("browser-image-compression");
       toUpload = await mod.default(file, { maxWidthOrHeight: 1920, initialQuality: 0.85, maxSizeMB: 8, useWebWorker: true });
     } catch { /* yoksa orijinali yükleriz */ }
@@ -311,7 +299,7 @@ async function listStopMediaInline({ routeId, stopId, limit = 50 }) {
   return out;
 }
 
-// ======================= ANA BİLEŞEN =======================
+/* ======================= ANA BİLEŞEN ======================= */
 export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   // Sekmeler: "stops" | "gallery" | "report"
   const [tab, setTab] = useState("stops");
@@ -329,7 +317,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   const [lightboxItems, setLightboxItems] = useState(null); // [{url,type}]
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
-  // Adım 13: Görsel paylaşım sheet görünürlüğü
+  // Görsel paylaşım sheet görünürlüğü
   const [showShareSheet, setShowShareSheet] = useState(false);
 
   // Rating dağılımı (rapor sekmesinde lazy)
@@ -340,13 +328,13 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   const [uploadState, setUploadState] = useState({});
 
   // Google Maps
-  const { gmapsStatus, mapDivRef, mapRef, attemptLoad } = useGoogleMaps({ API_KEY, MAP_ID });
+  const { gmapsStatus, mapDivRef, mapRef } = useGoogleMaps({ API_KEY, MAP_ID });
 
   // Haritaya polyline & durak markerları
   const polylineRef = useRef(null);
   const stopMarkersRef = useRef([]);
 
-  // ========== İzin (403) kontrolü ==========
+  /* ========== İzin (403) kontrolü ========== */
   useEffect(() => {
     if (!routeId) return;
     let alive = true;
@@ -372,7 +360,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     return () => { alive = false; };
   }, [routeId]);
 
-  // ========== Veri izleme ==========
+  /* ========== Veri izleme ========== */
   useEffect(() => {
     if (!routeId) return;
     let offRoute = () => {};
@@ -397,12 +385,11 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     return () => { try { offRoute(); } catch {}; try { offStops(); } catch {} };
   }, [routeId]);
 
-  // ========== Haritayı çiz ==========
+  /* ========== Haritayı çiz ========== */
   useEffect(() => {
     if (gmapsStatus !== "ready" || !mapRef.current) return;
     const map = mapRef.current;
 
-    // Polyline hazırla
     try {
       if (!polylineRef.current) {
         polylineRef.current = new window.google.maps.Polyline({
@@ -410,18 +397,15 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
           strokeColor: "#1a73e8", strokeOpacity: 0.95, strokeWeight: 4,
         });
       }
-      // Path'i bas
       const path = (routeDoc?.path || []).map(p => new window.google.maps.LatLng(p.lat, p.lng));
       polylineRef.current.setPath(path);
 
-      // Bounds
       if (path.length) {
         const b = new window.google.maps.LatLngBounds();
         path.forEach(pt => b.extend(pt));
         map.fitBounds(b, 40);
       }
 
-      // Durak markerları
       stopMarkersRef.current.forEach(m => { try { m.setMap(null); } catch {} });
       stopMarkersRef.current = [];
 
@@ -438,31 +422,29 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     } catch { /* noop */ }
   }, [gmapsStatus, mapRef, routeDoc?.path, stops]);
 
-  // ========== Medya küçük şeridi için 4'lü liste (lazy) ==========
+  /* ========== Medya küçük şeridi için 4'lü liste (lazy) ========== */
   const ensureStopThumbs = useCallback(async (stopId) => {
     if (!routeId || !stopId) return;
-    if (mediaCacheRef.current[stopId]?.__loadedThumbs) return; // zaten çekildi
+    if (mediaCacheRef.current[stopId]?.__loadedThumbs) return;
     const list = await listStopMediaInline({ routeId, stopId, limit: 4 }).catch(() => []);
     mediaCacheRef.current[stopId] = { ...(mediaCacheRef.current[stopId]||{}), items: list, __loadedThumbs: true };
     forceRerender((x)=>x+1);
   }, [routeId]);
 
-  // ========== Galeri sekmesi için tüm medyayı topla (lazy) ==========
+  /* ========== Galeri sekmesi için tüm medyayı topla (lazy) ========== */
   const [galleryLoaded, setGalleryLoaded] = useState(false);
   const galleryItems = useMemo(() => {
-    // stop bazlı cache'teki medyaları bir araya getir (yeni -> eski)
     const arr = [];
     Object.keys(mediaCacheRef.current).forEach((sid) => {
       const items = mediaCacheRef.current[sid]?.items || [];
       items.forEach(it => arr.push({ ...it, stopId: sid }));
     });
     return arr.sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-  }, [mediaCacheRef.current, galleryLoaded]); // galleryLoaded tetiklenince yeniden hesaplanır
+  }, [mediaCacheRef.current, galleryLoaded]);
 
   const loadAllGallery = useCallback(async () => {
     if (galleryLoaded) return;
     for (const s of (stops || [])) {
-      // stop başına 20 thumb
       const list = await listStopMediaInline({ routeId, stopId: s.id, limit: 20 }).catch(() => []);
       mediaCacheRef.current[s.id] = { items: list, __loadedThumbs: true };
     }
@@ -470,7 +452,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     forceRerender((x)=>x+1);
   }, [galleryLoaded, routeId, stops]);
 
-  // ========== Rapor sekmesi verileri (lazy) ==========
+  /* ========== Rapor sekmesi verileri (lazy) ========== */
   const [reportLoaded, setReportLoaded] = useState(false);
   const loadReportAgg = useCallback(async () => {
     if (reportLoaded || !routeId) return;
@@ -483,7 +465,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     setReportLoaded(true);
   }, [reportLoaded, routeId]);
 
-  // ========== Medya Ekle ==========
+  /* ========== Medya Ekle ========== */
   const onPickMedia = useCallback(async (stopId) => {
     if (!auth.currentUser || !routeDoc) return;
     if (auth.currentUser.uid !== routeDoc.ownerId) return;
@@ -493,7 +475,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     input.accept = "image/*,video/*";
     input.multiple = true;
     input.onchange = async () => {
-      const files = Array.from(input.files || []).slice(0, 8); // güvenlik
+      const files = Array.from(input.files || []).slice(0, 8);
       for (const f of files) {
         const ac = new AbortController();
         setUploadState((s) => ({ ...s, [stopId]: { p: 0, abort: ac } }));
@@ -503,7 +485,6 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
             onProgress: (p) => setUploadState((s)=>({ ...s, [stopId]: { ...(s[stopId]||{}), p } })),
             signal: ac.signal
           });
-          // cache'e ekle (başa)
           const cur = mediaCacheRef.current[stopId]?.items || [];
           mediaCacheRef.current[stopId] = { items: [res, ...cur], __loadedThumbs: true };
           forceRerender((x)=>x+1);
@@ -523,7 +504,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     setUploadState((s)=>{ const ns = { ...s }; delete ns[stopId]; return ns; });
   }, [uploadState]);
 
-  // ========== Link Paylaşımı ==========
+  /* ========== Link Paylaşımı ========== */
   const onShare = useCallback(async () => {
     const url = `${window.location.origin}/r/${routeId}`;
     const title = routeDoc?.title || "Rota";
@@ -536,12 +517,12 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     } catch {}
   }, [routeId, routeDoc?.title]);
 
-  // ========== Görsel Paylaşımı (Adım 13) ==========
+  /* ========== Görsel Paylaşımı ========== */
   const onShareVisual = useCallback(() => {
     setShowShareSheet(true);
   }, []);
 
-  // ========== GPX ==========
+  /* ========== GPX ========== */
   const onExportGpx = useCallback(async () => {
     try {
       const xml = buildGpx({ route: routeDoc, stops, path: routeDoc?.path || [] });
@@ -553,7 +534,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     }
   }, [routeDoc, stops]);
 
-  // ========== Rating handlers ==========
+  /* ========== Rating handlers ========== */
   const canRateRoute = auth.currentUser && routeDoc && auth.currentUser.uid !== routeDoc.ownerId;
   const onRouteRate = useCallback(async (v) => {
     if (!canRateRoute) return;
@@ -566,13 +547,13 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     try { await setStopRating(stopId, routeId, v); } catch {}
   }, [routeId, routeDoc]);
 
-  // ========== Sekme Lazy yüklemeleri ==========
+  /* ========== Sekme Lazy yüklemeleri ========== */
   useEffect(() => {
     if (tab === "gallery") loadAllGallery();
     if (tab === "report")  loadReportAgg();
   }, [tab, loadAllGallery, loadReportAgg]);
 
-  // ========== UI ==========
+  /* ========== UI ========== */
   const isOwner = auth.currentUser && routeDoc && auth.currentUser.uid === routeDoc.ownerId;
   const ratingAvgLabel = useMemo(() => {
     if (routeDoc?.ratingSum != null && routeDoc?.ratingCount != null) {
@@ -626,7 +607,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     { label: "Durak", value: String((stops || []).length) },
   ];
 
-  // Rapor sekmesi: top 3 durak (oy avg & count ve medya sayısına göre)
+  // Rapor sekmesi: top 3 durak
   let topStops = [];
   if (stopAgg && stops && stops.length) {
     topStops = stops.map(s => {
@@ -673,11 +654,10 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
         <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderBottom:"1px solid #eee" }}>
           <div style={{fontWeight:700}}>Puanla:</div>
           <StarRatingV2
-            value={0}
-            size="lg"
-            readOnly={!canRateRoute}
-            onChange={(v)=>onRouteRate(v)}
-            title={!canRateRoute ? "Sahibi kendi rotasına oy veremez" : "Rota puanı"}
+            // bu versiyonda onRated kullanılıyor
+            onRated={(v)=>onRouteRate(v)}
+            size={32}
+            disabled={!canRateRoute}
           />
         </div>
 
@@ -713,18 +693,15 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
                         {s.note && <div style={{fontSize:12, opacity:.8, marginTop:2}}>{s.note}</div>}
                       </div>
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        {/* Mini dağılım (lazy: rapor sekmesinde de detaylı var) */}
                         {stopAgg && stopAgg[s.id] && (
                           <div style={{minWidth:120}}>
                             <StarBars counts={stopAgg[s.id].counts} total={stopAgg[s.id].total} compact height={8} showNumbers={false} />
                           </div>
                         )}
                         <StarRatingV2
-                          value={0}
-                          size="sm"
-                          readOnly={isOwner}
-                          onChange={(v)=>onStopRate(s.id, v)}
-                          title={isOwner ? "Sahip kendi durağını oylayamaz" : "Durağı puanla"}
+                          onRated={(v)=>onStopRate(s.id, v)}
+                          size={22}
+                          disabled={isOwner}
                         />
                         {isOwner && (
                           <button
@@ -859,7 +836,6 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
                 </div>
               </div>
 
-              {/* Rapor notu */}
               <div style={{ fontSize:12, opacity:.6 }}>
                 Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).
               </div>
@@ -868,7 +844,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
         </div>
       </div>
 
-      {/* Adım 13: Görsel Paylaşım Sheet (overlay) */}
+      {/* Görsel Paylaşım Sheet (overlay) */}
       {showShareSheet && (
         <div style={shareOverlay()}>
           <ShareSheetMobile
@@ -891,7 +867,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   );
 }
 
-// ======================= Stil yardımcıları =======================
+/* ======================= Stil yardımcıları ======================= */
 function wrapModal() {
   return {
     position:"fixed", inset:0, zIndex:2000,

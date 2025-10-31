@@ -1,7 +1,7 @@
 // src/components/RouteListMobile.js
 // Kullanıcının bitmiş rotalarını listeler; görünürlüğe göre (public/followers/private) merge eder.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { auth, db } from "../firebase";
 import {
   collection,
@@ -42,7 +42,6 @@ async function fetchRoutes({ ownerId, visibility, max, withOrder = true }) {
     snap.forEach((d) => out.push({ id: d.id, ...d.data() }));
     return out;
   } catch (e) {
-    // index yoksa: orderBy olmadan tekrar dene
     if (withOrder) {
       return fetchRoutes({ ownerId, visibility, max, withOrder: false });
     }

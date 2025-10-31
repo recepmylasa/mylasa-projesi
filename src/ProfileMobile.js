@@ -1,6 +1,5 @@
 // src/ProfileMobile.js
-// Mobil profil: header + highlights + sekmeler + içerik + CreateSheet + QR Modal + ActionsSheet + Saved + Labubu
-// Adım 9: Takip Et / Takibi Bırak eklendi (followers/following sayaçları opsiyonel gösterim)
+// Mobil profil: header + highlights + sekmeler + içerik + CreateSheet + QR Modal + ActionsSheet + Saved + Labubu + Rotalar
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import "./ProfileMobile.css";
@@ -22,7 +21,7 @@ import ProfileShareQRModal from "./ProfileShareQRModal";
 import ProfileActionsSheetMobile from "./ProfileActionsSheetMobile";
 import SavedGrid from "./SavedGrid";
 
-// Saved API (HATA düzeltmesi: listSaved buradan geliyor)
+// Saved API
 import { listSaved } from "./savesClient";
 
 // Labubu
@@ -30,12 +29,17 @@ import useLabubu from "./hooks/useLabubu";
 import LabubuGridMobile from "./components/Labubu/LabubuGridMobile";
 import LabubuOpenModalMobile from "./components/Labubu/LabubuOpenModalMobile";
 
+// Rotalar (YENİ)
+import RouteListMobile from "./components/RouteListMobile";
+import RouteDetailMobile from "./pages/RouteDetailMobile"; // <<< DÜZELTİLDİ
+
 export default function ProfileMobile({ user = null }) {
   const u = user ?? {};
   const userId = u.id ?? u.uid ?? u.userId ?? u.accountId ?? u._id ?? null;
   const hasUserId = !!userId;
 
-  const [mode, setMode] = useState("grid"); // grid | clips | checkins | collection | saved
+  // grid | clips | checkins | routes | collection | saved
+  const [mode, setMode] = useState("grid");
   const [viewer, setViewer] = useState(null); // { items, index }
   const [createOpen, setCreateOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -78,6 +82,14 @@ export default function ProfileMobile({ user = null }) {
   const [savedEnd, setSavedEnd] = useState(false);
   const savedSentinelRef = useRef(null);
   const savedInitializedRef = useRef(false);
+
+  // Route Detail modal (YENİ)
+  const [routeModalId, setRouteModalId] = useState(null);
+  useEffect(() => {
+    const onOpen = (e) => setRouteModalId(e?.detail?.routeId || null);
+    window.addEventListener("open-route-modal", onOpen);
+    return () => window.removeEventListener("open-route-modal", onOpen);
+  }, []);
 
   const sheetPushedRef = useRef(false);
 
@@ -253,7 +265,7 @@ export default function ProfileMobile({ user = null }) {
         onOpen={(item) => { console.log("highlight open:", item); }}
       />
 
-      {/* Sekmeler: grid / clips / checkins / collection (+saved self ise ProfileTabsMobile içinde) */}
+      {/* Sekmeler: grid / clips / checkins / routes / collection (+saved self ise ProfileTabsMobile içinde) */}
       <ProfileTabsMobile mode={mode} onChange={setMode} showSavedTab={isSelf} showCollectionTab />
 
       {/* Gönderiler */}
@@ -289,11 +301,22 @@ export default function ProfileMobile({ user = null }) {
         </div>
       </div>
 
+      {/* Rotalar (YENİ) */}
+      <div id="tab-panel-routes" role="tabpanel" hidden={mode !== "routes"} className="tab-panel">
+        <div className="userposts-container">
+          {hasUserId ? (
+            <RouteListMobile userId={userId} />
+          ) : (
+            <div className="user-posts-message">Profil yükleniyor…</div>
+          )}
+        </div>
+      </div>
+
       {/* Labubu Koleksiyon */}
       <div id="tab-panel-collection" role="tabpanel" hidden={mode !== "collection"} className="tab-panel">
         <div className="userposts-container">
           <LabubuGridMobile
-            cards={cards}   
+            cards={cards}
             boxesReady={isSelf ? boxesReady : 0}
             onOpenBox={isSelf ? handleOpenStandard : undefined}
             onOpenCard={(c)=>setLastDrop(c)}
@@ -324,6 +347,11 @@ export default function ProfileMobile({ user = null }) {
         />
       )}
 
+      {/* Rota Detay Modal (YENİ) */}
+      {routeModalId && (
+        <RouteDetailMobile routeId={routeModalId} onClose={() => setRouteModalId(null)} />
+      )}
+
       {/* Labubu modal */}
       {lastDrop && <LabubuOpenModalMobile drop={lastDrop} onClose={()=>setLastDrop(null)} />}
 
@@ -337,7 +365,7 @@ export default function ProfileMobile({ user = null }) {
       <ProfileActionsSheetMobile open={actionsOpen} onClose={closeActions} onSelect={(id) => {
         switch (id) {
           case "qr": setQrOpen(true); closeActions(); break;
-          case "share_experience": handleShare(); closeActions(); break;
+        case "share_experience": handleShare(); closeActions(); break;
           case "saved": setMode("saved"); closeActions(); break;
           default: console.log("action:", id); closeActions(); break;
         }

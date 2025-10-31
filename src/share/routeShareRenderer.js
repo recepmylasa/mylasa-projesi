@@ -1,4 +1,3 @@
-// src/share/routeShareRenderer.js
 // Canvas tabanlı rota paylaşım görseli üretimi (Story/Kare).
 // Harici harita karo/Static Maps YOK. route.path (lat,lng) ve stops kullanılır.
 

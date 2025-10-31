@@ -1,10 +1,10 @@
+/* src/ProfileTabsMobile.css */
 @import "./styles/ig-mobile.css";
 
-/* IG tarzı sekme satırı: yalnız ikonlar, arka kutu/çerçeve yok
-   -> tek satırda sığdır, eşit genişlik; alta KESİNLİKLE düşmesin */
+/* IG tarzı sekme satırı: yalnız ikonlar */
 .tabs-row {
   display: flex;
-  flex-wrap: nowrap;          /* kırılma yok */
+  flex-wrap: nowrap;
   align-items: center;
   width: 100%;
   background: #fff;
@@ -12,27 +12,24 @@
   box-shadow: none;
 }
 
-/* Sekme butonu tamamen şeffaf, her tab eşit genişlik */
 .tab-btn {
   position: relative;
-  flex: 1 1 0%;               /* tüm butonlar eşit alan */
-  min-width: 0;               /* metrikler taşmasın */
+  flex: 1 1 0%;
+  min-width: 0;
   appearance: none;
   border: 0;
   background: transparent;
   padding: 10px 0;
   display: grid;
   place-items: center;
-  color: #8e8e8e;             /* pasif ikon rengi */
+  color: #8e8e8e;
   cursor: pointer;
   box-shadow: none;
   touch-action: manipulation;
 }
 
-/* SVG düzgün hizalansın */
 .tab-btn svg { display: block; }
 
-/* Aktif sekme: siyah ikon + üstte ince çizgi (IG) */
 .tab-btn.active { color: #000; }
 .tab-btn.active::after {
   content: "";
