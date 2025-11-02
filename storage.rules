@@ -2,7 +2,6 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Profil fotoğrafları
     match /profile_photos/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null
@@ -11,13 +10,11 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
-    // Gönderi görselleri
     match /post_media/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // *** MOBİL CHECK-IN görselleri ***
     match /checkins/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null
@@ -27,17 +24,14 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Ham yüklemeler (geçici)
     match /raw-uploads/{userId}/{fileName} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // İşlenmiş klipler (sadece okunur)
     match /clips_media/{userId}/{fileName} {
       allow read;
     }
 
-    // Hikayeler
     match /hikaye_media/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null && request.auth.uid == userId
@@ -47,26 +41,27 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // --- NEW: Rota medyası (Adım 6) ---
+    // ROTA MEDYASI — Firestore lookup (default) ile
     match /route_media/{routeId}/{stopId}/{fileName} {
-      // read: rota public ise herkes, değilse yalnız sahibi
-      allow read: if
-        get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
-        || (request.auth != null &&
-            get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid);
+      function isOwner() {
+        return request.auth != null
+          && get(/databases/(default)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
+      }
+      function isPublic() {
+        return get(/databases/(default)/documents/routes/$(routeId)).data.visibility == "public";
+      }
 
-      // write: yalnız rota sahibi
-      allow write: if request.auth != null
-        && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid
+      allow read: if isPublic() || isOwner();
+
+      allow write: if isOwner()
         && (
           (request.resource.contentType.matches('image/.*') && request.resource.size <= 10 * 1024 * 1024) ||
           (request.resource.contentType.matches('video/.*') && request.resource.size <= 50 * 1024 * 1024)
         );
+
+      allow delete: if isOwner();
     }
 
-    // Varsayılan: kapalı
-    match /{allPaths=**} {
-      allow read, write: if false;
-    }
+    match /{allPaths=**} { allow read, write: if false; }
   }
 }
