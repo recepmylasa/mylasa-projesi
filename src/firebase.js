@@ -9,12 +9,14 @@ const firebaseConfig = {
   apiKey: "AIzaSyAKNCsetEkPBBhBoeJTexyrYygL96vzMRo",
   authDomain: "mylasa-final.firebaseapp.com",
   projectId: "mylasa-final",
-  storageBucket: "mylasa-final.firebasestorage.app" // ← DOĞRU BUCKET
+  // 🔧 DÜZELTME: Storage bucket formatı appspot.com olmalı
+  storageBucket: "mylasa-final.appspot.com",
 };
 
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app); // istersen: getStorage(app, "gs://mylasa-final.firebasestorage.app")
+// Explicit bucket ile güvence
+export const storage = getStorage(app, "gs://mylasa-final.appspot.com");
 export const functions = getFunctions(app, "europe-west3");

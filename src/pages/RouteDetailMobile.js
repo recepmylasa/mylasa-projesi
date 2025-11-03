@@ -290,13 +290,24 @@ async function uploadStopMediaInline({ routeId, stopId, file, onProgress, signal
   const docRef = await addDoc(mediaCol, payload);
   return { id: docRef.id, ...payload, url };
 }
+
+// 🔧 DÜZELTME: Listelemede hata yutma yok; izin/indeks hatasını UI’ya yansıtacağız
 async function listStopMediaInline({ routeId, stopId, limit = 50 }) {
   const mediaCol = collection(db, "routes", routeId, "stops", stopId, "media");
   const q = query(mediaCol, orderBy("createdAt", "desc"), qlimit(Math.max(1, Math.min(limit, 200))));
-  const snap = await getDocs(q);
-  const out = [];
-  snap.forEach((d) => out.push({ id: d.id, ...d.data() }));
-  return out;
+  try {
+    const snap = await getDocs(q);
+    const out = [];
+    snap.forEach((d) => out.push({ id: d.id, ...d.data() }));
+    return { items: out, error: null };
+  } catch (e) {
+    const code = String(e?.code || e?.message || "");
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn("[media:list] hata:", code);
+    }
+    return { items: [], error: code || "unknown" };
+  }
 }
 
 /* ======================= ANA BİLEŞEN ======================= */
@@ -309,7 +320,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   const [owner, setOwner] = useState(null);
   const [permError, setPermError] = useState(null); // followers/private → 403 mesajı için
 
-  // Medya cache: { stopId: [media...] }
+  // Medya cache: { stopId: { items:[], __loadedThumbs:boolean, __error?:string } }
   const mediaCacheRef = useRef({});
   const [, forceRerender] = useState(0);
 
@@ -425,11 +436,30 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   /* ========== Medya küçük şeridi için 4'lü liste (lazy) ========== */
   const ensureStopThumbs = useCallback(async (stopId) => {
     if (!routeId || !stopId) return;
+    // Hata yaşanmışsa tekrar denemeye izin ver (loaded flag'i hatada set etmiyoruz)
     if (mediaCacheRef.current[stopId]?.__loadedThumbs) return;
-    const list = await listStopMediaInline({ routeId, stopId, limit: 4 }).catch(() => []);
-    mediaCacheRef.current[stopId] = { ...(mediaCacheRef.current[stopId]||{}), items: list, __loadedThumbs: true };
+    const { items, error } = await listStopMediaInline({ routeId, stopId, limit: 4 });
+    mediaCacheRef.current[stopId] = {
+      ...(mediaCacheRef.current[stopId]||{}),
+      items,
+      __loadedThumbs: !error, // yalnız başarıda lockla
+      ...(error ? { __error: error } : { __error: null }),
+    };
     forceRerender((x)=>x+1);
   }, [routeId]);
+
+  /* 🔧 DÜZELTME: İlk yüklemede (yenile sonrası) 6 durağa kadar otomatik preload */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pre = (stops || []).slice(0, 6);
+      for (const s of pre) {
+        if (cancelled) break;
+        await ensureStopThumbs(s.id);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [stops, ensureStopThumbs]);
 
   /* ========== Galeri sekmesi için tüm medyayı topla (lazy) ========== */
   const [galleryLoaded, setGalleryLoaded] = useState(false);
@@ -445,8 +475,8 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   const loadAllGallery = useCallback(async () => {
     if (galleryLoaded) return;
     for (const s of (stops || [])) {
-      const list = await listStopMediaInline({ routeId, stopId: s.id, limit: 20 }).catch(() => []);
-      mediaCacheRef.current[s.id] = { items: list, __loadedThumbs: true };
+      const { items } = await listStopMediaInline({ routeId, stopId: s.id, limit: 20 });
+      mediaCacheRef.current[s.id] = { items, __loadedThumbs: true, __error: null };
     }
     setGalleryLoaded(true);
     forceRerender((x)=>x+1);
@@ -486,7 +516,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
             signal: ac.signal
           });
           const cur = mediaCacheRef.current[stopId]?.items || [];
-          mediaCacheRef.current[stopId] = { items: [res, ...cur], __loadedThumbs: true };
+          mediaCacheRef.current[stopId] = { items: [res, ...cur], __loadedThumbs: true, __error: null };
           forceRerender((x)=>x+1);
         } catch (e) {
           console.warn("upload hata:", e?.message || e);
@@ -683,8 +713,10 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
           {tab === "stops" && (
             <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
               {(stops || []).map((s) => {
-                const media = mediaCacheRef.current[s.id]?.items || [];
+                const cache = mediaCacheRef.current[s.id] || {};
+                const media = cache.items || [];
                 const up = uploadState[s.id];
+                const hadPermErr = cache.__error && cache.__error.includes("permission");
                 return (
                   <div key={s.id} style={{ border:"1px solid #eee", borderRadius:12, overflow:"hidden" }}>
                     <div style={{ padding:"10px 12px", display:"flex", alignItems:"center", gap:8, justifyContent:"space-between" }}>
@@ -734,7 +766,9 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
                         </div>
                       ))}
                       {media.length === 0 && (
-                        <div style={{ fontSize:12, opacity:.7 }}>Medya yok</div>
+                        <div style={{ fontSize:12, opacity:.7 }}>
+                          {hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}
+                        </div>
                       )}
                     </div>
 
