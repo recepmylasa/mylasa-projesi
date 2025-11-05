@@ -13,26 +13,20 @@ service cloud.firestore {
       allow create, delete: if isOwner(userId);
       allow update: if isOwner(userId);
 
-      // Takipçiler (followers) — yeni şema
+      // followers
       match /followers/{followerUid} {
-        // Sadece hesap sahibi (userId) listeyi okuyabilir
         allow read: if isOwner(userId);
-
-        // Takip et: sadece giriş yapan kendi UID'siyle oluşturabilir, self-follow yasak
         allow create: if isSignedIn()
           && followerUid == request.auth.uid
           && followerUid != userId
           && request.resource.id == request.auth.uid
           && request.resource.data.followerId == request.auth.uid
           && request.resource.data.createdAt is timestamp;
-
-        // Takibi bırak: sadece kendi takibini silebilir
         allow delete: if isSignedIn() && followerUid == request.auth.uid;
-
         allow update: if false;
       }
 
-      // (Opsiyonel) following alt koleksiyonu — istemci yazamaz, sadece sahibi okuyabilir
+      // following (sadece owner okuyabilir)
       match /following/{targetUid} {
         allow read: if isOwner(userId);
         allow write: if false;
@@ -87,7 +81,6 @@ service cloud.firestore {
         && (request.resource.data.coordinates[1] is number);
 
       allow update: if false;
-
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
@@ -114,6 +107,7 @@ service cloud.firestore {
     match /content/{contentId} {
       allow read: if isSignedIn();
 
+      // DİKKAT: Bu belgeyi içeriğin sahibi oluşturmalı (post oluştururken).
       allow create: if isSignedIn()
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.type in ['post','story','clip'];
@@ -122,7 +116,6 @@ service cloud.firestore {
 
       match /ratings/{raterId} {
         allow read: if isSignedIn();
-
         allow create: if isSignedIn()
           && raterId == request.auth.uid
           && request.resource.data.raterId == request.auth.uid
@@ -131,7 +124,6 @@ service cloud.firestore {
           && request.resource.data.value <= 5
           && exists(/databases/$(database)/documents/content/$(contentId))
           && get(/databases/$(database)/documents/content/$(contentId)).data.authorId != request.auth.uid;
-
         allow update: if isSignedIn()
           && raterId == request.auth.uid
           && request.resource.data.raterId == resource.data.raterId
@@ -140,25 +132,22 @@ service cloud.firestore {
           && request.resource.data.value <= 5
           && exists(/databases/$(database)/documents/content/$(contentId))
           && get(/databases/$(database)/documents/content/$(contentId)).data.authorId != request.auth.uid;
-
         allow delete: if false;
       }
     }
 
-    /* ===== LABUBU SERİSİ (public read, admin write yok) ===== */
+    /* ===== LABUBU SERİSİ (public read) ===== */
     match /series/{seriesId} {
       allow read: if true;
       allow write: if false;
     }
 
-    /* Legendary cap’ler (UI için okuma serbest/DEV’te de açık) */
     match /global_legendary_caps/{docId} {
       allow read: if isSignedIn() || devWindow();
       allow write: if false;
     }
 
-    // ==================== ADIM-9: FOLLOWS (legacy) ====================
-    // Geçiş süreci boyunca açık kalıyor (read + create/delete)
+    // ==================== FOLLOWS (legacy) ====================
     match /follows/{pairId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
@@ -172,16 +161,13 @@ service cloud.firestore {
 
     // ==================== ROUTES + STOPS =====================
     match /routes/{routeId} {
-      // public OR owner OR followers visibility (+ dual check: new & legacy)
       allow read: if
         resource.data.visibility == "public"
         || (isSignedIn() && resource.data.ownerId == request.auth.uid)
         || (isSignedIn()
             && resource.data.visibility == "followers"
             && (
-              // Yeni şema
               exists(/databases/$(database)/documents/users/$(resource.data.ownerId)/followers/$(request.auth.uid))
-              // Geçiş için legacy şema
               || exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + resource.data.ownerId))
             )
         );
@@ -205,7 +191,7 @@ service cloud.firestore {
         allow create, update, delete: if isSignedIn()
           && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
 
-        // --- media alt koleksiyonu ---
+        // media alt koleksiyonu
         match /media/{mediaId} {
           allow read: if
             get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
@@ -228,7 +214,7 @@ service cloud.firestore {
       }
     }
 
-    // ==================== RATINGS ====================
+    // ==================== RATINGS (rota/durak) ====================
     match /route_ratings/{rid_uid} {
       allow read: if true;
       allow create, update: if isSignedIn()
@@ -258,7 +244,7 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    /* =================== CATCH-ALL (DEV OKUMA) =================== */
+    /* ================ CATCH-ALL (DEV OKUMA) ================ */
     match /{document=**} {
       allow read: if isSignedIn() || devWindow();
       allow write: if false;

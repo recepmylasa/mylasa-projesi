@@ -1,7 +1,32 @@
+// storage.rules — TAM DOSYA
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    match /route_media/{routeId}/{stopId}/{fileName} {
+      function isOwner() {
+        return request.auth != null
+          && get(/databases/(default)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
+      }
+      function isImage() { return request.resource.contentType.matches('image/.*'); }
+      function isVideo() { return request.resource.contentType.matches('video/.*'); }
+
+      // okuma: public ya da sahibi
+      function isPublic() {
+        return get(/databases/(default)/documents/routes/$(routeId)).data.visibility == "public";
+      }
+      allow read: if isPublic() || isOwner();
+
+      // yazma: SADECE rota sahibi + tip/size sınırları
+      allow write: if isOwner() && (
+        (isImage() && request.resource.size <= 10 * 1024 * 1024) ||
+        (isVideo() && request.resource.size <= 50 * 1024 * 1024)
+      );
+
+      allow delete: if isOwner();
+    }
+
+    // diğer klasörler
     match /profile_photos/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null
@@ -10,10 +35,7 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
-    match /post_media/{userId}/{fileName} {
-      allow read;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
+    match /post_media/{userId}/{fileName} { allow read; allow write: if request.auth != null && request.auth.uid == userId; }
 
     match /checkins/{userId}/{fileName} {
       allow read;
@@ -24,42 +46,16 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    match /raw-uploads/{userId}/{fileName} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
+    match /raw-uploads/{userId}/{fileName} { allow read, write: if request.auth != null && request.auth.uid == userId; }
 
-    match /clips_media/{userId}/{fileName} {
-      allow read;
-    }
+    match /clips_media/{userId}/{fileName} { allow read; }
 
     match /hikaye_media/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null && request.auth.uid == userId
                     && request.resource.size < 50 * 1024 * 1024
-                    && (request.resource.contentType.matches('image/.*')
-                        || request.resource.contentType.matches('video/.*'));
+                    && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('video/.*'));
       allow delete: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // ROTA MEDYASI — Firestore lookup (default) ile
-    match /route_media/{routeId}/{stopId}/{fileName} {
-      function isOwner() {
-        return request.auth != null
-          && get(/databases/(default)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
-      }
-      function isPublic() {
-        return get(/databases/(default)/documents/routes/$(routeId)).data.visibility == "public";
-      }
-
-      allow read: if isPublic() || isOwner();
-
-      allow write: if isOwner()
-        && (
-          (request.resource.contentType.matches('image/.*') && request.resource.size <= 10 * 1024 * 1024) ||
-          (request.resource.contentType.matches('video/.*') && request.resource.size <= 50 * 1024 * 1024)
-        );
-
-      allow delete: if isOwner();
     }
 
     match /{allPaths=**} { allow read, write: if false; }
