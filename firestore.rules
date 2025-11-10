@@ -1,3 +1,4 @@
+// Firestore Security Rules (v2.2 — route owner read/write netleştirildi)
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -13,7 +14,7 @@ service cloud.firestore {
       allow create, delete: if isOwner(userId);
       allow update: if isOwner(userId);
 
-      // followers
+      // Takipçiler (followers)
       match /followers/{followerUid} {
         allow read: if isOwner(userId);
         allow create: if isSignedIn()
@@ -26,7 +27,7 @@ service cloud.firestore {
         allow update: if false;
       }
 
-      // following (sadece owner okuyabilir)
+      // following (salt owner read)
       match /following/{targetUid} {
         allow read: if isOwner(userId);
         allow write: if false;
@@ -45,10 +46,7 @@ service cloud.firestore {
       }
 
       // badges: PUBLIC READ
-      match /badges/{badgeId} {
-        allow read: if true;
-        allow create, update, delete: if false;
-      }
+      match /badges/{badgeId} { allow read: if true; allow create, update, delete: if false; }
 
       // stats: owner-only read
       match /stats/{docId} {
@@ -71,7 +69,6 @@ service cloud.firestore {
     /* ============ CHECK-INS (mobil akış) ============ */
     match /checkins/{checkinId} {
       allow read: if isSignedIn();
-
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.placeId is string
@@ -79,7 +76,6 @@ service cloud.firestore {
         && (request.resource.data.coordinates.size() == 2)
         && (request.resource.data.coordinates[0] is number)
         && (request.resource.data.coordinates[1] is number);
-
       allow update: if false;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
@@ -107,7 +103,6 @@ service cloud.firestore {
     match /content/{contentId} {
       allow read: if isSignedIn();
 
-      // DİKKAT: Bu belgeyi içeriğin sahibi oluşturmalı (post oluştururken).
       allow create: if isSignedIn()
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.type in ['post','story','clip'];
@@ -116,6 +111,7 @@ service cloud.firestore {
 
       match /ratings/{raterId} {
         allow read: if isSignedIn();
+
         allow create: if isSignedIn()
           && raterId == request.auth.uid
           && request.resource.data.raterId == request.auth.uid
@@ -124,6 +120,7 @@ service cloud.firestore {
           && request.resource.data.value <= 5
           && exists(/databases/$(database)/documents/content/$(contentId))
           && get(/databases/$(database)/documents/content/$(contentId)).data.authorId != request.auth.uid;
+
         allow update: if isSignedIn()
           && raterId == request.auth.uid
           && request.resource.data.raterId == resource.data.raterId
@@ -132,22 +129,21 @@ service cloud.firestore {
           && request.resource.data.value <= 5
           && exists(/databases/$(database)/documents/content/$(contentId))
           && get(/databases/$(database)/documents/content/$(contentId)).data.authorId != request.auth.uid;
+
         allow delete: if false;
       }
     }
 
     /* ===== LABUBU SERİSİ (public read) ===== */
-    match /series/{seriesId} {
-      allow read: if true;
-      allow write: if false;
-    }
+    match /series/{seriesId} { allow read: if true; allow write: if false; }
 
+    /* Legendary cap’ler */
     match /global_legendary_caps/{docId} {
       allow read: if isSignedIn() || devWindow();
       allow write: if false;
     }
 
-    // ==================== FOLLOWS (legacy) ====================
+    // ==================== ADIM-9: FOLLOWS (legacy) ====================
     match /follows/{pairId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
@@ -161,6 +157,7 @@ service cloud.firestore {
 
     // ==================== ROUTES + STOPS =====================
     match /routes/{routeId} {
+      // public OR owner OR followers
       allow read: if
         resource.data.visibility == "public"
         || (isSignedIn() && resource.data.ownerId == request.auth.uid)
@@ -176,6 +173,7 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
 
       match /stops/{stopId} {
+        // stop read → route görünürlüğü/ownership’e göre
         allow read: if
           get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
           || (isSignedIn()
@@ -188,10 +186,11 @@ service cloud.firestore {
               )
           );
 
+        // stop write → sadece route sahibi
         allow create, update, delete: if isSignedIn()
           && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
 
-        // media alt koleksiyonu
+        // --- stops/{stopId}/media alt koleksiyonu ---
         match /media/{mediaId} {
           allow read: if
             get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
@@ -205,6 +204,7 @@ service cloud.firestore {
                 )
             );
 
+          // media write → sadece route sahibi + tip/url kontrolü
           allow create, update, delete: if isSignedIn()
             && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid
             && request.resource.data.type in ['image','video']
@@ -214,7 +214,7 @@ service cloud.firestore {
       }
     }
 
-    // ==================== RATINGS (rota/durak) ====================
+    // ==================== RATINGS ====================
     match /route_ratings/{rid_uid} {
       allow read: if true;
       allow create, update: if isSignedIn()
@@ -238,13 +238,7 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
-    // ==================== BADGE CATALOG ====================
-    match /badge_catalog/{badgeId} {
-      allow read: if true;
-      allow write: if false;
-    }
-
-    /* ================ CATCH-ALL (DEV OKUMA) ================ */
+    /* =================== CATCH-ALL (DEV OKUMA) =================== */
     match /{document=**} {
       allow read: if isSignedIn() || devWindow();
       allow write: if false;

@@ -1,32 +1,55 @@
-// storage.rules — TAM DOSYA
+// storage.rules — v3 (owner kontrolü sağlam, CT/uzantı toleranslı)
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    match /route_media/{routeId}/{stopId}/{fileName} {
-      function isOwner() {
-        return request.auth != null
-          && get(/databases/(default)/documents/routes/$(routeId)).data.ownerId == request.auth.uid;
-      }
-      function isImage() { return request.resource.contentType.matches('image/.*'); }
-      function isVideo() { return request.resource.contentType.matches('video/.*'); }
+    // ==== Yardımcılar ====
+    function isAuthed() { return request.auth != null; }
 
-      // okuma: public ya da sahibi
-      function isPublic() {
-        return get(/databases/(default)/documents/routes/$(routeId)).data.visibility == "public";
-      }
-      allow read: if isPublic() || isOwner();
-
-      // yazma: SADECE rota sahibi + tip/size sınırları
-      allow write: if isOwner() && (
-        (isImage() && request.resource.size <= 10 * 1024 * 1024) ||
-        (isVideo() && request.resource.size <= 50 * 1024 * 1024)
-      );
-
-      allow delete: if isOwner();
+    // Firestore'dan route dokümanı (okuma izni Firestore rules'a da tabidir)
+    function routeRef(routeId) {
+      return get(/databases/(default)/documents/routes/$(routeId));
+    }
+    function routeExists(routeId) {
+      return exists(/databases/(default)/documents/routes/$(routeId));
+    }
+    function isRouteOwner(routeId) {
+      return isAuthed()
+             && routeExists(routeId)
+             && routeRef(routeId).data.ownerId == request.auth.uid;
+    }
+    function isRoutePublic(routeId) {
+      return routeExists(routeId)
+             && routeRef(routeId).data.visibility == "public";
     }
 
-    // diğer klasörler
+    // İçerik türü / uzantı toleransı
+    function isImageCT() { return request.resource.contentType.matches('image/.*'); }
+    function isVideoCT() { return request.resource.contentType.matches('video/.*'); }
+    function hasImageExt(name) {
+      return name.matches('.*\\.(jpg|jpeg|png|webp|gif|JPG|JPEG|PNG|WEBP|GIF)$');
+    }
+    function hasVideoExt(name) {
+      return name.matches('.*\\.(mp4|mov|webm|MP4|MOV|WEBM)$');
+    }
+
+    // ==== ROTA MEDYASI ====
+    // Yol: route_media/{routeId}/{stopId}/{fileName}
+    match /route_media/{routeId}/{stopId}/{fileName} {
+      // Okuma: public ya da sahibi
+      allow read: if isRoutePublic(routeId) || isRouteOwner(routeId);
+
+      // Yazma: sadece sahibi + tip/size (CT veya uzantıdan biri yeter)
+      allow create, update: if isRouteOwner(routeId) && (
+        ((isImageCT() || hasImageExt(fileName)) && request.resource.size <= 20 * 1024 * 1024) ||
+        ((isVideoCT() || hasVideoExt(fileName)) && request.resource.size <= 80 * 1024 * 1024)
+      );
+
+      // Silme: sadece sahibi
+      allow delete: if isRouteOwner(routeId);
+    }
+
+    // ==== DİĞER KLASÖRLER (mevcut davranış) ====
     match /profile_photos/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null
@@ -35,7 +58,10 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
-    match /post_media/{userId}/{fileName} { allow read; allow write: if request.auth != null && request.auth.uid == userId; }
+    match /post_media/{userId}/{fileName} {
+      allow read;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
 
     match /checkins/{userId}/{fileName} {
       allow read;
@@ -46,18 +72,21 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    match /raw-uploads/{userId}/{fileName} { allow read, write: if request.auth != null && request.auth.uid == userId; }
+    match /raw-uploads/{userId}/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
 
     match /clips_media/{userId}/{fileName} { allow read; }
 
     match /hikaye_media/{userId}/{fileName} {
       allow read;
       allow write: if request.auth != null && request.auth.uid == userId
-                    && request.resource.size < 50 * 1024 * 1024
-                    && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('video/.*'));
+                   && request.resource.size < 50 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('video/.*'));
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Varsayılan kapalı
     match /{allPaths=**} { allow read, write: if false; }
   }
 }
