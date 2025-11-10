@@ -1,6 +1,4 @@
 "use strict";
-// functions/src/index.ts
-// Node 20 / TS
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -36,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
+// Node 20 / TS
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const geo_1 = require("./geo");
@@ -208,9 +207,8 @@ exports.backfillAreasCallable = functions
     return { scanned, updated, errors };
 });
 /* =========================
-   Adım 12 — Followers counters
+   Followers counters (mevcut)
    ========================= */
-// Ortak sayaç güncelleme
 async function adjustCounts(targetUid, followerUid, delta) {
     if (!targetUid || !followerUid || targetUid === followerUid)
         return;
@@ -221,7 +219,6 @@ async function adjustCounts(targetUid, followerUid, delta) {
         t.set(followerRef, { followingCount: admin.firestore.FieldValue.increment(delta) }, { merge: true });
     });
 }
-// 1) Birincil model: users/{target}/followers/{follower}
 exports.onFollowersCreate = functions.firestore
     .document("users/{targetUid}/followers/{followerUid}")
     .onCreate(async (_snap, ctx) => {
@@ -234,7 +231,6 @@ exports.onFollowersDelete = functions.firestore
     const { targetUid, followerUid } = ctx.params;
     await adjustCounts(targetUid, followerUid, -1);
 });
-// 2) Alternatif model: kök /follows/{follower_followee}
 exports.onFollowsCreate = functions.firestore
     .document("follows/{pairId}")
     .onCreate(async (snap, ctx) => {
@@ -290,5 +286,10 @@ try {
 catch { }
 try {
     Object.assign(exports, require("../validators"));
+}
+catch { }
+/* === YENİ: geoindex modülü === */
+try {
+    Object.assign(exports, require("./geoindex"));
 }
 catch { }

@@ -1,6 +1,4 @@
-// functions/src/index.ts
 // Node 20 / TS
-
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { reverseGeocode } from "./geo";
@@ -161,10 +159,8 @@ export const backfillAreasCallable = functions
   });
 
 /* =========================
-   Adım 12 — Followers counters
+   Followers counters (mevcut)
    ========================= */
-
-// Ortak sayaç güncelleme
 async function adjustCounts(targetUid: string, followerUid: string, delta: 1 | -1) {
   if (!targetUid || !followerUid || targetUid === followerUid) return;
   const targetRef = db.collection("users").doc(String(targetUid));
@@ -175,7 +171,6 @@ async function adjustCounts(targetUid: string, followerUid: string, delta: 1 | -
   });
 }
 
-// 1) Birincil model: users/{target}/followers/{follower}
 export const onFollowersCreate = functions.firestore
   .document("users/{targetUid}/followers/{followerUid}")
   .onCreate(async (_snap, ctx) => {
@@ -190,7 +185,6 @@ export const onFollowersDelete = functions.firestore
     await adjustCounts(targetUid, followerUid, -1);
   });
 
-// 2) Alternatif model: kök /follows/{follower_followee}
 export const onFollowsCreate = functions.firestore
   .document("follows/{pairId}")
   .onCreate(async (snap, ctx) => {
@@ -229,3 +223,6 @@ try { Object.assign(exports, require("../calculator")); } catch {}
 try { Object.assign(exports, require("../configs")); } catch {}
 try { Object.assign(exports, require("../data-access")); } catch {}
 try { Object.assign(exports, require("../validators")); } catch {}
+
+/* === YENİ: geoindex modülü === */
+try { Object.assign(exports, require("./geoindex")); } catch {}
