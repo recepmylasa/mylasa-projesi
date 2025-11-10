@@ -14,6 +14,11 @@ import ProfilePostViewerMobile from "./ProfilePostViewerMobile";
 import { ClipBadge, CommentIcon, StarIcon } from "./icons";
 import "./Explore.css";
 
+/* --- Yakınımda servisleri + kart --- */
+import { initNearby, fetchNearbyPage } from "./services/nearby";
+import NearbyPromptMobile from "./components/NearbyPromptMobile";
+import RouteCardMobile from "./components/RouteCardMobile";
+
 /* ——— Yardımcılar ——— */
 const isVideoExt = (url) => !!url && /\.(mp4|webm|mov|ogg)(\?|$)/i.test(url);
 const mediaUrlOf = (it) =>
@@ -59,13 +64,24 @@ const commentCountOf = (it) =>
     ? it.yorumlar.length
     : 0;
 
+/* --- Konum alma (tek sefer) --- */
+const askLocationOnce = () =>
+  new Promise((resolve, reject) => {
+    if (!("geolocation" in navigator)) return reject(new Error("Konum desteği yok"));
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => reject(err),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
+  });
+
 function Explore({ aktifKullaniciId, onUserClick }) {
   /* Arama */
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
 
-  /* Grid */
+  /* Grid (gönderiler) */
   const [posts, setPosts] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -73,10 +89,77 @@ function Explore({ aktifKullaniciId, onUserClick }) {
   const [isEnd, setIsEnd] = useState(false);
 
   /* Detay & Viewer */
-  const [selectedPost, setSelectedPost] = useState(null); // desktop modal
-  const [viewer, setViewer] = useState(null); // { items, index } – mobile viewer
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [viewer, setViewer] = useState(null);
 
   const sentinelRef = useRef(null);
+
+  /* === YAKINIMDA MODU (Yalnız MOBİL) === */
+  const isMobile = typeof window !== "undefined"
+    ? window.matchMedia("(max-width: 768px)").matches
+    : true;
+
+  const [nearOn, setNearOn] = useState(false);
+  const [nearCenter, setNearCenter] = useState(null);
+  const [radiusKm, setRadiusKm] = useState(20);
+  const [nearItems, setNearItems] = useState([]);
+  const [nearLoading, setNearLoading] = useState(false);
+  const [nearError, setNearError] = useState("");
+
+  const loadNearby = useCallback(
+    async (centerArg = null, radiusArg = null) => {
+      setNearLoading(true);
+      setNearError("");
+      try {
+        await initNearby(aktifKullaniciId || null);
+        const c = centerArg || (await askLocationOnce());
+        setNearCenter(c);
+        const r = Number.isFinite(radiusArg) ? radiusArg : radiusKm;
+        const { items } = await fetchNearbyPage({ center: c, radiusKm: r, take: 20 });
+        setNearItems(items);
+      } catch (e) {
+        setNearError(
+          e?.message?.includes("permission") || e?.code === 1
+            ? "Konum izni reddedildi."
+            : "Konum alınamadı."
+        );
+        setNearItems([]);
+      } finally {
+        setNearLoading(false);
+      }
+    },
+    [aktifKullaniciId, radiusKm]
+  );
+
+  const toggleNear = async () => {
+    if (!isMobile) return; // masaüstünü etkileme
+    const next = !nearOn;
+    setNearOn(next);
+    if (next) await loadNearby();
+  };
+
+  /* URL ile açma: ?near=1&lat=..&lng=..&r=20 */
+  useEffect(() => {
+    if (!isMobile) return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("near") === "1") {
+      const lat = parseFloat(sp.get("lat"));
+      const lng = parseFloat(sp.get("lng"));
+      const r = parseFloat(sp.get("r"));
+      if (Number.isFinite(r)) setRadiusKm(Math.max(5, Math.min(50, r)));
+      setNearOn(true);
+      const c =
+        Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+      loadNearby(c, Number.isFinite(r) ? r : null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* Yarıçap değişince yenile */
+  useEffect(() => {
+    if (nearOn && nearCenter) loadNearby(nearCenter, radiusKm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radiusKm]);
 
   /* ——— Arama (debounce) ——— */
   useEffect(() => {
@@ -96,7 +179,8 @@ function Explore({ aktifKullaniciId, onUserClick }) {
         const usersRef = collection(db, "users");
         const firstWord = term.split(" ")[0];
         const lw = firstWord.toLowerCase();
-        const cap = firstWord.charAt(0).toUpperCase() + firstWord.slice(1).toLowerCase();
+        const cap =
+          firstWord.charAt(0).toUpperCase() + firstWord.slice(1).toLowerCase();
 
         const map = new Map();
 
@@ -202,7 +286,12 @@ function Explore({ aktifKullaniciId, onUserClick }) {
     setPaging(true);
     try {
       const postsRef = collection(db, "posts");
-      const qy = query(postsRef, orderBy("tarih", "desc"), startAfter(cursor), limit(pageSize));
+      const qy = query(
+        postsRef,
+        orderBy("tarih", "desc"),
+        startAfter(cursor),
+        limit(pageSize)
+      );
       const snap = await getDocs(qy);
       const docs = snap.docs;
       const add = docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -237,9 +326,8 @@ function Explore({ aktifKullaniciId, onUserClick }) {
 
   /* ——— Kart aç ——— */
   const openCard = (idx) => {
-    // Mobil: tam ekran viewer, Desktop: mevcut modal
-    const isMobile = window.matchMedia("(max-width: 768px)").matches;
-    if (isMobile) {
+    const isMb = window.matchMedia("(max-width: 768px)").matches;
+    if (isMb) {
       const withTypes = gridList.map((p) =>
         p.type ? p : { ...p, type: isClipItem(p) ? "clip" : "post" }
       );
@@ -268,42 +356,114 @@ function Explore({ aktifKullaniciId, onUserClick }) {
           </div>
         </div>
 
-        {/* Sonuçlar veya Grid */}
-        {searchTerm.trim() ? (
-          <div className="search-results-container" role="list">
-            {isSearching ? (
-              <p className="search-message">Aranıyor…</p>
-            ) : searchResults.length > 0 ? (
-              searchResults.map((user) => {
-                const uid = user.uid || user.id;
-                const avatar =
-                  user.profilFoto || user.photoURL || "/avatars/default.png";
-                const uname = user.kullaniciAdi || user.username || "kullanıcı";
-                const fname = user.adSoyad || user.displayName || "";
-                return (
-                  <button
-                    key={uid}
-                    className="search-result-item"
-                    onClick={() => onUserClick(uid)}
-                    role="listitem"
-                    aria-label={`${uname} profiline git`}
-                    type="button"
-                  >
-                    <img src={avatar} alt="" />
-                    <div className="search-result-info">
-                      <span className="username">{uname}</span>
-                      <span className="fullname">{fname}</span>
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              <p className="search-message">Sonuç bulunamadı.</p>
-            )}
+        {/* --- Yakınımda Chip (yalnız mobil) --- */}
+        {isMobile && (
+          <div className="chipbar">
+            <button
+              type="button"
+              className={`chip${nearOn ? " active" : ""}`}
+              onClick={toggleNear}
+              aria-pressed={nearOn}
+            >
+              Yakınımda
+            </button>
           </div>
-        ) : (
+        )}
+
+        {/* Yakınımda modu aktifse rota listesi */}
+        {isMobile && nearOn ? (
           <>
-            {loading ? (
+            {nearCenter && (
+              <div className="near-controls">
+                <label htmlFor="near-radius">
+                  Yarıçap: <b>{radiusKm} km</b>
+                </label>
+                <input
+                  id="near-radius"
+                  type="range"
+                  min="5"
+                  max="50"
+                  step="1"
+                  value={radiusKm}
+                  onChange={(e) => setRadiusKm(Number(e.target.value))}
+                />
+              </div>
+            )}
+
+            {nearError && (
+              <div className="search-message">{nearError} (Şehir filtresini kullanabilirsiniz.)</div>
+            )}
+
+            {!nearError && !nearCenter && (
+              <NearbyPromptMobile
+                onAllow={() => loadNearby()}
+                onCancel={() => setNearOn(false)}
+              />
+            )}
+
+            {!nearError && nearLoading && (
+              <div className="near-list" aria-busy="true">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="near-skel" />
+                ))}
+              </div>
+            )}
+
+            {!nearError && !nearLoading && nearItems.length > 0 && (
+              <div className="near-list">
+                {nearItems.map((route) => (
+                  <RouteCardMobile
+                    key={route.id}
+                    route={route}
+                    onClick={() => {
+                      // Not: Projenin mevcut yönlendirme yapısına göre burada açılacak.
+                      // window.location.href = `/routes/${route.id}`;
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+
+            {!nearError && !nearLoading && nearItems.length === 0 && nearCenter && (
+              <div className="search-message">Bu yarıçapta bitmiş rota bulunamadı.</div>
+            )}
+          </>
+        ) : (
+          /* --- Normal Explore (gönderi grid) --- */
+          <>
+            {searchTerm.trim() ? (
+              <div className="search-results-container" role="list">
+                {isSearching ? (
+                  <p className="search-message">Aranıyor…</p>
+                ) : searchResults.length > 0 ? (
+                  searchResults.map((user) => {
+                    const uid = user.uid || user.id;
+                    const avatar =
+                      user.profilFoto || user.photoURL || "/avatars/default.png";
+                    const uname = user.kullaniciAdi || user.username || "kullanıcı";
+                    const fname = user.adSoyad || user.displayName || "";
+                    return (
+                      <button
+                        key={uid}
+                        className="search-result-item"
+                        onClick={() => onUserClick(uid)}
+                        role="listitem"
+                        aria-label={`${uname} profiline git`}
+                        type="button"
+                      >
+                        <img src={avatar} alt="" />
+                        <div className="search-result-info">
+                          <span className="username">{uname}</span>
+                          <span className="fullname">{fname}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="search-message">Sonuç bulunamadı.</p>
+                )}
+              </div>
+            ) : loading ? (
               <div className="explore-grid" aria-busy="true" aria-live="polite">
                 {Array.from({ length: pageSize }).map((_, i) => (
                   <div key={i} className="explore-grid-item skeleton" aria-hidden="true" />

@@ -226,3 +226,6 @@ try { Object.assign(exports, require("../validators")); } catch {}
 
 /* === YENİ: geoindex modülü === */
 try { Object.assign(exports, require("./geoindex")); } catch {}
+
+/* === YENİ: paylaşım sayfası (SSR) === */
+export { renderRouteShare } from "./share";

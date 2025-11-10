@@ -1,4 +1,5 @@
-// Yakınımdaki rotalar için servis (MOBİL)
+// src/services/nearby.js
+// Yakınımdaki rotalar: geohash aralıklarıyla sorgu + görünürlük filtresi
 import { db } from "../firebase";
 import {
   collection, query, where, orderBy, limit, getDocs,
@@ -14,7 +15,7 @@ export async function initNearby(viewerId) {
 
   if (!_viewerId) return;
 
-  // 1) users/{uid}/following alt koleksiyonu (varsa)
+  // 1) users/{uid}/following (varsa)
   try {
     const base = collection(db, `users/${_viewerId}/following`);
     const snap = await getDocs(query(base, limit(200)));
@@ -40,10 +41,14 @@ function canSeeRoute(route) {
     if (!_viewerId || !owner) return false;
     return _following.has(String(owner));
   }
-  // varsayılan güvenli davranış
-  return false;
+  return false; // güvenli varsayılan
 }
 
+/**
+ * Yakınımdaki bitmiş rotaları getirir.
+ * @param {{center:{lat:number,lng:number}, radiusKm?:number, take?:number}} params
+ * @returns {{items: any[], stats:{fetched:number, kept:number}}}
+ */
 export async function fetchNearbyPage({ center, radiusKm = 20, take = 20 }) {
   if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lng)) {
     return { items: [], stats: { fetched: 0, kept: 0 } };
@@ -51,7 +56,7 @@ export async function fetchNearbyPage({ center, radiusKm = 20, take = 20 }) {
   const radiusM = radiusKm * 1000;
   const bounds = geohashQueryBounds([center.lat, center.lng], radiusM);
 
-  // Sorguları paralel ama makul sayıda yap
+  // Aralık başına makul limit
   const per = Math.max(5, Math.ceil(take / bounds.length));
   const proms = bounds.map(([start, end]) => {
     const qy = query(
@@ -79,13 +84,13 @@ export async function fetchNearbyPage({ center, radiusKm = 20, take = 20 }) {
     });
   }
 
-  // Haversine ile yarıçap dışını ele + görünürlük filtresi
+  // Haversine + görünürlük
   const withDist = [];
   for (const it of map.values()) {
     const c = it?.routeGeo?.center;
     if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lng)) continue;
     const distKm = distanceBetween([center.lat, center.lng], [c.lat, c.lng]);
-    if (distKm <= radiusKm + 0.2 /* tolerans */ && canSeeRoute(it)) {
+    if (distKm <= radiusKm + 0.2 && canSeeRoute(it)) {
       withDist.push({ ...it, distanceKm: distKm });
     }
   }

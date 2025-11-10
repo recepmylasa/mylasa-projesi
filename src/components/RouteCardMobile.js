@@ -1,6 +1,4 @@
-// src/components/RouteCardMobile.js
-// Kart: başlık, km, süre, ⭐ ortalama (N) + şehir/ülke + ilk 3 etiket.
-
+// Kart: başlık, km, süre, ⭐ ortalama (N) + şehir/ülke + ilk 3 etiket + "uzakta" mesafesi.
 import React from "react";
 
 function km(m) { return Math.round((m || 0) / 100) / 10; }
@@ -10,6 +8,7 @@ function fmtDur(ms) {
   const mm = m % 60;
   return h > 0 ? `${h} sa ${mm} dk` : `${mm} dk`;
 }
+const fmtDist = (d) => (Number(d) || 0).toFixed(1);
 
 export default function RouteCardMobile({ route, onClick = () => {} }) {
   if (!route) return null;
@@ -17,6 +16,7 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
     title, totalDistanceM, durationMs,
     ratingAvg = 0, ratingCount = 0,
     areas = {}, tags = [],
+    distanceKm,
   } = route;
 
   const locText = [areas?.city, areas?.country].filter(Boolean).join(", ");
@@ -45,6 +45,12 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
         <span title={ratingCount ? `${ratingCount} oy` : "Oy yok"}>
           ⭐ {Number(ratingAvg || 0).toFixed(1)} ({ratingCount || 0})
         </span>
+        {Number.isFinite(distanceKm) && (
+          <>
+            <span>•</span>
+            <span>{fmtDist(distanceKm)} km uzakta</span>
+          </>
+        )}
       </div>
 
       {(locText || topTags.length) ? (
