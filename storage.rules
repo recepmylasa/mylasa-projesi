@@ -1,31 +1,34 @@
+// storage.rules — TAM DOSYA
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    function isSignedIn() {
-      return request.auth != null;
+    function isSignedIn() { return request.auth != null; }
+
+    /* --- DÜNYAYA AÇIK VARLIKLAR --- */
+    // Örn: public/share/default-route.png (OG görselleri vs.)
+    match /public/{allPaths=**} {
+      allow read: if true;          // token gerektirmez
+      allow write: if isSignedIn(); // istersen burayı false yapıp sadece console’dan yükleyebilirsin
     }
 
-    // Rota medyaları: route_media/{routeId}/.../{file}
-    // (alt klasör derinliği serbest)
+    /* --- Uygulama medyaları --- */
     match /route_media/{routeId}/{allPaths=**} {
-      allow read: if true;          // istersen burada da auth şartı koyabiliriz
-      allow write: if isSignedIn(); // sadece giriş yapan yükleyebilir
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
-    // Post medyaları: post_media/{postId}/.../{file}
     match /post_media/{postId}/{allPaths=**} {
       allow read: if true;
       allow write: if isSignedIn();
     }
 
-    // Klip medyaları: clip_media/{clipId}/.../{file}
     match /clip_media/{clipId}/{allPaths=**} {
       allow read: if true;
       allow write: if isSignedIn();
     }
 
-    // Diğer her şey kapalı
+    /* --- Diğer her şey kapalı --- */
     match /{everything=**} {
       allow read, write: if false;
     }

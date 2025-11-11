@@ -7,7 +7,7 @@ import { auth, db, storage } from "../firebase";
 
 // Firestore
 import {
-  doc, onSnapshot, collection, query, orderBy, limit as qlimit,
+  doc, collection, query, orderBy, limit as qlimit,
   getDocs, addDoc, serverTimestamp, where, getDoc
 } from "firebase/firestore";
 
@@ -322,7 +322,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
 
   // Medya cache: { stopId: { items:[], __loadedThumbs:boolean, __error?:string } }
   const mediaCacheRef = useRef({});
-  const [, forceRerender] = useState(0);
+  const [mediaTick, setMediaTick] = useState(0); // 🔧 useMemo bağımlılığı için
 
   // Lightbox state (galeri)
   const [lightboxItems, setLightboxItems] = useState(null); // [{url,type}]
@@ -445,7 +445,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
       __loadedThumbs: !error, // yalnız başarıda lockla
       ...(error ? { __error: error } : { __error: null }),
     };
-    forceRerender((x)=>x+1);
+    setMediaTick((x)=>x+1);
   }, [routeId]);
 
   /* 🔧 DÜZELTME: İlk yüklemede (yenile sonrası) 6 durağa kadar otomatik preload */
@@ -470,7 +470,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
       items.forEach(it => arr.push({ ...it, stopId: sid }));
     });
     return arr.sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-  }, [mediaCacheRef.current, galleryLoaded]);
+  }, [mediaTick, galleryLoaded]); // 🔧 mediaTick ile güncellenir
 
   const loadAllGallery = useCallback(async () => {
     if (galleryLoaded) return;
@@ -479,7 +479,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
       mediaCacheRef.current[s.id] = { items, __loadedThumbs: true, __error: null };
     }
     setGalleryLoaded(true);
-    forceRerender((x)=>x+1);
+    setMediaTick((x)=>x+1);
   }, [galleryLoaded, routeId, stops]);
 
   /* ========== Rapor sekmesi verileri (lazy) ========== */
@@ -517,7 +517,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
           });
           const cur = mediaCacheRef.current[stopId]?.items || [];
           mediaCacheRef.current[stopId] = { items: [res, ...cur], __loadedThumbs: true, __error: null };
-          forceRerender((x)=>x+1);
+          setMediaTick((x)=>x+1);
         } catch (e) {
           console.warn("upload hata:", e?.message || e);
         } finally {
@@ -536,7 +536,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
 
   /* ========== Link Paylaşımı ========== */
   const onShare = useCallback(async () => {
-    const url = `${window.location.origin}/r/${routeId}`;
+    const url = `${window.location.origin}/s/r/${routeId}`; // 🔧 SSR share URL
     const title = routeDoc?.title || "Rota";
     try {
       if (navigator.share) await navigator.share({ url, title, text: title });

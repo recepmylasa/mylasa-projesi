@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
+exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
 // Node 20 / TS
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
@@ -293,3 +293,6 @@ try {
     Object.assign(exports, require("./geoindex"));
 }
 catch { }
+/* === YENİ: paylaşım sayfası (SSR) === */
+var share_1 = require("./share");
+Object.defineProperty(exports, "renderRouteShare", { enumerable: true, get: function () { return share_1.renderRouteShare; } });
