@@ -22,7 +22,7 @@
   ],
   "hosting": {
     "public": "build",
-    "ignore": ["firebase.json","**/.*","**/node_modules/**"],
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "headers": [
       {
         "source": "**",
@@ -36,6 +36,7 @@
       }
     ],
     "rewrites": [
+      { "source": "/og/r/**", "function": "routeOgImage" },
       { "source": "/s/r/**", "function": "renderRouteShare" },
       { "source": "**", "destination": "/index.html" }
     ]

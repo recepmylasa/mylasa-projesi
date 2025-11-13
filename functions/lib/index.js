@@ -33,8 +33,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
-// Node 20 / TS
+exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
+// Node 20 / TS (firebase-functions v4 - v1 API)
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const geo_1 = require("./geo");
@@ -207,7 +207,7 @@ exports.backfillAreasCallable = functions
     return { scanned, updated, errors };
 });
 /* =========================
-   Followers counters (mevcut)
+   Followers counters
    ========================= */
 async function adjustCounts(targetUid, followerUid, delta) {
     if (!targetUid || !followerUid || targetUid === followerUid)
@@ -265,34 +265,11 @@ exports.onFollowsDelete = functions.firestore
     if (follower && followee)
         await adjustCounts(followee, follower, -1);
 });
-/* =========================
-   Mevcut modülleri bind et
-   ========================= */
-try {
-    Object.assign(exports, require("../reputation-engine"));
-}
-catch { }
-try {
-    Object.assign(exports, require("../calculator"));
-}
-catch { }
-try {
-    Object.assign(exports, require("../configs"));
-}
-catch { }
-try {
-    Object.assign(exports, require("../data-access"));
-}
-catch { }
-try {
-    Object.assign(exports, require("../validators"));
-}
-catch { }
-/* === YENİ: geoindex modülü === */
-try {
-    Object.assign(exports, require("./geoindex"));
-}
-catch { }
-/* === YENİ: paylaşım sayfası (SSR) === */
+/* === Modül exportları === */
 var share_1 = require("./share");
 Object.defineProperty(exports, "renderRouteShare", { enumerable: true, get: function () { return share_1.renderRouteShare; } });
+var og_1 = require("./og");
+Object.defineProperty(exports, "routeOgImage", { enumerable: true, get: function () { return og_1.routeOgImage; } });
+var geoindex_1 = require("./geoindex");
+Object.defineProperty(exports, "onRouteGeoFinish", { enumerable: true, get: function () { return geoindex_1.onRouteGeoFinish; } });
+Object.defineProperty(exports, "backfillGeoCallable", { enumerable: true, get: function () { return geoindex_1.backfillGeoCallable; } });

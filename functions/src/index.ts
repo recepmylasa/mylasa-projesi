@@ -1,4 +1,4 @@
-// Node 20 / TS
+// Node 20 / TS (firebase-functions v4 - v1 API)
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { reverseGeocode } from "./geo";
@@ -159,7 +159,7 @@ export const backfillAreasCallable = functions
   });
 
 /* =========================
-   Followers counters (mevcut)
+   Followers counters
    ========================= */
 async function adjustCounts(targetUid: string, followerUid: string, delta: 1 | -1) {
   if (!targetUid || !followerUid || targetUid === followerUid) return;
@@ -170,21 +170,18 @@ async function adjustCounts(targetUid: string, followerUid: string, delta: 1 | -
     t.set(followerRef, { followingCount: admin.firestore.FieldValue.increment(delta) }, { merge: true });
   });
 }
-
 export const onFollowersCreate = functions.firestore
   .document("users/{targetUid}/followers/{followerUid}")
   .onCreate(async (_snap, ctx) => {
     const { targetUid, followerUid } = ctx.params as any;
     await adjustCounts(targetUid, followerUid, 1);
   });
-
 export const onFollowersDelete = functions.firestore
   .document("users/{targetUid}/followers/{followerUid}")
   .onDelete(async (_snap, ctx) => {
     const { targetUid, followerUid } = ctx.params as any;
     await adjustCounts(targetUid, followerUid, -1);
   });
-
 export const onFollowsCreate = functions.firestore
   .document("follows/{pairId}")
   .onCreate(async (snap, ctx) => {
@@ -199,7 +196,6 @@ export const onFollowsCreate = functions.firestore
     }
     if (follower && followee) await adjustCounts(followee, follower, 1);
   });
-
 export const onFollowsDelete = functions.firestore
   .document("follows/{pairId}")
   .onDelete(async (snap, ctx) => {
@@ -215,17 +211,7 @@ export const onFollowsDelete = functions.firestore
     if (follower && followee) await adjustCounts(followee, follower, -1);
   });
 
-/* =========================
-   Mevcut modülleri bind et
-   ========================= */
-try { Object.assign(exports, require("../reputation-engine")); } catch {}
-try { Object.assign(exports, require("../calculator")); } catch {}
-try { Object.assign(exports, require("../configs")); } catch {}
-try { Object.assign(exports, require("../data-access")); } catch {}
-try { Object.assign(exports, require("../validators")); } catch {}
-
-/* === YENİ: geoindex modülü === */
-try { Object.assign(exports, require("./geoindex")); } catch {}
-
-/* === YENİ: paylaşım sayfası (SSR) === */
+/* === Modül exportları === */
 export { renderRouteShare } from "./share";
+export { routeOgImage } from "./og";
+export { onRouteGeoFinish, backfillGeoCallable } from "./geoindex";

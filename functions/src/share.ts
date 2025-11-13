@@ -1,4 +1,3 @@
-// functions/src/share.ts
 // Node 20 / TS
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";

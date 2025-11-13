@@ -34,7 +34,6 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.renderRouteShare = void 0;
-// functions/src/share.ts
 // Node 20 / TS
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
