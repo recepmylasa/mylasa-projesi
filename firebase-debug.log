@@ -1,0 +1,50 @@
+[debug] [2025-11-15T18:29:59.125Z] ----------------------------------------------------------------------
+[debug] [2025-11-15T18:29:59.160Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\recep\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js functions:secrets:set MAPTILER_API_KEY
+[debug] [2025-11-15T18:29:59.161Z] CLI Version:   14.11.1
+[debug] [2025-11-15T18:29:59.162Z] Platform:      win32
+[debug] [2025-11-15T18:29:59.162Z] Node Version:  v22.17.1
+[debug] [2025-11-15T18:29:59.162Z] Time:          Sat Nov 15 2025 21:29:59 GMT+0300 (GMT+03:00)
+[debug] [2025-11-15T18:29:59.163Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-11-15T18:29:59.168Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2025-11-15T18:29:59.421Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-11-15T18:29:59.421Z] > authorizing via signed-in user (karyahabermilas@gmail.com)
+[debug] [2025-11-15T18:29:59.422Z] Checked if tokens are valid: false, expires at: 1762721027928
+[debug] [2025-11-15T18:29:59.422Z] Checked if tokens are valid: false, expires at: 1762721027928
+[debug] [2025-11-15T18:29:59.422Z] > refreshing access token with scopes: []
+[debug] [2025-11-15T18:29:59.424Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-11-15T18:29:59.424Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-11-15T18:29:59.738Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-11-15T18:29:59.738Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-11-15T18:29:59.748Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/mylasa-final/services/secretmanager.googleapis.com [none]
+[debug] [2025-11-15T18:29:59.749Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/mylasa-final/services/secretmanager.googleapis.com x-goog-quota-user=projects/mylasa-final
+[debug] [2025-11-15T18:30:00.077Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2025-11-15T18:30:00.077Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[debug] [2025-11-15T18:30:01.086Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/mylasa-final/services/secretmanager.googleapis.com 200
+[debug] [2025-11-15T18:30:01.086Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/mylasa-final/services/secretmanager.googleapis.com [omitted]
+[debug] [2025-11-15T18:30:01.093Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-11-15T18:30:01.094Z] > authorizing via signed-in user (karyahabermilas@gmail.com)
+[debug] [2025-11-15T18:30:01.094Z] [iam] checking project mylasa-final for permissions ["firebase.projects.get","secretmanager.secrets.create","secretmanager.secrets.get","secretmanager.secrets.update","secretmanager.versions.add"]
+[debug] [2025-11-15T18:30:01.095Z] Checked if tokens are valid: true, expires at: 1763234998738
+[debug] [2025-11-15T18:30:01.095Z] Checked if tokens are valid: true, expires at: 1763234998738
+[debug] [2025-11-15T18:30:01.095Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/mylasa-final:testIamPermissions [none]
+[debug] [2025-11-15T18:30:01.095Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/mylasa-final:testIamPermissions x-goog-quota-user=projects/mylasa-final
+[debug] [2025-11-15T18:30:01.095Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/mylasa-final:testIamPermissions {"permissions":["firebase.projects.get","secretmanager.secrets.create","secretmanager.secrets.get","secretmanager.secrets.update","secretmanager.versions.add"]}
+[debug] [2025-11-15T18:30:02.217Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/mylasa-final:testIamPermissions 200
+[debug] [2025-11-15T18:30:02.217Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/mylasa-final:testIamPermissions {"permissions":["firebase.projects.get","secretmanager.secrets.create","secretmanager.secrets.get","secretmanager.secrets.update","secretmanager.versions.add"]}
+[debug] [2025-11-15T18:30:02.219Z] Checked if tokens are valid: true, expires at: 1763234998738
+[debug] [2025-11-15T18:30:02.219Z] Checked if tokens are valid: true, expires at: 1763234998738
+[debug] [2025-11-15T18:30:02.219Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/mylasa-final [none]
+[debug] [2025-11-15T18:30:02.552Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/mylasa-final 200
+[debug] [2025-11-15T18:30:02.552Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/mylasa-final {"projectNumber":"574275313737","projectId":"mylasa-final","lifecycleState":"ACTIVE","name":"Mylasa Final","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2025-08-06T19:14:51.782346Z"}
+[debug] [2025-11-15T18:30:02.554Z] Checked if tokens are valid: true, expires at: 1763234998738
+[debug] [2025-11-15T18:30:02.554Z] Checked if tokens are valid: true, expires at: 1763234998738
+[debug] [2025-11-15T18:30:02.554Z] >>> [apiv2][query] GET https://secretmanager.googleapis.com/v1/projects/mylasa-final/secrets/MAPTILER_API_KEY [none]
+[debug] [2025-11-15T18:30:03.188Z] <<< [apiv2][status] GET https://secretmanager.googleapis.com/v1/projects/mylasa-final/secrets/MAPTILER_API_KEY 404
+[debug] [2025-11-15T18:30:03.189Z] <<< [apiv2][body] GET https://secretmanager.googleapis.com/v1/projects/mylasa-final/secrets/MAPTILER_API_KEY {"error":{"code":404,"message":"Secret [projects/574275313737/secrets/MAPTILER_API_KEY] not found.","status":"NOT_FOUND"}}
+[debug] [2025-11-15T18:30:03.190Z] Checked if tokens are valid: true, expires at: 1763234998738
+[debug] [2025-11-15T18:30:03.190Z] Checked if tokens are valid: true, expires at: 1763234998738
+[debug] [2025-11-15T18:30:03.190Z] >>> [apiv2][query] POST https://secretmanager.googleapis.com/v1/projects/mylasa-final/secrets secretId=MAPTILER_API_KEY
+[debug] [2025-11-15T18:30:03.191Z] >>> [apiv2][body] POST https://secretmanager.googleapis.com/v1/projects/mylasa-final/secrets {"name":"MAPTILER_API_KEY","replication":{"automatic":{}},"labels":{"firebase-managed":"functions"}}
+[debug] [2025-11-15T18:30:03.861Z] <<< [apiv2][status] POST https://secretmanager.googleapis.com/v1/projects/mylasa-final/secrets 200
+[debug] [2025-11-15T18:30:03.861Z] <<< [apiv2][body] POST https://secretmanager.googleapis.com/v1/projects/mylasa-final/secrets {"name":"projects/574275313737/secrets/MAPTILER_API_KEY","replication":{"automatic":{}},"createTime":"2025-11-15T18:30:03.168228Z","labels":{"firebase-managed":"functions"},"etag":"\"1643a64d7852bc\""}

@@ -215,3 +215,7 @@ export const onFollowsDelete = functions.firestore
 export { renderRouteShare } from "./share";
 export { routeOgImage } from "./og";
 export { onRouteGeoFinish, backfillGeoCallable } from "./geoindex";
+
+// CJS merge emniyeti (deploy derleyici davranışı değişse bile OG export'u görünür kalsın)
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+Object.assign(exports, require("./og"));
