@@ -37,8 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.routeOgImage = void 0;
-// functions/src/og.ts
-// Node 20 / TS (firebase-functions v4 - v1 API)
+// Node 20 / TS – OG PNG + vektör mini-harita
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const crypto_1 = require("crypto");
@@ -46,27 +45,12 @@ const fs_1 = require("fs");
 const path_1 = require("path");
 const satori_1 = __importDefault(require("satori"));
 const resvg_js_1 = require("@resvg/resvg-js");
-const og_map_1 = require("./og_map");
+const og_map_1 = require("./og.map");
 if (admin.apps.length === 0)
     admin.initializeApp();
 const db = admin.firestore();
-// ---- Tuval boyutu
 const WIDTH = 1200;
 const HEIGHT = 630;
-// ---- Mini-harita panel ölçüleri
-const MAP_PANEL_W = 360;
-const MAP_PANEL_H = 360; // istersen 400 yapabilirsin
-const MAP_PAD = 16; // iç boşluk
-const INNER_W = MAP_PANEL_W - MAP_PAD * 2;
-const INNER_H = MAP_PANEL_H - MAP_PAD * 2;
-// ---- Stil
-const COLOR_BG_GRAD = "linear-gradient(135deg, #0b1020 0%, #1a1f33 50%, #2b2466 100%)";
-const COLOR_CARD_BG = "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))";
-const COLOR_INK = "#eef1f7";
-const COLOR_MUTED = "#c9cde3";
-const COLOR_MAP_BG = "#0E0F13";
-const COLOR_POLY = "#6B5CFF";
-// ---- Fontlar
 function fontData(name) {
     const p = name === "Inter-Bold"
         ? (0, path_1.join)(__dirname, "../assets/fonts/Inter-Bold.ttf")
@@ -75,7 +59,6 @@ function fontData(name) {
         return undefined;
     return (0, fs_1.readFileSync)(p);
 }
-// ---- Yardımcılar (metin/etiket)
 function toKm(m) {
     const mm = Number(m || 0);
     if (!mm)
@@ -93,155 +76,158 @@ function formatDuration(ms) {
 function makeETag(s) {
     return `"${(0, crypto_1.createHash)("sha1").update(s).digest("hex")}"`;
 }
-function updatedMillis(d) {
-    const u = d?.updatedAt?.toMillis?.() || Number(d?.updatedAt) || 0;
-    const r = d?.ratingUpdatedAt?.toMillis?.() || Number(d?.ratingUpdatedAt) || 0;
-    const m = d?.mediaUpdatedAt?.toMillis?.() || Number(d?.mediaUpdatedAt) || 0;
-    // areasStatus string değişince de hash değişsin
-    const a = String(d?.areasStatus || "");
-    return Math.max(Number(u) || 0, Number(r) || 0, Number(m) || 0) + a.length;
+function tsToMillis(t) {
+    if (!t)
+        return 0;
+    if (typeof t === "number")
+        return t;
+    if (typeof t === "string")
+        return Number(t) || 0;
+    if (typeof t.toMillis === "function") {
+        return Number(t.toMillis()) || 0;
+    }
+    if (t._seconds) {
+        return Number(t._seconds) * 1000;
+    }
+    return 0;
 }
-// ---- Geometri çıkarımı
+function updatedMillis(d) {
+    const base = Math.max(tsToMillis(d.updatedAt), tsToMillis(d.ratingUpdatedAt), tsToMillis(d.mediaUpdatedAt));
+    const bump = d.areasStatus ? 17 : 0;
+    return base + bump;
+}
+/* ---------- path/stops → LatLng[] helpers ---------- */
 function asPoint(p) {
     if (!p)
         return null;
     if (Array.isArray(p) && p.length >= 2) {
         const [lat, lng] = p;
-        return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            return { lat, lng };
+        }
     }
     if (typeof p === "object") {
         const lat = p.lat ?? p.latitude;
         const lng = p.lng ?? p.longitude ?? p.lon;
-        return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            return { lat, lng };
+        }
     }
     return null;
 }
-function extractLatLngs(r) {
+function extractPathPoints(route) {
     const pts = [];
-    if (Array.isArray(r.path) && r.path.length) {
-        for (const it of r.path) {
-            const p = asPoint(it);
+    if (Array.isArray(route.path)) {
+        for (const item of route.path) {
+            const p = asPoint(item);
             if (p)
                 pts.push(p);
         }
     }
-    if (!pts.length && Array.isArray(r.stops) && r.stops.length) {
-        for (const s of r.stops) {
-            const p = asPoint((s && s.location) || s);
+    if (pts.length === 0 && Array.isArray(route.stops)) {
+        for (const s of route.stops) {
+            const p = asPoint(s?.location || s);
             if (p)
                 pts.push(p);
         }
-    }
-    if (!pts.length) {
-        const a = asPoint(r.start) || asPoint(r.from);
-        const b = asPoint(r.end) || asPoint(r.to);
-        if (a)
-            pts.push(a);
-        if (b)
-            pts.push(b);
-    }
-    // performans: 1000+ noktada basit örnekleme
-    const MAX = 1200;
-    if (pts.length > MAX) {
-        const step = Math.ceil(pts.length / MAX);
-        return pts.filter((_, i) => i % step === 0);
     }
     return pts;
 }
-// ---- Mini-harita SVG içerik üretimi (Satori ağacı)
-function buildMiniMapNode(view) {
-    // Panel
-    const panel = {
-        type: "div",
-        props: {
-            style: {
-                position: "absolute",
-                left: 40,
-                top: 40,
-                width: MAP_PANEL_W,
-                height: MAP_PANEL_H,
-                background: COLOR_MAP_BG,
-                borderRadius: 12,
-                padding: MAP_PAD,
-                boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-            },
-            children: (() => {
-                if (!view.allowGeometry) {
-                    // gizli rota
-                    return {
-                        type: "div",
-                        props: {
-                            style: {
-                                fontSize: 22,
-                                color: "#9aa1b9",
-                                opacity: 0.9,
-                            },
-                            children: "Gizli rota",
-                        },
-                    };
-                }
-                if (view.noData || !view.points || view.points.length < 2) {
-                    return {
-                        type: "div",
-                        props: {
-                            style: { fontSize: 20, color: "#9aa1b9", opacity: 0.9 },
-                            children: "Veri yok",
-                        },
-                    };
-                }
-                // SVG path
-                const d = [
-                    `M ${view.points[0][0].toFixed(1)} ${view.points[0][1].toFixed(1)}`,
-                    ...view.points.slice(1).map((p) => `L ${p[0].toFixed(1)} ${p[1].toFixed(1)}`),
-                ].join(" ");
-                return {
-                    type: "svg",
-                    props: {
-                        width: INNER_W,
-                        height: INNER_H,
-                        viewBox: `0 0 ${INNER_W} ${INNER_H}`,
-                        children: [
-                            // gölge
-                            {
-                                type: "path",
-                                props: {
-                                    d,
-                                    fill: "none",
-                                    stroke: "#000",
-                                    strokeOpacity: 0.24,
-                                    strokeWidth: Math.max(1, view.strokeW + 4),
-                                    strokeLinecap: "round",
-                                    strokeLinejoin: "round",
-                                },
-                            },
-                            // ana çizgi
-                            {
-                                type: "path",
-                                props: {
-                                    d,
-                                    fill: "none",
-                                    stroke: COLOR_POLY,
-                                    strokeOpacity: view.strokeOpacity,
-                                    strokeWidth: view.strokeW,
-                                    strokeLinecap: "round",
-                                    strokeLinejoin: "round",
-                                },
-                            },
-                        ],
-                    },
-                };
-            })(),
-        },
-    };
-    return panel;
-}
-// ---- OG PNG render
+/* ---------- SVG render ---------- */
 async function renderOgPng(view) {
     const FONT_BOLD = fontData("Inter-Bold");
     const FONT_REG = fontData("Inter-Regular");
+    // Mini-harita paneli
+    const MAP_W = 360;
+    const MAP_H = 360;
+    const MAP_PAD = Math.round(Math.min(MAP_W, MAP_H) * 0.08);
+    let miniMapNode = null;
+    if (!view.privateMode) {
+        const pts = (view.miniMapPath || []).slice();
+        if (pts.length >= 2) {
+            const { points } = (0, og_map_1.projectPathToBox)(pts, {
+                w: MAP_W,
+                h: MAP_H,
+                pad: MAP_PAD,
+            });
+            const pathD = points.length >= 2
+                ? points
+                    .map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`)
+                    .join(" ")
+                : "";
+            miniMapNode = {
+                type: "div",
+                props: {
+                    style: {
+                        width: MAP_W,
+                        height: MAP_H,
+                        borderRadius: 12,
+                        padding: 16,
+                        background: "#0E0F13",
+                        boxShadow: "0 16px 40px rgba(0,0,0,.5)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                    },
+                    children: {
+                        type: "svg",
+                        props: {
+                            width: MAP_W - 32,
+                            height: MAP_H - 32,
+                            viewBox: `0 0 ${MAP_W} ${MAP_H}`,
+                            style: { display: "block" },
+                            children: [
+                                {
+                                    type: "rect",
+                                    props: {
+                                        x: 0,
+                                        y: 0,
+                                        width: MAP_W,
+                                        height: MAP_H,
+                                        fill: "#050711",
+                                    },
+                                },
+                                pathD
+                                    ? {
+                                        type: "path",
+                                        props: {
+                                            d: pathD,
+                                            stroke: "#6B5CFF",
+                                            strokeWidth: 6,
+                                            fill: "none",
+                                            strokeLinecap: "round",
+                                            strokeLinejoin: "round",
+                                        },
+                                    }
+                                    : null,
+                            ].filter(Boolean),
+                        },
+                    },
+                },
+            };
+        }
+        else {
+            // Veri yok placeholder
+            miniMapNode = {
+                type: "div",
+                props: {
+                    style: {
+                        width: MAP_W,
+                        height: MAP_H,
+                        borderRadius: 12,
+                        padding: 16,
+                        background: "#0E0F13",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#6b6f85",
+                        fontSize: 22,
+                    },
+                    children: "Veri yok",
+                },
+            };
+        }
+    }
     const root = {
         type: "div",
         props: {
@@ -251,114 +237,118 @@ async function renderOgPng(view) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: COLOR_BG_GRAD,
-                color: COLOR_INK,
-                fontFamily: "Inter, Noto Sans, system-ui, sans-serif",
-                position: "relative",
+                background: "linear-gradient(135deg,#0b1020 0%,#1a1f33 50%,#2b2466 100%)",
+                color: "#eef1f7",
+                fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
             },
-            children: [
-                // Mini-harita panel (sol üst)
-                buildMiniMapNode({
-                    allowGeometry: !view.privateMode && view.mini.allowGeometry,
-                    points: view.mini.points,
-                    noData: view.mini.noData,
-                    strokeW: view.mini.strokeW,
-                    strokeOpacity: view.mini.strokeOpacity,
-                }),
-                // Sağdaki ana pano (960x540)
-                {
-                    type: "div",
-                    props: {
-                        style: {
-                            position: "absolute",
-                            right: 40,
-                            top: 45,
-                            width: 960,
-                            height: 540,
-                            display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "space-between",
-                            borderRadius: 32,
-                            padding: 48,
-                            background: COLOR_CARD_BG,
-                            boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
-                        },
-                        children: [
-                            // üst bilgi
-                            {
-                                type: "div",
-                                props: {
-                                    style: {
-                                        fontSize: 28,
-                                        fontWeight: 600,
-                                        opacity: view.privateMode ? 0.8 : 0.9,
-                                    },
-                                    children: view.privateMode ? "Gizli rota" : (view.place || "").slice(0, 60),
-                                },
-                            },
-                            // başlık
-                            {
-                                type: "div",
-                                props: {
-                                    style: {
-                                        fontSize: 64,
-                                        fontWeight: 800,
-                                        lineHeight: 1.1,
-                                        letterSpacing: -0.5,
-                                        marginTop: 8,
-                                        marginBottom: 16,
-                                        whiteSpace: "pre-wrap",
-                                    },
-                                    children: (view.title || "Rota").slice(0, 120),
-                                },
-                            },
-                            // alt bant: km/süre/puan
-                            {
-                                type: "div",
-                                props: {
-                                    style: {
-                                        display: "flex",
-                                        gap: 18,
-                                        fontSize: 28,
-                                        color: COLOR_MUTED,
-                                    },
-                                    children: [view.km ? `${view.km} km` : null, view.dur || null, view.ratingLabel || null]
-                                        .filter(Boolean)
-                                        .join(" • "),
-                                },
-                            },
-                            // köşe logo
-                            {
-                                type: "div",
-                                props: {
-                                    style: {
-                                        position: "absolute",
-                                        right: 48,
-                                        bottom: 40,
-                                        fontSize: 28,
-                                        opacity: 0.8,
-                                    },
-                                    children: "mylasa",
-                                },
-                            },
-                        ],
+            children: {
+                type: "div",
+                props: {
+                    style: {
+                        width: WIDTH - 160,
+                        height: HEIGHT - 160,
+                        borderRadius: 32,
+                        padding: 40,
+                        background: "linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))",
+                        boxShadow: "0 20px 60px rgba(0,0,0,.35)",
+                        display: "flex",
+                        flexDirection: "row",
+                        alignItems: "stretch",
+                        justifyContent: "space-between",
+                        gap: 32,
+                        position: "relative",
                     },
+                    children: [
+                        {
+                            type: "div",
+                            props: {
+                                style: {
+                                    flex: 1,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    justifyContent: "space-between",
+                                    minWidth: 0,
+                                },
+                                children: [
+                                    {
+                                        type: "div",
+                                        props: {
+                                            style: {
+                                                fontSize: 24,
+                                                opacity: 0.9,
+                                                marginBottom: 8,
+                                            },
+                                            children: view.privateMode
+                                                ? "Gizli rota"
+                                                : (view.place || "").slice(0, 70),
+                                        },
+                                    },
+                                    {
+                                        type: "div",
+                                        props: {
+                                            style: {
+                                                fontSize: 56,
+                                                fontWeight: 800,
+                                                lineHeight: 1.1,
+                                                letterSpacing: -0.5,
+                                                marginBottom: 16,
+                                                whiteSpace: "pre-wrap",
+                                            },
+                                            children: (view.title || "Rota").slice(0, 120),
+                                        },
+                                    },
+                                    {
+                                        type: "div",
+                                        props: {
+                                            style: {
+                                                fontSize: 26,
+                                                color: "#c9cde3",
+                                            },
+                                            children: [
+                                                view.km ? `${view.km} km` : null,
+                                                view.dur || null,
+                                                view.ratingLabel || null,
+                                            ]
+                                                .filter(Boolean)
+                                                .join(" • "),
+                                        },
+                                    },
+                                    {
+                                        type: "div",
+                                        props: {
+                                            style: {
+                                                marginTop: 32,
+                                                fontSize: 24,
+                                                color: "#9ca3c4",
+                                            },
+                                            children: "mylasa.app",
+                                        },
+                                    },
+                                ],
+                            },
+                        },
+                        miniMapNode,
+                    ].filter(Boolean),
                 },
-            ],
+            },
         },
     };
-    const svg = await (0, satori_1.default)(root, {
+    const svg = await satori_1.default(root, {
         width: WIDTH,
         height: HEIGHT,
         fonts: [
-            FONT_BOLD ? { name: "Inter", data: FONT_BOLD, weight: 700 } : undefined,
-            FONT_REG ? { name: "Inter", data: FONT_REG, weight: 400 } : undefined,
+            FONT_BOLD
+                ? { name: "Inter", data: FONT_BOLD, weight: 700 }
+                : undefined,
+            FONT_REG
+                ? { name: "Inter", data: FONT_REG, weight: 400 }
+                : undefined,
         ].filter(Boolean),
     });
     const resvg = new resvg_js_1.Resvg(svg, { background: "rgba(0,0,0,0)" });
     return resvg.render().asPng();
 }
-// ---- HTTP endpoint
+/* ---------- HTTP Cloud Function ---------- */
 exports.routeOgImage = functions
     .region("us-central1")
     .https.onRequest(async (req, res) => {
@@ -366,20 +356,31 @@ exports.routeOgImage = functions
         const bits = (req.path || "").split("/").filter(Boolean);
         const routeId = bits[bits.length - 1];
         if (!routeId) {
+            const png = await renderOgPng({ title: "Bulunamadı", privateMode: false });
             res.status(404).setHeader("Content-Type", "image/png");
-            res.send(Buffer.from(await renderOgPng({ title: "Bulunamadı", mini: { allowGeometry: false, strokeW: 6, strokeOpacity: 0.9 } })));
+            res.send(Buffer.from(png));
             return;
         }
         const snap = await db.collection("routes").doc(routeId).get();
         if (!snap.exists) {
+            const png = await renderOgPng({ title: "Bulunamadı", privateMode: false });
             res.status(404).setHeader("Content-Type", "image/png");
-            res.send(Buffer.from(await renderOgPng({ title: "Bulunamadı", mini: { allowGeometry: false, strokeW: 6, strokeOpacity: 0.9 } })));
+            res.send(Buffer.from(png));
             return;
         }
         const r = (snap.data() || {});
         const vis = String(r.visibility || "public");
-        // ETag: updatedAt | ratingUpdatedAt | mediaUpdatedAt | areasStatus
-        const etag = makeETag(`${routeId}:${updatedMillis(r)}:${vis}:${r.title || ""}:${r.ratingAvg || ""}:${r.ratingCount || ""}:${r.totalDistanceM || ""}:${r.durationMs || ""}:${r.areasStatus || ""}`);
+        const isPrivate = vis !== "public";
+        const etag = makeETag([
+            routeId,
+            updatedMillis(r),
+            vis,
+            r.title || "",
+            r.ratingAvg || "",
+            r.ratingCount || "",
+            r.totalDistanceM || "",
+            r.durationMs || "",
+        ].join(":"));
         if (req.get("if-none-match") === etag) {
             res.status(304).end();
             return;
@@ -389,46 +390,22 @@ exports.routeOgImage = functions
         const ratingLabel = Number(r.ratingCount || 0) > 0
             ? `${Number(r.ratingAvg || 0).toFixed(1)}★ (${r.ratingCount})`
             : "";
-        // Mini-harita verisi (public değilse geometri çizilmez)
-        let allowGeometry = vis === "public";
-        let miniPoints;
-        let miniNoData = false;
-        let strokeW = 6;
-        let strokeOpacity = 0.9;
-        if (allowGeometry) {
-            const latlngs = extractLatLngs(r);
-            if (latlngs.length >= 2) {
-                // kutuya sığdır
-                const { points } = (0, og_map_1.projectPathToBox)(latlngs, { w: INNER_W, h: INNER_H, pad: 0 });
-                miniPoints = points;
-                // kısa rota (bbox < 50 m) → 4px & opak 1.0
-                const spanM = (0, og_map_1.approxBBoxMeters)(latlngs);
-                if (spanM > 0 && spanM < 50) {
-                    strokeW = 4;
-                    strokeOpacity = 1.0;
-                }
-            }
-            else {
-                // tek nokta / veri yok
-                miniNoData = true;
-            }
-        }
+        const pathPoints = !isPrivate ? extractPathPoints(r) : [];
         const png = await renderOgPng({
-            title: allowGeometry ? String(r.title || "Rota") : "Bu rota özeldir",
-            place: allowGeometry
-                ? [r.areas?.city, r.areas?.countryCode || r.areas?.country].filter(Boolean).join(" — ")
-                : undefined,
+            title: isPrivate ? "Bu rota özeldir" : String(r.title || "Rota"),
+            place: isPrivate || !r.areas
+                ? undefined
+                : [
+                    r.areas.city,
+                    r.areas.countryCode || r.areas.country,
+                ]
+                    .filter(Boolean)
+                    .join(" — "),
             km,
             dur,
             ratingLabel,
-            privateMode: !allowGeometry,
-            mini: {
-                allowGeometry,
-                points: miniPoints,
-                noData: miniNoData,
-                strokeW,
-                strokeOpacity,
-            },
+            privateMode: isPrivate,
+            miniMapPath: pathPoints,
         });
         res.setHeader("Content-Type", "image/png");
         res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=86400");
@@ -437,10 +414,7 @@ exports.routeOgImage = functions
     }
     catch (e) {
         functions.logger.error("[routeOgImage] error", e);
-        const png = await renderOgPng({
-            title: "Hata",
-            mini: { allowGeometry: false, noData: true, strokeW: 6, strokeOpacity: 0.9 },
-        });
+        const png = await renderOgPng({ title: "Hata", privateMode: false });
         res.setHeader("Content-Type", "image/png");
         res.setHeader("Cache-Control", "public, max-age=120");
         res.status(500).send(Buffer.from(png));
