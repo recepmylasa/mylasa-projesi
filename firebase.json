@@ -22,24 +22,58 @@
   ],
   "hosting": {
     "public": "build",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "headers": [
       {
         "source": "**",
         "headers": [
-          { "key": "Permissions-Policy", "value": "geolocation=(self), accelerometer=*, gyroscope=*, magnetometer=*" },
-          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-          { "key": "X-XSS-Protection", "value": "0" }
+          {
+            "key": "Permissions-Policy",
+            "value": "geolocation=(self), accelerometer=*, gyroscope=*, magnetometer=*"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
+          },
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "SAMEORIGIN"
+          },
+          {
+            "key": "X-XSS-Protection",
+            "value": "0"
+          }
         ]
       }
     ],
     "rewrites": [
-      { "source": "/og/r/**", "function": "routeOgImage" },
-      { "source": "/s/r/**", "function": "renderRouteShare" },
-      { "source": "**", "destination": "/index.html" }
+      {
+        "source": "/og/r/**",
+        "function": "routeOgImage"
+      },
+      {
+        "source": "/s/r/**",
+        "function": "renderRouteShare"
+      },
+      {
+        "source": "/t/share-open",
+        "function": "logShareEvent"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
     ]
   },
-  "storage": { "rules": "storage.rules" }
+  "storage": {
+    "rules": "storage.rules"
+  }
 }

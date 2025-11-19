@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
+exports.aggregateShareMetricsDaily = exports.logShareEvent = exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
 // Node 20 / TS (firebase-functions v4 - v1 API)
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
@@ -329,3 +329,6 @@ Object.defineProperty(exports, "routeOgImage", { enumerable: true, get: function
 var geoindex_1 = require("./geoindex");
 Object.defineProperty(exports, "onRouteGeoFinish", { enumerable: true, get: function () { return geoindex_1.onRouteGeoFinish; } });
 Object.defineProperty(exports, "backfillGeoCallable", { enumerable: true, get: function () { return geoindex_1.backfillGeoCallable; } });
+var telemetry_1 = require("./telemetry");
+Object.defineProperty(exports, "logShareEvent", { enumerable: true, get: function () { return telemetry_1.logShareEvent; } });
+Object.defineProperty(exports, "aggregateShareMetricsDaily", { enumerable: true, get: function () { return telemetry_1.aggregateShareMetricsDaily; } });

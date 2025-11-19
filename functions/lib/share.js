@@ -187,29 +187,35 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin
   var btn = document.getElementById('open-in-app');
   if (!btn) return;
 
-  function sendTelemetry(mode){
+  var LOG_ENDPOINT = '/t/share-open';
+
+  function sendEvent(evt, mode){
     try{
       var ua = navigator.userAgent || '';
       var rid = btn.getAttribute('data-route-id') || '';
       var payload = {
-        event: 'share_open_click',
-        open_mode: mode,
+        evt: evt,
+        event: evt,
+        mode: mode || null,
+        open_mode: mode || null,
         routeId: rid,
         ua: ua,
         ts: Date.now()
       };
       var body = JSON.stringify(payload);
-      var url = '/t/share-open';
       if (navigator.sendBeacon) {
-        navigator.sendBeacon(url, body);
+        navigator.sendBeacon(LOG_ENDPOINT, body);
       } else {
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', url, true);
+        xhr.open('POST', LOG_ENDPOINT, true);
         xhr.setRequestHeader('Content-Type','application/json');
         xhr.send(body);
       }
     } catch(e){}
   }
+
+  // Sayfa görüntülenmesi (page view)
+  sendEvent('share_page_view', null);
 
   btn.addEventListener('click', function(ev){
     ev.preventDefault();
@@ -230,7 +236,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin
       (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
 
     if (isStandalone) {
-      sendTelemetry('pwa');
+      sendEvent('share_open_click', 'pwa');
       window.location.href = routeUrl;
       return;
     }
@@ -250,24 +256,28 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin
         if (fallbackFired) return;
         fallbackFired = true;
         try {
-          sendTelemetry('spa-fallback');
+          // Gerçekleşen yol: SPA fallback
+          sendEvent('open_result', 'spa');
           window.location.href = routeUrl;
         } catch(_) {}
       }, 700);
 
       try {
-        sendTelemetry('intent');
+        // Tıklama anındaki niyet: intent
+        sendEvent('share_open_click', 'intent');
         window.location.href = intentUrl;
       } catch(_) {
         clearTimeout(fallbackTimer);
-        sendTelemetry('spa');
+        sendEvent('share_open_click', 'spa');
+        sendEvent('open_result', 'spa');
         window.location.href = routeUrl;
       }
       return;
     }
 
     // Genel fallback: aynı origin'de /r/:id
-    sendTelemetry('spa');
+    sendEvent('share_open_click', 'spa');
+    sendEvent('open_result', 'spa');
     window.location.href = routeUrl;
   });
 })();
