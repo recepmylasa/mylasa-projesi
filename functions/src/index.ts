@@ -405,3 +405,7 @@ export {
   onRouteGeoFinish,
   backfillGeoCallable,
 } from "./geoindex";
+export {
+  logShareEvent,
+  aggregateShareMetricsDaily,
+} from "./telemetry";

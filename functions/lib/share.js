@@ -140,13 +140,14 @@ function send404(res, privateMode = false) {
 <h1>404</h1><p>${privateMode ? "Bu rota özeldir." : "Rota bulunamadı veya erişim yok."}</p></body></html>`);
 }
 function renderHtml(p) {
-    const appOpenUrl = `/?openRoute=${encodeURIComponent(p.routeId)}`;
+    const appOpenUrl = `/r/${encodeURIComponent(p.routeId)}`;
     const T = escapeHtml(p.title);
     const D = escapeHtml(p.desc);
     const C = escapeHtml(p.canonical);
     const I = escapeHtml(p.image);
     const HT = escapeHtml(p.humanTitle || "Rota");
     const HP = escapeHtml(p.humanPlace || "");
+    const RID = escapeHtml(p.routeId);
     return `<!doctype html>
 <html lang="tr">
 <head>
@@ -163,7 +164,7 @@ function renderHtml(p) {
 body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px}
 .card{max-width:560px;margin:0 auto;border:1px solid #eee;border-radius:12px;padding:16px}
 .title{font-weight:800;font-size:18px;margin:6px 0}
-.place{color:#666;margin-bottom:10px}.cta{display:inline-block;padding:12px 16px;background:#111;color:#fff;border-radius:10px;text-decoration:none}
+.place{color:#666;margin-bottom:10px}.cta{display:inline-block;padding:12px 16px;background:#111;color:#fff;border-radius:10px;text-decoration:none;cursor:pointer}
 .thumb{width:100%;max-width:560px;border-radius:10px;border:1px solid #eee;margin-bottom:12px}
 </style>
 </head>
@@ -172,7 +173,104 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin
     <img class="thumb" src="${I}" alt="">
     <div class="title">${HT}</div>
     ${HP ? `<div class="place">${HP}</div>` : ``}
-    <a class="cta" href="${appOpenUrl}">Uygulamada aç</a>
+    <a
+      id="open-in-app"
+      class="cta"
+      href="${appOpenUrl}"
+      role="button"
+      title="Mylasa uygulamasında aç"
+      data-route-id="${RID}"
+    >Uygulamada Aç</a>
   </div>
+<script>
+(function(){
+  var btn = document.getElementById('open-in-app');
+  if (!btn) return;
+
+  function sendTelemetry(mode){
+    try{
+      var ua = navigator.userAgent || '';
+      var rid = btn.getAttribute('data-route-id') || '';
+      var payload = {
+        event: 'share_open_click',
+        open_mode: mode,
+        routeId: rid,
+        ua: ua,
+        ts: Date.now()
+      };
+      var body = JSON.stringify(payload);
+      var url = '/t/share-open';
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, body);
+      } else {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type','application/json');
+        xhr.send(body);
+      }
+    } catch(e){}
+  }
+
+  btn.addEventListener('click', function(ev){
+    ev.preventDefault();
+    var rid = btn.getAttribute('data-route-id');
+    if (!rid) {
+      window.location.href = '/';
+      return;
+    }
+
+    var origin = window.location.origin || (window.location.protocol + '//' + window.location.host);
+    if (!origin) origin = '';
+    origin = origin.replace(/\\/$/, '');
+    var routeUrl = origin + '/r/' + rid;
+
+    // PWA (standalone) ise direkt rota URL'sine git
+    var isStandalone =
+      (window.navigator && (window.navigator.standalone === true)) ||
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+    if (isStandalone) {
+      sendTelemetry('pwa');
+      window.location.href = routeUrl;
+      return;
+    }
+
+    var ua = navigator.userAgent || '';
+    var isAndroid = ua.indexOf('Android') !== -1;
+
+    // Android Chrome intent:// denemesi
+    if (isAndroid) {
+      var intentUrl =
+        'intent://r/' + rid +
+        '#Intent;scheme=https;package=com.android.chrome;' +
+        'S.browser_fallback_url=' + encodeURIComponent(routeUrl) + ';end';
+
+      var fallbackFired = false;
+      var fallbackTimer = setTimeout(function(){
+        if (fallbackFired) return;
+        fallbackFired = true;
+        try {
+          sendTelemetry('spa-fallback');
+          window.location.href = routeUrl;
+        } catch(_) {}
+      }, 700);
+
+      try {
+        sendTelemetry('intent');
+        window.location.href = intentUrl;
+      } catch(_) {
+        clearTimeout(fallbackTimer);
+        sendTelemetry('spa');
+        window.location.href = routeUrl;
+      }
+      return;
+    }
+
+    // Genel fallback: aynı origin'de /r/:id
+    sendTelemetry('spa');
+    window.location.href = routeUrl;
+  });
+})();
+</script>
 </body></html>`;
 }

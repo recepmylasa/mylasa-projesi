@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
-import { projectPathToBox, LatLng } from "./og.map";
+import { projectPathToBox, LatLng, ProjectedPoint } from "./og_map";
 
 if (admin.apps.length === 0) admin.initializeApp();
 const db = admin.firestore();
@@ -152,9 +152,9 @@ async function renderOgPng(view: OgView): Promise<Uint8Array> {
 
       const pathD =
         points.length >= 2
-          ? points
+          ? (points as ProjectedPoint[])
               .map(
-                ([x, y], i) =>
+                ([x, y]: ProjectedPoint, i: number) =>
                   `${i === 0 ? "M" : "L"}${x.toFixed(
                     1
                   )} ${y.toFixed(1)}`

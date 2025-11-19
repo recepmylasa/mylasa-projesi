@@ -45,7 +45,7 @@ const fs_1 = require("fs");
 const path_1 = require("path");
 const satori_1 = __importDefault(require("satori"));
 const resvg_js_1 = require("@resvg/resvg-js");
-const og_map_1 = require("./og.map");
+const og_map_1 = require("./og_map");
 if (admin.apps.length === 0)
     admin.initializeApp();
 const db = admin.firestore();
