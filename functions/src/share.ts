@@ -1,4 +1,6 @@
-// Node 20 / TS
+// functions/src/share.ts
+// /s/r/:routeId paylaşım sayfası + “Uygulamada Aç” CTA + telemetri
+
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { createHash } from "crypto";
@@ -54,7 +56,11 @@ export const renderRouteShare = functions
 
       const ogTitle = `Rota • ${title}${place ? " — " + place : ""}`;
       const ogDesc =
-        [km ? `${km} km` : null, dur || null, hasRating ? `${Number(r.ratingAvg || 0).toFixed(1)}★ (${r.ratingCount})` : null]
+        [
+          km ? `${km} km` : null,
+          dur || null,
+          hasRating ? `${Number(r.ratingAvg || 0).toFixed(1)}★ (${r.ratingCount})` : null
+        ]
           .filter(Boolean)
           .join(" • ") || "Mylasa rota paylaşımı";
 
@@ -77,7 +83,7 @@ export const renderRouteShare = functions
       const canonical = `https://${req.get("host")}/s/r/${routeId}`;
       const robots = vis === "public" ? "index,follow" : "noindex,nofollow";
 
-      // ETag
+      // ETag (OG + başlık değişirse invalid olsun)
       const etag = makeETag(
         `${routeId}:${snap.updateTime?.toMillis?.() || ""}:${vis}:${title}:${ogImage}:${ogDesc}`
       );
@@ -98,7 +104,7 @@ export const renderRouteShare = functions
         canonical,
         routeId,
         humanTitle: title,
-        humanPlace: place,
+        humanPlace: place
       });
 
       res.status(200).send(html);
@@ -131,6 +137,7 @@ function firstNonEmpty<T>(...vals: Array<T | undefined | null>): T | undefined {
   }
   return undefined;
 }
+
 function escapeHtml(s: string) {
   return s
     .replace(/&/g, "&amp;")
@@ -138,16 +145,21 @@ function escapeHtml(s: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
 function makeETag(s: string) {
   return `"${createHash("sha1").update(s).digest("hex")}"`;
 }
+
 function send404(res: functions.Response, privateMode = false) {
   res.setHeader("Cache-Control", "public, max-age=120");
-  res.status(404).send(`<!doctype html>
+  res
+    .status(404)
+    .send(`<!doctype html>
 <html lang="tr"><meta charset="utf-8"><meta name="robots" content="noindex,nofollow">
 <title>Rota bulunamadı</title><body>
 <h1>404</h1><p>${privateMode ? "Bu rota özeldir." : "Rota bulunamadı veya erişim yok."}</p></body></html>`);
 }
+
 function renderHtml(p: {
   title: string;
   desc: string;
@@ -158,33 +170,47 @@ function renderHtml(p: {
   humanTitle: string;
   humanPlace: string;
 }) {
-  const appOpenUrl = `/r/${encodeURIComponent(p.routeId)}`;
   const T = escapeHtml(p.title);
   const D = escapeHtml(p.desc);
   const C = escapeHtml(p.canonical);
   const I = escapeHtml(p.image);
   const HT = escapeHtml(p.humanTitle || "Rota");
   const HP = escapeHtml(p.humanPlace || "");
-  const RID = escapeHtml(p.routeId);
+
+  const encodedRouteId = encodeURIComponent(p.routeId);
+  const routePath = `/r/${encodedRouteId}`;
+  const protoHref = `web+mylasa:route?id=${encodedRouteId}`;
 
   return `<!doctype html>
 <html lang="tr">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="canonical" href="${C}"><meta name="robots" content="${p.robots}">
-<title>${T}</title><meta name="description" content="${D}">
-<meta property="og:type" content="article"><meta property="og:title" content="${T}">
-<meta property="og:description" content="${D}"><meta property="og:image" content="${I}">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="${C}">
+<meta name="robots" content="${p.robots}">
+<title>${T}</title>
+<meta name="description" content="${D}">
+<meta property="og:type" content="article">
+<meta property="og:title" content="${T}">
+<meta property="og:description" content="${D}">
+<meta property="og:image" content="${I}">
 <meta property="og:url" content="${C}">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${T}"><meta name="twitter:description" content="${D}">
-<meta name="twitter:image" content="${I}"><meta name="twitter:url" content="${C}">
+<meta name="twitter:title" content="${T}">
+<meta name="twitter:description" content="${D}">
+<meta name="twitter:image" content="${I}">
+<meta name="twitter:url" content="${C}">
 <style>
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px}
-.card{max-width:560px;margin:0 auto;border:1px solid #eee;border-radius:12px;padding:16px}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px;background:#f6f6f6}
+.card{max-width:560px;margin:0 auto;border:1px solid #eee;border-radius:12px;padding:16px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.04)}
 .title{font-weight:800;font-size:18px;margin:6px 0}
-.place{color:#666;margin-bottom:10px}.cta{display:inline-block;padding:12px 16px;background:#111;color:#fff;border-radius:10px;text-decoration:none;cursor:pointer}
-.thumb{width:100%;max-width:560px;border-radius:10px;border:1px solid #eee;margin-bottom:12px}
+.place{color:#666;margin-bottom:10px}
+.thumb{width:100%;max-width:560px;border-radius:10px;border:1px solid #eee;margin-bottom:12px;object-fit:cover}
+.actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.cta{display:inline-flex;align-items:center;justify-content:center;padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;cursor:pointer;border:1px solid transparent}
+.cta.primary{background:#111;color:#fff}
+.cta.secondary{background:#fff;color:#111;border-color:#ddd}
+.footer-note{margin-top:12px;font-size:12px;color:#777}
 </style>
 </head>
 <body>
@@ -192,114 +218,111 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin
     <img class="thumb" src="${I}" alt="">
     <div class="title">${HT}</div>
     ${HP ? `<div class="place">${HP}</div>` : ``}
-    <a
-      id="open-in-app"
-      class="cta"
-      href="${appOpenUrl}"
-      role="button"
-      title="Mylasa uygulamasında aç"
-      data-route-id="${RID}"
-    >Uygulamada Aç</a>
+    <div class="actions">
+      <a id="openInAppCta" class="cta primary" href="${protoHref}" role="button" title="Mylasa uygulamasında aç">Uygulamada Aç</a>
+      <a id="openOnWebCta" class="cta secondary" href="${routePath}">Web'de aç</a>
+    </div>
+    <div class="footer-note">
+      Mylasa hesabında oturum açtıysan, “Uygulamada Aç” ile rotayı uygulama içinde görüntüleyebilirsin.
+    </div>
   </div>
 <script>
 (function(){
-  var btn = document.getElementById('open-in-app');
-  if (!btn) return;
+  var ROUTE_ID = "${p.routeId}";
+  var ROUTE_PATH = "${routePath}";
+  var PROTO_HREF = "${protoHref}";
+  var LOG_ENDPOINT = "/t/share-open";
 
-  var LOG_ENDPOINT = '/t/share-open';
+  function getPlatform(){
+    var ua = navigator.userAgent || "";
+    if (/Android/i.test(ua)) return "android";
+    if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
+    return "desktop";
+  }
 
   function sendEvent(evt, mode){
     try{
-      var ua = navigator.userAgent || '';
-      var rid = btn.getAttribute('data-route-id') || '';
-      var payload = {
+      var payload = JSON.stringify({
         evt: evt,
-        event: evt,
         mode: mode || null,
-        open_mode: mode || null,
-        routeId: rid,
-        ua: ua,
+        platform: getPlatform(),
+        ua: navigator.userAgent || "",
+        routeId: ROUTE_ID,
         ts: Date.now()
-      };
-      var body = JSON.stringify(payload);
+      });
       if (navigator.sendBeacon) {
-        navigator.sendBeacon(LOG_ENDPOINT, body);
+        var blob = new Blob([payload], { type: "application/json" });
+        navigator.sendBeacon(LOG_ENDPOINT, blob);
       } else {
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', LOG_ENDPOINT, true);
-        xhr.setRequestHeader('Content-Type','application/json');
-        xhr.send(body);
+        fetch(LOG_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          keepalive: true
+        }).catch(function(){});
       }
     } catch(e){}
   }
 
-  // Sayfa görüntülenmesi (page view)
-  sendEvent('share_page_view', null);
+  // Sayfa görüntülendi
+  sendEvent("share_page_view", "spa");
 
-  btn.addEventListener('click', function(ev){
-    ev.preventDefault();
-    var rid = btn.getAttribute('data-route-id');
-    if (!rid) {
-      window.location.href = '/';
-      return;
+  var openBtn = document.getElementById("openInAppCta");
+  var webBtn = document.getElementById("openOnWebCta");
+
+  if (!openBtn) return;
+
+  function fallbackToWeb(){
+    try{
+      sendEvent("open_in_app_fallback_web", "spa");
+    } catch(e){}
+    if (webBtn) {
+      webBtn.click();
+    } else {
+      window.location.href = ROUTE_PATH;
     }
+  }
 
-    var origin = window.location.origin || (window.location.protocol + '//' + window.location.host);
-    if (!origin) origin = '';
-    origin = origin.replace(/\\/$/, '');
-    var routeUrl = origin + '/r/' + rid;
+  openBtn.addEventListener("click", function(e){
+    e.preventDefault();
+    // Eski telemetri ile uyum için
+    sendEvent("share_open_click", "pwa");
+    // Yeni olay isimleri
+    sendEvent("open_in_app_attempt", "pwa");
 
-    // PWA (standalone) ise direkt rota URL'sine git
-    var isStandalone =
-      (window.navigator && (window.navigator.standalone === true)) ||
-      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    var didFallback = false;
+    var timer = setTimeout(function(){
+      if (didFallback) return;
+      didFallback = true;
+      fallbackToWeb();
+    }, 450);
 
-    if (isStandalone) {
-      sendEvent('share_open_click', 'pwa');
-      window.location.href = routeUrl;
-      return;
+    try{
+      // web+mylasa: handler'ı tetikle
+      var a = document.createElement("a");
+      a.style.display = "none";
+      a.href = PROTO_HREF;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){
+        if (a && a.parentNode) a.parentNode.removeChild(a);
+      }, 0);
+    } catch(e){
+      clearTimeout(timer);
+      didFallback = true;
+      fallbackToWeb();
     }
+  });
 
-    var ua = navigator.userAgent || '';
-    var isAndroid = ua.indexOf('Android') !== -1;
-
-    // Android Chrome intent:// denemesi
-    if (isAndroid) {
-      var intentUrl =
-        'intent://r/' + rid +
-        '#Intent;scheme=https;package=com.android.chrome;' +
-        'S.browser_fallback_url=' + encodeURIComponent(routeUrl) + ';end';
-
-      var fallbackFired = false;
-      var fallbackTimer = setTimeout(function(){
-        if (fallbackFired) return;
-        fallbackFired = true;
-        try {
-          // Gerçekleşen yol: SPA fallback
-          sendEvent('open_result', 'spa');
-          window.location.href = routeUrl;
-        } catch(_) {}
-      }, 700);
-
-      try {
-        // Tıklama anındaki niyet: intent
-        sendEvent('share_open_click', 'intent');
-        window.location.href = intentUrl;
-      } catch(_) {
-        clearTimeout(fallbackTimer);
-        sendEvent('share_open_click', 'spa');
-        sendEvent('open_result', 'spa');
-        window.location.href = routeUrl;
-      }
-      return;
+  // Klavye erişilebilirliği (Enter/Space)
+  openBtn.addEventListener("keydown", function(e){
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openBtn.click();
     }
-
-    // Genel fallback: aynı origin'de /r/:id
-    sendEvent('share_open_click', 'spa');
-    sendEvent('open_result', 'spa');
-    window.location.href = routeUrl;
   });
 })();
 </script>
-</body></html>`;
+</body>
+</html>`;
 }

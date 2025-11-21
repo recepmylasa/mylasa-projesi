@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.aggregateShareMetricsDaily = exports.logShareEvent = exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
+exports.exportShareAggCsv = exports.purgeOldShareEvents = exports.aggregateShareMetricsDaily = exports.logShareEvent = exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
 // Node 20 / TS (firebase-functions v4 - v1 API)
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
@@ -147,7 +147,8 @@ async function geocodeForRoute(data) {
         results.push(r);
     }
     const city = majority(results.map((x) => x.city)) || results[0]?.city;
-    const admin1 = majority(results.map((x) => x.admin1)) || results[0]?.admin1;
+    const admin1 = majority(results.map((x) => x.admin1)) ||
+        results[0]?.admin1;
     const country = majority(results.map((x) => x.country)) ||
         results[0]?.country;
     const countryCode = majority(results.map((x) => x.countryCode)) ||
@@ -332,3 +333,6 @@ Object.defineProperty(exports, "backfillGeoCallable", { enumerable: true, get: f
 var telemetry_1 = require("./telemetry");
 Object.defineProperty(exports, "logShareEvent", { enumerable: true, get: function () { return telemetry_1.logShareEvent; } });
 Object.defineProperty(exports, "aggregateShareMetricsDaily", { enumerable: true, get: function () { return telemetry_1.aggregateShareMetricsDaily; } });
+var telemetry_retention_1 = require("./telemetry_retention");
+Object.defineProperty(exports, "purgeOldShareEvents", { enumerable: true, get: function () { return telemetry_retention_1.purgeOldShareEvents; } });
+Object.defineProperty(exports, "exportShareAggCsv", { enumerable: true, get: function () { return telemetry_retention_1.exportShareAggCsv; } });

@@ -141,7 +141,8 @@ async function geocodeForRoute(data: any): Promise<Areas> {
   const city =
     majority(results.map((x) => x.city)) || results[0]?.city;
   const admin1 =
-    majority(results.map((x) => x.admin1)) || results[0]?.admin1;
+    majority(results.map((x) => x.admin1)) ||
+    results[0]?.admin1;
   const country =
     majority(results.map((x) => x.country)) ||
     results[0]?.country;
@@ -409,3 +410,7 @@ export {
   logShareEvent,
   aggregateShareMetricsDaily,
 } from "./telemetry";
+export {
+  purgeOldShareEvents,
+  exportShareAggCsv,
+} from "./telemetry_retention";
