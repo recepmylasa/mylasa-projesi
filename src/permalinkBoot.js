@@ -1,33 +1,46 @@
 // src/permalinkBoot.js
-// Amaç: /c/:id veya /p/:id ile gelindiğinde App'i değil PermalinkPage'i tek başına render etmek.
+// Amaç: /c/:id veya /p/:id ile gelindiğinde App'i değil PermalinkPage'i,
+// /admin/share-metrics ile gelindiğinde admin telemetri panelini tek başına render etmek.
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import PermalinkPage from './PermalinkPage';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import PermalinkPage from "./PermalinkPage";
+import AdminShareMetrics from "./pages/AdminShareMetrics";
 
-// URL çözümleyici
-function getPathInfo() {
-  const seg = window.location.pathname.split('/').filter(Boolean);
-  if (seg.length !== 2) return null;
-  const type = seg[0] === 'c' ? 'clip' : seg[0] === 'p' ? 'post' : null;
-  const id = seg[1];
-  if (!type || !id) return null;
-  return { type, id };
-}
-
-// Eğer permalink ise, PermalinkPage'i mount et
-const info = getPathInfo();
-if (info) {
-  let rootEl = document.getElementById('root');
+function ensureRoot() {
+  let rootEl = document.getElementById("root");
   if (!rootEl) {
-    rootEl = document.createElement('div');
-    rootEl.id = 'root';
+    rootEl = document.createElement("div");
+    rootEl.id = "root";
     document.body.appendChild(rootEl);
   }
+  return rootEl;
+}
+
+// /p/:id veya /c/:id permalink mi?
+function isPostOrClipPermalink(pathname) {
+  const seg = pathname.split("/").filter(Boolean);
+  if (seg.length !== 2) return false;
+  if (seg[0] !== "p" && seg[0] !== "c") return false;
+  return /^[A-Za-z0-9_-]+$/.test(seg[1]);
+}
+
+const path = window.location.pathname;
+
+if (isPostOrClipPermalink(path)) {
+  const rootEl = ensureRoot();
   const root = ReactDOM.createRoot(rootEl);
   root.render(
     <React.StrictMode>
       <PermalinkPage />
+    </React.StrictMode>
+  );
+} else if (path === "/admin/share-metrics") {
+  const rootEl = ensureRoot();
+  const root = ReactDOM.createRoot(rootEl);
+  root.render(
+    <React.StrictMode>
+      <AdminShareMetrics />
     </React.StrictMode>
   );
 }

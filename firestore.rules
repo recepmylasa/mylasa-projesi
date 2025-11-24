@@ -1,4 +1,3 @@
-// Firestore Security Rules (v2.2 — route owner read/write netleştirildi)
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -236,6 +235,19 @@ service cloud.firestore {
         && request.resource.data.value >= 1 && request.resource.data.value <= 5
         && (get(/databases/$(database)/documents/routes/$(request.resource.data.routeId)).data.ownerId != request.auth.uid);
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    /* =================== TELEMETRY (Share) =================== */
+    match /metrics_share_events/{docId} {
+      // Ham event tablosu: sadece backend (Admin SDK) erişir.
+      allow read: if false;
+      allow write: if false;
+    }
+
+    match /metrics_share_agg/daily/{docId} {
+      // Günlük özetler: sadece admin kullanıcılar okuyabilir.
+      allow read: if isSignedIn() && request.auth.token.admin == true;
+      allow write: if false;
     }
 
     /* =================== CATCH-ALL (DEV OKUMA) =================== */

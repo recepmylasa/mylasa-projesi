@@ -1,3 +1,5 @@
+/* src/Explore.css */
+
 /* — ANA YAPI — */
 .explore-container {
   width: 100%;
@@ -151,12 +153,27 @@
   .explore-grid { --gap: 3px; }
 }
 
-/* === Yakınımda UI (yalnız mobil görünür) === */
+/* === Yakınımda / Audience UI (yalnız mobil görünür) === */
 .chipbar {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
   padding: 8px 16px;
+}
+.chipbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.chipbar-row-grouping {
+  justify-content: flex-start;
+}
+.chip-group {
+  display: inline-flex;
+  gap: 6px;
 }
 .chip {
   appearance: none;
@@ -173,7 +190,98 @@
   background: #111;
   color: #fff;
 }
+.chip.disabled,
+.chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chip-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+}
 
+/* Yakınımda başlık satırı */
+.near-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px 16px 0 16px;
+}
+.near-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #111;
+  background: #111;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.near-meta {
+  font-size: 11px;
+  color: #8e8e8e;
+}
+
+/* Yakınımda header sağ tarafı (meta + filtre butonu) */
+.near-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Filtre butonu */
+.near-filter-btn {
+  appearance: none;
+  border-radius: 999px;
+  border: 1px solid #d4d4d4;
+  background: #ffffff;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.near-filter-btn:hover {
+  background: #f9fafb;
+}
+
+/* Filtre chip’leri */
+.near-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 16px 0 16px;
+}
+.near-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+
+/* Harita alanı */
+.near-map-wrapper {
+  padding: 8px 16px 8px 16px;
+}
+.near-map {
+  width: 100%;
+  height: 260px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+.near-map-error {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+/* Kontroller + liste */
 .near-controls {
   display: grid;
   gap: 6px;
@@ -189,4 +297,142 @@
   border-radius: 12px;
   background: linear-gradient(90deg,#f3f3f3 0%,#ececec 50%,#f3f3f3 100%);
   animation: explore-skel 1.1s infinite;
+}
+
+/* Filtre sheet (mobil alt-çekmece) */
+.near-filter-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 9999;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.near-filter-sheet {
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border-radius: 16px 16px 0 0;
+  padding: 12px 16px 16px 16px;
+  box-shadow: 0 -10px 40px rgba(15,23,42,0.3);
+  max-height: 80vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.near-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.near-filter-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.near-filter-close {
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: #6b7280;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+.near-filter-section {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+.near-filter-label {
+  display: block;
+  font-size: 12px;
+  color: #4b5563;
+  margin-bottom: 4px;
+}
+.near-filter-input,
+.near-filter-select {
+  width: 100%;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  box-sizing: border-box;
+}
+.near-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.near-filter-row .near-filter-input {
+  flex: 1;
+}
+.near-filter-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+.near-filter-reset,
+.near-filter-apply {
+  flex: 1;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.near-filter-reset {
+  background: #f9fafb;
+  color: #374151;
+  border-color: #e5e7eb;
+}
+.near-filter-apply {
+  background: #111827;
+  color: #ffffff;
+}
+
+/* Yakınımda grup başlıkları */
+.ExploreGroupSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ExploreGroupHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 -16px 4px -16px;
+  padding: 6px 16px;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4b5563;
+}
+.ExploreGroupHeaderBadge {
+  display: inline-flex;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  font-size: 11px;
+  font-weight: 500;
+  color: #374151;
+}
+
+/* Gruplamayı kapat butonu */
+.near-group-reset-btn {
+  margin-top: 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  color: #111827;
+  cursor: pointer;
+}
+.near-group-reset-btn:hover {
+  background: #f9fafb;
 }

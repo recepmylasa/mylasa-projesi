@@ -42,6 +42,9 @@ import ClipDetailModalMobile from "./ClipDetailModalMobile";
 import RouteDetailMobile from "./pages/RouteDetailMobile";
 import RoutesExploreMobile from "./pages/RoutesExploreMobile";
 
+// Admin paylaşım metrikleri
+import AdminShareMetrics from "./pages/AdminShareMetrics";
+
 import "./App.css";
 
 const useWindowSize = () => {
@@ -112,7 +115,9 @@ function App() {
   }, []);
 
   const acceptUpdateAndReload = () => {
-    try { swWaiting?.postMessage?.("SKIP_WAITING"); } catch {}
+    try {
+      swWaiting?.postMessage?.("SKIP_WAITING");
+    } catch {}
     setShowUpdateToast(false);
   };
 
@@ -121,7 +126,9 @@ function App() {
     if (!modalContent) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, [modalContent]);
 
   // Kimlik + profil dinleyicisi
@@ -149,7 +156,10 @@ function App() {
         setLoading(false);
       }
     });
-    return () => { unsubscribeAuth(); unsubscribeProfile(); };
+    return () => {
+      unsubscribeAuth();
+      unsubscribeProfile();
+    };
   }, []);
 
   const urlFollowFlag = () => {
@@ -157,10 +167,12 @@ function App() {
       const u = new URL(window.location.href);
       const v = u.searchParams.get("follow");
       return v === "1" || v === "true";
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   };
 
-  /* ====== DEEP LINKS on mount: /p/:id , /c/:id , /r/:id (?follow=1)  +  /explore , /explore/routes ====== */
+  /* ====== DEEP LINKS on mount: /p/:id , /c/:id , /r/:id (?follow=1)  +  /explore , /explore/routes , /admin/share-metrics , /open-route ====== */
   useEffect(() => {
     if (loading || !user) return;
 
@@ -197,7 +209,10 @@ function App() {
     const openRouteFromUrl = async (id) => {
       try {
         const snap = await getDoc(doc(db, "routes", id));
-        if (!snap.exists()) { window.history.replaceState({}, "", "/"); return; }
+        if (!snap.exists()) {
+          window.history.replaceState({}, "", "/");
+          return;
+        }
         const d = snap.data() || {};
         const isOwner = d.ownerId === auth.currentUser?.uid;
         const canRead = d.visibility === "public" || isOwner;
@@ -216,34 +231,87 @@ function App() {
     };
 
     const path = window.location.pathname;
-    const mPost  = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
-    const mClip  = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+    const mPost = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+    const mClip = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
     const mRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
     const mProfile = path.match(/^\/u\/([^/]+)\/?$/);
     const mExploreRoutes = path.match(/^\/explore\/routes\/?$/);
     const mExplore = path.match(/^\/explore\/?$/);
+    const mAdminShareMetrics = path.match(/^\/admin\/share-metrics\/?$/);
+    const isOpenRoute = /^\/open-route\/?$/.test(path);
 
-    if (mPost)  { openPostFromUrl(mPost[1]);  return; }
-    if (mClip)  { openClipFromUrl(mClip[1]);  return; }
-    if (mRoute) { openRouteFromUrl(mRoute[1]); return; }
+    // /open-route?query=...  →  /r/:id?from=protocol
+    if (isOpenRoute) {
+      try {
+        const search = window.location.search || "";
+        const sp = new URLSearchParams(search);
+        const raw = sp.get("query") || "";
+        const decoded = decodeURIComponent(raw || "");
+        // decoded örnek: "route?id=ROUTE_ID" veya "web+mylasa:route?id=ROUTE_ID"
+        let work = decoded;
+        const colonIdx = work.indexOf(":");
+        if (colonIdx !== -1 && work.startsWith("web+mylasa")) {
+          work = work.slice(colonIdx + 1); // "route?id=..."
+        }
+        const qIdx = work.indexOf("?");
+        let queryPart = work;
+        if (qIdx !== -1) queryPart = work.slice(qIdx + 1);
+        const qs = new URLSearchParams(queryPart);
+        const rid = qs.get("id") || qs.get("routeId");
+        if (rid) {
+          const dest = `/r/${encodeURIComponent(rid)}?from=protocol=1`;
+          window.history.replaceState({}, "", dest);
+          openRouteFromUrl(rid);
+          return;
+        } else {
+          window.history.replaceState({}, "", "/");
+        }
+      } catch {
+        window.history.replaceState({}, "", "/");
+      }
+    }
 
-    // /u/:username ise Profile aktif
-    if (mProfile) { setActivePage("profile"); return; }
+    if (mPost) {
+      openPostFromUrl(mPost[1]);
+      return;
+    }
+    if (mClip) {
+      openClipFromUrl(mClip[1]);
+      return;
+    }
+    if (mRoute) {
+      openRouteFromUrl(mRoute[1]);
+      return;
+    }
 
-    // /explore veya /explore/routes ise Keşfet aktif
-    if (mExploreRoutes || mExplore) { setActivePage("explore"); return; }
+    if (mProfile) {
+      setActivePage("profile");
+      return;
+    }
+
+    if (mAdminShareMetrics) {
+      setActivePage("adminShareMetrics");
+      return;
+    }
+
+    if (mExploreRoutes || mExplore) {
+      setActivePage("explore");
+      return;
+    }
   }, [loading, user]);
 
   /* ====== POPSTATE (geri/ileri) ====== */
   useEffect(() => {
     const onPop = async () => {
       const path = window.location.pathname;
-      const matchPost     = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
-      const matchClip     = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
-      const matchRoute    = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
-      const matchProfile  = path.match(/^\/u\/([^/]+)\/?$/);
+      const matchPost = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+      const matchClip = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+      const matchRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
+      const matchProfile = path.match(/^\/u\/([^/]+)\/?$/);
       const matchExploreRoutes = path.match(/^\/explore\/routes\/?$/);
       const matchExplore = path.match(/^\/explore\/?$/);
+      const matchAdminShareMetrics = path.match(/^\/admin\/share-metrics\/?$/);
+      const isOpenRoute = /^\/open-route\/?$/.test(path);
 
       const openPost = async (id) => {
         try {
@@ -259,6 +327,7 @@ function App() {
           window.history.replaceState({}, "", "/");
         }
       };
+
       const openClip = async (id) => {
         try {
           const snap = await getDoc(doc(db, "clips", id));
@@ -273,10 +342,14 @@ function App() {
           window.history.replaceState({}, "", "/");
         }
       };
+
       const openRoute = async (id) => {
         try {
           const snap = await getDoc(doc(db, "routes", id));
-          if (!snap.exists()) { window.history.replaceState({}, "", "/"); return; }
+          if (!snap.exists()) {
+            window.history.replaceState({}, "", "/");
+            return;
+          }
           const d = snap.data() || {};
           const isOwner = d.ownerId === auth.currentUser?.uid;
           const canRead = d.visibility === "public" || isOwner;
@@ -294,19 +367,68 @@ function App() {
         }
       };
 
-      if (matchPost)  { await openPost(matchPost[1]);  return; }
-      if (matchClip)  { await openClip(matchClip[1]);  return; }
-      if (matchRoute) { await openRoute(matchRoute[1]); return; }
+      // /open-route → /r/:id yönlendirme (geri/ileri ile)
+      if (isOpenRoute) {
+        try {
+          const search = window.location.search || "";
+          const sp = new URLSearchParams(search);
+          const raw = sp.get("query") || "";
+          const decoded = decodeURIComponent(raw || "");
+          let work = decoded;
+          const colonIdx = work.indexOf(":");
+          if (colonIdx !== -1 && work.startsWith("web+mylasa")) {
+            work = work.slice(colonIdx + 1);
+          }
+          const qIdx = work.indexOf("?");
+          let queryPart = work;
+          if (qIdx !== -1) queryPart = work.slice(qIdx + 1);
+          const qs = new URLSearchParams(queryPart);
+          const rid = qs.get("id") || qs.get("routeId");
+          if (rid) {
+            const dest = `/r/${encodeURIComponent(rid)}?from=protocol=1`;
+            window.history.replaceState({}, "", dest);
+            await openRoute(rid);
+            return;
+          } else {
+            window.history.replaceState({}, "", "/");
+          }
+        } catch {
+          window.history.replaceState({}, "", "/");
+        }
+      }
+
+      if (matchPost) {
+        await openPost(matchPost[1]);
+        return;
+      }
+      if (matchClip) {
+        await openClip(matchClip[1]);
+        return;
+      }
+      if (matchRoute) {
+        await openRoute(matchRoute[1]);
+        return;
+      }
 
       // Modal açıkken ve permalinkte değilsek → kapat
-      if (["viewingComments","viewingClip","viewingRoute","viewingRouteError"].includes(modalContent)) {
+      if (["viewingComments", "viewingClip", "viewingRoute", "viewingRouteError"].includes(modalContent)) {
         setModalContent(null);
         setModalData(null);
         pushedByAppRef.current = false;
       }
 
-      if (matchProfile) { setActivePage("profile"); return; }
-      if (matchExploreRoutes || matchExplore) { setActivePage("explore"); return; }
+      if (matchProfile) {
+        setActivePage("profile");
+        return;
+      }
+      if (matchAdminShareMetrics) {
+        setActivePage("adminShareMetrics");
+        return;
+      }
+      if (matchExploreRoutes || matchExplore) {
+        setActivePage("explore");
+        return;
+      }
     };
 
     window.addEventListener("popstate", onPop);
@@ -354,8 +476,8 @@ function App() {
     } else if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
       const target = `/u/${encodeURIComponent(currentUserProfile.kullaniciAdi)}`;
       if (window.location.pathname !== target) window.history.pushState({}, "", target);
-    } else if (!/^\/(p|c|r|u|explore(\/routes)?)/.test(window.location.pathname)) {
-      // explore ve explore/routes izinli
+    } else if (!/^\/(p|c|r|u|explore(\/routes)?|admin\/share-metrics)/.test(window.location.pathname)) {
+      // explore, explore/routes ve admin/share-metrics izinli
       window.history.replaceState({}, "", "/");
     }
 
@@ -415,7 +537,7 @@ function App() {
       await updateDoc(userDocRef, {
         sharingWhitelist: selectedFriendIds,
         sharingMode: "selected_friends",
-        isSharing: true,
+        isSharing: true
       });
       setModalContent("mapSettings");
     } catch {}
@@ -465,6 +587,8 @@ function App() {
             onPlaceClick={handleViewPlaceDetail}
           />
         );
+      case "adminShareMetrics":
+        return <AdminShareMetrics />;
       default:
         return (
           <Feed
@@ -545,7 +669,7 @@ function App() {
       const storiesWithAuthorInfo = modalData.stories.map((story) => ({
         ...story,
         authorUsername: modalData.kullaniciAdi,
-        authorProfilePic: modalData.profilFoto,
+        authorProfilePic: modalData.profilFoto
       }));
       return <StoryModal stories={storiesWithAuthorInfo} onClose={closeModal} />;
     }
@@ -561,17 +685,16 @@ function App() {
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: "rgba(0, 0, 0, 0.65)",
-      zIndex: 2000,
+      zIndex: 2000
     };
     const commentsModalStyle = {
       ...modalStyle,
       alignItems: "flex-end",
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      backgroundColor: "rgba(0, 0, 0, 0.5)"
     };
 
     const isCommentModal = modalContent === "viewingComments";
-    const currentStyle =
-      isCommentModal && isMobile ? commentsModalStyle : modalStyle;
+    const currentStyle = isCommentModal && isMobile ? commentsModalStyle : modalStyle;
 
     return (
       <div style={currentStyle} onMouseDown={closeModal}>
@@ -628,14 +751,30 @@ function App() {
             />
           )}
           {modalContent === "viewingRouteError" && (
-            <div style={{
-              width: "min(100vw, 520px)", background:"#fff", borderRadius:12, padding:"16px 14px",
-              boxShadow:"0 10px 28px rgba(0,0,0,.35)"
-            }}>
-              <div style={{fontWeight:800, marginBottom:6}}>Erişim yok</div>
-              <div style={{color:"#444"}}>Bu rota ya özel ya da bulunamadı.</div>
-              <div style={{marginTop:12, display:"flex", justifyContent:"flex-end"}}>
-                <button onClick={closeModal} style={{border:"1px solid #ddd", borderRadius:10, padding:"8px 12px", fontWeight:700, cursor:"pointer"}}>Kapat</button>
+            <div
+              style={{
+                width: "min(100vw, 520px)",
+                background: "#fff",
+                borderRadius: 12,
+                padding: "16px 14px",
+                boxShadow: "0 10px 28px rgba(0,0,0,.35)"
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Erişim yok</div>
+              <div style={{ color: "#444" }}>Bu rota ya özel ya da bulunamadı.</div>
+              <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  onClick={closeModal}
+                  style={{
+                    border: "1px solid #ddd",
+                    borderRadius: 10,
+                    padding: "8px 12px",
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >
+                  Kapat
+                </button>
               </div>
             </div>
           )}
@@ -663,7 +802,7 @@ function App() {
       zIndex: 5000,
       display: "flex",
       justifyContent: "center",
-      pointerEvents: "none",
+      pointerEvents: "none"
     };
     const card = {
       pointerEvents: "auto",
@@ -676,7 +815,7 @@ function App() {
       boxShadow: "0 8px 24px rgba(0,0,0,.35)",
       display: "flex",
       alignItems: "center",
-      gap: 10,
+      gap: 10
     };
     const btn = {
       marginLeft: "auto",
@@ -686,16 +825,20 @@ function App() {
       borderRadius: 10,
       padding: "10px 14px",
       fontWeight: 700,
-      cursor: "pointer",
+      cursor: "pointer"
     };
     return (
       <div style={wrap}>
         <div style={card}>
-          <span role="img" aria-label="update">⬆️</span>
-          <div style={{fontSize: 14}}>
+          <span role="img" aria-label="update">
+            ⬆️
+          </span>
+          <div style={{ fontSize: 14 }}>
             Yeni bir sürüm hazır. Uygulamayı güncellemek için “Yenile”ye dokun.
           </div>
-          <button style={btn} onClick={acceptUpdateAndReload}>Yenile</button>
+          <button style={btn} onClick={acceptUpdateAndReload}>
+            Yenile
+          </button>
         </div>
       </div>
     );

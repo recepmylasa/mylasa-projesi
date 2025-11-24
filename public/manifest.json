@@ -6,6 +6,11 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "capture_links": "existing-client-event",
   "background_color": "#ffffff",
   "theme_color": "#6b5cff",
   "icons": [
@@ -20,6 +25,12 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+mylasa",
+      "url": "/open-route?query=%s"
     }
   ]
 }
