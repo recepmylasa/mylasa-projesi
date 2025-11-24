@@ -1,15 +1,20 @@
-// src/components/RouteCardMobile.js
-// Kart: başlık, km, süre, ⭐ ortalama (N) + şehir/ülke + ilk 3 etiket + "uzakta" mesafesi.
+// Kart: başlık, km, süre, ⭐ ortalama (N) + şehir/ülke + ilk 3 etiket + "uzakta/yakınında" mesafesi.
 import React from "react";
 
-function km(m) { return Math.round((m || 0) / 100) / 10; }
+function km(m) {
+  return Math.round((m || 0) / 100) / 10;
+}
 function fmtDur(ms) {
   const m = Math.round((ms || 0) / 60000);
   const h = Math.floor(m / 60);
   const mm = m % 60;
   return h > 0 ? `${h} sa ${mm} dk` : `${mm} dk`;
 }
-const fmtDist = (d) => (Number(d) || 0).toFixed(1);
+const fmtDist = (kmVal) => {
+  const n = Number(kmVal);
+  if (!Number.isFinite(n)) return "";
+  return n.toFixed(1);
+};
 
 export default function RouteCardMobile({ route, onClick = () => {} }) {
   if (!route) return null;
@@ -22,6 +27,7 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
     areas = {},
     tags = [],
     distanceKm,
+    __distanceM,
   } = route;
 
   const countryLabel =
@@ -32,6 +38,29 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
     "";
   const locText = [areas?.city, countryLabel].filter(Boolean).join(", ");
   const topTags = (Array.isArray(tags) ? tags : []).slice(0, 3);
+
+  // Mesafe etiketi: varsa __distanceM (metre) öncelikli, yoksa distanceKm
+  const hasDistanceM =
+    typeof __distanceM === "number" && !Number.isNaN(__distanceM);
+  const kmFromM = hasDistanceM ? __distanceM / 1000 : null;
+  const hasDistanceKm =
+    typeof distanceKm === "number" && !Number.isNaN(distanceKm);
+
+  const distanceKmValue = hasDistanceM
+    ? kmFromM
+    : hasDistanceKm
+    ? distanceKm
+    : null;
+
+  let distanceLabelText = "";
+  if (distanceKmValue != null) {
+    const kmText = fmtDist(distanceKmValue);
+    if (kmText) {
+      distanceLabelText = hasDistanceM
+        ? `${kmText} km yakınında`
+        : `${kmText} km uzakta`;
+    }
+  }
 
   return (
     <div
@@ -71,6 +100,7 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
           gap: 12,
           color: "#111",
           fontSize: 13,
+          flexWrap: "wrap",
         }}
       >
         <span>{km(totalDistanceM)} km</span>
@@ -80,10 +110,10 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
         <span title={ratingCount ? `${ratingCount} oy` : "Oy yok"}>
           ⭐ {Number(ratingAvg || 0).toFixed(1)} ({ratingCount || 0})
         </span>
-        {Number.isFinite(distanceKm) && (
+        {distanceLabelText && (
           <>
             <span>•</span>
-            <span>{fmtDist(distanceKm)} km uzakta</span>
+            <span>{distanceLabelText}</span>
           </>
         )}
       </div>

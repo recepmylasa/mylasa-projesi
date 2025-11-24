@@ -1,5 +1,3 @@
-/* src/Explore.css */
-
 /* — ANA YAPI — */
 .explore-container {
   width: 100%;
@@ -156,20 +154,9 @@
 /* === Yakınımda / Audience UI (yalnız mobil görünür) === */
 .chipbar {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-  padding: 8px 16px;
-}
-.chipbar-row {
-  display: flex;
-  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-.chipbar-row-grouping {
-  justify-content: flex-start;
+  align-items: center;
+  padding: 8px 16px;
 }
 .chip-group {
   display: inline-flex;
@@ -185,6 +172,10 @@
   font-size: 13px;
   cursor: pointer;
 }
+.chip.small {
+  padding: 6px 10px;
+  font-size: 12px;
+}
 .chip.active {
   border-color: #111;
   background: #111;
@@ -195,10 +186,45 @@
   opacity: 0.5;
   cursor: default;
 }
-.chip-label {
-  font-size: 12px;
+
+/* Grup + Sıralama barı (mobil) */
+.group-sort-bar {
+  padding: 0 16px 4px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Sıralama sekmeleri */
+.sort-tabs {
+  display: flex;
+  margin-top: 4px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  background: #f9fafb;
+}
+.sort-tab {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 11px;
   font-weight: 500;
-  color: #6b7280;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.sort-tab:not(.active) {
+  color: #4b5563;
+}
+.sort-tab.active {
+  background: #111827;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 /* Yakınımda başlık satırı */
@@ -390,49 +416,55 @@
   color: #ffffff;
 }
 
-/* Yakınımda grup başlıkları */
+/* Grup başlıkları (sticky) */
 .ExploreGroupSection {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  gap: 6px;
 }
 .ExploreGroupHeader {
   position: sticky;
   top: 0;
-  z-index: 1;
-  margin: 0 -16px 4px -16px;
-  padding: 6px 16px;
-  background: #ffffff;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 1px solid #f3f4f6;
+  z-index: 5;
+  padding: 6px 4px;
+  margin: 0 -4px 2px -4px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
   font-size: 12px;
   font-weight: 600;
-  color: #4b5563;
-}
-.ExploreGroupHeaderBadge {
-  display: inline-flex;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid #d1d5db;
-  background: #f9fafb;
-  font-size: 11px;
-  font-weight: 500;
   color: #374151;
 }
 
-/* Gruplamayı kapat butonu */
-.near-group-reset-btn {
-  margin-top: 10px;
+/* Gruplamayı kapat butonu (boş durumda) */
+.group-reset-btn {
+  margin-top: 8px;
   padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #d4d4d4;
   background: #ffffff;
   font-size: 12px;
   font-weight: 500;
-  color: #111827;
   cursor: pointer;
 }
-.near-group-reset-btn:hover {
+.group-reset-btn:hover {
   background: #f9fafb;
+}
+
+/* Küçük toast (sıralama / izin mesajları için) */
+.explore-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  background: rgba(17, 24, 39, 0.9);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  z-index: 9999;
+  box-shadow: 0 10px 30px rgba(15,23,42,0.4);
+}
+@media (min-width: 769px) {
+  .explore-toast {
+    bottom: 32px;
+  }
 }

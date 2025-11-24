@@ -32,10 +32,11 @@ import { fmtGroupKeyCity, fmtGroupKeyCountry } from "./utils/formatters";
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 const MAP_ID = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
 
-/* ——— Filtre sabitleri ——— */
+/* ——— Filtre / sıralama sabitleri ——— */
 const FILTER_STORAGE_KEY = "explore.filters.v1";
 const AUDIENCE_STORAGE_KEY = "explore.audience.v1";
 const GROUP_STORAGE_KEY = "explore.group.v1";
+const SORT_STORAGE_KEY = "explore.sort.v1";
 
 const DEFAULT_FILTERS = {
   city: "",
@@ -44,7 +45,6 @@ const DEFAULT_FILTERS = {
   minVotes: 0,
   minDur: 0,
   maxDur: 0,
-  sort: "distance", // distance | rating | votes | new
 };
 
 /* ——— Yardımcılar ——— */
@@ -122,11 +122,6 @@ function normalizeFilters(raw) {
     return Number.isFinite(n) && n > 0 ? n : 0;
   };
 
-  let sort = (raw.sort || base.sort || "").toString();
-  if (!["rating", "votes", "new", "distance"].includes(sort)) {
-    sort = base.sort;
-  }
-
   return {
     city: (raw.city || "").toString().trim(),
     cc: (raw.cc || raw.countryCode || "").toString().trim().toUpperCase(),
@@ -134,12 +129,11 @@ function normalizeFilters(raw) {
     minVotes: toPosNum(raw.minVotes),
     minDur: toPosNum(raw.minDur),
     maxDur: toPosNum(raw.maxDur),
-    sort,
   };
 }
 
 function hasAnyFilterParam(searchParams) {
-  const keys = ["city", "cc", "minRating", "minVotes", "minDur", "maxDur", "sort"];
+  const keys = ["city", "cc", "minRating", "minVotes", "minDur", "maxDur"];
   return keys.some((k) => searchParams.has(k));
 }
 
@@ -165,7 +159,6 @@ function applyFiltersToSearchParams(filters, searchParams) {
   setOrDelete("minVotes", f.minVotes);
   setOrDelete("minDur", f.minDur);
   setOrDelete("maxDur", f.maxDur);
-  setOrDelete("sort", f.sort || "distance", true);
 }
 
 function Explore({ aktifKullaniciId, onUserClick }) {
@@ -191,6 +184,7 @@ function Explore({ aktifKullaniciId, onUserClick }) {
   const [audience, setAudience] = useState("all"); // "all" | "following"
   const [groupMode, setGroupMode] = useState("none"); // "none" | "city" | "country"
   const [followingUids, setFollowingUids] = useState([]);
+  const [sortMode, setSortMode] = useState("new"); // near | new | most_rated | top_rated
 
   /* === YAKINIMDA MODU (Yalnız MOBİL) === */
   const isMobile =
@@ -298,7 +292,7 @@ function Explore({ aktifKullaniciId, onUserClick }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    let initial = DEFAULT_FILTERS;
+    let initial = { ...DEFAULT_FILTERS };
     let fromUrl = false;
 
     try {
@@ -312,7 +306,6 @@ function Explore({ aktifKullaniciId, onUserClick }) {
           minVotes: sp.get("minVotes"),
           minDur: sp.get("minDur"),
           maxDur: sp.get("maxDur"),
-          sort: sp.get("sort") || undefined,
         };
         initial = normalizeFilters(raw);
         fromUrl = true;
@@ -335,6 +328,50 @@ function Explore({ aktifKullaniciId, onUserClick }) {
 
     setFilters(initial);
     setFilterDraft(initial);
+  }, []);
+
+  /* --- Sıralama modu: URL + localStorage ile başlat --- */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let initial = "new";
+
+    try {
+      const url = new URL(window.location.href);
+      const sp = url.searchParams;
+      const raw = (sp.get("sort") || "").toLowerCase();
+
+      if (
+        raw === "near" ||
+        raw === "new" ||
+        raw === "most_rated" ||
+        raw === "top_rated"
+      ) {
+        initial = raw;
+      } else if (sp.get("near") === "1") {
+        initial = "near";
+      }
+    } catch {
+      // no-op
+    }
+
+    if (initial === "new") {
+      try {
+        const stored = window.localStorage.getItem(SORT_STORAGE_KEY);
+        if (
+          stored === "near" ||
+          stored === "new" ||
+          stored === "most_rated" ||
+          stored === "top_rated"
+        ) {
+          initial = stored;
+        }
+      } catch {
+        // no-op
+      }
+    }
+
+    setSortMode(initial);
   }, []);
 
   /* --- Filtreleri senkronlayan helper --- */
@@ -595,7 +632,7 @@ function Explore({ aktifKullaniciId, onUserClick }) {
       } catch (e) {
         setNearError(
           e?.message?.includes("permission") || e?.code === 1
-            ? "Konum izni reddedildi."
+            ? "Yakındaki rotalar için konum izni gerekiyor."
             : "Konum alınamadı."
         );
         setNearCenter(null);
@@ -605,6 +642,90 @@ function Explore({ aktifKullaniciId, onUserClick }) {
       }
     },
     [mapRef, nearCenter]
+  );
+
+  /* --- Sıralama modu (segment) senkronu (URL + localStorage) --- */
+  const syncSortMode = useCallback(
+    async (next) => {
+      const normalized =
+        next === "near" ||
+        next === "most_rated" ||
+        next === "top_rated" ||
+        next === "new"
+          ? next
+          : "new";
+
+      // "En Yakın" seçilince: Yakınımda kapalıysa aç + konum izni
+      if (normalized === "near" && isMobile) {
+        if (!nearOn) {
+          setNearOn(true);
+        }
+        const center = await ensureNearCenter();
+        if (!center) {
+          // İzin reddedildi / konum alınamadı → "new"e geri dön + toast
+          setSortMode("new");
+          if (typeof window !== "undefined") {
+            try {
+              const url = new URL(window.location.href);
+              const sp = url.searchParams;
+              if (sp.get("sort") === "near") {
+                sp.set("sort", "new");
+                url.search = sp.toString();
+                window.history.pushState({}, "", url.toString());
+              }
+              window.localStorage.setItem(SORT_STORAGE_KEY, "new");
+            } catch {
+              // no-op
+            }
+            try {
+              if (window.alert) {
+                window.alert("Yakındaki rotalar için konum izni gerekiyor.");
+              }
+            } catch {
+              // no-op
+            }
+          }
+          return;
+        }
+      }
+
+      setSortMode(normalized);
+
+      if (typeof window !== "undefined") {
+        // Kalıcılık
+        try {
+          window.localStorage.setItem(SORT_STORAGE_KEY, normalized);
+        } catch {
+          // no-op
+        }
+
+        try {
+          const url = new URL(window.location.href);
+          const sp = url.searchParams;
+
+          if (normalized === "new") {
+            // "new" varsayılan kabul → paramı temizle
+            if (sp.get("sort")) {
+              sp.delete("sort");
+            }
+          } else {
+            sp.set("sort", normalized);
+          }
+
+          url.search = sp.toString();
+          window.history.pushState({}, "", url.toString());
+        } catch {
+          // no-op
+        }
+
+        try {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch {
+          // no-op
+        }
+      }
+    },
+    [isMobile, nearOn, ensureNearCenter]
   );
 
   /* --- Viewport tabanlı sorgu (debounce + son isteği koru) --- */
@@ -643,7 +764,7 @@ function Explore({ aktifKullaniciId, onUserClick }) {
             limit: 200,
             userLocation: nearCenter || null,
             filters,
-            sort: filters.sort || "distance",
+            sort: mapSortModeToServiceSort(sortMode),
             audience,
             followingUids: audience === "following" ? followingUids : undefined,
           });
@@ -676,7 +797,16 @@ function Explore({ aktifKullaniciId, onUserClick }) {
         }
       }, 300);
     },
-    [filters, nearCenter, nearOn, updateMarkers, audience, followingUids, aktifKullaniciId]
+    [
+      filters,
+      nearCenter,
+      nearOn,
+      updateMarkers,
+      audience,
+      followingUids,
+      aktifKullaniciId,
+      sortMode,
+    ]
   );
 
   /* --- Yakınımda: map hazır olduğunda viewport dinleyicisi --- */
@@ -827,19 +957,20 @@ function Explore({ aktifKullaniciId, onUserClick }) {
 
     if (nearCenter) {
       arr = arr.filter((r) => {
-        if (typeof r.distanceKm !== "number") return true;
-        return r.distanceKm <= radiusKm + 0.5;
+        const distM = distanceMetricForRoute(r);
+        if (!Number.isFinite(distM)) return true;
+        const limitM = (radiusKm + 0.5) * 1000;
+        return distM <= limitM;
       });
     }
 
-    // Sıralama viewportRoutes içinde yapılıyor; burada ek sort yok
     return arr;
   }, [nearItems, filters, nearCenter, radiusKm]);
 
   /* Yakınımda: grup yapısı (none / city / country) */
   const groupedNear = useMemo(
-    () => groupRoutesForDisplay(sortedNearItems, groupMode, true),
-    [sortedNearItems, groupMode]
+    () => groupRoutesForDisplay(sortedNearItems, groupMode, sortMode),
+    [sortedNearItems, groupMode, sortMode]
   );
 
   /* Filtre chip’leri (özet) */
@@ -867,17 +998,7 @@ function Explore({ aktifKullaniciId, onUserClick }) {
       }
     }
 
-    const sortLabelMap = {
-      distance: "En yakın",
-      rating: "En yüksek puan",
-      votes: "En çok oy",
-      new: "En yeni",
-    };
-    if (f.sort && f.sort !== "distance") {
-      chips.push(sortLabelMap[f.sort] || "");
-    }
-
-    return chips.filter(Boolean);
+    return chips;
   }, [filters]);
 
   const activeFilterCount = filterChips.length;
@@ -908,7 +1029,10 @@ function Explore({ aktifKullaniciId, onUserClick }) {
   }, [nearItems]);
 
   const openFilterSheet = () => {
-    setFilterDraft(filters);
+    setFilterDraft({
+      ...filters,
+      sort: sortMode,
+    });
     setFilterSheetOpen(true);
   };
 
@@ -925,6 +1049,10 @@ function Explore({ aktifKullaniciId, onUserClick }) {
 
   const handleApplyFilters = () => {
     syncFilters(filterDraft);
+
+    const nextSort = filterDraft.sort || sortMode || "new";
+    syncSortMode(nextSort);
+
     setFilterSheetOpen(false);
   };
 
@@ -1203,6 +1331,57 @@ function Explore({ aktifKullaniciId, onUserClick }) {
                 aria-pressed={groupMode === "country"}
               >
                 Ülke
+              </button>
+            </div>
+
+            <div
+              className="chipbar-row chipbar-row-sort"
+              role="tablist"
+              aria-label="Sıralama seçenekleri"
+            >
+              <button
+                type="button"
+                className={`chip chip-sort${
+                  sortMode === "near" ? " active" : ""
+                }`}
+                onClick={() => syncSortMode("near")}
+                role="tab"
+                aria-selected={sortMode === "near"}
+              >
+                En Yakın
+              </button>
+              <button
+                type="button"
+                className={`chip chip-sort${
+                  sortMode === "new" ? " active" : ""
+                }`}
+                onClick={() => syncSortMode("new")}
+                role="tab"
+                aria-selected={sortMode === "new"}
+              >
+                En Yeni
+              </button>
+              <button
+                type="button"
+                className={`chip chip-sort${
+                  sortMode === "most_rated" ? " active" : ""
+                }`}
+                onClick={() => syncSortMode("most_rated")}
+                role="tab"
+                aria-selected={sortMode === "most_rated"}
+              >
+                En Çok Oy
+              </button>
+              <button
+                type="button"
+                className={`chip chip-sort${
+                  sortMode === "top_rated" ? " active" : ""
+                }`}
+                onClick={() => syncSortMode("top_rated")}
+                role="tab"
+                aria-selected={sortMode === "top_rated"}
+              >
+                En Yüksek Puan
               </button>
             </div>
           </div>
@@ -1537,15 +1716,15 @@ function Explore({ aktifKullaniciId, onUserClick }) {
                     <select
                       id="filter-sort"
                       className="near-filter-select"
-                      value={filterDraft.sort || "distance"}
+                      value={filterDraft.sort || sortMode || "new"}
                       onChange={(e) =>
                         handleDraftChange("sort", e.target.value)
                       }
                     >
-                      <option value="distance">En yakın</option>
-                      <option value="rating">En yüksek puan</option>
-                      <option value="votes">En çok oy</option>
+                      <option value="near">En yakın</option>
                       <option value="new">En yeni</option>
+                      <option value="most_rated">En çok oy</option>
+                      <option value="top_rated">En yüksek puan</option>
                     </select>
                   </div>
 
@@ -1743,20 +1922,108 @@ function createdAtSecForRoute(it) {
   return 0;
 }
 
+function distanceMetricForRoute(route) {
+  if (!route) return Number.POSITIVE_INFINITY;
+  if (typeof route.__distanceM === "number") return route.__distanceM;
+  if (typeof route.distanceKm === "number") return route.distanceKm * 1000;
+  return Number.POSITIVE_INFINITY;
+}
+
+function ratingAvgOfRoute(route) {
+  if (!route) return 0;
+  const direct = route.ratingAvg;
+  if (typeof direct === "number" && !Number.isNaN(direct)) return direct;
+
+  const sum = typeof route.ratingSum === "number" ? route.ratingSum : 0;
+  const count =
+    typeof route.ratingCount === "number" && route.ratingCount > 0
+      ? route.ratingCount
+      : 0;
+  if (!count) return 0;
+  return sum / count;
+}
+
+function ratingCountOfRoute(route) {
+  return typeof route?.ratingCount === "number" ? route.ratingCount : 0;
+}
+
+function sortRoutesByMode(routes, sortMode) {
+  const mode = sortMode || "near";
+  const arr = [...routes];
+
+  arr.sort((a, b) => {
+    const da = distanceMetricForRoute(a);
+    const db = distanceMetricForRoute(b);
+    const ra = ratingAvgOfRoute(a);
+    const rb = ratingAvgOfRoute(b);
+    const ca = ratingCountOfRoute(a);
+    const cb = ratingCountOfRoute(b);
+    const ta = createdAtSecForRoute(a);
+    const tb = createdAtSecForRoute(b);
+
+    if (mode === "near") {
+      if (da !== db) return da - db; // mesafe ↑
+      if (rb !== ra) return rb - ra; // puan ↓
+      if (tb !== ta) return tb - ta; // yeni ↓
+      return 0;
+    }
+
+    if (mode === "new") {
+      if (tb !== ta) return tb - ta; // yeni ↓
+      if (rb !== ra) return rb - ra; // puan ↓
+      if (cb !== ca) return cb - ca; // oy sayısı ↓
+      return 0;
+    }
+
+    if (mode === "most_rated") {
+      if (cb !== ca) return cb - ca; // oy sayısı ↓
+      if (rb !== ra) return rb - ra; // puan ↓
+      if (tb !== ta) return tb - ta; // yeni ↓
+      return 0;
+    }
+
+    if (mode === "top_rated") {
+      if (rb !== ra) return rb - ra; // puan ↓
+      if (cb !== ca) return cb - ca; // oy sayısı ↓
+      if (tb !== ta) return tb - ta; // yeni ↓
+      return 0;
+    }
+
+    return 0;
+  });
+
+  return arr;
+}
+
+function mapSortModeToServiceSort(sortMode) {
+  switch (sortMode) {
+    case "near":
+      return "distance";
+    case "most_rated":
+      return "votes";
+    case "top_rated":
+      return "rating";
+    case "new":
+    default:
+      return "new";
+  }
+}
+
 /**
  * Yakınımda liste için gruplama:
- * mode === "none" → flat
- * mode === "city" | "country" → başlıklı gruplar
+ * mode === "none" → düz liste
+ * mode === "city" | "country" → başlıklı gruplar, grup içi sıralama seçilen sort'a göre
  */
-function groupRoutesForDisplay(routes, mode, isNear) {
+function groupRoutesForDisplay(routes, mode, sortMode) {
   const result = { flat: [], groups: null };
 
   if (!Array.isArray(routes) || routes.length === 0) {
     return result;
   }
 
+  // Gruplama yok → doğrudan sıralı flat liste
   if (mode !== "city" && mode !== "country") {
-    result.flat = routes;
+    result.flat = sortRoutesByMode(routes, sortMode);
     return result;
   }
 
@@ -1793,24 +2060,9 @@ function groupRoutesForDisplay(routes, mode, isNear) {
     return a.label.localeCompare(b.label, "tr");
   });
 
-  // Grup içi sıralama:
-  // Yakınımda: mesafe artan; aksi halde createdAt desc
+  // Grup içi sıralama: seçilen sortMode kurallarına göre
   groups.forEach((g) => {
-    g.items.sort((a, b) => {
-      if (isNear) {
-        const da =
-          typeof a.distanceKm === "number"
-            ? a.distanceKm
-            : Number.POSITIVE_INFINITY;
-        const db =
-          typeof b.distanceKm === "number"
-            ? b.distanceKm
-            : Number.POSITIVE_INFINITY;
-        if (da !== db) return da - db;
-        return createdAtSecForRoute(b) - createdAtSecForRoute(a);
-      }
-      return createdAtSecForRoute(b) - createdAtSecForRoute(a);
-    });
+    g.items = sortRoutesByMode(g.items, sortMode);
   });
 
   return { flat: [], groups };
