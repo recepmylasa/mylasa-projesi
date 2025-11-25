@@ -1,3 +1,4 @@
+/* src/Explore.css */
 /* — ANA YAPI — */
 .explore-container {
   width: 100%;
@@ -154,9 +155,22 @@
 /* === Yakınımda / Audience UI (yalnız mobil görünür) === */
 .chipbar {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 16px 4px 16px;
+}
+.chipbar-row {
+  display: flex;
   align-items: center;
-  padding: 8px 16px;
+  gap: 8px;
+}
+.chipbar-row-grouping {
+  flex-wrap: wrap;
+}
+.chipbar-row-sort {
+  display: flex;
+  margin-top: 2px;
+  gap: 6px;
 }
 .chip-group {
   display: inline-flex;
@@ -186,8 +200,13 @@
   opacity: 0.5;
   cursor: default;
 }
+.chip-sort {
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+}
 
-/* Grup + Sıralama barı (mobil) */
+/* Grup + Sıralama barı (eski yapı, şimdilik yedek) */
 .group-sort-bar {
   padding: 0 16px 4px 16px;
   display: flex;
@@ -200,7 +219,7 @@
   gap: 6px;
 }
 
-/* Sıralama sekmeleri */
+/* Sıralama sekmeleri (eski yapı) */
 .sort-tabs {
   display: flex;
   margin-top: 4px;
@@ -433,9 +452,17 @@
   font-weight: 600;
   color: #374151;
 }
+.ExploreGroupHeaderBadge {
+  margin-left: 6px;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+}
 
 /* Gruplamayı kapat butonu (boş durumda) */
-.group-reset-btn {
+.near-group-reset-btn {
   margin-top: 8px;
   padding: 6px 12px;
   border-radius: 999px;
@@ -445,7 +472,7 @@
   font-weight: 500;
   cursor: pointer;
 }
-.group-reset-btn:hover {
+.near-group-reset-btn:hover {
   background: #f9fafb;
 }
 

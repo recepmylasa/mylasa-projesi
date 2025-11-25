@@ -1,7 +1,9 @@
+// src/components/RouteCardMobile.js
 // Kart: başlık, km, süre, ⭐ ortalama (N) + şehir/ülke + ilk 3 etiket + "uzakta/yakınında" mesafesi.
 import React from "react";
+import { km as formatKm } from "../utils/rating";
 
-function km(m) {
+function totalKm(m) {
   return Math.round((m || 0) / 100) / 10;
 }
 function fmtDur(ms) {
@@ -10,11 +12,6 @@ function fmtDur(ms) {
   const mm = m % 60;
   return h > 0 ? `${h} sa ${mm} dk` : `${mm} dk`;
 }
-const fmtDist = (kmVal) => {
-  const n = Number(kmVal);
-  if (!Number.isFinite(n)) return "";
-  return n.toFixed(1);
-};
 
 export default function RouteCardMobile({ route, onClick = () => {} }) {
   if (!route) return null;
@@ -42,24 +39,16 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
   // Mesafe etiketi: varsa __distanceM (metre) öncelikli, yoksa distanceKm
   const hasDistanceM =
     typeof __distanceM === "number" && !Number.isNaN(__distanceM);
-  const kmFromM = hasDistanceM ? __distanceM / 1000 : null;
   const hasDistanceKm =
     typeof distanceKm === "number" && !Number.isNaN(distanceKm);
 
-  const distanceKmValue = hasDistanceM
-    ? kmFromM
-    : hasDistanceKm
-    ? distanceKm
-    : null;
-
   let distanceLabelText = "";
-  if (distanceKmValue != null) {
-    const kmText = fmtDist(distanceKmValue);
-    if (kmText) {
-      distanceLabelText = hasDistanceM
-        ? `${kmText} km yakınında`
-        : `${kmText} km uzakta`;
-    }
+  if (hasDistanceM) {
+    const txt = formatKm(__distanceM);
+    if (txt) distanceLabelText = `${txt} yakınında`;
+  } else if (hasDistanceKm) {
+    const txt = formatKm(distanceKm * 1000);
+    if (txt) distanceLabelText = `${txt} uzakta`;
   }
 
   return (
@@ -103,7 +92,7 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
           flexWrap: "wrap",
         }}
       >
-        <span>{km(totalDistanceM)} km</span>
+        <span>{totalKm(totalDistanceM)} km</span>
         <span>•</span>
         <span>{fmtDur(durationMs)}</span>
         <span>•</span>
@@ -113,7 +102,9 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
         {distanceLabelText && (
           <>
             <span>•</span>
-            <span>{distanceLabelText}</span>
+            <span aria-label={`Size olan mesafe: ${distanceLabelText}`}>
+              {distanceLabelText}
+            </span>
           </>
         )}
       </div>

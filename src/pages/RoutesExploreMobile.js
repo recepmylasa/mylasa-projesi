@@ -1,233 +1,1285 @@
 // src/pages/RoutesExploreMobile.js
-// Keşfet (Rotalar) — public & finished listesi + filtre/sıralama + sonsuz kaydırma
-// Not: Servis importu fetchPublicRoutes olmalı (searchRoutes DEĞİL)
+// Mobil "Rotalar" sekmesi: Hepsi/Takip + Yakınımda/En yeni/En çok oy/En yüksek puan
+// Harita (Yakınımda) + viewport tabanlı liste + URL/localStorage senkronu
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { fetchPublicRoutes } from "../services/routeSearch"; // ← doğru export
-import ExploreFilters from "../components/ExploreFilters";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { MarkerClusterer } from "@googlemaps/markerclusterer";
+import { auth } from "../firebase";
+
+import { useGoogleMaps } from "../hooks/useGoogleMaps";
+import fetchViewportRoutes from "../services/viewportRoutes";
+import { fetchPublicRoutes } from "../services/routeSearch";
+import { getFollowingUids } from "../services/follows";
+
+import NearbyPromptMobile from "../components/NearbyPromptMobile";
+import RouteCardMobile from "../components/RouteCardMobile";
+import RouteFilterSheet from "../components/RouteFilterSheet";
+
+import {
+  readParam,
+  pushParams,
+  readJSON,
+  writeJSON,
+} from "../utils/urlState";
+import { getRatingAvg } from "../utils/rating";
+
+const DEFAULT_AUDIENCE = "all"; // "all" | "following"
+const DEFAULT_SORT = "new"; // "near" | "new" | "likes" | "rating"
+const DEFAULT_GROUP = "none"; // "none" | "city" | "country"
+
+const PAGE_SIZE = 20;
+const NEAR_LIMIT = 200;
+
+const LS_AUDIENCE = "routes.v1.audience";
+const LS_SORT = "routes.v1.sort";
+const LS_GROUP = "routes.v1.group";
+const LS_NEAR = "routes.v1.near";
+const LS_RADIUS = "routes.v1.radius";
+
+function normalizeAudience(raw) {
+  if (!raw) return DEFAULT_AUDIENCE;
+  const v = String(raw).toLowerCase();
+  if (v === "following" || v === "takip") return "following";
+  return "all";
+}
+
+function normalizeSort(raw) {
+  const v = String(raw || "").toLowerCase();
+  if (v === "near" || v === "yakın" || v === "nearby") return "near";
+  if (v === "likes" || v === "most_rated" || v === "popular") return "likes";
+  if (v === "rating" || v === "top_rated" || v === "top") return "rating";
+  if (v === "new" || v === "en_yeni") return "new";
+  return DEFAULT_SORT;
+}
+
+function normalizeGroup(raw) {
+  const v = String(raw || "").toLowerCase();
+  if (v === "city" || v === "şehir") return "city";
+  if (v === "country" || v === "ülke") return "country";
+  return DEFAULT_GROUP;
+}
+
+function getCreatedAtSec(route) {
+  if (!route) return 0;
+  if (typeof route._createdAtSec === "number") return route._createdAtSec;
+  const ts = route.createdAt;
+  if (!ts) return 0;
+  if (typeof ts.seconds === "number") return ts.seconds;
+  if (typeof ts.toMillis === "function") {
+    return Math.floor(ts.toMillis() / 1000);
+  }
+  const n = Number(ts);
+  return Number.isFinite(n) ? Math.floor(n / 1000) : 0;
+}
+
+function getRouteCity(route) {
+  return (route?.areas?.city || "").toString().trim();
+}
+
+function getRouteCountryLabel(route) {
+  const a = route?.areas || {};
+  return (
+    a.countryName ||
+    a.country ||
+    a.countryCode ||
+    a.cc ||
+    ""
+  )
+    .toString()
+    .trim();
+}
+
+function makeGroups(items, group) {
+  if (group === "none") {
+    return [
+      {
+        key: "all",
+        label: "",
+        items,
+      },
+    ];
+  }
+
+  const map = new Map();
+
+  items.forEach((r) => {
+    let key = "other";
+    let label = "Diğer";
+
+    if (group === "city") {
+      const city = getRouteCity(r);
+      if (city) {
+        key = `city:${city.toLowerCase()}`;
+        label = city;
+      }
+    } else if (group === "country") {
+      const country = getRouteCountryLabel(r);
+      if (country) {
+        key = `country:${country.toLowerCase()}`;
+        label = country;
+      }
+    }
+
+    const existing = map.get(key);
+    if (existing) {
+      existing.items.push(r);
+    } else {
+      map.set(key, { key, label, items: [r] });
+    }
+  });
+
+  const out = Array.from(map.values());
+  out.sort((a, b) => {
+    const la = (a.label || "").toLowerCase();
+    const lb = (b.label || "").toLowerCase();
+    if (la < lb) return -1;
+    if (la > lb) return 1;
+    return 0;
+  });
+  return out;
+}
+
+function mapSortToOrder(sort) {
+  if (sort === "new") return "new";
+  if (sort === "rating") return "top"; // en yüksek puan
+  if (sort === "likes") return "trending"; // en çok oy
+  return "new";
+}
+
+function getInitialRouteUiState() {
+  if (typeof window === "undefined") {
+    return {
+      audience: DEFAULT_AUDIENCE,
+      sort: DEFAULT_SORT,
+      group: DEFAULT_GROUP,
+      near: null,
+      radius: 5,
+    };
+  }
+
+  let audience = normalizeAudience(readParam("aud", null));
+  let sort = normalizeSort(readParam("sort", null));
+  let group = normalizeGroup(readParam("group", null));
+
+  const lsAud = readJSON(LS_AUDIENCE, null);
+  const lsSort = readJSON(LS_SORT, null);
+  const lsGroup = readJSON(LS_GROUP, null);
+  const lsNear = readJSON(LS_NEAR, null);
+  const lsRadius = readJSON(LS_RADIUS, null);
+
+  if (!audience && lsAud) audience = normalizeAudience(lsAud);
+  if (!sort && lsSort) sort = normalizeSort(lsSort);
+  if (!group && lsGroup) group = normalizeGroup(lsGroup);
+
+  if (!audience) audience = DEFAULT_AUDIENCE;
+  if (!sort) sort = DEFAULT_SORT;
+  if (!group) group = DEFAULT_GROUP;
+
+  let near = null;
+  if (lsNear && typeof lsNear === "object") {
+    const lat = Number(lsNear.lat);
+    const lng = Number(lsNear.lng);
+    const zoom = Number(lsNear.zoom);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      near = {
+        lat,
+        lng,
+        zoom: Number.isFinite(zoom) ? zoom : 13,
+      };
+    }
+  }
+
+  let radius = Number(lsRadius);
+  if (!Number.isFinite(radius) || radius <= 0) radius = 5;
+
+  return { audience, sort, group, near, radius };
+}
 
 function RoutesExploreMobile() {
-  // Filtreler
-  const [order, setOrder] = useState("trending"); // trending | new | top
-  const [city, setCity] = useState("");
-  const [countryCode, setCountryCode] = useState("");
+  const initialRef = useRef(null);
+  if (!initialRef.current) {
+    initialRef.current = getInitialRouteUiState();
+  }
 
-  // Liste durumu
+  const [audience, setAudience] = useState(initialRef.current.audience);
+  const [sort, setSort] = useState(initialRef.current.sort);
+  const [group, setGroup] = useState(initialRef.current.group);
+  const [near, setNear] = useState(initialRef.current.near);
+  const [radius, setRadius] = useState(initialRef.current.radius);
+
+  const [filters, setFilters] = useState({
+    tags: [],
+    city: "",
+    country: "",
+    dist: [0, 50], // km
+    dur: [0, 300], // dk
+  });
+
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
+  const [isEnd, setIsEnd] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [ended, setEnded] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
-  const sentinelRef = useRef(null);
-  const inflightRef = useRef(null); // AbortController
+  const [locationStatus, setLocationStatus] = useState("unknown"); // unknown | asking | granted | denied
+  const [userLocation, setUserLocation] = useState(null);
+  const [followingUids, setFollowingUids] = useState([]);
+  const [mapReady, setMapReady] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
-  // Kart tık → mevcut modal açılır
+  const isMountedRef = useRef(true);
+  const sentinelRef = useRef(null);
+  const nearViewportRef = useRef(null);
+  const nearDebounceRef = useRef(null);
+
+  const markersRef = useRef([]);
+  const clusterRef = useRef(null);
+
+  const {
+    gmapsStatus,
+    errorMsg,
+    mapDivRef,
+    mapRef,
+    attemptLoad,
+  } = useGoogleMaps({
+    API_KEY: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+    MAP_ID: process.env.REACT_APP_GMAPS_MAP_ID,
+  });
+
+  // ---- open-route-modal event ----
   const openRoute = useCallback((routeId) => {
     if (!routeId) return;
     try {
       window.dispatchEvent(
-        new CustomEvent("open-route-modal", { detail: { routeId } })
+        new CustomEvent("open-route-modal", {
+          detail: { routeId },
+        })
       );
-    } catch {}
+    } catch {
+      // no-op
+    }
   }, []);
 
-  // Filtre değişince ilk sayfayı çek
-  const loadFirst = useCallback(async () => {
-    // önce eski isteği iptal et
-    try { inflightRef.current?.abort?.(); } catch {}
-    const ac = new AbortController();
-    inflightRef.current = ac;
+  // ---- mount/unmount ----
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
+  // ---- Audience: Hepsi / Takip → takip edilenler ----
+  useEffect(() => {
+    if (audience !== "following") {
+      setFollowingUids([]);
+      return;
+    }
+    const viewerId = auth?.currentUser?.uid;
+    if (!viewerId) {
+      setFollowingUids([]);
+      return;
+    }
+
+    let alive = true;
+    getFollowingUids(viewerId)
+      .then((uids) => {
+        if (!alive) return;
+        setFollowingUids(Array.isArray(uids) ? uids : []);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setFollowingUids([]);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [audience]);
+
+  // ---- URL & localStorage senkronu ----
+  useEffect(() => {
+    writeJSON(LS_AUDIENCE, audience);
+    writeJSON(LS_SORT, sort);
+    writeJSON(LS_GROUP, group);
+    writeJSON(LS_NEAR, near);
+    writeJSON(LS_RADIUS, radius);
+
+    const audParam =
+      audience === DEFAULT_AUDIENCE
+        ? null
+        : audience === "following"
+        ? "following"
+        : "all";
+    const sortParam = sort === DEFAULT_SORT ? null : sort;
+    const groupParam = group === DEFAULT_GROUP ? null : group;
+
+    pushParams({
+      aud: audParam,
+      sort: sortParam,
+      group: groupParam,
+    });
+  }, [audience, sort, group, near, radius]);
+
+  // ---- popstate → URL'den geri yükle ----
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => {
+      const aud = normalizeAudience(readParam("aud", null));
+      const srt = normalizeSort(readParam("sort", null));
+      const grp = normalizeGroup(readParam("group", null));
+      setAudience(aud);
+      setSort(srt);
+      setGroup(grp);
+    };
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, []);
+
+  // ---- Harita yükleme (Yakınımda) ----
+  useEffect(() => {
+    if (sort !== "near") return;
+    if (gmapsStatus === "idle") {
+      attemptLoad();
+    }
+  }, [sort, gmapsStatus, attemptLoad]);
+
+  useEffect(() => {
+    if (gmapsStatus === "ready" && mapRef.current && !mapReady) {
+      setMapReady(true);
+    }
+  }, [gmapsStatus, mapRef, mapReady]);
+
+  // ---- Konum alma ----
+  const requestLocation = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationStatus("denied");
+      return;
+    }
+    setLocationStatus("asking");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (!isMountedRef.current) return;
+        const coords = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+        setUserLocation(coords);
+        setLocationStatus("granted");
+      },
+      () => {
+        if (!isMountedRef.current) return;
+        setLocationStatus("denied");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000,
+      }
+    );
+  }, []);
+
+  // sort near olduğunda, önceden near yoksa otomatik konum iste
+  useEffect(() => {
+    if (sort !== "near") return;
+    if (near && typeof near.lat === "number" && typeof near.lng === "number") {
+      return;
+    }
+    if (locationStatus !== "unknown") return;
+    requestLocation();
+  }, [sort, near, locationStatus, requestLocation]);
+
+  // ---- Harita merkezini oturt (Yakınımda) ----
+  useEffect(() => {
+    if (!mapReady || sort !== "near" || !mapRef.current) return;
+
+    if (near && typeof near.lat === "number" && typeof near.lng === "number") {
+      mapRef.current.setCenter({ lat: near.lat, lng: near.lng });
+      if (near.zoom && Number.isFinite(near.zoom)) {
+        mapRef.current.setZoom(near.zoom);
+      }
+    } else if (userLocation) {
+      mapRef.current.setCenter(userLocation);
+      mapRef.current.setZoom(14);
+    }
+  }, [mapReady, sort, near, userLocation, mapRef]);
+
+  // ---- Harita idle → viewport & near kaydet ----
+  const handleMapIdle = useCallback(() => {
+    if (sort !== "near") return;
+    if (!mapRef.current || typeof window === "undefined") return;
+    const g = mapRef.current.getBounds();
+    if (!g) return;
+    const ne = g.getNorthEast();
+    const sw = g.getSouthWest();
+    const bounds = {
+      n: ne.lat(),
+      s: sw.lat(),
+      e: ne.lng(),
+      w: sw.lng(),
+    };
+    nearViewportRef.current = bounds;
+
+    const center = mapRef.current.getCenter();
+    const zoom = mapRef.current.getZoom();
+    if (center) {
+      const lat = center.lat();
+      const lng = center.lng();
+      setNear({
+        lat,
+        lng,
+        zoom: zoom || 13,
+      });
+    }
+
+    // Yaklaşık radius (km) → sadece meta için
+    try {
+      const latMid = (bounds.n + bounds.s) / 2;
+      const lngMid = (bounds.e + bounds.w) / 2;
+      const dx = Math.abs(bounds.n - bounds.s);
+      const dy = Math.abs(bounds.e - bounds.w);
+      const approx = Math.sqrt(dx * dx + dy * dy) * 111;
+      const r = approx / 2;
+      if (Number.isFinite(r) && r > 0) {
+        setRadius(r);
+      }
+    } catch {
+      // no-op
+    }
+  }, [sort, mapRef]);
+
+  useEffect(() => {
+    if (!mapReady || sort !== "near" || !mapRef.current) return;
+    const listener = mapRef.current.addListener("idle", handleMapIdle);
+    return () => {
+      if (listener && typeof listener.remove === "function") {
+        listener.remove();
+      }
+    };
+  }, [mapReady, sort, handleMapIdle, mapRef]);
+
+  // ---- Yakınımda: viewport değiştikçe (debounce 300ms) rota çek ----
+  useEffect(() => {
+    if (sort !== "near") return;
+    const bounds = nearViewportRef.current;
+    if (!bounds) return;
+
+    if (nearDebounceRef.current) {
+      clearTimeout(nearDebounceRef.current);
+    }
+
+    nearDebounceRef.current = setTimeout(() => {
+      let cancelled = false;
+      setLoading(true);
+      setInitialized(true);
+
+      (async () => {
+        try {
+          const { routes } = await fetchViewportRoutes({
+            bounds,
+            limit: NEAR_LIMIT,
+            userLocation:
+              userLocation ||
+              (near &&
+              typeof near.lat === "number" &&
+              typeof near.lng === "number"
+                ? { lat: near.lat, lng: near.lng }
+                : null),
+            filters: {
+              city: filters.city,
+              cc: filters.country,
+              minDur: filters.dur ? filters.dur[0] : 0,
+              maxDur: filters.dur ? filters.dur[1] : 0,
+              sort: "distance",
+            },
+            sort: "distance",
+            audience: audience === "following" ? "following" : "all",
+            followingUids: audience === "following" ? followingUids : undefined,
+          });
+
+          if (cancelled) return;
+
+          let list = (routes || []).map((r) => ({
+            ...r,
+            ratingAvg: getRatingAvg(r),
+          }));
+
+          // Etiket filtresi
+          if (filters.tags && filters.tags.length) {
+            const wanted = filters.tags.map((t) =>
+              String(t).toLowerCase()
+            );
+            list = list.filter((r) => {
+              const rTags = (Array.isArray(r.tags) ? r.tags : []).map((t) =>
+                String(t).toLowerCase()
+              );
+              return wanted.every((tag) => rTags.includes(tag));
+            });
+          }
+
+          // Mesafe filtresi (km)
+          if (filters.dist && (filters.dist[0] > 0 || filters.dist[1] > 0)) {
+            const [minKm, maxKm] = filters.dist;
+            list = list.filter((r) => {
+              if (typeof r.distanceKm !== "number") return true;
+              if (minKm && r.distanceKm < minKm) return false;
+              if (maxKm && r.distanceKm > maxKm) return false;
+              return true;
+            });
+          }
+
+          // Yakınımda sıralama: distance → ratingAvg → createdAt desc
+          list.sort((a, b) => {
+            const da =
+              typeof a.distanceKm === "number"
+                ? a.distanceKm
+                : Number.POSITIVE_INFINITY;
+            const db =
+              typeof b.distanceKm === "number"
+                ? b.distanceKm
+                : Number.POSITIVE_INFINITY;
+            if (da !== db) return da - db;
+            const ra = getRatingAvg(a);
+            const rb = getRatingAvg(b);
+            if (rb !== ra) return rb - ra;
+            return getCreatedAtSec(b) - getCreatedAtSec(a);
+          });
+
+          setItems(list);
+          setCursor(null);
+          setIsEnd(true);
+          setVisibleCount(
+            list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0
+          );
+        } catch {
+          if (cancelled) return;
+          setItems([]);
+          setCursor(null);
+          setIsEnd(true);
+          setVisibleCount(0);
+        } finally {
+          if (cancelled) return;
+          setLoading(false);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, 300);
+
+    return () => {
+      if (nearDebounceRef.current) {
+        clearTimeout(nearDebounceRef.current);
+        nearDebounceRef.current = null;
+      }
+    };
+  }, [sort, audience, followingUids, filters, userLocation, near]);
+
+  // ---- Yakınımda: marker + cluster ----
+  useEffect(() => {
+    if (sort !== "near") {
+      // Yakınımda modundan çıkınca haritayı temizle
+      if (clusterRef.current) {
+        clusterRef.current.clearMarkers();
+        clusterRef.current = null;
+      }
+      if (markersRef.current.length) {
+        markersRef.current.forEach((m) => m.setMap(null));
+        markersRef.current = [];
+      }
+      return;
+    }
+
+    if (!mapReady || !mapRef.current || typeof window === "undefined") return;
+
+    if (clusterRef.current) {
+      clusterRef.current.clearMarkers();
+      clusterRef.current = null;
+    }
+    if (markersRef.current.length) {
+      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current = [];
+    }
+
+    const gmaps = window.google.maps;
+    const markers = [];
+
+    items.forEach((r) => {
+      const c = r?.routeGeo?.center;
+      if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lng)) return;
+      const marker = new gmaps.Marker({
+        position: { lat: c.lat, lng: c.lng },
+        map: mapRef.current,
+      });
+      marker.addListener("click", () => openRoute(r.id));
+      markers.push(marker);
+    });
+
+    markersRef.current = markers;
+
+    if (markers.length) {
+      clusterRef.current = new MarkerClusterer({
+        map: mapRef.current,
+        markers,
+      });
+    }
+
+    return () => {
+      if (clusterRef.current) {
+        clusterRef.current.clearMarkers();
+        clusterRef.current = null;
+      }
+      if (markersRef.current.length) {
+        markersRef.current.forEach((m) => m.setMap(null));
+        markersRef.current = [];
+      }
+    };
+  }, [items, sort, mapReady, mapRef, openRoute]);
+
+  // ---- Yakınımda dışı (En yeni / En çok oy / En yüksek puan) → sayfalı sorgu ----
+  const loadFirstNonNear = useCallback(async () => {
     setLoading(true);
-    setEnded(false);
-    setCursor(null);
-    setItems([]);
+    setInitialized(false);
 
     try {
       const { items: page, nextCursor } = await fetchPublicRoutes({
-        order,
-        city: city?.trim() || undefined,
-        countryCode: countryCode?.trim() || undefined,
-        limit: 20,
-        cursor: null,
-        signal: ac.signal,
+        order: mapSortToOrder(sort),
+        limit: PAGE_SIZE,
+        city: filters.city || "",
+        countryCode: filters.country || "",
       });
-      setItems(page || []);
+
+      let list = (page || []).map((r) => ({
+        ...r,
+        ratingAvg: getRatingAvg(r),
+      }));
+
+      if (audience === "following") {
+        if (followingUids.length) {
+          const followSet = new Set(
+            followingUids.map((id) => String(id))
+          );
+          list = list.filter((r) => {
+            const owner =
+              r.ownerId ||
+              r.userId ||
+              r.uid ||
+              r.ownerUID ||
+              r.ownerUid ||
+              r.userUID;
+            if (!owner) return false;
+            return followSet.has(String(owner));
+          });
+        } else {
+          list = [];
+        }
+      }
+
+      setItems(list);
       setCursor(nextCursor || null);
-      setEnded(!nextCursor || (page || []).length === 0);
+      setIsEnd(!nextCursor || !list.length);
+      setVisibleCount(list.length ? Math.min(list.length, PAGE_SIZE) : 0);
       setInitialized(true);
     } catch {
-      // hata halinde boş göster
       setItems([]);
       setCursor(null);
-      setEnded(true);
+      setIsEnd(true);
+      setVisibleCount(0);
       setInitialized(true);
     } finally {
-      if (inflightRef.current === ac) inflightRef.current = null;
       setLoading(false);
     }
-  }, [order, city, countryCode]);
+  }, [sort, filters.city, filters.country, audience, followingUids]);
 
-  // Devamını çek
-  const loadMore = useCallback(async () => {
-    if (loading || ended || !cursor) return;
+  const loadMoreNonNear = useCallback(async () => {
+    if (sort === "near") return;
+    if (loading || isEnd || !cursor) return;
 
-    // önceki isteği iptal etme; ardışık yükleme
     setLoading(true);
     try {
       const { items: page, nextCursor } = await fetchPublicRoutes({
-        order,
-        city: city?.trim() || undefined,
-        countryCode: countryCode?.trim() || undefined,
-        limit: 20,
+        order: mapSortToOrder(sort),
+        limit: PAGE_SIZE,
+        city: filters.city || "",
+        countryCode: filters.country || "",
         cursor,
       });
-      setItems((prev) => prev.concat(page || []));
+
+      let list = (page || []).map((r) => ({
+        ...r,
+        ratingAvg: getRatingAvg(r),
+      }));
+
+      if (audience === "following") {
+        if (followingUids.length) {
+          const followSet = new Set(
+            followingUids.map((id) => String(id))
+          );
+          list = list.filter((r) => {
+            const owner =
+              r.ownerId ||
+              r.userId ||
+              r.uid ||
+              r.ownerUID ||
+              r.ownerUid ||
+              r.userUID;
+            if (!owner) return false;
+            return followSet.has(String(owner));
+          });
+        } else {
+          list = [];
+        }
+      }
+
+      setItems((prev) => prev.concat(list));
       setCursor(nextCursor || null);
-      setEnded(!nextCursor || (page || []).length === 0);
+      setIsEnd(!nextCursor || !list.length);
     } catch {
-      // sayfa yüklenemediyse akışı bozma
+      setIsEnd(true);
     } finally {
       setLoading(false);
     }
-  }, [order, city, countryCode, cursor, loading, ended]);
+  }, [
+    sort,
+    filters.city,
+    filters.country,
+    audience,
+    followingUids,
+    loading,
+    isEnd,
+    cursor,
+  ]);
 
-  // İlk yükleme + filtre değişimi
+  // sort veya audience değişince non-near akışını resetle
   useEffect(() => {
-    loadFirst();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order, city, countryCode]);
+    if (sort === "near") return;
 
-  // Sonsuz kaydırma
+    setItems([]);
+    setCursor(null);
+    setIsEnd(false);
+    setVisibleCount(0);
+
+    loadFirstNonNear();
+  }, [sort, audience, filters.city, filters.country, followingUids, loadFirstNonNear]);
+
+  // ---- Sonsuz kaydırma (her modda) ----
   useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
+    const node = sentinelRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) loadMore();
-      },
-      { rootMargin: "800px 0px 1200px 0px", threshold: 0.01 }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [loadMore]);
+        const entry = entries[0];
+        if (!entry || !entry.isIntersecting) return;
 
-  // Filtre barı callback
-  const handleFilters = useCallback(({ order, city, countryCode }) => {
-    if (order) setOrder(order);
-    setCity(city || "");
-    setCountryCode(countryCode || "");
+        setVisibleCount((prev) => {
+          const next = Math.min(items.length, prev + PAGE_SIZE);
+          if (next > prev) {
+            return next;
+          }
+          if (sort !== "near") {
+            // Gösterilecek kalmadıysa ve non-near moddaysak yeni sayfa çek
+            loadMoreNonNear();
+          }
+          return prev;
+        });
+      },
+      {
+        rootMargin: "800px 0px 800px 0px",
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [items.length, sort, loadMoreNonNear]);
+
+  // ---- FilterSheet apply ----
+  const handleFilterApply = useCallback((payload) => {
+    setFilters({
+      tags: Array.isArray(payload.tags) ? payload.tags : [],
+      city: payload.city || "",
+      country: payload.country || "",
+      dist: payload.dist || [0, 50],
+      dur: payload.dur || [0, 300],
+    });
   }, []);
 
-  const wrap = {
-    maxWidth: 720,
-    margin: "0 auto",
-    padding: "8px 10px 80px",
-  };
-  const grid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, 1fr)",
-    gap: 10,
-  };
-  const card = {
-    border: "1px solid #eee",
-    borderRadius: 12,
-    overflow: "hidden",
-    background: "#fff",
-    cursor: "pointer",
-  };
-  const thumb = {
-    width: "100%",
-    aspectRatio: "16/9",
-    objectFit: "cover",
-    background: "#f3f4f6",
-    display: "block",
-  };
+  // ---- Chip helpers ----
+  const chipCls = (active) =>
+    "chip" + (active ? " chip--active" : "");
+  const chipStyle = (active) => ({
+    minHeight: 40,
+    padding: "0 12px",
+    borderRadius: 999,
+    border: active ? "1px solid #111" : "1px solid #ddd",
+    background: active ? "#111" : "#fff",
+    color: active ? "#fff" : "#222",
+    fontSize: 13,
+    fontWeight: active ? 700 : 500,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  });
+
+  // ---- Aktif filtre chipleri ----
+  const hasActiveFilters =
+    !!filters.city ||
+    !!filters.country ||
+    (filters.tags && filters.tags.length > 0);
+
+  const visibleItems =
+    visibleCount > 0 ? items.slice(0, visibleCount) : items;
+  const groups = makeGroups(visibleItems, group);
+  const totalCount = items.length;
+
+  const showNearbyPrompt =
+    sort === "near" &&
+    !near &&
+    locationStatus === "denied" &&
+    !userLocation;
 
   return (
-    <div style={wrap}>
-      <h2 style={{ fontSize: 18, fontWeight: 800, margin: "4px 2px 8px" }}>
-        Keşfet — Rotalar
-      </h2>
-
-      <ExploreFilters
-        value={{ order, city, countryCode }}
-        onChange={handleFilters}
-      />
-
-      {/* Liste */}
-      {!initialized && (
-        <div style={{ padding: "20px 8px" }}>Yükleniyor…</div>
-      )}
-
-      {initialized && items.length === 0 && !loading && (
-        <div style={{ padding: "16px 8px", opacity: 0.7 }}>
-          Hiç rota bulunamadı.
-        </div>
-      )}
-
-      <div style={grid}>
-        {items.map((r) => (
-          <div
-            key={r.id}
-            style={card}
-            onClick={() => openRoute(r.id)}
-            title={r.title || "Rota"}
-            role="button"
+    <div
+      className="RoutesExploreMobile"
+      style={{
+        padding: "8px 10px 80px",
+        maxWidth: 720,
+        margin: "0 auto",
+      }}
+    >
+      {/* Üst chip bar */}
+      <div
+        className="chipbar"
+        aria-label="Rota filtreleri"
+        style={{ marginBottom: 8 }}
+      >
+        <div
+          className="chipbar-row"
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 6,
+          }}
+          aria-label="Kapsam"
+        >
+          <button
+            type="button"
+            className={chipCls(audience === "all")}
+            style={chipStyle(audience === "all")}
+            onClick={() => setAudience("all")}
+            aria-pressed={audience === "all"}
           >
-            {/* Kapak */}
-            {r.coverUrl ? (
-              <img src={r.coverUrl} alt={r.title || "rota"} style={thumb} />
-            ) : (
-              <div style={thumb} />
-            )}
+            Hepsi
+          </button>
+          <button
+            type="button"
+            className={chipCls(audience === "following")}
+            style={chipStyle(audience === "following")}
+            onClick={() => setAudience("following")}
+            aria-pressed={audience === "following"}
+          >
+            Takip
+          </button>
+        </div>
 
-            {/* Bilgi */}
-            <div style={{ padding: "8px 10px" }}>
-              <div
-                style={{
-                  fontWeight: 800,
-                  fontSize: 14,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {r.title || "Rota"}
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                {typeof r.ratingAvg === "number"
-                  ? `${r.ratingAvg.toFixed(1)} ★`
-                  : "— ★"}
-                {" · "}
-                {Number(r.ratingCount || 0)} oy
-              </div>
-              {r.areas?.city || r.areas?.countryCode ? (
-                <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
-                  {r.areas?.city ? r.areas.city : ""}{" "}
-                  {r.areas?.countryCode ? `(${r.areas.countryCode})` : ""}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ))}
+        <div
+          className="chipbar-row"
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 6,
+            overflowX: "auto",
+          }}
+          aria-label="Sıralama"
+        >
+          <button
+            type="button"
+            className={chipCls(sort === "near")}
+            style={chipStyle(sort === "near")}
+            onClick={() => setSort("near")}
+            aria-pressed={sort === "near"}
+          >
+            Yakınımda
+          </button>
+          <button
+            type="button"
+            className={chipCls(sort === "new")}
+            style={chipStyle(sort === "new")}
+            onClick={() => setSort("new")}
+            aria-pressed={sort === "new"}
+          >
+            En yeni
+          </button>
+          <button
+            type="button"
+            className={chipCls(sort === "likes")}
+            style={chipStyle(sort === "likes")}
+            onClick={() => setSort("likes")}
+            aria-pressed={sort === "likes"}
+          >
+            En çok oy
+          </button>
+          <button
+            type="button"
+            className={chipCls(sort === "rating")}
+            style={chipStyle(sort === "rating")}
+            onClick={() => setSort("rating")}
+            aria-pressed={sort === "rating"}
+          >
+            En yüksek puan
+          </button>
+        </div>
+
+        <div
+          className="chipbar-row"
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 4,
+          }}
+          aria-label="Gruplama"
+        >
+          <button
+            type="button"
+            className={chipCls(group === "none")}
+            style={chipStyle(group === "none")}
+            onClick={() => setGroup("none")}
+            aria-pressed={group === "none"}
+          >
+            Grupla: Yok
+          </button>
+          <button
+            type="button"
+            className={chipCls(group === "city")}
+            style={chipStyle(group === "city")}
+            onClick={() => setGroup("city")}
+            aria-pressed={group === "city"}
+          >
+            Şehir
+          </button>
+          <button
+            type="button"
+            className={chipCls(group === "country")}
+            style={chipStyle(group === "country")}
+            onClick={() => setGroup("country")}
+            aria-pressed={group === "country"}
+          >
+            Ülke
+          </button>
+        </div>
       </div>
 
-      {/* Sonsuz kaydırma sentinel */}
-      <div ref={sentinelRef} style={{ height: 1 }} />
+      {/* Yakınımda başlık + filtre butonu */}
+      {sort === "near" && (
+        <>
+          <div
+            className="near-header"
+            style={{
+              padding: "4px 2px 6px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <div
+              className="near-header-main"
+              style={{ display: "flex", flexDirection: "column" }}
+            >
+              <div
+                style={{ display: "flex", alignItems: "center", gap: 8 }}
+              >
+                <span
+                  className="near-badge"
+                  style={{
+                    fontSize: 12,
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    background: "#111",
+                    color: "#fff",
+                    fontWeight: 700,
+                  }}
+                >
+                  Yakınımda
+                </span>
+                <span
+                  className="near-header-meta"
+                  style={{ fontSize: 12, color: "#555" }}
+                >
+                  {initialized
+                    ? `${totalCount} rota`
+                    : "Rotalar yükleniyor"}
+                  {Number.isFinite(radius) && radius > 0
+                    ? ` • yaklaşık ${radius.toFixed(1)} km`
+                    : null}
+                </span>
+              </div>
+              {gmapsStatus === "error" || gmapsStatus === "no-key" ? (
+                <span style={{ fontSize: 11, color: "#b3261e" }}>
+                  Harita yüklenemedi: {errorMsg}
+                </span>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="near-header-filterBtn"
+              style={{
+                minHeight: 36,
+                padding: "0 12px",
+                borderRadius: 999,
+                border: "1px solid #ddd",
+                background: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+              onClick={() => setFilterSheetOpen(true)}
+            >
+              Filtreler
+            </button>
+          </div>
 
-      {/* Alt yükleme durumu */}
-      {loading && items.length > 0 && (
-        <div style={{ padding: 12, textAlign: "center", opacity: 0.65 }}>
-          Yükleniyor…
+          {sort === "near" && hasActiveFilters && (
+            <div
+              className="near-filters-row"
+              style={{
+                padding: "0 2px 8px",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+              }}
+            >
+              {filters.city && (
+                <span
+                  className="chip chip--filter"
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    background: "rgba(26,115,232,.08)",
+                    border: "1px solid #dbeafe",
+                    color: "#1a73e8",
+                  }}
+                >
+                  Şehir: {filters.city}
+                </span>
+              )}
+              {filters.country && (
+                <span
+                  className="chip chip--filter"
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    background: "rgba(26,115,232,.08)",
+                    border: "1px solid #dbeafe",
+                    color: "#1a73e8",
+                  }}
+                >
+                  Ülke: {filters.country}
+                </span>
+              )}
+              {filters.tags &&
+                filters.tags.map((t) => (
+                  <span
+                    key={t}
+                    className="chip chip--filter"
+                    style={{
+                      fontSize: 11,
+                      padding: "4px 8px",
+                      borderRadius: 999,
+                      background: "rgba(26,115,232,.08)",
+                      border: "1px solid #dbeafe",
+                      color: "#1a73e8",
+                    }}
+                  >
+                    #{t}
+                  </span>
+                ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Yakınımda: konum izni reddedildiyse prompt */}
+      {showNearbyPrompt && (
+        <NearbyPromptMobile
+          onAllow={requestLocation}
+          onCancel={() => setSort("new")}
+        />
+      )}
+
+      {/* Yakınımda: harita alanı */}
+      {sort === "near" && !showNearbyPrompt && (
+        <div
+          className="near-mapWrap"
+          style={{
+            height: 260,
+            borderRadius: 12,
+            overflow: "hidden",
+            background: "#f1f3f4",
+            marginBottom: 8,
+            position: "relative",
+          }}
+        >
+          <div
+            ref={mapDivRef}
+            style={{ width: "100%", height: "100%" }}
+            aria-label="Yakındaki rotalar haritası"
+          />
+          {gmapsStatus === "loading" && (
+            <div
+              className="near-skel"
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: 0,
+                background:
+                  "linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%)",
+                animation: "near-skel-pulse 1.4s ease infinite",
+              }}
+            />
+          )}
         </div>
       )}
-      {ended && items.length > 0 && (
-        <div style={{ padding: 12, textAlign: "center", opacity: 0.5 }}>
-          Hepsi bu kadar.
-        </div>
-      )}
+
+      {/* Liste alanı */}
+      <div
+        aria-busy={loading && !initialized}
+        style={{ paddingTop: 4 }}
+      >
+        {!initialized && !loading && (
+          <div style={{ padding: "20px 4px" }}>Yükleniyor…</div>
+        )}
+
+        {initialized && !visibleItems.length && !loading && (
+          <div
+            style={{
+              padding: "14px 4px",
+              opacity: 0.75,
+              fontSize: 13,
+            }}
+          >
+            Hiç rota bulunamadı.
+          </div>
+        )}
+
+        {/* Near modunda ilk yükleme sırasında skeleton kartlar */}
+        {sort === "near" &&
+          loading &&
+          !visibleItems.length && (
+            <div style={{ padding: "8px 2px" }}>
+              <div className="near-skel" style={{ height: 80, marginBottom: 8, borderRadius: 12, background: "#f3f4f6" }} />
+              <div className="near-skel" style={{ height: 80, marginBottom: 8, borderRadius: 12, background: "#f3f4f6" }} />
+              <div className="near-skel" style={{ height: 80, marginBottom: 8, borderRadius: 12, background: "#f3f4f6" }} />
+            </div>
+          )}
+
+        {groups.map((g) => (
+          <section
+            key={g.key}
+            className="ExploreGroup"
+            style={{ marginBottom: 10 }}
+          >
+            {g.label && (
+              <header
+                className="ExploreGroupHeader"
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 5,
+                  background: "#fff",
+                  padding: "4px 2px 4px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  borderBottom: "1px solid #eee",
+                }}
+              >
+                <span
+                  className="ExploreGroupHeaderTitle"
+                  style={{ fontSize: 13, fontWeight: 700 }}
+                >
+                  {g.label}
+                </span>
+                <span
+                  className="ExploreGroupHeaderBadge"
+                  style={{
+                    minWidth: 22,
+                    padding: "2px 6px",
+                    borderRadius: 999,
+                    background: "#f3f4f6",
+                    fontSize: 11,
+                    textAlign: "center",
+                  }}
+                >
+                  {g.items.length}
+                </span>
+              </header>
+            )}
+            <div className="ExploreGroupBody" style={{ paddingTop: g.label ? 6 : 0 }}>
+              {g.items.map((r) => (
+                <div key={r.id} style={{ marginBottom: 8 }}>
+                  <RouteCardMobile
+                    route={r}
+                    onClick={() => openRoute(r.id)}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+
+        {/* Sonsuz kaydırma sentinel */}
+        <div ref={sentinelRef} style={{ height: 1 }} />
+
+        {/* Alt yükleme durumu */}
+        {loading && sort !== "near" && visibleItems.length > 0 && (
+          <div
+            style={{
+              padding: 12,
+              textAlign: "center",
+              opacity: 0.65,
+              fontSize: 13,
+            }}
+          >
+            Yükleniyor…
+          </div>
+        )}
+        {isEnd && !loading && items.length > 0 && (
+          <div
+            style={{
+              padding: 12,
+              textAlign: "center",
+              opacity: 0.6,
+              fontSize: 12,
+            }}
+          >
+            Hepsi bu kadar.
+          </div>
+        )}
+      </div>
+
+      {/* Alt çekmece filtre sheet (opsiyonel) */}
+      <RouteFilterSheet
+        open={filterSheetOpen}
+        initial={{
+          tagsText: (filters.tags || []).join(" "),
+          city: filters.city,
+          country: filters.country,
+          dist: filters.dist,
+          dur: filters.dur,
+          sort,
+        }}
+        onApply={handleFilterApply}
+        onClose={() => setFilterSheetOpen(false)}
+      />
     </div>
   );
 }
