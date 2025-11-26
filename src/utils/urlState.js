@@ -17,6 +17,23 @@ export function readParam(name, fallback = null) {
   }
 }
 
+let _pendingUrl = null;
+let _pendingMode = "replace";
+let _pushTimer = null;
+
+function applyUrlChange(targetUrl, mode) {
+  if (typeof window === "undefined") return;
+  try {
+    if (mode === "push") {
+      window.history.pushState({}, "", targetUrl);
+    } else {
+      window.history.replaceState({}, "", targetUrl);
+    }
+  } catch {
+    // no-op
+  }
+}
+
 /**
  * Verilen patch objesindeki key’leri URL query’de günceller.
  * value null/undefined/"" ise parametre silinir.
@@ -24,24 +41,66 @@ export function readParam(name, fallback = null) {
  * Örnek:
  *   pushParams({ sort: "near", group: "city" })
  *
- * history.replaceState kullanır; back stack’i şişirmez.
+ * Varsayılan olarak debounced history.replaceState kullanır;
+ * aynı query tekrar tekrar yazılmaz, back stack şişmez.
+ *
+ * options:
+ *   - mode: "replace" | "push" (varsayılan: "replace")
+ *   - debounce: boolean (varsayılan: true)
+ *   - delay: debounce süresi (ms, min 300)
  */
-export function pushParams(patch) {
+export function pushParams(patch, options = {}) {
   if (typeof window === "undefined") return;
   try {
     const url = new URL(window.location.href);
-    const sp = url.searchParams;
+    const currentSearch = url.searchParams.toString();
 
+    const nextSearchParams = new URLSearchParams(currentSearch);
     Object.entries(patch || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === "") {
-        sp.delete(key);
+        nextSearchParams.delete(key);
       } else {
-        sp.set(key, String(value));
+        nextSearchParams.set(key, String(value));
       }
     });
 
-    url.search = sp.toString();
-    window.history.replaceState({}, "", url.toString());
+    const nextSearch = nextSearchParams.toString();
+
+    // Query değişmiyorsa history API çağrısı yapma
+    if (nextSearch === currentSearch) {
+      return;
+    }
+
+    url.search = nextSearch;
+    const targetUrl = url.toString();
+
+    const mode = options.mode === "push" ? "push" : "replace";
+    const shouldDebounce =
+      options.debounce === undefined ? true : !!options.debounce;
+    const delayRaw =
+      typeof options.delay === "number" ? options.delay : 300;
+    const delay = Math.max(300, delayRaw);
+
+    if (!shouldDebounce) {
+      _pendingUrl = targetUrl;
+      _pendingMode = mode;
+      applyUrlChange(targetUrl, mode);
+      return;
+    }
+
+    _pendingUrl = targetUrl;
+    _pendingMode = mode;
+
+    if (_pushTimer) {
+      clearTimeout(_pushTimer);
+      _pushTimer = null;
+    }
+
+    _pushTimer = window.setTimeout(() => {
+      if (!_pendingUrl) return;
+      applyUrlChange(_pendingUrl, _pendingMode);
+      _pushTimer = null;
+    }, delay);
   } catch {
     // no-op
   }

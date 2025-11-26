@@ -52,7 +52,7 @@ function normalizeSort(raw) {
   const v = String(raw || "").toLowerCase();
   if (v === "near" || v === "yakın" || v === "nearby") return "near";
   if (v === "likes" || v === "most_rated" || v === "popular") return "likes";
-  if (v === "rating" || v === "top_rated" || v === "top") return "rating";
+  if (v === "rating" || v === "top" || v === "top_rated") return "rating";
   if (v === "new" || v === "en_yeni") return "new";
   return DEFAULT_SORT;
 }
@@ -92,6 +92,37 @@ function getRouteCountryLabel(route) {
   )
     .toString()
     .trim();
+}
+
+// Küçük merkez farklarını ölçmek için basit Haversine (m cinsinden)
+function distanceMeters(a, b) {
+  const lat1 = Number(a?.lat);
+  const lng1 = Number(a?.lng);
+  const lat2 = Number(b?.lat);
+  const lng2 = Number(b?.lng);
+  if (
+    !Number.isFinite(lat1) ||
+    !Number.isFinite(lng1) ||
+    !Number.isFinite(lat2) ||
+    !Number.isFinite(lng2)
+  ) {
+    return Infinity;
+  }
+  const R = 6371000; // m
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const r1 = (lat1 * Math.PI) / 180;
+  const r2 = (lat2 * Math.PI) / 180;
+
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLng = Math.sin(dLng / 2);
+
+  const h =
+    sinDLat * sinDLat +
+    Math.cos(r1) * Math.cos(r2) * sinDLng * sinDLng;
+
+  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  return R * c;
 }
 
 function makeGroups(items, group) {
@@ -164,7 +195,9 @@ function getInitialRouteUiState() {
 
   let audience = normalizeAudience(readParam("aud", null));
   let sort = normalizeSort(readParam("sort", null));
-  let group = normalizeGroup(readParam("group", null));
+  const urlGroupRaw =
+    readParam("groupBy", null) ?? readParam("group", null);
+  let group = normalizeGroup(urlGroupRaw);
 
   const lsAud = readJSON(LS_AUDIENCE, null);
   const lsSort = readJSON(LS_SORT, null);
@@ -200,25 +233,55 @@ function getInitialRouteUiState() {
   return { audience, sort, group, near, radius };
 }
 
+function getInitialRouteFilters() {
+  if (typeof window === "undefined") {
+    return {
+      tags: [],
+      city: "",
+      country: "",
+      dist: [0, 50], // km
+      dur: [0, 300], // dk
+    };
+  }
+
+  const city = (readParam("city", "") || "").toString();
+  const country = (readParam("country", "") || "").toString();
+  const tagsRaw = readParam("tags", null);
+  let tags = [];
+
+  if (typeof tagsRaw === "string" && tagsRaw.trim()) {
+    tags = tagsRaw
+      .split(/[,\s]+/g)
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 10);
+  }
+
+  return {
+    tags,
+    city,
+    country,
+    dist: [0, 50],
+    dur: [0, 300],
+  };
+}
+
 function RoutesExploreMobile() {
   const initialRef = useRef(null);
   if (!initialRef.current) {
-    initialRef.current = getInitialRouteUiState();
+    initialRef.current = {
+      ui: getInitialRouteUiState(),
+      filters: getInitialRouteFilters(),
+    };
   }
 
-  const [audience, setAudience] = useState(initialRef.current.audience);
-  const [sort, setSort] = useState(initialRef.current.sort);
-  const [group, setGroup] = useState(initialRef.current.group);
-  const [near, setNear] = useState(initialRef.current.near);
-  const [radius, setRadius] = useState(initialRef.current.radius);
+  const [audience, setAudience] = useState(initialRef.current.ui.audience);
+  const [sort, setSort] = useState(initialRef.current.ui.sort);
+  const [group, setGroup] = useState(initialRef.current.ui.group);
+  const [near, setNear] = useState(initialRef.current.ui.near);
+  const [radius, setRadius] = useState(initialRef.current.ui.radius);
 
-  const [filters, setFilters] = useState({
-    tags: [],
-    city: "",
-    country: "",
-    dist: [0, 50], // km
-    dur: [0, 300], // dk
-  });
+  const [filters, setFilters] = useState(initialRef.current.filters);
 
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
@@ -238,8 +301,13 @@ function RoutesExploreMobile() {
   const nearViewportRef = useRef(null);
   const nearDebounceRef = useRef(null);
 
-  const markersRef = useRef([]);
+  const markersRef = useRef({});
   const clusterRef = useRef(null);
+  const nearPersistRef = useRef({
+    lastCenter: null,
+    lastZoom: null,
+    timeoutId: null,
+  });
 
   const {
     gmapsStatus,
@@ -271,6 +339,24 @@ function RoutesExploreMobile() {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      // Yakınımda marker/cluster temizliği (unmount)
+      const existingMarkers = markersRef.current;
+      if (existingMarkers && Object.keys(existingMarkers).length) {
+        Object.values(existingMarkers).forEach((m) => {
+          if (m && typeof m.setMap === "function") {
+            m.setMap(null);
+          }
+        });
+        markersRef.current = {};
+      }
+      if (clusterRef.current) {
+        clusterRef.current.clearMarkers();
+        clusterRef.current = null;
+      }
+      if (nearPersistRef.current.timeoutId) {
+        clearTimeout(nearPersistRef.current.timeoutId);
+        nearPersistRef.current.timeoutId = null;
+      }
     };
   }, []);
 
@@ -302,13 +388,12 @@ function RoutesExploreMobile() {
     };
   }, [audience]);
 
-  // ---- URL & localStorage senkronu ----
+  // ---- URL & localStorage senkronu (audience/sort/group + filtreler) ----
   useEffect(() => {
     writeJSON(LS_AUDIENCE, audience);
     writeJSON(LS_SORT, sort);
     writeJSON(LS_GROUP, group);
-    writeJSON(LS_NEAR, near);
-    writeJSON(LS_RADIUS, radius);
+    // Yakınımda near/radius kayıtları ayrı bir throttled effect’te ele alınıyor.
 
     const audParam =
       audience === DEFAULT_AUDIENCE
@@ -319,12 +404,74 @@ function RoutesExploreMobile() {
     const sortParam = sort === DEFAULT_SORT ? null : sort;
     const groupParam = group === DEFAULT_GROUP ? null : group;
 
+    const cityParam = filters.city ? filters.city : null;
+    const countryParam = filters.country ? filters.country : null;
+    const tagsParam =
+      filters.tags && filters.tags.length
+        ? filters.tags.join(",")
+        : null;
+
+    // urlState: debounced replaceState (gereksiz history spam’ini engeller)
     pushParams({
       aud: audParam,
       sort: sortParam,
-      group: groupParam,
+      groupBy: groupParam,
+      city: cityParam,
+      country: countryParam,
+      tags: tagsParam,
     });
-  }, [audience, sort, group, near, radius]);
+  }, [audience, sort, group, filters]);
+
+  // ---- Yakınımda: near/radius localStorage kaydı (throttle + eşik) ----
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (sort !== "near") return;
+    if (!near || typeof near.lat !== "number" || typeof near.lng !== "number") {
+      return;
+    }
+
+    const center = { lat: near.lat, lng: near.lng };
+    const zoom = Number(near.zoom || 13);
+    const lastCenter = nearPersistRef.current.lastCenter;
+    const lastZoom = nearPersistRef.current.lastZoom;
+
+    let shouldSchedule = false;
+
+    if (!lastCenter || !Number.isFinite(lastZoom)) {
+      shouldSchedule = true;
+    } else {
+      const dist = distanceMeters(lastCenter, center);
+      const zoomDiff = Math.abs(zoom - lastZoom);
+      if (dist > 30 || zoomDiff >= 1) {
+        shouldSchedule = true;
+      }
+    }
+
+    if (!shouldSchedule) return;
+
+    if (nearPersistRef.current.timeoutId) {
+      clearTimeout(nearPersistRef.current.timeoutId);
+      nearPersistRef.current.timeoutId = null;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      writeJSON(LS_NEAR, {
+        lat: center.lat,
+        lng: center.lng,
+        zoom,
+      });
+      if (Number.isFinite(radius) && radius > 0) {
+        writeJSON(LS_RADIUS, radius);
+      } else {
+        writeJSON(LS_RADIUS, null);
+      }
+      nearPersistRef.current.lastCenter = center;
+      nearPersistRef.current.lastZoom = zoom;
+      nearPersistRef.current.timeoutId = null;
+    }, 1200); // ~1–1.5 sn throttle
+
+    nearPersistRef.current.timeoutId = timeoutId;
+  }, [sort, near, radius]);
 
   // ---- popstate → URL'den geri yükle ----
   useEffect(() => {
@@ -332,10 +479,31 @@ function RoutesExploreMobile() {
     const handler = () => {
       const aud = normalizeAudience(readParam("aud", null));
       const srt = normalizeSort(readParam("sort", null));
-      const grp = normalizeGroup(readParam("group", null));
+      const grp = normalizeGroup(
+        readParam("groupBy", null) ?? readParam("group", null)
+      );
+
+      const city = (readParam("city", "") || "").toString();
+      const country = (readParam("country", "") || "").toString();
+      const tagsRaw = readParam("tags", null);
+      let tags = [];
+      if (typeof tagsRaw === "string" && tagsRaw.trim()) {
+        tags = tagsRaw
+          .split(/[,\s]+/g)
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean)
+          .slice(0, 10);
+      }
+
       setAudience(aud);
       setSort(srt);
       setGroup(grp);
+      setFilters((prev) => ({
+        ...prev,
+        city,
+        country,
+        tags,
+      }));
     };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
@@ -439,8 +607,6 @@ function RoutesExploreMobile() {
 
     // Yaklaşık radius (km) → sadece meta için
     try {
-      const latMid = (bounds.n + bounds.s) / 2;
-      const lngMid = (bounds.e + bounds.w) / 2;
       const dx = Math.abs(bounds.n - bounds.s);
       const dy = Math.abs(bounds.e - bounds.w);
       const approx = Math.sqrt(dx * dx + dy * dy) * 111;
@@ -471,10 +637,12 @@ function RoutesExploreMobile() {
 
     if (nearDebounceRef.current) {
       clearTimeout(nearDebounceRef.current);
+      nearDebounceRef.current = null;
     }
 
+    let cancelled = false;
+
     nearDebounceRef.current = setTimeout(() => {
-      let cancelled = false;
       setLoading(true);
       setInitialized(true);
 
@@ -567,13 +735,10 @@ function RoutesExploreMobile() {
           setLoading(false);
         }
       })();
-
-      return () => {
-        cancelled = true;
-      };
     }, 300);
 
     return () => {
+      cancelled = true;
       if (nearDebounceRef.current) {
         clearTimeout(nearDebounceRef.current);
         nearDebounceRef.current = null;
@@ -581,66 +746,86 @@ function RoutesExploreMobile() {
     };
   }, [sort, audience, followingUids, filters, userLocation, near]);
 
-  // ---- Yakınımda: marker + cluster ----
+  // ---- Yakınımda: marker + cluster (diff tabanlı) ----
   useEffect(() => {
-    if (sort !== "near") {
-      // Yakınımda modundan çıkınca haritayı temizle
-      if (clusterRef.current) {
-        clusterRef.current.clearMarkers();
-        clusterRef.current = null;
-      }
-      if (markersRef.current.length) {
-        markersRef.current.forEach((m) => m.setMap(null));
-        markersRef.current = [];
-      }
-      return;
-    }
-
+    if (sort !== "near") return;
     if (!mapReady || !mapRef.current || typeof window === "undefined") return;
 
-    if (clusterRef.current) {
-      clusterRef.current.clearMarkers();
-      clusterRef.current = null;
-    }
-    if (markersRef.current.length) {
-      markersRef.current.forEach((m) => m.setMap(null));
-      markersRef.current = [];
+    const gmaps = window.google.maps;
+    if (!gmaps?.Marker) return;
+
+    if (!clusterRef.current) {
+      clusterRef.current = new MarkerClusterer({
+        map: mapRef.current,
+        markers: [],
+      });
     }
 
-    const gmaps = window.google.maps;
-    const markers = [];
+    const currentMarkers = markersRef.current || {};
+    const nextMarkers = { ...currentMarkers };
+    const nextIds = new Set();
 
     items.forEach((r) => {
       const c = r?.routeGeo?.center;
       if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lng)) return;
+      const id = r.id;
+      if (!id) return;
+
+      nextIds.add(id);
+
+      if (currentMarkers[id]) {
+        // Mevcut marker’ı yeniden kullan
+        return;
+      }
+
       const marker = new gmaps.Marker({
         position: { lat: c.lat, lng: c.lng },
         map: mapRef.current,
       });
       marker.addListener("click", () => openRoute(r.id));
-      markers.push(marker);
+      nextMarkers[id] = marker;
+      if (clusterRef.current) {
+        clusterRef.current.addMarker(marker);
+      }
     });
 
-    markersRef.current = markers;
-
-    if (markers.length) {
-      clusterRef.current = new MarkerClusterer({
-        map: mapRef.current,
-        markers,
-      });
-    }
-
-    return () => {
-      if (clusterRef.current) {
-        clusterRef.current.clearMarkers();
-        clusterRef.current = null;
+    // Artık listede olmayan marker’ları kaldır
+    Object.keys(currentMarkers).forEach((id) => {
+      if (!nextIds.has(id)) {
+        const marker = currentMarkers[id];
+        if (marker) {
+          if (clusterRef.current) {
+            clusterRef.current.removeMarker(marker);
+          }
+          if (typeof marker.setMap === "function") {
+            marker.setMap(null);
+          }
+        }
+        delete nextMarkers[id];
       }
-      if (markersRef.current.length) {
-        markersRef.current.forEach((m) => m.setMap(null));
-        markersRef.current = [];
-      }
-    };
+    });
+
+    markersRef.current = nextMarkers;
   }, [items, sort, mapReady, mapRef, openRoute]);
+
+  // Yakınımda modundan çıkarken marker/cluster temizliği
+  useEffect(() => {
+    if (sort === "near") return;
+
+    const existingMarkers = markersRef.current;
+    if (existingMarkers && Object.keys(existingMarkers).length) {
+      Object.values(existingMarkers).forEach((m) => {
+        if (m && typeof m.setMap === "function") {
+          m.setMap(null);
+        }
+      });
+      markersRef.current = {};
+    }
+    if (clusterRef.current) {
+      clusterRef.current.clearMarkers();
+      clusterRef.current = null;
+    }
+  }, [sort]);
 
   // ---- Yakınımda dışı (En yeni / En çok oy / En yüksek puan) → sayfalı sorgu ----
   const loadFirstNonNear = useCallback(async () => {
@@ -809,24 +994,32 @@ function RoutesExploreMobile() {
       dist: payload.dist || [0, 50],
       dur: payload.dur || [0, 300],
     });
+
+    if (payload.groupBy) {
+      setGroup(normalizeGroup(payload.groupBy));
+    }
+
+    if (payload.sort) {
+      const nextSort = normalizeSort(payload.sort);
+      setSort(nextSort);
+    }
   }, []);
 
-  // ---- Chip helpers ----
-  const chipCls = (active) =>
-    "chip" + (active ? " chip--active" : "");
-  const chipStyle = (active) => ({
-    minHeight: 40,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: active ? "1px solid #111" : "1px solid #ddd",
-    background: active ? "#111" : "#fff",
-    color: active ? "#fff" : "#222",
-    fontSize: 13,
-    fontWeight: active ? 700 : 500,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  });
+  // ---- Filtreleri temizle ----
+  const handleResetAll = useCallback(() => {
+    setFilters({
+      tags: [],
+      city: "",
+      country: "",
+      dist: [0, 50],
+      dur: [0, 300],
+    });
+    setGroup(DEFAULT_GROUP);
+    setAudience(DEFAULT_AUDIENCE);
+    setSort(DEFAULT_SORT);
+    setNear(null);
+    setRadius(5);
+  }, []);
 
   // ---- Aktif filtre chipleri ----
   const hasActiveFilters =
@@ -845,260 +1038,257 @@ function RoutesExploreMobile() {
     locationStatus === "denied" &&
     !userLocation;
 
+  const groupLabel =
+    group === "city" ? "Şehir" : group === "country" ? "Ülke" : "";
+
+  const nearMetaText =
+    sort === "near" && initialized
+      ? `${totalCount} rota${
+          Number.isFinite(radius) && radius > 0
+            ? ` • yaklaşık ${radius.toFixed(1)} km`
+            : ""
+        }`
+      : "";
+
+  const showFollowingNearEmptyBadge =
+    sort === "near" &&
+    audience === "following" &&
+    initialized &&
+    !loading &&
+    totalCount === 0 &&
+    !showNearbyPrompt;
+
   return (
     <div
       className="RoutesExploreMobile"
       style={{
-        padding: "8px 10px 80px",
+        padding: "0 0 80px",
         maxWidth: 720,
         margin: "0 auto",
       }}
     >
-      {/* Üst chip bar */}
-      <div
-        className="chipbar"
-        aria-label="Rota filtreleri"
-        style={{ marginBottom: 8 }}
+      {/* Katman 1 — Sticky toolbar */}
+      <header
+        className="routes-toolbar"
+        role="region"
+        aria-label="Rotalar araç çubuğu"
       >
-        <div
-          className="chipbar-row"
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 6,
-          }}
-          aria-label="Kapsam"
-        >
-          <button
-            type="button"
-            className={chipCls(audience === "all")}
-            style={chipStyle(audience === "all")}
-            onClick={() => setAudience("all")}
-            aria-pressed={audience === "all"}
-          >
-            Hepsi
-          </button>
-          <button
-            type="button"
-            className={chipCls(audience === "following")}
-            style={chipStyle(audience === "following")}
-            onClick={() => setAudience("following")}
-            aria-pressed={audience === "following"}
-          >
-            Takip
-          </button>
+        <div className="routes-toolbar-title">Rotalar</div>
+        <div className="routes-toolbar-segment">
+          <div className="routes-segment" aria-label="Kapsam">
+            <button
+              type="button"
+              className={
+                "routes-segment-btn" +
+                (audience === "all" ? " routes-segment-btn--active" : "")
+              }
+              onClick={() => setAudience("all")}
+              aria-pressed={audience === "all"}
+            >
+              Hepsi
+            </button>
+            <button
+              type="button"
+              className={
+                "routes-segment-btn" +
+                (audience === "following" ? " routes-segment-btn--active" : "")
+              }
+              onClick={() => setAudience("following")}
+              aria-pressed={audience === "following"}
+            >
+              Takip
+            </button>
+          </div>
         </div>
+        <button
+          type="button"
+          className="routes-filter-btn"
+          onClick={() => setFilterSheetOpen(true)}
+        >
+          Filtrele
+        </button>
+      </header>
 
-        <div
-          className="chipbar-row"
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 6,
-            overflowX: "auto",
-          }}
-          aria-label="Sıralama"
+      {/* Katman 2 — Tek satır chip şeridi (yatay kaydırma) */}
+      <div
+        className="routes-chiprow"
+        aria-label="Rota sıralama seçenekleri"
+      >
+        <button
+          type="button"
+          className={"chip" + (sort === "near" ? " chip--active" : "")}
+          onClick={() => setSort("near")}
+          aria-pressed={sort === "near"}
+          aria-current={sort === "near" ? "true" : undefined}
         >
-          <button
-            type="button"
-            className={chipCls(sort === "near")}
-            style={chipStyle(sort === "near")}
-            onClick={() => setSort("near")}
-            aria-pressed={sort === "near"}
-          >
-            Yakınımda
-          </button>
-          <button
-            type="button"
-            className={chipCls(sort === "new")}
-            style={chipStyle(sort === "new")}
-            onClick={() => setSort("new")}
-            aria-pressed={sort === "new"}
-          >
-            En yeni
-          </button>
-          <button
-            type="button"
-            className={chipCls(sort === "likes")}
-            style={chipStyle(sort === "likes")}
-            onClick={() => setSort("likes")}
-            aria-pressed={sort === "likes"}
-          >
-            En çok oy
-          </button>
-          <button
-            type="button"
-            className={chipCls(sort === "rating")}
-            style={chipStyle(sort === "rating")}
-            onClick={() => setSort("rating")}
-            aria-pressed={sort === "rating"}
-          >
-            En yüksek puan
-          </button>
-        </div>
+          Yakınımda
+        </button>
+        <button
+          type="button"
+          className={"chip" + (sort === "new" ? " chip--active" : "")}
+          onClick={() => setSort("new")}
+          aria-pressed={sort === "new"}
+          aria-current={sort === "new" ? "true" : undefined}
+        >
+          En yeni
+        </button>
+        <button
+          type="button"
+          className={"chip" + (sort === "likes" ? " chip--active" : "")}
+          onClick={() => setSort("likes")}
+          aria-pressed={sort === "likes"}
+          aria-current={sort === "likes" ? "true" : undefined}
+        >
+          En çok oy
+        </button>
+        <button
+          type="button"
+          className={"chip" + (sort === "rating" ? " chip--active" : "")}
+          onClick={() => setSort("rating")}
+          aria-pressed={sort === "rating"}
+          aria-current={sort === "rating" ? "true" : undefined}
+        >
+          En yüksek puan
+        </button>
 
-        <div
-          className="chipbar-row"
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 4,
-          }}
-          aria-label="Gruplama"
-        >
+        {groupLabel && (
           <button
             type="button"
-            className={chipCls(group === "none")}
-            style={chipStyle(group === "none")}
-            onClick={() => setGroup("none")}
-            aria-pressed={group === "none"}
+            className="routes-badge"
+            onClick={() => setFilterSheetOpen(true)}
           >
-            Grupla: Yok
+            Grup: {groupLabel}
           </button>
-          <button
-            type="button"
-            className={chipCls(group === "city")}
-            style={chipStyle(group === "city")}
-            onClick={() => setGroup("city")}
-            aria-pressed={group === "city"}
-          >
-            Şehir
-          </button>
-          <button
-            type="button"
-            className={chipCls(group === "country")}
-            style={chipStyle(group === "country")}
-            onClick={() => setGroup("country")}
-            aria-pressed={group === "country"}
-          >
-            Ülke
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* Yakınımda başlık + filtre butonu */}
-      {sort === "near" && (
-        <>
-          <div
-            className="near-header"
+      {/* Takip + Yakınımda + 0 sonuç bilgisi */}
+      {showFollowingNearEmptyBadge && (
+        <div
+          className="routes-info-row"
+          style={{
+            padding: "4px 10px 0",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 11,
+            color: "#4b5563",
+          }}
+        >
+          <span className="routes-badge">
+            Takip ettiklerinden yakında rota yok.
+          </span>
+          <button
+            type="button"
+            className="routes-info-link"
+            onClick={() => setAudience("all")}
             style={{
-              padding: "4px 2px 6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
+              border: "none",
+              background: "transparent",
+              padding: 0,
+              marginLeft: "auto",
+              fontSize: 11,
+              fontWeight: 500,
+              color: "#1d4ed8",
+              textDecoration: "underline",
+              cursor: "pointer",
+            }}
+          >
+            Hepsi&rsquo;ne geç
+          </button>
+        </div>
+      )}
+
+      {/* Yakınımda: konum izni reddedildiyse prompt (bar sabit, içerikte göster) */}
+      {showNearbyPrompt && (
+        <NearbyPromptMobile
+          onAllow={requestLocation}
+          onCancel={() => setSort("new")}
+        />
+      )}
+
+      {/* Yakınımda: meta + harita alanı */}
+      {sort === "near" && !showNearbyPrompt && (
+        <>
+          {nearMetaText && (
+            <div
+              style={{
+                padding: "4px 10px 0",
+                fontSize: 11,
+                color: "#6b7280",
+              }}
+            >
+              {nearMetaText}
+            </div>
+          )}
+
+          <div
+            className="near-mapWrap"
+            style={{
+              height: 300,
+              borderRadius: 12,
+              overflow: "hidden",
+              background: "#f1f3f4",
+              margin: "4px 10px 8px",
+              position: "relative",
             }}
           >
             <div
-              className="near-header-main"
-              style={{ display: "flex", flexDirection: "column" }}
-            >
+              ref={mapDivRef}
+              style={{ width: "100%", height: "100%" }}
+              aria-label="Yakındaki rotalar haritası"
+            />
+            {gmapsStatus === "loading" && (
               <div
-                style={{ display: "flex", alignItems: "center", gap: 8 }}
-              >
-                <span
-                  className="near-badge"
-                  style={{
-                    fontSize: 12,
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    background: "#111",
-                    color: "#fff",
-                    fontWeight: 700,
-                  }}
-                >
-                  Yakınımda
-                </span>
-                <span
-                  className="near-header-meta"
-                  style={{ fontSize: 12, color: "#555" }}
-                >
-                  {initialized
-                    ? `${totalCount} rota`
-                    : "Rotalar yükleniyor"}
-                  {Number.isFinite(radius) && radius > 0
-                    ? ` • yaklaşık ${radius.toFixed(1)} km`
-                    : null}
-                </span>
-              </div>
-              {gmapsStatus === "error" || gmapsStatus === "no-key" ? (
-                <span style={{ fontSize: 11, color: "#b3261e" }}>
-                  Harita yüklenemedi: {errorMsg}
-                </span>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              className="near-header-filterBtn"
-              style={{
-                minHeight: 36,
-                padding: "0 12px",
-                borderRadius: 999,
-                border: "1px solid #ddd",
-                background: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-              onClick={() => setFilterSheetOpen(true)}
-            >
-              Filtreler
-            </button>
+                className="near-skel"
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background:
+                    "linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%)",
+                  animation: "near-skel-pulse 1.4s ease infinite",
+                }}
+              />
+            )}
           </div>
 
-          {sort === "near" && hasActiveFilters && (
+          {(gmapsStatus === "error" || gmapsStatus === "no-key") && (
+            <div
+              className="near-map-error"
+              style={{
+                padding: "0 10px 6px",
+                fontSize: 11,
+                color: "#7a7a7a",
+              }}
+            >
+              Harita yüklenemedi: {errorMsg}
+            </div>
+          )}
+
+          {hasActiveFilters && (
             <div
               className="near-filters-row"
               style={{
-                padding: "0 2px 8px",
+                padding: "0 10px 8px",
                 display: "flex",
                 flexWrap: "wrap",
                 gap: 6,
               }}
             >
               {filters.city && (
-                <span
-                  className="chip chip--filter"
-                  style={{
-                    fontSize: 11,
-                    padding: "4px 8px",
-                    borderRadius: 999,
-                    background: "rgba(26,115,232,.08)",
-                    border: "1px solid #dbeafe",
-                    color: "#1a73e8",
-                  }}
-                >
+                <span className="chip chip--filter">
                   Şehir: {filters.city}
                 </span>
               )}
               {filters.country && (
-                <span
-                  className="chip chip--filter"
-                  style={{
-                    fontSize: 11,
-                    padding: "4px 8px",
-                    borderRadius: 999,
-                    background: "rgba(26,115,232,.08)",
-                    border: "1px solid #dbeafe",
-                    color: "#1a73e8",
-                  }}
-                >
+                <span className="chip chip--filter">
                   Ülke: {filters.country}
                 </span>
               )}
               {filters.tags &&
                 filters.tags.map((t) => (
-                  <span
-                    key={t}
-                    className="chip chip--filter"
-                    style={{
-                      fontSize: 11,
-                      padding: "4px 8px",
-                      borderRadius: 999,
-                      background: "rgba(26,115,232,.08)",
-                      border: "1px solid #dbeafe",
-                      color: "#1a73e8",
-                    }}
-                  >
+                  <span key={t} className="chip chip--filter">
                     #{t}
                   </span>
                 ))}
@@ -1107,52 +1297,10 @@ function RoutesExploreMobile() {
         </>
       )}
 
-      {/* Yakınımda: konum izni reddedildiyse prompt */}
-      {showNearbyPrompt && (
-        <NearbyPromptMobile
-          onAllow={requestLocation}
-          onCancel={() => setSort("new")}
-        />
-      )}
-
-      {/* Yakınımda: harita alanı */}
-      {sort === "near" && !showNearbyPrompt && (
-        <div
-          className="near-mapWrap"
-          style={{
-            height: 260,
-            borderRadius: 12,
-            overflow: "hidden",
-            background: "#f1f3f4",
-            marginBottom: 8,
-            position: "relative",
-          }}
-        >
-          <div
-            ref={mapDivRef}
-            style={{ width: "100%", height: "100%" }}
-            aria-label="Yakındaki rotalar haritası"
-          />
-          {gmapsStatus === "loading" && (
-            <div
-              className="near-skel"
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                background:
-                  "linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%)",
-                animation: "near-skel-pulse 1.4s ease infinite",
-              }}
-            />
-          )}
-        </div>
-      )}
-
       {/* Liste alanı */}
       <div
         aria-busy={loading && !initialized}
-        style={{ paddingTop: 4 }}
+        style={{ paddingTop: 4, paddingInline: 10 }}
       >
         {!initialized && !loading && (
           <div style={{ padding: "20px 4px" }}>Yükleniyor…</div>
@@ -1162,11 +1310,31 @@ function RoutesExploreMobile() {
           <div
             style={{
               padding: "14px 4px",
-              opacity: 0.75,
+              opacity: 0.8,
               fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
             }}
           >
-            Hiç rota bulunamadı.
+            <span>Hiç rota bulunamadı.</span>
+            <button
+              type="button"
+              onClick={handleResetAll}
+              style={{
+                border: "none",
+                background: "transparent",
+                padding: 0,
+                margin: 0,
+                fontSize: 12,
+                fontWeight: 500,
+                color: "#1d4ed8",
+                textDecoration: "underline",
+                cursor: "pointer",
+              }}
+            >
+              Filtreleri temizle
+            </button>
           </div>
         )}
 
@@ -1175,9 +1343,33 @@ function RoutesExploreMobile() {
           loading &&
           !visibleItems.length && (
             <div style={{ padding: "8px 2px" }}>
-              <div className="near-skel" style={{ height: 80, marginBottom: 8, borderRadius: 12, background: "#f3f4f6" }} />
-              <div className="near-skel" style={{ height: 80, marginBottom: 8, borderRadius: 12, background: "#f3f4f6" }} />
-              <div className="near-skel" style={{ height: 80, marginBottom: 8, borderRadius: 12, background: "#f3f4f6" }} />
+              <div
+                className="near-skel"
+                style={{
+                  height: 80,
+                  marginBottom: 8,
+                  borderRadius: 12,
+                  background: "#f3f4f6",
+                }}
+              />
+              <div
+                className="near-skel"
+                style={{
+                  height: 80,
+                  marginBottom: 8,
+                  borderRadius: 12,
+                  background: "#f3f4f6",
+                }}
+              />
+              <div
+                className="near-skel"
+                style={{
+                  height: 80,
+                  marginBottom: 8,
+                  borderRadius: 12,
+                  background: "#f3f4f6",
+                }}
+              />
             </div>
           )}
 
@@ -1185,7 +1377,7 @@ function RoutesExploreMobile() {
           <section
             key={g.key}
             className="ExploreGroup"
-            style={{ marginBottom: 10 }}
+            style={{ marginBottom: 8 }}
           >
             {g.label && (
               <header
@@ -1223,7 +1415,10 @@ function RoutesExploreMobile() {
                 </span>
               </header>
             )}
-            <div className="ExploreGroupBody" style={{ paddingTop: g.label ? 6 : 0 }}>
+            <div
+              className="ExploreGroupBody"
+              style={{ paddingTop: g.label ? 6 : 0 }}
+            >
               {g.items.map((r) => (
                 <div key={r.id} style={{ marginBottom: 8 }}>
                   <RouteCardMobile
@@ -1266,7 +1461,7 @@ function RoutesExploreMobile() {
         )}
       </div>
 
-      {/* Alt çekmece filtre sheet (opsiyonel) */}
+      {/* Alt çekmece filtre sheet */}
       <RouteFilterSheet
         open={filterSheetOpen}
         initial={{
@@ -1276,6 +1471,7 @@ function RoutesExploreMobile() {
           dist: filters.dist,
           dur: filters.dur,
           sort,
+          groupBy: group,
         }}
         onApply={handleFilterApply}
         onClose={() => setFilterSheetOpen(false)}

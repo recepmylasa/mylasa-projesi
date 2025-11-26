@@ -3,6 +3,7 @@
 // Kart tık → /r/:id + 'open-route-modal' event.
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import "../Explore.css";
 import { searchRoutes } from "../services/routeSearch";
 import RouteFilterSheet from "../components/RouteFilterSheet";
 import RouteCardMobile from "../components/RouteCardMobile";

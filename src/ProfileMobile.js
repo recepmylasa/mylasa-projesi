@@ -30,8 +30,8 @@ import LabubuGridMobile from "./components/Labubu/LabubuGridMobile";
 import LabubuOpenModalMobile from "./components/Labubu/LabubuOpenModalMobile";
 
 // Rotalar (YENİ)
-import RouteListMobile from "./components/RouteListMobile";
-import RouteDetailMobile from "./pages/RouteDetailMobile"; // <<< DÜZELTİLDİ
+import RoutesExploreMobile from "./pages/RoutesExploreMobile";
+import RouteDetailMobile from "./pages/RouteDetailMobile"; // Profil içi modal
 
 export default function ProfileMobile({ user = null }) {
   const u = user ?? {};
@@ -301,14 +301,10 @@ export default function ProfileMobile({ user = null }) {
         </div>
       </div>
 
-      {/* Rotalar (YENİ) */}
+      {/* Rotalar (YENİ) – Explore mobil entegrasyonu */}
       <div id="tab-panel-routes" role="tabpanel" hidden={mode !== "routes"} className="tab-panel">
         <div className="userposts-container">
-          {hasUserId ? (
-            <RouteListMobile userId={userId} />
-          ) : (
-            <div className="user-posts-message">Profil yükleniyor…</div>
-          )}
+          <RoutesExploreMobile />
         </div>
       </div>
 
