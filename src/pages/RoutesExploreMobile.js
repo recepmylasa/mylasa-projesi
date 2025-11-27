@@ -1,6 +1,9 @@
 // src/pages/RoutesExploreMobile.js
+// ADIM 30: Keşif ekranı – Hepsi/Takip, sıralama çipleri, arama (q + debounce 300ms) ve URL/localStorage senkronu.
+// ADIM 32: m/a/s/q URL param’ları + localStorage(r_audience) + arama modunda varsayılan "En yeni" sıralama.
 // Mobil "Rotalar" sekmesi: Hepsi/Takip + Yakınımda/En yeni/En çok oy/En yüksek puan
 // Harita (Yakınımda) + viewport tabanlı liste + URL/localStorage senkronu
+// ADIM 33: Harita pin/cluster, kart↔pin senkronu, "Bu alanda ara" CTA, sel=<routeId> URL/LS durumu.
 
 import React, {
   useCallback,
@@ -12,7 +15,7 @@ import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { auth } from "../firebase";
 
 import { useGoogleMaps } from "../hooks/useGoogleMaps";
-import fetchViewportRoutes from "../services/viewportRoutes";
+import fetchViewportRoutes, { searchRoutes } from "../services/viewportRoutes";
 import { fetchPublicRoutes } from "../services/routeSearch";
 import { getFollowingUids } from "../services/follows";
 
@@ -29,17 +32,22 @@ import {
 import { getRatingAvg } from "../utils/rating";
 
 const DEFAULT_AUDIENCE = "all"; // "all" | "following"
-const DEFAULT_SORT = "new"; // "near" | "new" | "likes" | "rating"
+const DEFAULT_SORT = "near"; // "near" | "new" | "likes" | "rating"
 const DEFAULT_GROUP = "none"; // "none" | "city" | "country"
 
 const PAGE_SIZE = 20;
 const NEAR_LIMIT = 200;
 
-const LS_AUDIENCE = "routes.v1.audience";
+// ADIM 32: audience için yeni anahtar r_audience, eski anahtar legacy olarak korunuyor.
+const LS_AUDIENCE = "r_audience";
+const LS_AUDIENCE_LEGACY = "routes.v1.audience";
 const LS_SORT = "routes.v1.sort";
 const LS_GROUP = "routes.v1.group";
 const LS_NEAR = "routes.v1.near";
 const LS_RADIUS = "routes.v1.radius";
+const LS_QUERY = "routes.v1.q";
+// ADIM 33: seçili rota id’si
+const LS_SELECTED = "r_sel";
 
 function normalizeAudience(raw) {
   if (!raw) return DEFAULT_AUDIENCE;
@@ -51,7 +59,15 @@ function normalizeAudience(raw) {
 function normalizeSort(raw) {
   const v = String(raw || "").toLowerCase();
   if (v === "near" || v === "yakın" || v === "nearby") return "near";
-  if (v === "likes" || v === "most_rated" || v === "popular") return "likes";
+  if (
+    v === "likes" ||
+    v === "most_rated" ||
+    v === "popular" ||
+    v === "most_votes" ||
+    v === "votes"
+  ) {
+    return "likes"; // "En çok oy"
+  }
   if (v === "rating" || v === "top" || v === "top_rated") return "rating";
   if (v === "new" || v === "en_yeni") return "new";
   return DEFAULT_SORT;
@@ -182,6 +198,7 @@ function mapSortToOrder(sort) {
   return "new";
 }
 
+// ADIM 32 + 33: URL (m/a/s/q/sel) + localStorage(r_audience, r_sel) başlangıç durumu.
 function getInitialRouteUiState() {
   if (typeof window === "undefined") {
     return {
@@ -190,28 +207,56 @@ function getInitialRouteUiState() {
       group: DEFAULT_GROUP,
       near: null,
       radius: 5,
+      query: "",
+      selectedId: null,
     };
   }
 
-  let audience = normalizeAudience(readParam("aud", null));
-  let sort = normalizeSort(readParam("sort", null));
+  const urlModeRaw = readParam("m", null); // near | search
+  let query = (readParam("q", "") || "").toString();
+
+  let audience = normalizeAudience(
+    readParam("a", null) ?? readParam("aud", null)
+  );
+  let sort = normalizeSort(readParam("s", null) ?? readParam("sort", null));
+
   const urlGroupRaw =
     readParam("groupBy", null) ?? readParam("group", null);
   let group = normalizeGroup(urlGroupRaw);
 
-  const lsAud = readJSON(LS_AUDIENCE, null);
+  // localStorage fallback (önce yeni anahtar, sonra legacy)
+  const lsAudNew = readJSON(LS_AUDIENCE, null);
+  const lsAudLegacy = readJSON(LS_AUDIENCE_LEGACY, null);
   const lsSort = readJSON(LS_SORT, null);
   const lsGroup = readJSON(LS_GROUP, null);
   const lsNear = readJSON(LS_NEAR, null);
   const lsRadius = readJSON(LS_RADIUS, null);
+  const lsQuery = readJSON(LS_QUERY, null);
+  const lsSel = readJSON(LS_SELECTED, null);
 
-  if (!audience && lsAud) audience = normalizeAudience(lsAud);
+  if (!audience && (lsAudNew || lsAudLegacy)) {
+    audience = normalizeAudience(lsAudNew ?? lsAudLegacy);
+  }
   if (!sort && lsSort) sort = normalizeSort(lsSort);
   if (!group && lsGroup) group = normalizeGroup(lsGroup);
+  if (!query && typeof lsQuery === "string") query = lsQuery;
+
+  const modeFromUrl =
+    (urlModeRaw || "").toString().toLowerCase() === "search"
+      ? "search"
+      : "near";
+
+  const isSearchLike =
+    modeFromUrl === "search" ||
+    (query && query.toString().trim().length > 0);
 
   if (!audience) audience = DEFAULT_AUDIENCE;
-  if (!sort) sort = DEFAULT_SORT;
+  if (!sort) {
+    // ADIM 32: Arama modunda varsayılan "En yeni", aksi halde "Yakınımda"
+    sort = isSearchLike ? "new" : DEFAULT_SORT;
+  }
   if (!group) group = DEFAULT_GROUP;
+  if (!query) query = "";
 
   let near = null;
   if (lsNear && typeof lsNear === "object") {
@@ -230,7 +275,16 @@ function getInitialRouteUiState() {
   let radius = Number(lsRadius);
   if (!Number.isFinite(radius) || radius <= 0) radius = 5;
 
-  return { audience, sort, group, near, radius };
+  // ADIM 33: sel paramı + localStorage r_sel
+  let selectedId = null;
+  const selParam = readParam("sel", null);
+  if (typeof selParam === "string" && selParam.trim()) {
+    selectedId = selParam.trim();
+  } else if (typeof lsSel === "string" && lsSel.trim()) {
+    selectedId = lsSel.trim();
+  }
+
+  return { audience, sort, group, near, radius, query, selectedId };
 }
 
 function getInitialRouteFilters() {
@@ -281,6 +335,13 @@ function RoutesExploreMobile() {
   const [near, setNear] = useState(initialRef.current.ui.near);
   const [radius, setRadius] = useState(initialRef.current.ui.radius);
 
+  const [searchText, setSearchText] = useState(
+    initialRef.current.ui.query || ""
+  );
+  const [debouncedQuery, setDebouncedQuery] = useState(
+    (initialRef.current.ui.query || "").trim()
+  );
+
   const [filters, setFilters] = useState(initialRef.current.filters);
 
   const [items, setItems] = useState([]);
@@ -295,6 +356,14 @@ function RoutesExploreMobile() {
   const [followingUids, setFollowingUids] = useState([]);
   const [mapReady, setMapReady] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+
+  // ADIM 33: seçili rota + kart/pin senkronu
+  const [selectedRouteId, setSelectedRouteId] = useState(
+    initialRef.current.ui.selectedId || null
+  );
+  const [showSearchAreaButton, setShowSearchAreaButton] = useState(false);
+  const [searchAreaTick, setSearchAreaTick] = useState(0);
 
   const isMountedRef = useRef(true);
   const sentinelRef = useRef(null);
@@ -303,11 +372,16 @@ function RoutesExploreMobile() {
 
   const markersRef = useRef({});
   const clusterRef = useRef(null);
+  const cardRefs = useRef({});
+  const appliedSelectionRef = useRef(null);
+
   const nearPersistRef = useRef({
     lastCenter: null,
     lastZoom: null,
     timeoutId: null,
   });
+  const toastTimerRef = useRef(null);
+  const wasSearchingRef = useRef(false);
 
   const {
     gmapsStatus,
@@ -317,8 +391,11 @@ function RoutesExploreMobile() {
     attemptLoad,
   } = useGoogleMaps({
     API_KEY: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-    MAP_ID: process.env.REACT_APP_GMAPS_MAP_ID,
+    MAP_ID: process.env.REACT_APP_GOOGLE_MAPS_MAP_ID,
   });
+
+  const hasSearch =
+    !!debouncedQuery && debouncedQuery.trim().length > 0;
 
   // ---- open-route-modal event ----
   const openRoute = useCallback((routeId) => {
@@ -357,8 +434,35 @@ function RoutesExploreMobile() {
         clearTimeout(nearPersistRef.current.timeoutId);
         nearPersistRef.current.timeoutId = null;
       }
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
     };
   }, []);
+
+  // ADIM 33: modal kapandığında seçim temizlensin (yaklaşık dinleyici)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleRouteClose = () => {
+      setSelectedRouteId(null);
+    };
+    window.addEventListener("close-route-modal", handleRouteClose);
+    window.addEventListener("route-modal-closed", handleRouteClose);
+    return () => {
+      window.removeEventListener("close-route-modal", handleRouteClose);
+      window.removeEventListener("route-modal-closed", handleRouteClose);
+    };
+  }, []);
+
+  // ---- Arama inputu debounce (ADIM 30: q paramı, 300ms debounce) ----
+  useEffect(() => {
+    const raw = searchText || "";
+    const handle = setTimeout(() => {
+      setDebouncedQuery(raw.trim());
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchText]);
 
   // ---- Audience: Hepsi / Takip → takip edilenler ----
   useEffect(() => {
@@ -388,11 +492,14 @@ function RoutesExploreMobile() {
     };
   }, [audience]);
 
-  // ---- URL & localStorage senkronu (audience/sort/group + filtreler) ----
+  // ---- URL & localStorage senkronu (audience/sort/group + filtreler + q + sel, ADIM 32 + 33) ----
   useEffect(() => {
     writeJSON(LS_AUDIENCE, audience);
+    writeJSON(LS_AUDIENCE_LEGACY, audience); // legacy anahtar da güncel kalsın
     writeJSON(LS_SORT, sort);
     writeJSON(LS_GROUP, group);
+    writeJSON(LS_QUERY, searchText || "");
+    writeJSON(LS_SELECTED, selectedRouteId || null);
     // Yakınımda near/radius kayıtları ayrı bir throttled effect’te ele alınıyor.
 
     const audParam =
@@ -401,7 +508,24 @@ function RoutesExploreMobile() {
         : audience === "following"
         ? "following"
         : "all";
-    const sortParam = sort === DEFAULT_SORT ? null : sort;
+
+    const hasText = !!(searchText && searchText.trim());
+    const modeParam = hasText ? "search" : "near";
+
+    let sortParam;
+    if (modeParam === "search" && sort === "near") {
+      // ADIM 32: arama modunda "near" yerine new param’ı yaz
+      sortParam = "new";
+    } else if (sort === "near") {
+      sortParam = "near";
+    } else if (sort === "likes") {
+      sortParam = "votes";
+    } else if (sort === "rating") {
+      sortParam = "rating";
+    } else {
+      sortParam = "new";
+    }
+
     const groupParam = group === DEFAULT_GROUP ? null : group;
 
     const cityParam = filters.city ? filters.city : null;
@@ -411,22 +535,35 @@ function RoutesExploreMobile() {
         ? filters.tags.join(",")
         : null;
 
-    // urlState: debounced replaceState (gereksiz history spam’ini engeller)
+    const qParam = hasText ? searchText.trim() : null;
+    const selParam =
+      selectedRouteId && String(selectedRouteId).trim().length
+        ? String(selectedRouteId).trim()
+        : null;
+
+    // ADIM 32: m (mode), a (audience), s (sort), q (query) + ADIM 33: sel
     pushParams({
-      aud: audParam,
-      sort: sortParam,
+      m: modeParam,
+      a: audParam,
+      s: sortParam,
       groupBy: groupParam,
       city: cityParam,
       country: countryParam,
       tags: tagsParam,
+      q: qParam,
+      sel: selParam,
     });
-  }, [audience, sort, group, filters]);
+  }, [audience, sort, group, filters, searchText, selectedRouteId]);
 
   // ---- Yakınımda: near/radius localStorage kaydı (throttle + eşik) ----
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (sort !== "near") return;
-    if (!near || typeof near.lat !== "number" || typeof near.lng !== "number") {
+    if (
+      !near ||
+      typeof near.lat !== "number" ||
+      typeof near.lng !== "number"
+    ) {
       return;
     }
 
@@ -473,12 +610,14 @@ function RoutesExploreMobile() {
     nearPersistRef.current.timeoutId = timeoutId;
   }, [sort, near, radius]);
 
-  // ---- popstate → URL'den geri yükle ----
+  // ---- popstate → URL'den geri yükle (ADIM 32 + 33: m/a/s/q/sel destekli) ----
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = () => {
-      const aud = normalizeAudience(readParam("aud", null));
-      const srt = normalizeSort(readParam("sort", null));
+      const audRaw = readParam("a", null) ?? readParam("aud", null);
+      let aud = normalizeAudience(audRaw);
+      const srtRaw = readParam("s", null) ?? readParam("sort", null);
+      let srt = normalizeSort(srtRaw);
       const grp = normalizeGroup(
         readParam("groupBy", null) ?? readParam("group", null)
       );
@@ -486,6 +625,10 @@ function RoutesExploreMobile() {
       const city = (readParam("city", "") || "").toString();
       const country = (readParam("country", "") || "").toString();
       const tagsRaw = readParam("tags", null);
+      const qVal = (readParam("q", "") || "").toString();
+      const modeRaw = readParam("m", null);
+      const selRaw = readParam("sel", null);
+
       let tags = [];
       if (typeof tagsRaw === "string" && tagsRaw.trim()) {
         tags = tagsRaw
@@ -493,6 +636,19 @@ function RoutesExploreMobile() {
           .map((t) => t.trim().toLowerCase())
           .filter(Boolean)
           .slice(0, 10);
+      }
+
+      const modeFromUrl =
+        (modeRaw || "").toString().toLowerCase() === "search"
+          ? "search"
+          : "near";
+      const isSearchLike =
+        modeFromUrl === "search" ||
+        (qVal && qVal.toString().trim().length > 0);
+
+      if (!aud) aud = DEFAULT_AUDIENCE;
+      if (!srt) {
+        srt = isSearchLike ? "new" : DEFAULT_SORT;
       }
 
       setAudience(aud);
@@ -504,18 +660,44 @@ function RoutesExploreMobile() {
         country,
         tags,
       }));
+      setSearchText(qVal);
+
+      const sel =
+        typeof selRaw === "string" && selRaw.trim()
+          ? selRaw.trim()
+          : null;
+      setSelectedRouteId(sel);
     };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
   }, []);
 
+  // ---- Arama kutusu değişimi: ADIM 32 — aramaya girince "En yeni", temizlenince "Yakınımda" ----
+  useEffect(() => {
+    const hasText = !!searchText.trim();
+    if (hasText) {
+      if (!wasSearchingRef.current && sort === "near") {
+        // İlk kez aramaya girerken varsayılanı "En yeni" yap
+        setSort("new");
+      }
+      wasSearchingRef.current = true;
+      return;
+    }
+    if (!hasText && wasSearchingRef.current) {
+      if (sort !== "near") {
+        setSort("near");
+      }
+      wasSearchingRef.current = false;
+    }
+  }, [searchText, sort]);
+
   // ---- Harita yükleme (Yakınımda) ----
   useEffect(() => {
-    if (sort !== "near") return;
+    if (sort !== "near" || hasSearch) return;
     if (gmapsStatus === "idle") {
       attemptLoad();
     }
-  }, [sort, gmapsStatus, attemptLoad]);
+  }, [sort, hasSearch, gmapsStatus, attemptLoad]);
 
   useEffect(() => {
     if (gmapsStatus === "ready" && mapRef.current && !mapReady) {
@@ -555,7 +737,11 @@ function RoutesExploreMobile() {
   // sort near olduğunda, önceden near yoksa otomatik konum iste
   useEffect(() => {
     if (sort !== "near") return;
-    if (near && typeof near.lat === "number" && typeof near.lng === "number") {
+    if (
+      near &&
+      typeof near.lat === "number" &&
+      typeof near.lng === "number"
+    ) {
       return;
     }
     if (locationStatus !== "unknown") return;
@@ -566,7 +752,11 @@ function RoutesExploreMobile() {
   useEffect(() => {
     if (!mapReady || sort !== "near" || !mapRef.current) return;
 
-    if (near && typeof near.lat === "number" && typeof near.lng === "number") {
+    if (
+      near &&
+      typeof near.lat === "number" &&
+      typeof near.lng === "number"
+    ) {
       mapRef.current.setCenter({ lat: near.lat, lng: near.lng });
       if (near.zoom && Number.isFinite(near.zoom)) {
         mapRef.current.setZoom(near.zoom);
@@ -620,18 +810,54 @@ function RoutesExploreMobile() {
   }, [sort, mapRef]);
 
   useEffect(() => {
-    if (!mapReady || sort !== "near" || !mapRef.current) return;
+    if (!mapReady || sort !== "near" || hasSearch || !mapRef.current)
+      return;
     const listener = mapRef.current.addListener("idle", handleMapIdle);
     return () => {
       if (listener && typeof listener.remove === "function") {
         listener.remove();
       }
     };
-  }, [mapReady, sort, handleMapIdle, mapRef]);
+  }, [mapReady, sort, hasSearch, handleMapIdle, mapRef]);
+
+  // ADIM 33: harita hareket ettiğinde "Bu alanda ara" butonunu göster
+  useEffect(() => {
+    if (!mapReady || sort !== "near" || hasSearch || !mapRef.current)
+      return;
+
+    const map = mapRef.current;
+    const handleInteraction = () => {
+      setShowSearchAreaButton(true);
+    };
+
+    const dragListener = map.addListener("dragend", handleInteraction);
+    const zoomListener = map.addListener("zoom_changed", handleInteraction);
+
+    return () => {
+      if (dragListener && typeof dragListener.remove === "function") {
+        dragListener.remove();
+      }
+      if (zoomListener && typeof zoomListener.remove === "function") {
+        zoomListener.remove();
+      }
+    };
+  }, [mapReady, sort, hasSearch, mapRef]);
+
+  // sort veya arama modu değişince CTA’yi gizle
+  useEffect(() => {
+    if (sort !== "near" || hasSearch) {
+      setShowSearchAreaButton(false);
+    }
+  }, [sort, hasSearch]);
+
+  const handleSearchInThisArea = useCallback(() => {
+    setShowSearchAreaButton(false);
+    setSearchAreaTick((tick) => tick + 1);
+  }, []);
 
   // ---- Yakınımda: viewport değiştikçe (debounce 300ms) rota çek ----
   useEffect(() => {
-    if (sort !== "near") return;
+    if (sort !== "near" || hasSearch) return;
     const bounds = nearViewportRef.current;
     if (!bounds) return;
 
@@ -667,7 +893,8 @@ function RoutesExploreMobile() {
             },
             sort: "distance",
             audience: audience === "following" ? "following" : "all",
-            followingUids: audience === "following" ? followingUids : undefined,
+            followingUids:
+              audience === "following" ? followingUids : undefined,
           });
 
           if (cancelled) return;
@@ -683,15 +910,18 @@ function RoutesExploreMobile() {
               String(t).toLowerCase()
             );
             list = list.filter((r) => {
-              const rTags = (Array.isArray(r.tags) ? r.tags : []).map((t) =>
-                String(t).toLowerCase()
+              const rTags = (Array.isArray(r.tags) ? r.tags : []).map(
+                (t) => String(t).toLowerCase()
               );
               return wanted.every((tag) => rTags.includes(tag));
             });
           }
 
           // Mesafe filtresi (km)
-          if (filters.dist && (filters.dist[0] > 0 || filters.dist[1] > 0)) {
+          if (
+            filters.dist &&
+            (filters.dist[0] > 0 || filters.dist[1] > 0)
+          ) {
             const [minKm, maxKm] = filters.dist;
             list = list.filter((r) => {
               if (typeof r.distanceKm !== "number") return true;
@@ -733,6 +963,7 @@ function RoutesExploreMobile() {
         } finally {
           if (cancelled) return;
           setLoading(false);
+          setShowSearchAreaButton(false);
         }
       })();
     }, 300);
@@ -744,16 +975,69 @@ function RoutesExploreMobile() {
         nearDebounceRef.current = null;
       }
     };
-  }, [sort, audience, followingUids, filters, userLocation, near]);
+  }, [
+    sort,
+    hasSearch,
+    audience,
+    followingUids,
+    filters,
+    userLocation,
+    near,
+    searchAreaTick,
+  ]);
 
-  // ---- Yakınımda: marker + cluster (diff tabanlı) ----
+  // ADIM 33: kart seçili olduğunda ilk yüklemede kartı ve pini merkeze al
   useEffect(() => {
-    if (sort !== "near") return;
-    if (!mapReady || !mapRef.current || typeof window === "undefined") return;
+    if (!selectedRouteId) return;
+    const selId = String(selectedRouteId);
+    const target = items.find((r) => String(r.id) === selId);
+    if (!target) return;
+
+    // Kartı liste içinde ortaya kaydır
+    const el = cardRefs.current[selId];
+    if (el && typeof el.scrollIntoView === "function") {
+      try {
+        el.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      } catch {
+        // no-op
+      }
+    }
+
+    // Yakınımda modunda harita merkezini rota merkezine kaydır
+    if (
+      sort === "near" &&
+      mapReady &&
+      mapRef.current &&
+      target?.routeGeo?.center &&
+      Number.isFinite(target.routeGeo.center.lat) &&
+      Number.isFinite(target.routeGeo.center.lng)
+    ) {
+      try {
+        mapRef.current.panTo({
+          lat: target.routeGeo.center.lat,
+          lng: target.routeGeo.center.lng,
+        });
+      } catch {
+        // no-op
+      }
+    }
+
+    appliedSelectionRef.current = selId;
+  }, [selectedRouteId, items, sort, mapReady, mapRef]);
+
+  // ---- Yakınımda: marker + cluster (diff tabanlı, kart↔pin senkronu) ----
+  useEffect(() => {
+    if (sort !== "near" || hasSearch) return;
+    if (!mapReady || !mapRef.current || typeof window === "undefined")
+      return;
 
     const gmaps = window.google.maps;
     if (!gmaps?.Marker) return;
 
+    // MarkerClusterer oluştur (repo’da varsa – yeni bağımlılık eklemiyoruz)
     if (!clusterRef.current) {
       clusterRef.current = new MarkerClusterer({
         map: mapRef.current,
@@ -761,31 +1045,62 @@ function RoutesExploreMobile() {
       });
     }
 
+    const baseIcon = {
+      path: gmaps.SymbolPath.CIRCLE,
+      scale: 6,
+      fillColor: "#1d4ed8",
+      fillOpacity: 0.9,
+      strokeColor: "#ffffff",
+      strokeWeight: 2,
+    };
+
+    const selectedIcon = {
+      ...baseIcon,
+      scale: 8,
+      fillColor: "#111827",
+    };
+
     const currentMarkers = markersRef.current || {};
     const nextMarkers = { ...currentMarkers };
     const nextIds = new Set();
 
     items.forEach((r) => {
       const c = r?.routeGeo?.center;
-      if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lng)) return;
+      if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lng))
+        return;
       const id = r.id;
       if (!id) return;
+      const key = String(id);
 
-      nextIds.add(id);
+      nextIds.add(key);
 
-      if (currentMarkers[id]) {
-        // Mevcut marker’ı yeniden kullan
-        return;
-      }
+      if (!currentMarkers[key]) {
+        const marker = new gmaps.Marker({
+          position: { lat: c.lat, lng: c.lng },
+          map: mapRef.current,
+          icon: baseIcon,
+        });
 
-      const marker = new gmaps.Marker({
-        position: { lat: c.lat, lng: c.lng },
-        map: mapRef.current,
-      });
-      marker.addListener("click", () => openRoute(r.id));
-      nextMarkers[id] = marker;
-      if (clusterRef.current) {
-        clusterRef.current.addMarker(marker);
+        // Pin → kart seçimi + scrollIntoView
+        marker.addListener("click", () => {
+          setSelectedRouteId(key);
+          const el = cardRefs.current[key];
+          if (el && typeof el.scrollIntoView === "function") {
+            try {
+              el.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
+            } catch {
+              // no-op
+            }
+          }
+        });
+
+        nextMarkers[key] = marker;
+        if (clusterRef.current) {
+          clusterRef.current.addMarker(marker);
+        }
       }
     });
 
@@ -806,11 +1121,47 @@ function RoutesExploreMobile() {
     });
 
     markersRef.current = nextMarkers;
-  }, [items, sort, mapReady, mapRef, openRoute]);
 
-  // Yakınımda modundan çıkarken marker/cluster temizliği
+    // Seçili marker’ı vurgula
+    const selId = selectedRouteId ? String(selectedRouteId) : null;
+    Object.entries(nextMarkers).forEach(([id, marker]) => {
+      if (!marker || typeof marker.setIcon !== "function") return;
+      if (selId && id === selId) {
+        marker.setIcon(selectedIcon);
+        if (typeof marker.setZIndex === "function") {
+          try {
+            marker.setZIndex(
+              gmaps.Marker.MAX_ZINDEX
+                ? gmaps.Marker.MAX_ZINDEX + 1
+                : 999999
+            );
+          } catch {
+            // no-op
+          }
+        }
+      } else {
+        marker.setIcon(baseIcon);
+        if (typeof marker.setZIndex === "function") {
+          try {
+            marker.setZIndex(undefined);
+          } catch {
+            // no-op
+          }
+        }
+      }
+    });
+  }, [
+    items,
+    sort,
+    hasSearch,
+    mapReady,
+    mapRef,
+    selectedRouteId,
+  ]);
+
+  // Yakınımda modundan çıkarken veya arama moduna girerken marker/cluster temizliği
   useEffect(() => {
-    if (sort === "near") return;
+    if (sort === "near" && !hasSearch) return;
 
     const existingMarkers = markersRef.current;
     if (existingMarkers && Object.keys(existingMarkers).length) {
@@ -825,125 +1176,133 @@ function RoutesExploreMobile() {
       clusterRef.current.clearMarkers();
       clusterRef.current = null;
     }
-  }, [sort]);
+  }, [sort, hasSearch]);
 
   // ---- Yakınımda dışı (En yeni / En çok oy / En yüksek puan) → sayfalı sorgu ----
-  const loadFirstNonNear = useCallback(async () => {
-    setLoading(true);
-    setInitialized(false);
+  const loadFirstNonNear = useCallback(
+    async () => {
+      setLoading(true);
+      setInitialized(false);
 
-    try {
-      const { items: page, nextCursor } = await fetchPublicRoutes({
-        order: mapSortToOrder(sort),
-        limit: PAGE_SIZE,
-        city: filters.city || "",
-        countryCode: filters.country || "",
-      });
+      try {
+        const { items: page, nextCursor } = await fetchPublicRoutes({
+          order: mapSortToOrder(sort),
+          limit: PAGE_SIZE,
+          city: filters.city || "",
+          countryCode: filters.country || "",
+        });
 
-      let list = (page || []).map((r) => ({
-        ...r,
-        ratingAvg: getRatingAvg(r),
-      }));
+        let list = (page || []).map((r) => ({
+          ...r,
+          ratingAvg: getRatingAvg(r),
+        }));
 
-      if (audience === "following") {
-        if (followingUids.length) {
-          const followSet = new Set(
-            followingUids.map((id) => String(id))
-          );
-          list = list.filter((r) => {
-            const owner =
-              r.ownerId ||
-              r.userId ||
-              r.uid ||
-              r.ownerUID ||
-              r.ownerUid ||
-              r.userUID;
-            if (!owner) return false;
-            return followSet.has(String(owner));
-          });
-        } else {
-          list = [];
+        if (audience === "following") {
+          if (followingUids.length) {
+            const followSet = new Set(
+              followingUids.map((id) => String(id))
+            );
+            list = list.filter((r) => {
+              const owner =
+                r.ownerId ||
+                r.userId ||
+                r.uid ||
+                r.ownerUID ||
+                r.ownerUid ||
+                r.userUID;
+              if (!owner) return false;
+              return followSet.has(String(owner));
+            });
+          } else {
+            list = [];
+          }
         }
+
+        setItems(list);
+        setCursor(nextCursor || null);
+        setIsEnd(!nextCursor || !list.length);
+        setVisibleCount(
+          list.length ? Math.min(list.length, PAGE_SIZE) : 0
+        );
+        setInitialized(true);
+      } catch {
+        setItems([]);
+        setCursor(null);
+        setIsEnd(true);
+        setVisibleCount(0);
+        setInitialized(true);
+      } finally {
+        setLoading(false);
       }
+    },
+    [sort, filters.city, filters.country, audience, followingUids]
+  );
 
-      setItems(list);
-      setCursor(nextCursor || null);
-      setIsEnd(!nextCursor || !list.length);
-      setVisibleCount(list.length ? Math.min(list.length, PAGE_SIZE) : 0);
-      setInitialized(true);
-    } catch {
-      setItems([]);
-      setCursor(null);
-      setIsEnd(true);
-      setVisibleCount(0);
-      setInitialized(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [sort, filters.city, filters.country, audience, followingUids]);
+  const loadMoreNonNear = useCallback(
+    async () => {
+      if (sort === "near") return;
+      if (loading || isEnd || !cursor) return;
 
-  const loadMoreNonNear = useCallback(async () => {
-    if (sort === "near") return;
-    if (loading || isEnd || !cursor) return;
+      setLoading(true);
+      try {
+        const { items: page, nextCursor } = await fetchPublicRoutes({
+          order: mapSortToOrder(sort),
+          limit: PAGE_SIZE,
+          city: filters.city || "",
+          countryCode: filters.country || "",
+          cursor,
+        });
 
-    setLoading(true);
-    try {
-      const { items: page, nextCursor } = await fetchPublicRoutes({
-        order: mapSortToOrder(sort),
-        limit: PAGE_SIZE,
-        city: filters.city || "",
-        countryCode: filters.country || "",
-        cursor,
-      });
+        let list = (page || []).map((r) => ({
+          ...r,
+          ratingAvg: getRatingAvg(r),
+        }));
 
-      let list = (page || []).map((r) => ({
-        ...r,
-        ratingAvg: getRatingAvg(r),
-      }));
-
-      if (audience === "following") {
-        if (followingUids.length) {
-          const followSet = new Set(
-            followingUids.map((id) => String(id))
-          );
-          list = list.filter((r) => {
-            const owner =
-              r.ownerId ||
-              r.userId ||
-              r.uid ||
-              r.ownerUID ||
-              r.ownerUid ||
-              r.userUID;
-            if (!owner) return false;
-            return followSet.has(String(owner));
-          });
-        } else {
-          list = [];
+        if (audience === "following") {
+          if (followingUids.length) {
+            const followSet = new Set(
+              followingUids.map((id) => String(id))
+            );
+            list = list.filter((r) => {
+              const owner =
+                r.ownerId ||
+                r.userId ||
+                r.uid ||
+                r.ownerUID ||
+                r.ownerUid ||
+                r.userUID;
+              if (!owner) return false;
+              return followSet.has(String(owner));
+            });
+          } else {
+            list = [];
+          }
         }
-      }
 
-      setItems((prev) => prev.concat(list));
-      setCursor(nextCursor || null);
-      setIsEnd(!nextCursor || !list.length);
-    } catch {
-      setIsEnd(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    sort,
-    filters.city,
-    filters.country,
-    audience,
-    followingUids,
-    loading,
-    isEnd,
-    cursor,
-  ]);
+        setItems((prev) => prev.concat(list));
+        setCursor(nextCursor || null);
+        setIsEnd(!nextCursor || !list.length);
+      } catch {
+        setIsEnd(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      sort,
+      filters.city,
+      filters.country,
+      audience,
+      followingUids,
+      loading,
+      isEnd,
+      cursor,
+    ]
+  );
 
   // sort veya audience değişince non-near akışını resetle
   useEffect(() => {
-    if (sort === "near") return;
+    if (sort === "near" || hasSearch) return;
 
     setItems([]);
     setCursor(null);
@@ -951,7 +1310,140 @@ function RoutesExploreMobile() {
     setVisibleCount(0);
 
     loadFirstNonNear();
-  }, [sort, audience, filters.city, filters.country, followingUids, loadFirstNonNear]);
+  }, [
+    sort,
+    audience,
+    filters.city,
+    filters.country,
+    followingUids,
+    loadFirstNonNear,
+    hasSearch,
+  ]);
+
+  // ---- Arama modu (q paramı) → searchRoutes ----
+  useEffect(() => {
+    if (!hasSearch) return;
+    let cancelled = false;
+
+    setLoading(true);
+    setInitialized(false);
+    setItems([]);
+    setCursor(null);
+    setIsEnd(true);
+    setVisibleCount(0);
+
+    (async () => {
+      try {
+        const { routes } = await searchRoutes({
+          query: debouncedQuery,
+          limit: PAGE_SIZE * 3,
+          audience,
+          followingUids:
+            audience === "following" ? followingUids : undefined,
+          sort,
+        });
+
+        if (cancelled) return;
+
+        let list = (routes || []).map((r) => ({
+          ...r,
+          ratingAvg: getRatingAvg(r),
+        }));
+
+        // City/ülke filtresi (arama modunda da uygula)
+        if (filters.city) {
+          const lcCity = filters.city.toLowerCase();
+          list = list.filter(
+            (r) =>
+              (r?.areas?.city || "").toString().toLowerCase() ===
+              lcCity
+          );
+        }
+
+        if (filters.country) {
+          const lcCountry = filters.country.toLowerCase();
+          list = list.filter((r) => {
+            const cc =
+              (r?.areas?.countryName ||
+                r?.areas?.country ||
+                r?.areas?.countryCode ||
+                r?.areas?.cc ||
+                "")
+                .toString()
+                .toLowerCase();
+            return cc.includes(lcCountry);
+          });
+        }
+
+        // Etiket filtresi
+        if (filters.tags && filters.tags.length) {
+          const wanted = filters.tags.map((t) =>
+            String(t).toLowerCase()
+          );
+          list = list.filter((r) => {
+            const rTags = (Array.isArray(r.tags) ? r.tags : []).map(
+              (t) => String(t).toLowerCase()
+            );
+            return wanted.every((tag) => rTags.includes(tag));
+          });
+        }
+
+        // Mesafe filtresi (search sonuçlarında distanceKm yoksa atla)
+        if (
+          filters.dist &&
+          (filters.dist[0] > 0 || filters.dist[1] > 0)
+        ) {
+          const [minKm, maxKm] = filters.dist;
+          list = list.filter((r) => {
+            if (typeof r.distanceKm !== "number") return true;
+            if (minKm && r.distanceKm < minKm) return false;
+            if (maxKm && r.distanceKm > maxKm) return false;
+            return true;
+          });
+        }
+
+        // Süre filtresi (dk)
+        if (filters.dur && (filters.dur[0] > 0 || filters.dur[1] > 0)) {
+          const [minDur, maxDur] = filters.dur;
+          const minMs = minDur > 0 ? minDur * 60000 : 0;
+          const maxMs = maxDur > 0 ? maxDur * 60000 : 0;
+          list = list.filter((r) => {
+            const dur = Number(r.durationMs || 0);
+            if (minMs && (!dur || dur < minMs)) return false;
+            if (maxMs && dur > maxMs) return false;
+            return true;
+          });
+        }
+
+        setItems(list);
+        setVisibleCount(
+          list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0
+        );
+        setIsEnd(true);
+        setInitialized(true);
+      } catch {
+        if (cancelled) return;
+        setItems([]);
+        setVisibleCount(0);
+        setIsEnd(true);
+        setInitialized(true);
+      } finally {
+        if (cancelled) return;
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    hasSearch,
+    debouncedQuery,
+    audience,
+    followingUids,
+    sort,
+    filters,
+  ]);
 
   // ---- Sonsuz kaydırma (her modda) ----
   useEffect(() => {
@@ -968,7 +1460,7 @@ function RoutesExploreMobile() {
           if (next > prev) {
             return next;
           }
-          if (sort !== "near") {
+          if (!hasSearch && sort !== "near") {
             // Gösterilecek kalmadıysa ve non-near moddaysak yeni sayfa çek
             loadMoreNonNear();
           }
@@ -983,7 +1475,7 @@ function RoutesExploreMobile() {
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [items.length, sort, loadMoreNonNear]);
+  }, [items.length, sort, hasSearch, loadMoreNonNear]);
 
   // ---- FilterSheet apply ----
   const handleFilterApply = useCallback((payload) => {
@@ -1019,7 +1511,39 @@ function RoutesExploreMobile() {
     setSort(DEFAULT_SORT);
     setNear(null);
     setRadius(5);
+    setSearchText("");
+    setSelectedRouteId(null);
   }, []);
+
+  // ADIM 33: kart tıklama → seçim + pin vurgusu + harita pan + modal aç
+  const handleRouteCardClick = useCallback(
+    (route) => {
+      if (!route || !route.id) return;
+      const id = String(route.id);
+      setSelectedRouteId(id);
+
+      if (
+        sort === "near" &&
+        mapReady &&
+        mapRef.current &&
+        route?.routeGeo?.center &&
+        Number.isFinite(route.routeGeo.center.lat) &&
+        Number.isFinite(route.routeGeo.center.lng)
+      ) {
+        try {
+          mapRef.current.panTo({
+            lat: route.routeGeo.center.lat,
+            lng: route.routeGeo.center.lng,
+          });
+        } catch {
+          // no-op
+        }
+      }
+
+      openRoute(id);
+    },
+    [sort, mapReady, mapRef, openRoute]
+  );
 
   // ---- Aktif filtre chipleri ----
   const hasActiveFilters =
@@ -1034,6 +1558,7 @@ function RoutesExploreMobile() {
 
   const showNearbyPrompt =
     sort === "near" &&
+    !hasSearch &&
     !near &&
     locationStatus === "denied" &&
     !userLocation;
@@ -1042,7 +1567,7 @@ function RoutesExploreMobile() {
     group === "city" ? "Şehir" : group === "country" ? "Ülke" : "";
 
   const nearMetaText =
-    sort === "near" && initialized
+    sort === "near" && !hasSearch && initialized
       ? `${totalCount} rota${
           Number.isFinite(radius) && radius > 0
             ? ` • yaklaşık ${radius.toFixed(1)} km`
@@ -1052,11 +1577,23 @@ function RoutesExploreMobile() {
 
   const showFollowingNearEmptyBadge =
     sort === "near" &&
+    !hasSearch &&
     audience === "following" &&
     initialized &&
     !loading &&
     totalCount === 0 &&
     !showNearbyPrompt;
+
+  const emptyMessage =
+    audience === "following"
+      ? hasSearch
+        ? "Takip ettiklerinden bu arama için rota bulunamadı."
+        : sort === "near"
+        ? "Takip ettiklerinden yakında rota yok."
+        : "Takip ettiklerinden uygun rota bulunamadı."
+      : hasSearch
+      ? "Aramana uygun rota bulunamadı."
+      : "Hiç rota bulunamadı.";
 
   return (
     <div
@@ -1080,7 +1617,9 @@ function RoutesExploreMobile() {
               type="button"
               className={
                 "routes-segment-btn" +
-                (audience === "all" ? " routes-segment-btn--active" : "")
+                (audience === "all"
+                  ? " routes-segment-btn--active"
+                  : "")
               }
               onClick={() => setAudience("all")}
               aria-pressed={audience === "all"}
@@ -1091,9 +1630,26 @@ function RoutesExploreMobile() {
               type="button"
               className={
                 "routes-segment-btn" +
-                (audience === "following" ? " routes-segment-btn--active" : "")
+                (audience === "following"
+                  ? " routes-segment-btn--active"
+                  : "")
               }
-              onClick={() => setAudience("following")}
+              onClick={() => {
+                if (!auth?.currentUser?.uid) {
+                  setAudience("all");
+                  const msg =
+                    "Takip ettiğin kullanıcıların rotalarını görmek için giriş yapmalısın.";
+                  setToastMessage(msg);
+                  if (toastTimerRef.current) {
+                    clearTimeout(toastTimerRef.current);
+                  }
+                  toastTimerRef.current = window.setTimeout(() => {
+                    setToastMessage("");
+                  }, 2600);
+                  return;
+                }
+                setAudience("following");
+              }}
               aria-pressed={audience === "following"}
             >
               Takip
@@ -1105,9 +1661,31 @@ function RoutesExploreMobile() {
           className="routes-filter-btn"
           onClick={() => setFilterSheetOpen(true)}
         >
-          Filtrele
+          Sırala
         </button>
       </header>
+
+      {/* Katman 1.5 — Arama kutusu (ADIM 30: q + debounce) */}
+      <div
+        className="routes-search-row"
+        style={{
+          padding: "4px 10px 6px",
+          background: "#ffffff",
+        }}
+      >
+        <input
+          type="search"
+          className="search-input"
+          placeholder="Rota ara (başlık, açıklama, şehir...)"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{
+            fontSize: 14,
+            padding: "8px 12px",
+            borderRadius: 999,
+          }}
+        />
+      </div>
 
       {/* Katman 2 — Tek satır chip şeridi (yatay kaydırma) */}
       <div
@@ -1134,7 +1712,9 @@ function RoutesExploreMobile() {
         </button>
         <button
           type="button"
-          className={"chip" + (sort === "likes" ? " chip--active" : "")}
+          className={
+            "chip" + (sort === "likes" ? " chip--active" : "")
+          }
           onClick={() => setSort("likes")}
           aria-pressed={sort === "likes"}
           aria-current={sort === "likes" ? "true" : undefined}
@@ -1143,7 +1723,9 @@ function RoutesExploreMobile() {
         </button>
         <button
           type="button"
-          className={"chip" + (sort === "rating" ? " chip--active" : "")}
+          className={
+            "chip" + (sort === "rating" ? " chip--active" : "")
+          }
           onClick={() => setSort("rating")}
           aria-pressed={sort === "rating"}
           aria-current={sort === "rating" ? "true" : undefined}
@@ -1208,7 +1790,7 @@ function RoutesExploreMobile() {
       )}
 
       {/* Yakınımda: meta + harita alanı */}
-      {sort === "near" && !showNearbyPrompt && (
+      {sort === "near" && !hasSearch && !showNearbyPrompt && (
         <>
           {nearMetaText && (
             <div
@@ -1250,6 +1832,17 @@ function RoutesExploreMobile() {
                   animation: "near-skel-pulse 1.4s ease infinite",
                 }}
               />
+            )}
+
+            {/* ADIM 33: "Bu alanda ara" butonu — Konumum butonuyla çakışmasın diye sol-alt */}
+            {showSearchAreaButton && (
+              <button
+                type="button"
+                className="near-search-area-btn"
+                onClick={handleSearchInThisArea}
+              >
+                Bu alanda ara
+              </button>
             )}
           </div>
 
@@ -1317,7 +1910,7 @@ function RoutesExploreMobile() {
               gap: 8,
             }}
           >
-            <span>Hiç rota bulunamadı.</span>
+            <span>{emptyMessage}</span>
             <button
               type="button"
               onClick={handleResetAll}
@@ -1340,6 +1933,7 @@ function RoutesExploreMobile() {
 
         {/* Near modunda ilk yükleme sırasında skeleton kartlar */}
         {sort === "near" &&
+          !hasSearch &&
           loading &&
           !visibleItems.length && (
             <div style={{ padding: "8px 2px" }}>
@@ -1420,10 +2014,24 @@ function RoutesExploreMobile() {
               style={{ paddingTop: g.label ? 6 : 0 }}
             >
               {g.items.map((r) => (
-                <div key={r.id} style={{ marginBottom: 8 }}>
+                <div
+                  key={r.id}
+                  style={{ marginBottom: 8 }}
+                  ref={(el) => {
+                    if (!el) {
+                      delete cardRefs.current[r.id];
+                    } else {
+                      cardRefs.current[r.id] = el;
+                    }
+                  }}
+                >
                   <RouteCardMobile
                     route={r}
-                    onClick={() => openRoute(r.id)}
+                    selected={
+                      !!selectedRouteId &&
+                      String(selectedRouteId) === String(r.id)
+                    }
+                    onClick={() => handleRouteCardClick(r)}
                   />
                 </div>
               ))}
@@ -1476,6 +2084,11 @@ function RoutesExploreMobile() {
         onApply={handleFilterApply}
         onClose={() => setFilterSheetOpen(false)}
       />
+
+      {/* Giriş yapılmadan Takip’e geçme denemesi için küçük toast (ADIM 30) */}
+      {toastMessage && (
+        <div className="explore-toast">{toastMessage}</div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,6 @@
 /* src/Explore.css */
+/* ADIM 30: Rotalar mobil keşif ekranı için chip, toolbar, Yakınımda harita ve küçük toast stilleri; arama inputu RoutesExploreMobile içinde .search-input ile yeniden kullanılıyor. */
+
 /* — ANA YAPI — */
 .explore-container {
   width: 100%;
@@ -418,6 +420,23 @@
   color: #b91c1c;
 }
 
+/* ADIM 33: "Bu alanda ara" butonu (sol-alt, Konumum butonuna çakışmayacak) */
+.near-search-area-btn {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 20;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.96);
+  font-size: 12px;
+  font-weight: 500;
+  color: #111827;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);
+  cursor: pointer;
+}
+
 /* Kontroller + liste */
 .near-controls {
   display: grid;
@@ -568,6 +587,24 @@
   background: #f9fafb;
 }
 
+/* ADIM 33: Mobil rota kartı seçili stili */
+.route-card-mobile {
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+.route-card-mobile--selected {
+  border-color: #1d4ed8;
+  background: #eff6ff;
+  transform: scale(1.02);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.25);
+}
+
 /* Küçük toast (sıralama / izin mesajları için) */
 .explore-toast {
   position: fixed;
@@ -587,3 +624,5 @@
     bottom: 32px;
   }
 }
+
+/* not: explore css dosyası src'nin içinde, styles klasöründe değil */

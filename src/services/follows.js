@@ -1,4 +1,5 @@
 // src/services/follows.js
+// ADIM 30: Hepsi/Takip filtresi için takip edilen kullanıcı uid’lerini döndürür (getFollowingUids sözleşmesi korunmuştur).
 // Takip servisleri: users/{uid}/following + kök /follows üzerinden
 // Hepsi/Takip filtresi için takip edilen kullanıcı uid’lerini döndürür.
 

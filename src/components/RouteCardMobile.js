@@ -1,5 +1,7 @@
 // src/components/RouteCardMobile.js
 // Kart: başlık, km, süre, ⭐ ortalama (N) + şehir/ülke + ilk 3 etiket + "uzakta/yakınında" mesafesi.
+// ADIM 33: seçili kart için .route-card-mobile / .route-card-mobile--selected class’ları ile stil.
+
 import React from "react";
 import { km as formatKm } from "../utils/rating";
 
@@ -13,7 +15,11 @@ function fmtDur(ms) {
   return h > 0 ? `${h} sa ${mm} dk` : `${mm} dk`;
 }
 
-export default function RouteCardMobile({ route, onClick = () => {} }) {
+export default function RouteCardMobile({
+  route,
+  onClick = () => {},
+  selected = false,
+}) {
   if (!route) return null;
   const {
     title,
@@ -51,20 +57,24 @@ export default function RouteCardMobile({ route, onClick = () => {} }) {
     if (txt) distanceLabelText = `${txt} uzakta`;
   }
 
+  const label = title || "Rota";
+
   return (
     <div
+      className={
+        "route-card-mobile" +
+        (selected ? " route-card-mobile--selected" : "")
+      }
       role="button"
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => (e.key === "Enter" ? onClick() : null)}
-      title={title || "Rota"}
-      aria-label={title || "Rota"}
+      title={label}
+      aria-label={label}
+      aria-pressed={selected ? "true" : "false"}
       style={{
-        border: "1px solid #eee",
         borderRadius: 12,
         padding: "12px 12px",
-        background: "#fff",
-        boxShadow: "0 2px 8px rgba(0,0,0,.04)",
         display: "grid",
         gap: 6,
         cursor: "pointer",

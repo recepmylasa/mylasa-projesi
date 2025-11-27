@@ -1,4 +1,5 @@
 // src/services/viewportRoutes.js
+// ADIM 30: fetchViewportRoutes için audience=following boş ise erken dönüş + basit metin araması için searchRoutes eklendi.
 // Viewport tabanlı rota sorgusu (Yakınımda 2.0 – sadece public & finished)
 // Filtre + sıralama + "Hepsi / Takip" audience destekli
 
@@ -127,7 +128,13 @@ export async function fetchViewportRoutes({
         .map((id) => String(id || "").trim())
         .filter((id) => id.length > 0)
     : [];
-  const hasFollowing = audienceNorm === "following" && followingArr.length > 0;
+  const hasFollowing =
+    audienceNorm === "following" && followingArr.length > 0;
+
+  // ADIM 30: Takip modunda hiç takip yoksa doğrudan boş liste döndür.
+  if (audienceNorm === "following" && !hasFollowing) {
+    return { routes: [], stats: { fetched: 0, deduped: 0 } };
+  }
 
   const col = collection(db, "routes");
   const map = new Map();
@@ -201,7 +208,8 @@ export async function fetchViewportRoutes({
   const { n, s, e, w } = bounds;
   routes = routes.filter((r) => {
     const c = r?.routeGeo?.center;
-    if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lng)) return false;
+    if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lng))
+      return false;
     const lat = c.lat;
     const lng = c.lng;
     const latOk = lat >= s && lat <= n;
@@ -354,6 +362,154 @@ export async function fetchViewportRoutes({
     routes: finalRoutes,
     stats: { fetched, deduped: finalRoutes.length },
   };
+}
+
+/**
+ * ADIM 30: Basit metin araması – yalnızca public & finished rotalar.
+ *
+ * @param {{
+ *   query: string,
+ *   limit?: number,
+ *   audience?: "all"|"following",
+ *   followingUids?: string[],
+ *   sort?: "near"|"new"|"likes"|"rating"|"most_votes"|"top_rated"
+ * }} params
+ *
+ * @returns {Promise<{routes:any[]}>}
+ */
+export async function searchRoutes({
+  query: rawQuery,
+  limit = 50,
+  audience = "all",
+  followingUids,
+  sort = "new",
+}) {
+  const qText = (rawQuery || "").toString().trim();
+  if (!qText) {
+    return { routes: [] };
+  }
+
+  const limitVal = Math.max(1, Math.min(Number(limit) || 50, 100));
+
+  const colRef = collection(db, "routes");
+
+  const audienceNorm = audience === "following" ? "following" : "all";
+  const followingArr = Array.isArray(followingUids)
+    ? followingUids
+        .map((id) => String(id || "").trim())
+        .filter((id) => id.length > 0)
+    : [];
+  const hasFollowing =
+    audienceNorm === "following" && followingArr.length > 0;
+
+  // Takip modunda hiç takip yoksa doğrudan boş döndür.
+  if (audienceNorm === "following" && !hasFollowing) {
+    return { routes: [] };
+  }
+
+  const baseQuery = query(
+    colRef,
+    where("status", "==", "finished"),
+    orderBy("createdAt", "desc"),
+    qlimit(limitVal * 4)
+  );
+
+  const snap = await getDocs(baseQuery);
+
+  const routesRaw = [];
+  const followSet = hasFollowing ? new Set(followingArr) : null;
+
+  snap.forEach((d) => {
+    const data = d.data();
+    const visibility = (data.visibility || "public").toString();
+    if (visibility !== "public") return;
+    if ((data.status || "").toString() !== "finished") return;
+
+    if (hasFollowing) {
+      const owner =
+        data.ownerId ||
+        data.userId ||
+        data.uid ||
+        data.ownerUID ||
+        data.ownerUid ||
+        data.userUID;
+      if (!owner || !followSet.has(String(owner))) return;
+    }
+
+    routesRaw.push({ id: d.id, ...data });
+  });
+
+  const needle = qText.toLowerCase();
+
+  let routes = routesRaw.filter((r) => {
+    const title =
+      (r.title ||
+        r.name ||
+        r.routeName ||
+        r.displayName ||
+        "").toString().toLowerCase();
+    const desc =
+      (r.description || r.desc || r.summary || "")
+        .toString()
+        .toLowerCase();
+    const city = (r?.areas?.city || "").toString().toLowerCase();
+    return (
+      title.includes(needle) ||
+      desc.includes(needle) ||
+      city.includes(needle)
+    );
+  });
+
+  const sortKeyRaw = (sort || "new").toString().toLowerCase();
+  let sortKey = "new";
+  if (
+    sortKeyRaw === "likes" ||
+    sortKeyRaw === "most_votes" ||
+    sortKeyRaw === "votes"
+  ) {
+    sortKey = "votes";
+  } else if (
+    sortKeyRaw === "rating" ||
+    sortKeyRaw === "top_rated" ||
+    sortKeyRaw === "top"
+  ) {
+    sortKey = "rating";
+  } else {
+    sortKey = "new";
+  }
+
+  routes.sort((a, b) => {
+    const ta = createdAtSeconds(a);
+    const tb = createdAtSeconds(b);
+
+    if (sortKey === "rating") {
+      const ra = Number(a.ratingAvg || 0);
+      const rb = Number(b.ratingAvg || 0);
+      if (rb !== ra) return rb - ra;
+
+      const ca = Number(a.ratingCount || 0);
+      const cb = Number(b.ratingCount || 0);
+      if (cb !== ca) return cb - ca;
+      return tb - ta;
+    }
+
+    if (sortKey === "votes") {
+      const ca = Number(a.ratingCount || 0);
+      const cb = Number(b.ratingCount || 0);
+      if (cb !== ca) return cb - ca;
+
+      const ra = Number(a.ratingAvg || 0);
+      const rb = Number(b.ratingAvg || 0);
+      if (rb !== ra) return rb - ra;
+      return tb - ta;
+    }
+
+    // "new"
+    return tb - ta;
+  });
+
+  const final = routes.slice(0, limitVal);
+  return { routes: final };
 }
 
 export default fetchViewportRoutes;

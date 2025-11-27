@@ -34,11 +34,17 @@ import { buildGpx, downloadGpx } from "../services/gpx";
 // Yıldız bileşeni (projede mevcut)
 import StarRatingV2 from "../components/StarRatingV2/StarRatingV2";
 
+// ADIM 31: Yorumlar için CommentsPanel
+import CommentsPanel from "../components/CommentsPanel/CommentsPanel";
+
 // Google Maps hook’u (projede mevcut)
 import { useGoogleMaps } from "../hooks/useGoogleMaps";
 
 // Görsel paylaşım sheet’i (projede mevcut)
 import ShareSheetMobile from "../components/ShareSheetMobile";
+
+// ADIM 31: Yorum sayaç takibi
+import { watchCommentsCount } from "../commentsClient";
 
 // Ufak yardımcılar
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
@@ -485,8 +491,40 @@ async function listStopMediaInline({ routeId, stopId, limit = 50 }) {
 
 /* ======================= ANA BİLEŞEN ======================= */
 export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
-  // Sekmeler: "stops" | "gallery" | "report"
-  const [tab, setTab] = useState("stops");
+  // ADIM 31: Sekmeler: "stops" | "gallery" | "report" | "comments" + URL ?tab=
+  const [tab, setTab] = useState(() => {
+    if (typeof window === "undefined") return "stops";
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get("tab");
+      if (t === "gallery" || t === "report" || t === "comments" || t === "stops") {
+        return t === "stops" ? "stops" : t;
+      }
+    } catch {
+      // ignore URL issues
+    }
+    return "stops";
+  });
+
+  // ADIM 31: Sekme değişiminde URL ?tab= güncelle
+  const onTabChange = useCallback((nextTab) => {
+    setTab(nextTab);
+    if (typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      if (!nextTab || nextTab === "stops") {
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.set("tab", nextTab);
+      }
+      window.history.replaceState(window.history.state, "", url.toString());
+    } catch {
+      // history hataları UI'yı bozmasın
+    }
+  }, []);
+
+  // ADIM 31: Yorum sayacı (sekme etiketi için)
+  const [commentsCount, setCommentsCount] = useState(null);
 
   const [routeDoc, setRouteDoc] = useState(null);
   const [stops, setStops] = useState([]); // [{id, order, title, note, lat,lng,t}]
@@ -543,6 +581,32 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     })();
     return () => {
       alive = false;
+    };
+  }, [routeId]);
+
+  // ADIM 31: Route yorum sayısı için gerçek zamanlı izleme
+  useEffect(() => {
+    if (!routeId) return;
+    let unsubscribe;
+    try {
+      unsubscribe = watchCommentsCount(
+        { targetType: "route", targetId: routeId },
+        (cnt) => {
+          setCommentsCount(typeof cnt === "number" ? cnt : 0);
+        }
+      );
+    } catch (e) {
+      if (process.env.NODE_ENV !== "production") {
+        // eslint-disable-next-line no-console
+        console.warn("[RouteDetailMobile] yorum sayaç izleme hatası:", e);
+      }
+    }
+    return () => {
+      if (typeof unsubscribe === "function") {
+        try {
+          unsubscribe();
+        } catch {}
+      }
     };
   }, [routeId]);
 
@@ -1040,27 +1104,35 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
             padding: "8px 8px 0",
           }}
         >
-          {["stops", "gallery", "report"].map((key) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: tab === key ? "#111" : "#fff",
-                color: tab === key ? "#fff" : "#111",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              {key === "stops"
-                ? "Duraklar"
-                : key === "gallery"
-                ? "Galeri"
-                : "Rapor"}
-            </button>
-          ))}
+          {["stops", "gallery", "report", "comments"].map((key) => {
+            let label;
+            if (key === "stops") label = "Duraklar";
+            else if (key === "gallery") label = "Galeri";
+            else if (key === "report") label = "Rapor";
+            else if (key === "comments") {
+              label =
+                commentsCount && commentsCount > 0
+                  ? `Yorumlar (${commentsCount})`
+                  : "Yorumlar";
+            }
+            return (
+              <button
+                key={key}
+                onClick={() => onTabChange(key)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #e5e7eb",
+                  background: tab === key ? "#111" : "#fff",
+                  color: tab === key ? "#fff" : "#111",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {/* İçerik */}
@@ -1567,6 +1639,15 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
           />
         </div>
       )}
+
+      {/* ADIM 31: Yorumlar Paneli (route) */}
+      <CommentsPanel
+        open={tab === "comments"}
+        targetType="route"
+        targetId={routeId}
+        placeholder="Bu rota hakkında ne düşünüyorsun?"
+        onClose={() => onTabChange("stops")}
+      />
 
       {/* Lightbox */}
       {lightboxItems && (

@@ -27,11 +27,22 @@ function relTimeTR(input) {
  * IG’ye yakın, aşağıdan açılan yorum paneli (WRITE-ENABLED).
  * Props:
  *  - open: boolean
- *  - contentId: string
+ *  - contentId?: string
+ *  - targetType?: string ("route" vb.)
+ *  - targetId?: string
  *  - onClose: fn()
  *  - initialLocal?: array
+ *  - placeholder?: string
  */
-export default function CommentsPanel({ open, contentId, onClose, initialLocal }) {
+export default function CommentsPanel({
+  open,
+  contentId,
+  targetType,
+  targetId,
+  onClose,
+  initialLocal,
+  placeholder = "Yorum ekle…",
+}) {
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -52,7 +63,7 @@ export default function CommentsPanel({ open, contentId, onClose, initialLocal }
 
   // panel açıldığında ilk veriyi çek
   useEffect(() => {
-    if (!open || !contentId) return;
+    if (!open || (!contentId && !(targetType && targetId))) return;
     let mounted = true;
 
     // yerel (karttan) varsa önce onu göster
@@ -74,6 +85,8 @@ export default function CommentsPanel({ open, contentId, onClose, initialLocal }
       try {
         const { items: first, nextCursor } = await getComments({
           contentId,
+          targetType,
+          targetId,
           pageSize: 25,
         });
         if (!mounted) return;
@@ -89,35 +102,41 @@ export default function CommentsPanel({ open, contentId, onClose, initialLocal }
     return () => {
       mounted = false;
     };
-  }, [open, contentId, initialized, initialLocal]);
+  }, [open, contentId, targetType, targetId, initialized, initialLocal]);
 
   // sonsuz kaydırma
   useEffect(() => {
     if (!open || isEnd) return;
+    if (!contentId && !(targetType && targetId)) return;
     const el = sentinelRef.current;
     if (!el) return;
 
-    const io = new IntersectionObserver(async (entries) => {
-      if (!entries[0]?.isIntersecting) return;
-      if (loading || !cursor) return;
-      setLoading(true);
-      try {
-        const { items: more, nextCursor } = await getComments({
-          contentId,
-          pageSize: 25,
-          cursor,
-        });
-        setItems((prev) => mergeUnique(prev, more));
-        setCursor(nextCursor);
-        setIsEnd(!nextCursor);
-      } finally {
-        setLoading(false);
-      }
-    }, { rootMargin: "600px 0px 1200px 0px", threshold: 0.01 });
+    const io = new IntersectionObserver(
+      async (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        if (loading || !cursor) return;
+        setLoading(true);
+        try {
+          const { items: more, nextCursor } = await getComments({
+            contentId,
+            targetType,
+            targetId,
+            pageSize: 25,
+            cursor,
+          });
+          setItems((prev) => mergeUnique(prev, more));
+          setCursor(nextCursor);
+          setIsEnd(!nextCursor);
+        } finally {
+          setLoading(false);
+        }
+      },
+      { rootMargin: "600px 0px 1200px 0px", threshold: 0.01 }
+    );
 
     io.observe(el);
     return () => io.disconnect();
-  }, [open, contentId, cursor, loading, isEnd]);
+  }, [open, contentId, targetType, targetId, cursor, loading, isEnd]);
 
   // ESC/backdrop kapatmayı üst bileşen yönetiyor.
   const stop = (e) => e.stopPropagation();
@@ -126,23 +145,56 @@ export default function CommentsPanel({ open, contentId, onClose, initialLocal }
 
   const canSend = draft.trim().length > 0 && !submitting;
 
-  const handleSubmit = useCallback(async () => {
-    const text = draft.trim();
-    if (!text || submitting) return;
-    setSubmitting(true);
-    try {
-      const optimistic = await addComment({ contentId, text });
-      // En yeni üstte: başa ekleyelim (liste desc ise uyumlu)
-      setItems((prev) => mergeUnique([optimistic, ...prev], []));
-      setDraft("");
-      // Not: serverTimestamp güncellendiğinde, sonraki sayfa/yeniden yüklemede hizalanır
-    } catch (e) {
-      alert(e?.message || "Yorum eklenemedi.");
-    } finally {
-      setSubmitting(false);
-      inputRef.current?.focus();
-    }
-  }, [draft, submitting, contentId]);
+  const handleSubmit = useCallback(
+    async () => {
+      const text = draft.trim();
+      if (!text || submitting) return;
+      setSubmitting(true);
+      try {
+        const optimistic = await addComment({
+          contentId,
+          targetType,
+          targetId,
+          text,
+        });
+        // En yeni üstte: başa ekleyelim (liste desc ise uyumlu)
+        setItems((prev) => mergeUnique([optimistic, ...prev], []));
+        setDraft("");
+
+        // ADIM 31: Hafif analitik tetikleyici (route yorumları)
+        try {
+          if (typeof window !== "undefined" && window.dispatchEvent) {
+            const detail = {
+              event:
+                targetType === "route"
+                  ? "route_comment_added"
+                  : "content_comment_added",
+            };
+            if (targetType) detail.targetType = targetType;
+            if (targetId) detail.targetId = targetId;
+            if (targetType === "route" && targetId) {
+              detail.routeId = targetId;
+            }
+            window.dispatchEvent(
+              new CustomEvent("analytics", {
+                detail,
+              })
+            );
+          }
+        } catch {
+          // analytics hataları akışı bozmasın
+        }
+        // Not: serverTimestamp güncellendiğinde, sonraki sayfa/yeniden yüklemede hizalanır
+      } catch (e) {
+        // eslint-disable-next-line no-alert
+        alert(e?.message || "Yorum eklenemedi.");
+      } finally {
+        setSubmitting(false);
+        inputRef.current?.focus();
+      }
+    },
+    [draft, submitting, contentId, targetType, targetId]
+  );
 
   const onKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -172,7 +224,12 @@ export default function CommentsPanel({ open, contentId, onClose, initialLocal }
           {list.length === 0 && (
             <>
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="cp-item skel" role="listitem" aria-hidden="true">
+                <div
+                  key={i}
+                  className="cp-item skel"
+                  role="listitem"
+                  aria-hidden="true"
+                >
                   <div className="cp-avatar skel-block" />
                   <div className="cp-body">
                     <div className="cp-skel-line w60" />
@@ -192,7 +249,9 @@ export default function CommentsPanel({ open, contentId, onClose, initialLocal }
               )}
               <div className="cp-body">
                 <div className="cp-line">
-                  <strong className="cp-name">{c.authorName || "kullanıcı"}</strong>
+                  <strong className="cp-name">
+                    {c.authorName || "kullanıcı"}
+                  </strong>
                   <span className="cp-time">{relTimeTR(c.createdAt)}</span>
                 </div>
                 <div className="cp-text">{c.text}</div>
@@ -203,7 +262,11 @@ export default function CommentsPanel({ open, contentId, onClose, initialLocal }
           {!isEnd && (
             <>
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={"skel-more-" + i} className="cp-item skel" aria-hidden="true">
+                <div
+                  key={"skel-more-" + i}
+                  className="cp-item skel"
+                  aria-hidden="true"
+                >
                   <div className="cp-avatar skel-block" />
                   <div className="cp-body">
                     <div className="cp-skel-line w70" />
@@ -220,7 +283,7 @@ export default function CommentsPanel({ open, contentId, onClose, initialLocal }
           <input
             ref={inputRef}
             type="text"
-            placeholder="Yorum ekle…"
+            placeholder={placeholder}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
