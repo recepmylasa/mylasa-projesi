@@ -1,56 +1,71 @@
 // src/pages/RoutesExploreMobile/utils/grouping.js
+// ADIM 32: Şehir / ülke bazlı gruplama
 
-import { getRouteCity, getRouteCountryLabel } from "./routeFormatters";
+import {
+  getRouteCity,
+  getRouteCountryLabel,
+} from "./routeFormatters";
 
-export function mapSortToOrder(sort) {
-  if (sort === "rating") return "top";
-  if (sort === "likes") return "trending";
-  return "new";
-}
-
+/**
+ * Rota listesini gruplar:
+ * - "none"    → tek grup, başlıksız
+ * - "city"    → şehir bazlı gruplar
+ * - "country" → ülke bazlı gruplar
+ *
+ * Çıktı:
+ * [
+ *   { key: string, label: string, items: Route[] },
+ *   ...
+ * ]
+ */
 export function makeGroups(items, group) {
-  if (!Array.isArray(items) || items.length === 0) {
-    return [];
-  }
+  const list = Array.isArray(items) ? items : [];
 
-  if (!group || group === "none") {
+  if (group === "none") {
     return [
       {
         key: "all",
         label: "",
-        items,
+        items: list,
       },
     ];
   }
 
-  const buckets = new Map();
+  const map = new Map();
 
-  for (const item of items) {
-    let key = "";
+  list.forEach((r) => {
+    let key = "other";
+    let label = "Diğer";
+
     if (group === "city") {
-      key = getRouteCity(item);
+      const city = getRouteCity(r);
+      if (city) {
+        key = `city:${city.toLowerCase()}`;
+        label = city;
+      }
     } else if (group === "country") {
-      key = getRouteCountryLabel(item);
+      const country = getRouteCountryLabel(r);
+      if (country) {
+        key = `country:${country.toLowerCase()}`;
+        label = country;
+      }
     }
 
-    const finalKey = (key && String(key).trim()) || "Diğer";
-    if (!buckets.has(finalKey)) buckets.set(finalKey, []);
-    buckets.get(finalKey).push(item);
-  }
+    const existing = map.get(key);
+    if (existing) {
+      existing.items.push(r);
+    } else {
+      map.set(key, { key, label, items: [r] });
+    }
+  });
 
-  const groups = Array.from(buckets.entries()).map(([key, list]) => ({
-    key,
-    label: key,
-    items: list,
-  }));
-
-  groups.sort((a, b) => {
-    const la = (a.label || "").toLocaleLowerCase("tr-TR");
-    const lb = (b.label || "").toLocaleLowerCase("tr-TR");
+  const out = Array.from(map.values());
+  out.sort((a, b) => {
+    const la = (a.label || "").toLowerCase();
+    const lb = (b.label || "").toLowerCase();
     if (la < lb) return -1;
     if (la > lb) return 1;
     return 0;
   });
-
-  return groups;
+  return out;
 }

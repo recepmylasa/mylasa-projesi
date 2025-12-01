@@ -12,11 +12,12 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { auth } from "../firebase";
 
 import { useGoogleMaps } from "../hooks/useGoogleMaps";
-import fetchViewportRoutes, { searchRoutes } from "../services/viewportRoutes";
+import fetchViewportRoutes, {
+  searchRoutes,
+} from "../services/viewportRoutes";
 import { fetchPublicRoutes } from "../services/routeSearch";
 import { getFollowingUids } from "../services/follows";
 
@@ -32,313 +33,51 @@ import {
 } from "../utils/urlState";
 import { getRatingAvg } from "../utils/rating";
 
-const DEFAULT_AUDIENCE = "all"; // "all" | "following"
-const DEFAULT_SORT = "near"; // "near" | "new" | "likes" | "rating"
-const DEFAULT_GROUP = "none"; // "none" | "city" | "country"
+import {
+  DEFAULT_AUDIENCE,
+  DEFAULT_SORT,
+  DEFAULT_GROUP,
+  LS_AUDIENCE,
+  LS_AUDIENCE_LEGACY,
+  LS_SORT_NEW,
+  LS_SORT,
+  LS_GROUP,
+  LS_NEAR,
+  LS_RADIUS,
+  LS_QUERY,
+  LS_SELECTED,
+  normalizeAudience,
+  normalizeSort,
+  normalizeGroup,
+  getInitialRouteUiState,
+  getInitialRouteFilters,
+} from "./RoutesExploreMobile/utils/stateInit";
+
+import {
+  getInitialRecentQueries,
+  bumpRecentQuery as bumpRecentQueryLS,
+  clearRecentQueries as clearRecentQueriesLS,
+} from "./RoutesExploreMobile/utils/recentSearches";
+
+import {
+  createCluster,
+  syncPins,
+  clearPins,
+} from "./RoutesExploreMobile/utils/nearMapPins";
+
+import {
+  getCreatedAtSec,
+  distanceMeters,
+} from "./RoutesExploreMobile/utils/routeFormatters";
+
+import { makeGroups } from "./RoutesExploreMobile/utils/grouping";
+import { mapSortToOrder } from "./RoutesExploreMobile/utils/sortMap";
 
 const PAGE_SIZE = 20;
 const NEAR_LIMIT = 200;
 
-// ADIM 32: audience için yeni anahtar r_audience, eski anahtar legacy olarak korunuyor.
-// DIM 34: r_sort + r_recentq ek.
-const LS_AUDIENCE = "r_audience";
-const LS_AUDIENCE_LEGACY = "routes.v1.audience";
-const LS_SORT_NEW = "r_sort";
-const LS_SORT = "routes.v1.sort";
-const LS_GROUP = "routes.v1.group";
-const LS_NEAR = "routes.v1.near";
-const LS_RADIUS = "routes.v1.radius";
-const LS_QUERY = "routes.v1.q";
-// ADIM 33: seçili rota id’si
-const LS_SELECTED = "r_sel";
 // DIM 34: son aramalar
 const LS_RECENT_Q = "r_recentq";
-
-function normalizeAudience(raw) {
-  if (!raw) return DEFAULT_AUDIENCE;
-  const v = String(raw).toLowerCase();
-  if (v === "following" || v === "takip") return "following";
-  return "all";
-}
-
-function normalizeSort(raw) {
-  const v = String(raw || "").toLowerCase();
-  if (v === "near" || v === "yakın" || v === "nearby") return "near";
-  if (
-    v === "likes" ||
-    v === "most_rated" ||
-    v === "popular" ||
-    v === "most_votes" ||
-    v === "votes"
-  ) {
-    return "likes"; // "En çok oy"
-  }
-  if (v === "rating" || v === "top" || v === "top_rated") return "rating";
-  if (v === "new" || v === "en_yeni") return "new";
-  return DEFAULT_SORT;
-}
-
-function normalizeGroup(raw) {
-  const v = String(raw || "").toLowerCase();
-  if (v === "city" || v === "şehir") return "city";
-  if (v === "country" || v === "ülke") return "country";
-  return DEFAULT_GROUP;
-}
-
-function getCreatedAtSec(route) {
-  if (!route) return 0;
-  if (typeof route._createdAtSec === "number") return route._createdAtSec;
-  const ts = route.createdAt;
-  if (!ts) return 0;
-  if (typeof ts.seconds === "number") return ts.seconds;
-  if (typeof ts.toMillis === "function") {
-    return Math.floor(ts.toMillis() / 1000);
-  }
-  const n = Number(ts);
-  return Number.isFinite(n) ? Math.floor(n / 1000) : 0;
-}
-
-function getRouteCity(route) {
-  return (route?.areas?.city || "").toString().trim();
-}
-
-function getRouteCountryLabel(route) {
-  const a = route?.areas || {};
-  return (
-    a.countryName ||
-    a.country ||
-    a.countryCode ||
-    a.cc ||
-    ""
-  )
-    .toString()
-    .trim();
-}
-
-// Küçük merkez farklarını ölçmek için basit Haversine (m cinsinden)
-function distanceMeters(a, b) {
-  const lat1 = Number(a?.lat);
-  const lng1 = Number(a?.lng);
-  const lat2 = Number(b?.lat);
-  const lng2 = Number(b?.lng);
-  if (
-    !Number.isFinite(lat1) ||
-    !Number.isFinite(lng1) ||
-    !Number.isFinite(lat2) ||
-    !Number.isFinite(lng2)
-  ) {
-    return Infinity;
-  }
-  const R = 6371000; // m
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const r1 = (lat1 * Math.PI) / 180;
-  const r2 = (lat2 * Math.PI) / 180;
-
-  const sinDLat = Math.sin(dLat / 2);
-  const sinDLng = Math.sin(dLng / 2);
-
-  const h =
-    sinDLat * sinDLat +
-    Math.cos(r1) * Math.cos(r2) * sinDLng * sinDLng;
-
-  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-  return R * c;
-}
-
-function makeGroups(items, group) {
-  if (group === "none") {
-    return [
-      {
-        key: "all",
-        label: "",
-        items,
-      },
-    ];
-  }
-
-  const map = new Map();
-
-  items.forEach((r) => {
-    let key = "other";
-    let label = "Diğer";
-
-    if (group === "city") {
-      const city = getRouteCity(r);
-      if (city) {
-        key = `city:${city.toLowerCase()}`;
-        label = city;
-      }
-    } else if (group === "country") {
-      const country = getRouteCountryLabel(r);
-      if (country) {
-        key = `country:${country.toLowerCase()}`;
-        label = country;
-      }
-    }
-
-    const existing = map.get(key);
-    if (existing) {
-      existing.items.push(r);
-    } else {
-      map.set(key, { key, label, items: [r] });
-    }
-  });
-
-  const out = Array.from(map.values());
-  out.sort((a, b) => {
-    const la = (a.label || "").toLowerCase();
-    const lb = (b.label || "").toLowerCase();
-    if (la < lb) return -1;
-    if (la > lb) return 1;
-    return 0;
-  });
-  return out;
-}
-
-function mapSortToOrder(sort) {
-  if (sort === "new") return "new";
-  if (sort === "rating") return "top"; // en yüksek puan
-  if (sort === "likes") return "trending"; // en çok oy
-  return "new";
-}
-
-// DIM 34: Son aramalar için başlangıç listesi
-function getInitialRecentQueries() {
-  if (typeof window === "undefined") return [];
-  const stored = readJSON(LS_RECENT_Q, null);
-  if (!Array.isArray(stored)) return [];
-  return stored
-    .map((v) => (v == null ? "" : String(v)))
-    .map((v) => v.trim())
-    .filter(Boolean)
-    .slice(0, 6);
-}
-
-// ADIM 32 + 33: URL (m/a/s/q/sel) + localStorage(r_audience, r_sel) başlangıç durumu.
-function getInitialRouteUiState() {
-  if (typeof window === "undefined") {
-    return {
-      audience: DEFAULT_AUDIENCE,
-      sort: DEFAULT_SORT,
-      group: DEFAULT_GROUP,
-      near: null,
-      radius: 5,
-      query: "",
-      selectedId: null,
-    };
-  }
-
-  const urlModeRaw = readParam("m", null); // near | search
-  let queryVal = (readParam("q", "") || "").toString();
-
-  let audience = normalizeAudience(
-    readParam("a", null) ?? readParam("aud", null)
-  );
-  let sort = normalizeSort(readParam("s", null) ?? readParam("sort", null));
-
-  const urlGroupRaw =
-    readParam("groupBy", null) ?? readParam("group", null);
-  let group = normalizeGroup(urlGroupRaw);
-
-  // localStorage fallback (önce yeni anahtarlar, sonra legacy)
-  const lsAudNew = readJSON(LS_AUDIENCE, null);
-  const lsAudLegacy = readJSON(LS_AUDIENCE_LEGACY, null);
-  const lsSortNew = readJSON(LS_SORT_NEW, null);
-  const lsSortLegacy = readJSON(LS_SORT, null);
-  const lsGroup = readJSON(LS_GROUP, null);
-  const lsNear = readJSON(LS_NEAR, null);
-  const lsRadius = readJSON(LS_RADIUS, null);
-  const lsQuery = readJSON(LS_QUERY, null);
-  const lsSel = readJSON(LS_SELECTED, null);
-
-  if (!audience && (lsAudNew || lsAudLegacy)) {
-    audience = normalizeAudience(lsAudNew ?? lsAudLegacy);
-  }
-  if (!sort && (lsSortNew || lsSortLegacy)) {
-    sort = normalizeSort(lsSortNew ?? lsSortLegacy);
-  }
-  if (!group && lsGroup) group = normalizeGroup(lsGroup);
-  if (!queryVal && typeof lsQuery === "string") queryVal = lsQuery;
-
-  const modeFromUrl =
-    (urlModeRaw || "").toString().toLowerCase() === "search"
-      ? "search"
-      : "near";
-
-  const isSearchLike =
-    modeFromUrl === "search" ||
-    (queryVal && queryVal.toString().trim().length > 0);
-
-  if (!audience) audience = DEFAULT_AUDIENCE;
-  if (!sort) {
-    // ADIM 32: Arama modunda varsayılan "En yeni", aksi halde "Yakınımda"
-    sort = isSearchLike ? "new" : DEFAULT_SORT;
-  }
-  if (!group) group = DEFAULT_GROUP;
-  if (!queryVal) queryVal = "";
-
-  let near = null;
-  if (lsNear && typeof lsNear === "object") {
-    const lat = Number(lsNear.lat);
-    const lng = Number(lsNear.lng);
-    const zoom = Number(lsNear.zoom);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      near = {
-        lat,
-        lng,
-        zoom: Number.isFinite(zoom) ? zoom : 13,
-      };
-    }
-  }
-
-  let radius = Number(lsRadius);
-  if (!Number.isFinite(radius) || radius <= 0) radius = 5;
-
-  // ADIM 33: sel paramı + localStorage r_sel
-  let selectedId = null;
-  const selParam = readParam("sel", null);
-  if (typeof selParam === "string" && selParam.trim()) {
-    selectedId = selParam.trim();
-  } else if (typeof lsSel === "string" && lsSel.trim()) {
-    selectedId = lsSel.trim();
-  }
-
-  return { audience, sort, group, near, radius, query: queryVal, selectedId };
-}
-
-function getInitialRouteFilters() {
-  if (typeof window === "undefined") {
-    return {
-      tags: [],
-      city: "",
-      country: "",
-      dist: [0, 50], // km
-      dur: [0, 300], // dk
-    };
-  }
-
-  const city = (readParam("city", "") || "").toString();
-  const country = (readParam("country", "") || "").toString();
-  const tagsRaw = readParam("tags", null);
-  let tags = [];
-
-  if (typeof tagsRaw === "string" && tagsRaw.trim()) {
-    tags = tagsRaw
-      .split(/[,\s]+/g)
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean)
-      .slice(0, 10);
-  }
-
-  return {
-    tags,
-    city,
-    country,
-    dist: [0, 50],
-    dur: [0, 300],
-  };
-}
 
 function RoutesExploreMobile() {
   const initialRef = useRef(null);
@@ -433,28 +172,27 @@ function RoutesExploreMobile() {
   const bumpRecentQuery = useCallback((raw) => {
     const q = (raw || "").toString().trim();
     if (!q) return;
-    setRecentQueries((prev) => {
-      const existing = Array.isArray(prev) ? prev : [];
-      const filtered = existing.filter(
-        (item) => item.toLowerCase() !== q.toLowerCase()
-      );
-      const next = [q, ...filtered].slice(0, 6);
-      try {
-        writeJSON(LS_RECENT_Q, next);
-      } catch {
-        // no-op
-      }
-      return next;
-    });
+    setRecentQueries((prev) =>
+      bumpRecentQueryLS(prev, q, (next) => {
+        try {
+          writeJSON(LS_RECENT_Q, next);
+        } catch {
+          // no-op
+        }
+      })
+    );
   }, []);
 
   const clearRecentQueries = useCallback(() => {
-    setRecentQueries([]);
-    try {
-      writeJSON(LS_RECENT_Q, []);
-    } catch {
-      // no-op
-    }
+    setRecentQueries(
+      clearRecentQueriesLS((next) => {
+        try {
+          writeJSON(LS_RECENT_Q, next);
+        } catch {
+          // no-op
+        }
+      })
+    );
   }, []);
 
   const triggerImmediateSearch = useCallback(
@@ -575,20 +313,15 @@ function RoutesExploreMobile() {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+
       // Yakınımda marker/cluster temizliği (unmount)
-      const existingMarkers = markersRef.current;
-      if (existingMarkers && Object.keys(existingMarkers).length) {
-        Object.values(existingMarkers).forEach((m) => {
-          if (m && typeof m.setMap === "function") {
-            m.setMap(null);
-          }
-        });
-        markersRef.current = {};
-      }
-      if (clusterRef.current) {
-        clusterRef.current.clearMarkers();
-        clusterRef.current = null;
-      }
+      clearPins({
+        cluster: clusterRef.current,
+        markersMap: markersRef.current,
+      });
+      clusterRef.current = null;
+      markersRef.current = {};
+
       if (nearPersistRef.current.timeoutId) {
         clearTimeout(nearPersistRef.current.timeoutId);
         nearPersistRef.current.timeoutId = null;
@@ -622,7 +355,10 @@ function RoutesExploreMobile() {
     window.addEventListener("route-modal-closed", handleRouteClose);
     return () => {
       window.removeEventListener("close-route-modal", handleRouteClose);
-      window.removeEventListener("route-modal-closed", handleRouteClose);
+      window.removeEventListener(
+        "route-modal-closed",
+        handleRouteClose
+      );
     };
   }, []);
 
@@ -799,7 +535,8 @@ function RoutesExploreMobile() {
     const handler = () => {
       const audRaw = readParam("a", null) ?? readParam("aud", null);
       let aud = normalizeAudience(audRaw);
-      const srtRaw = readParam("s", null) ?? readParam("sort", null);
+      const srtRaw =
+        readParam("s", null) ?? readParam("sort", null);
       let srt = normalizeSort(srtRaw);
       const grp = normalizeGroup(
         readParam("groupBy", null) ?? readParam("group", null)
@@ -995,7 +732,10 @@ function RoutesExploreMobile() {
   useEffect(() => {
     if (!mapReady || sort !== "near" || hasSearch || !mapRef.current)
       return;
-    const listener = mapRef.current.addListener("idle", handleMapIdle);
+    const listener = mapRef.current.addListener(
+      "idle",
+      handleMapIdle
+    );
     return () => {
       if (listener && typeof listener.remove === "function") {
         listener.remove();
@@ -1013,8 +753,14 @@ function RoutesExploreMobile() {
       setShowSearchAreaButton(true);
     };
 
-    const dragListener = map.addListener("dragend", handleInteraction);
-    const zoomListener = map.addListener("zoom_changed", handleInteraction);
+    const dragListener = map.addListener(
+      "dragend",
+      handleInteraction
+    );
+    const zoomListener = map.addListener(
+      "zoom_changed",
+      handleInteraction
+    );
 
     return () => {
       if (dragListener && typeof dragListener.remove === "function") {
@@ -1211,128 +957,51 @@ function RoutesExploreMobile() {
     appliedSelectionRef.current = selId;
   }, [selectedRouteId, items, sort, mapReady, mapRef]);
 
-  // ---- Yakınımda: marker + cluster (diff tabanlı, kart↔pin senkronu) ----
+  // ---- Yakınımda: marker + cluster (nearMapPins utils, kart↔pin senkronu) ----
   useEffect(() => {
     if (sort !== "near" || hasSearch) return;
     if (!mapReady || !mapRef.current || typeof window === "undefined")
       return;
 
-    const gmaps = window.google.maps;
-    if (!gmaps?.Marker) return;
+    const map = mapRef.current;
 
-    // MarkerClusterer oluştur (repo’da varsa – yeni bağımlılık eklemiyoruz)
     if (!clusterRef.current) {
-      clusterRef.current = new MarkerClusterer({
-        map: mapRef.current,
-        markers: [],
-      });
+      clusterRef.current = createCluster(map);
     }
 
-    const baseIcon = {
-      path: gmaps.SymbolPath.CIRCLE,
-      scale: 6,
-      fillColor: "#1d4ed8",
-      fillOpacity: 0.9,
-      strokeColor: "#ffffff",
-      strokeWeight: 2,
+    const onSelect = (routeId) => {
+      if (!routeId) return;
+      setSelectedRouteId(routeId);
+      const el = cardRefs.current[routeId];
+      if (el && typeof el.scrollIntoView === "function") {
+        try {
+          el.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        } catch {
+          // no-op
+        }
+      }
     };
 
-    const selectedIcon = {
-      ...baseIcon,
-      scale: 8,
-      fillColor: "#111827",
+    const result = syncPins({
+      map,
+      cluster: clusterRef.current,
+      items,
+      selectedId: selectedRouteId ? String(selectedRouteId) : null,
+      markersMap: markersRef.current,
+      onSelect,
+    });
+
+    if (result && result.markersMap) {
+      markersRef.current = result.markersMap;
+    }
+
+    return () => {
+      // Bu effect cleanup’ında ekstra işlem gerekmiyor; genel temizlik
+      // near-modundan çıkış effect’inde ve unmount’ta yapılıyor.
     };
-
-    const currentMarkers = markersRef.current || {};
-    const nextMarkers = { ...currentMarkers };
-    const nextIds = new Set();
-
-    items.forEach((r) => {
-      const c = r?.routeGeo?.center;
-      if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lng))
-        return;
-      const id = r.id;
-      if (!id) return;
-      const key = String(id);
-
-      nextIds.add(key);
-
-      if (!currentMarkers[key]) {
-        const marker = new gmaps.Marker({
-          position: { lat: c.lat, lng: c.lng },
-          map: mapRef.current,
-          icon: baseIcon,
-        });
-
-        // Pin → kart seçimi + scrollIntoView
-        marker.addListener("click", () => {
-          setSelectedRouteId(key);
-          const el = cardRefs.current[key];
-          if (el && typeof el.scrollIntoView === "function") {
-            try {
-              el.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-              });
-            } catch {
-              // no-op
-              }
-          }
-        });
-
-        nextMarkers[key] = marker;
-        if (clusterRef.current) {
-          clusterRef.current.addMarker(marker);
-        }
-      }
-    });
-
-    // Artık listede olmayan marker’ları kaldır
-    Object.keys(currentMarkers).forEach((id) => {
-      if (!nextIds.has(id)) {
-        const marker = currentMarkers[id];
-        if (marker) {
-          if (clusterRef.current) {
-            clusterRef.current.removeMarker(marker);
-          }
-          if (typeof marker.setMap === "function") {
-            marker.setMap(null);
-          }
-        }
-        delete nextMarkers[id];
-      }
-    });
-
-    markersRef.current = nextMarkers;
-
-    // Seçili marker’ı vurgula
-    const selId = selectedRouteId ? String(selectedRouteId) : null;
-    Object.entries(nextMarkers).forEach(([id, marker]) => {
-      if (!marker || typeof marker.setIcon !== "function") return;
-      if (selId && id === selId) {
-        marker.setIcon(selectedIcon);
-        if (typeof marker.setZIndex === "function") {
-          try {
-            marker.setZIndex(
-              gmaps.Marker.MAX_ZINDEX
-                ? gmaps.Marker.MAX_ZINDEX + 1
-                : 999999
-            );
-          } catch {
-            // no-op
-          }
-        }
-      } else {
-        marker.setIcon(baseIcon);
-        if (typeof marker.setZIndex === "function") {
-          try {
-            marker.setZIndex(undefined);
-          } catch {
-            // no-op
-          }
-        }
-      }
-    });
   }, [
     items,
     sort,
@@ -1346,19 +1015,12 @@ function RoutesExploreMobile() {
   useEffect(() => {
     if (sort === "near" && !hasSearch) return;
 
-    const existingMarkers = markersRef.current;
-    if (existingMarkers && Object.keys(existingMarkers).length) {
-      Object.values(existingMarkers).forEach((m) => {
-        if (m && typeof m.setMap === "function") {
-          m.setMap(null);
-        }
-      });
-      markersRef.current = {};
-    }
-    if (clusterRef.current) {
-      clusterRef.current.clearMarkers();
-      clusterRef.current = null;
-    }
+    clearPins({
+      cluster: clusterRef.current,
+      markersMap: markersRef.current,
+    });
+    clusterRef.current = null;
+    markersRef.current = {};
   }, [sort, hasSearch]);
 
   // ---- Yakınımda dışı (En yeni / En çok oy / En yüksek puan) → sayfalı sorgu ----
@@ -1573,8 +1235,9 @@ function RoutesExploreMobile() {
           const lcCity = filtersSnapshot.city.toLowerCase();
           list = list.filter(
             (r) =>
-              (r?.areas?.city || "").toString().toLowerCase() ===
-              lcCity
+              (r?.areas?.city || "")
+                .toString()
+                .toLowerCase() === lcCity
           );
         }
 
@@ -1609,7 +1272,8 @@ function RoutesExploreMobile() {
         // Mesafe filtresi (search sonuçlarında distanceKm yoksa atla)
         if (
           filtersSnapshot.dist &&
-          (filtersSnapshot.dist[0] > 0 || filtersSnapshot.dist[1] > 0)
+          (filtersSnapshot.dist[0] > 0 ||
+            filtersSnapshot.dist[1] > 0)
         ) {
           const [minKm, maxKm] = filtersSnapshot.dist;
           list = list.filter((r) => {
@@ -1623,7 +1287,8 @@ function RoutesExploreMobile() {
         // Süre filtresi (dk)
         if (
           filtersSnapshot.dur &&
-          (filtersSnapshot.dur[0] > 0 || filtersSnapshot.dur[1] > 0)
+          (filtersSnapshot.dur[0] > 0 ||
+            filtersSnapshot.dur[1] > 0)
         ) {
           const [minDur, maxDur] = filtersSnapshot.dur;
           const minMs = minDur > 0 ? minDur * 60000 : 0;
@@ -2126,7 +1791,8 @@ function RoutesExploreMobile() {
                   inset: 0,
                   background:
                     "linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%)",
-                  animation: "near-skel-pulse 1.4s ease infinite",
+                  animation:
+                    "near-skel-pulse 1.4s ease infinite",
                 }}
               />
             )}
@@ -2143,7 +1809,8 @@ function RoutesExploreMobile() {
             )}
           </div>
 
-          {(gmapsStatus === "error" || gmapsStatus === "no-key") && (
+          {(gmapsStatus === "error" ||
+            gmapsStatus === "no-key") && (
             <div
               className="near-map-error"
               style={{

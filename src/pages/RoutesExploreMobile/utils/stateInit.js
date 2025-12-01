@@ -5,8 +5,6 @@ export const DEFAULT_AUDIENCE = "all"; // "all" | "following"
 export const DEFAULT_SORT = "near"; // "near" | "new" | "likes" | "rating"
 export const DEFAULT_GROUP = "none"; // "none" | "city" | "country"
 
-// ADIM 32: audience için yeni anahtar r_audience, eski anahtar legacy olarak korunuyor.
-// DIM 34: r_sort + r_recentq ek.
 export const LS_AUDIENCE = "r_audience";
 export const LS_AUDIENCE_LEGACY = "routes.v1.audience";
 export const LS_SORT_NEW = "r_sort";
@@ -15,9 +13,7 @@ export const LS_GROUP = "routes.v1.group";
 export const LS_NEAR = "routes.v1.near";
 export const LS_RADIUS = "routes.v1.radius";
 export const LS_QUERY = "routes.v1.q";
-// ADIM 33: seçili rota id’si
 export const LS_SELECTED = "r_sel";
-// DIM 34: son aramalar
 export const LS_RECENT_Q = "r_recentq";
 
 export function normalizeAudience(raw) {
