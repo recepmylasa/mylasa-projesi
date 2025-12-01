@@ -84,23 +84,22 @@ function createdAtSeconds(it) {
 /**
  * Viewport tabanlı rotaları getirir.
  *
+ * @param {object} params
+ * @param {{n:number,s:number,e:number,w:number}} params.bounds
+ * @param {number} [params.limit]
+ * @param {{lat:number,lng:number}} [params.userLocation]
  * @param {{
- *   bounds: {n:number,s:number,e:number,w:number},
- *   limit?: number,
- *   userLocation?: {lat:number,lng:number},
- *   filters?: {
- *     city?: string,
- *     cc?: string,
- *     minRating?: number,
- *     minVotes?: number,
- *     minDur?: number,
- *     maxDur?: number,
- *     sort?: "distance"|"rating"|"votes"|"new"
- *   },
- *   sort?: "distance"|"rating"|"votes"|"new",
- *   audience?: "all"|"following",
- *   followingUids?: string[]
- * }} params
+ *   city?: string,
+ *   cc?: string,
+ *   minRating?: number,
+ *   minVotes?: number,
+ *   minDur?: number,
+ *   maxDur?: number,
+ *   sort?: "distance"|"rating"|"votes"|"new"
+ * }} [params.filters]
+ * @param {"distance"|"rating"|"votes"|"new"} [params.sort]
+ * @param {"all"|"following"} [params.audience]
+ * @param {string[]} [params.followingUids]
  *
  * @returns {Promise<{routes: any[], stats: {fetched:number, deduped:number}}>}
  */
@@ -261,255 +260,287 @@ export async function fetchViewportRoutes({
     // distanceKm yoksa null bırak
     routes = routes.map((r) => ({
       ...r,
-      distanceKm: typeof r.distanceKm === "number" ? r.distanceKm : null,
+      distanceKm:
+        typeof r.distanceKm === "number" ? r.distanceKm : null,
     }));
   }
 
-  // --- Post-filter: city / cc / rating / votes / süre ---
+  // --- Post-filterler (şehir/ülke, rating, oy, süre) ---
   if (vf.city) {
-    const lc = vf.city.toLowerCase();
-    routes = routes.filter(
-      (r) => (r?.areas?.city || "").toString().toLowerCase() === lc
-    );
-  }
-
-  if (vf.cc) {
-    const ccUpper = vf.cc.toUpperCase();
+    const wantedCity = vf.city.toLowerCase();
     routes = routes.filter((r) => {
-      const code =
-        (r?.areas?.countryCode ||
-          r?.areas?.cc ||
-          r?.areas?.country ||
-          "").toString().toUpperCase();
-      return code === ccUpper;
+      const city = (r?.areas?.city || "")
+        .toString()
+        .toLowerCase();
+      return city === wantedCity;
     });
   }
 
-  if (vf.minRating > 0) {
-    routes = routes.filter(
-      (r) => Number(r.ratingAvg || 0) >= vf.minRating
-    );
+  if (vf.cc) {
+    const wantedCc = vf.cc.toUpperCase();
+    routes = routes.filter((r) => {
+      const areas = r?.areas || {};
+      const cc = (
+        areas.countryCode ||
+        areas.cc ||
+        areas.country ||
+        areas.countryName ||
+        ""
+      )
+        .toString()
+        .toUpperCase();
+      return cc.includes(wantedCc);
+    });
   }
 
-  if (vf.minVotes > 0) {
-    routes = routes.filter(
-      (r) => Number(r.ratingCount || 0) >= vf.minVotes
-    );
+  if (vf.minRating || vf.minVotes) {
+    routes = routes.filter((r) => {
+      const ratingAvg = Number(r.ratingAvg || r.avgRating || 0);
+      const ratingCount = Number(r.ratingCount || r.votes || 0);
+      if (vf.minRating && (!ratingAvg || ratingAvg < vf.minRating)) {
+        return false;
+      }
+      if (vf.minVotes && (!ratingCount || ratingCount < vf.minVotes)) {
+        return false;
+      }
+      return true;
+    });
   }
 
-  const minDurMs = vf.minDur > 0 ? vf.minDur * 60000 : 0;
-  const maxDurMs = vf.maxDur > 0 ? vf.maxDur * 60000 : 0;
-
-  if (minDurMs || maxDurMs) {
+  if (vf.minDur || vf.maxDur) {
+    const minMs = vf.minDur > 0 ? vf.minDur * 60000 : 0;
+    const maxMs = vf.maxDur > 0 ? vf.maxDur * 60000 : 0;
     routes = routes.filter((r) => {
       const dur = Number(r.durationMs || 0);
-      if (minDurMs && (!dur || dur < minDurMs)) return false;
-      if (maxDurMs && dur > maxDurMs) return false;
+      if (minMs && (!dur || dur < minMs)) return false;
+      if (maxMs && dur > maxMs) return false;
       return true;
     });
   }
 
   // --- Sıralama ---
-  const sortKey = vf.sort || "distance";
-
   routes.sort((a, b) => {
-    const ta = createdAtSeconds(a);
-    const tb = createdAtSeconds(b);
+    const ratingA = Number(a.ratingAvg || a.avgRating || 0);
+    const ratingB = Number(b.ratingAvg || b.avgRating || 0);
+    const votesA = Number(a.ratingCount || a.votes || 0);
+    const votesB = Number(b.ratingCount || b.votes || 0);
+    const createdA = createdAtSeconds(a);
+    const createdB = createdAtSeconds(b);
 
-    if (sortKey === "rating") {
-      const ra = Number(a.ratingAvg || 0);
-      const rb = Number(b.ratingAvg || 0);
-      if (rb !== ra) return rb - ra;
-
-      const ca = Number(a.ratingCount || 0);
-      const cb = Number(b.ratingCount || 0);
-      if (cb !== ca) return cb - ca;
-      return tb - ta;
+    if (vf.sort === "rating") {
+      if (ratingB !== ratingA) return ratingB - ratingA;
+      if (votesB !== votesA) return votesB - votesA;
+      return createdB - createdA;
     }
 
-    if (sortKey === "votes") {
-      const ca = Number(a.ratingCount || 0);
-      const cb = Number(b.ratingCount || 0);
-      if (cb !== ca) return cb - ca;
-
-      const ra = Number(a.ratingAvg || 0);
-      const rb = Number(b.ratingAvg || 0);
-      if (rb !== ra) return rb - ra;
-      return tb - ta;
+    if (vf.sort === "votes") {
+      if (votesB !== votesA) return votesB - votesA;
+      if (ratingB !== ratingA) return ratingB - ratingA;
+      return createdB - createdA;
     }
 
-    if (sortKey === "new") {
-      return tb - ta;
+    if (vf.sort === "new") {
+      if (createdB !== createdA) return createdB - createdA;
+      if (ratingB !== ratingA) return ratingB - ratingA;
+      return votesB - votesA;
     }
 
-    // distance (varsayılan)
-    const da =
+    // varsayılan: distance
+    const distA =
       typeof a.distanceKm === "number"
         ? a.distanceKm
         : Number.POSITIVE_INFINITY;
-    const db =
+    const distB =
       typeof b.distanceKm === "number"
         ? b.distanceKm
         : Number.POSITIVE_INFINITY;
-
-    if (da !== db) return da - db;
-    return tb - ta;
+    if (distA !== distB) return distA - distB;
+    if (ratingB !== ratingA) return ratingB - ratingA;
+    if (votesB !== votesA) return votesB - votesA;
+    return createdB - createdA;
   });
 
-  const finalRoutes = routes.slice(0, limitVal);
+  const deduped = routes.length;
+  if (routes.length > limitVal) {
+    routes = routes.slice(0, limitVal);
+  }
 
-  return {
-    routes: finalRoutes,
-    stats: { fetched, deduped: finalRoutes.length },
-  };
+  return { routes, stats: { fetched, deduped } };
 }
 
 /**
- * ADIM 30: Basit metin araması – yalnızca public & finished rotalar.
+ * Basit metin araması (ADIM 30 / DIM 34)
  *
- * @param {{
- *   query: string,
- *   limit?: number,
- *   audience?: "all"|"following",
- *   followingUids?: string[],
- *   sort?: "near"|"new"|"likes"|"rating"|"most_votes"|"top_rated"
- * }} params
+ * @param {object} params
+ * @param {string} params.query
+ * @param {number} [params.limit]
+ * @param {"all"|"following"} [params.audience]
+ * @param {string[]} [params.followingUids]
+ * @param {"new"|"likes"|"rating"} [params.sort]
+ * @param {AbortSignal} [params.signal]
  *
  * @returns {Promise<{routes:any[]}>}
  */
 export async function searchRoutes({
-  query: rawQuery,
-  limit = 50,
+  query,
+  limit = 60,
   audience = "all",
   followingUids,
   sort = "new",
-}) {
-  const qText = (rawQuery || "").toString().trim();
-  if (!qText) {
+  signal,
+} = {}) {
+  const raw = (query || "").toString();
+  const trimmed = raw.trim();
+  if (!trimmed) {
     return { routes: [] };
   }
 
-  const limitVal = Math.max(1, Math.min(Number(limit) || 50, 100));
-
-  const colRef = collection(db, "routes");
+  const needle = trimmed.toLowerCase();
+  const col = collection(db, "routes");
+  const limitVal = Math.max(1, Math.min(Number(limit) || 60, 200));
 
   const audienceNorm = audience === "following" ? "following" : "all";
   const followingArr = Array.isArray(followingUids)
     ? followingUids
         .map((id) => String(id || "").trim())
-        .filter((id) => id.length > 0)
+        .filter(Boolean)
     : [];
   const hasFollowing =
     audienceNorm === "following" && followingArr.length > 0;
 
-  // Takip modunda hiç takip yoksa doğrudan boş döndür.
+  // Takip modunda hiç takip yoksa direkt boş
   if (audienceNorm === "following" && !hasFollowing) {
     return { routes: [] };
   }
 
-  const baseQuery = query(
-    colRef,
-    where("status", "==", "finished"),
-    orderBy("createdAt", "desc"),
-    qlimit(limitVal * 4)
-  );
-
-  const snap = await getDocs(baseQuery);
-
-  const routesRaw = [];
-  const followSet = hasFollowing ? new Set(followingArr) : null;
-
-  snap.forEach((d) => {
-    const data = d.data();
-    const visibility = (data.visibility || "public").toString();
-    if (visibility !== "public") return;
-    if ((data.status || "").toString() !== "finished") return;
-
-    if (hasFollowing) {
-      const owner =
-        data.ownerId ||
-        data.userId ||
-        data.uid ||
-        data.ownerUID ||
-        data.ownerUid ||
-        data.userUID;
-      if (!owner || !followSet.has(String(owner))) return;
-    }
-
-    routesRaw.push({ id: d.id, ...data });
-  });
-
-  const needle = qText.toLowerCase();
-
-  let routes = routesRaw.filter((r) => {
-    const title =
-      (r.title ||
-        r.name ||
-        r.routeName ||
-        r.displayName ||
-        "").toString().toLowerCase();
-    const desc =
-      (r.description || r.desc || r.summary || "")
-        .toString()
-        .toLowerCase();
-    const city = (r?.areas?.city || "").toString().toLowerCase();
-    return (
-      title.includes(needle) ||
-      desc.includes(needle) ||
-      city.includes(needle)
-    );
-  });
-
-  const sortKeyRaw = (sort || "new").toString().toLowerCase();
-  let sortKey = "new";
-  if (
-    sortKeyRaw === "likes" ||
-    sortKeyRaw === "most_votes" ||
-    sortKeyRaw === "votes"
-  ) {
-    sortKey = "votes";
-  } else if (
-    sortKeyRaw === "rating" ||
-    sortKeyRaw === "top_rated" ||
-    sortKeyRaw === "top"
-  ) {
-    sortKey = "rating";
-  } else {
-    sortKey = "new";
+  if (signal?.aborted) {
+    return { routes: [] };
   }
 
-  routes.sort((a, b) => {
-    const ta = createdAtSeconds(a);
-    const tb = createdAtSeconds(b);
+  const map = new Map();
 
-    if (sortKey === "rating") {
-      const ra = Number(a.ratingAvg || 0);
-      const rb = Number(b.ratingAvg || 0);
-      if (rb !== ra) return rb - ra;
+  const collectSnap = (snap) => {
+    snap.forEach((d) => {
+      const data = d.data();
+      const visibility = (data.visibility || "public").toString();
+      if (visibility !== "public") return;
+      if ((data.status || "").toString() !== "finished") return;
+      map.set(d.id, { id: d.id, ...data });
+    });
+  };
 
-      const ca = Number(a.ratingCount || 0);
-      const cb = Number(b.ratingCount || 0);
-      if (cb !== ca) return cb - ca;
-      return tb - ta;
+  // Takip modunda az sayıda kullanıcı için ownerId "in" sorgusu
+  if (hasFollowing && followingArr.length <= 10) {
+    const chunkSize = 10;
+    for (let i = 0; i < followingArr.length; i += chunkSize) {
+      if (signal?.aborted) {
+        return { routes: [] };
+      }
+      const chunk = followingArr.slice(i, i + chunkSize);
+      if (!chunk.length) continue;
+
+      const qy = query(
+        col,
+        where("status", "==", "finished"),
+        where("ownerId", "in", chunk),
+        orderBy("createdAt", "desc"),
+        qlimit(limitVal * 3)
+      );
+      const snap = await getDocs(qy);
+      if (signal?.aborted) {
+        return { routes: [] };
+      }
+      collectSnap(snap);
     }
-
-    if (sortKey === "votes") {
-      const ca = Number(a.ratingCount || 0);
-      const cb = Number(b.ratingCount || 0);
-      if (cb !== ca) return cb - ca;
-
-      const ra = Number(a.ratingAvg || 0);
-      const rb = Number(b.ratingAvg || 0);
-      if (rb !== ra) return rb - ra;
-      return tb - ta;
+  } else {
+    // Hepsi veya takip sayısı >10 → sadece son rotalar üzerinden text search
+    const qy = query(
+      col,
+      where("status", "==", "finished"),
+      orderBy("createdAt", "desc"),
+      qlimit(limitVal * 5)
+    );
+    const snap = await getDocs(qy);
+    if (signal?.aborted) {
+      return { routes: [] };
     }
+    collectSnap(snap);
+  }
 
-    // "new"
-    return tb - ta;
+  let routes = Array.from(map.values());
+
+  // Takip filtresi (fallback: >10 takipli senaryo)
+  if (hasFollowing && followingArr.length > 10) {
+    const followSet = new Set(followingArr);
+    routes = routes.filter((r) => {
+      const owner =
+        r.ownerId ||
+        r.userId ||
+        r.uid ||
+        r.ownerUID ||
+        r.ownerUid ||
+        r.userUID;
+      if (!owner) return false;
+      return followSet.has(String(owner));
+    });
+  }
+
+  // Metin eşleşmesi (başlık, açıklama, şehir/ülke, etiketler)
+  routes = routes.filter((r) => {
+    const title = (r.title || "").toString().toLowerCase();
+    const desc = (r.description || r.desc || "")
+      .toString()
+      .toLowerCase();
+    const city = (r?.areas?.city || "").toString().toLowerCase();
+    const areas = r?.areas || {};
+    const country = (
+      areas.countryName ||
+      areas.country ||
+      areas.countryCode ||
+      areas.cc ||
+      ""
+    )
+      .toString()
+      .toLowerCase();
+    const tagsArr = Array.isArray(r.tags) ? r.tags : [];
+    const tagsText = tagsArr.join(" ").toString().toLowerCase();
+
+    const haystack = `${title} ${desc} ${city} ${country} ${tagsText}`;
+    return haystack.includes(needle);
   });
 
-  const final = routes.slice(0, limitVal);
-  return { routes: final };
+  // Sıralama (new / likes / rating)
+  routes.sort((a, b) => {
+    const ratingA = Number(a.ratingAvg || a.avgRating || 0);
+    const ratingB = Number(b.ratingAvg || b.avgRating || 0);
+    const votesA = Number(a.ratingCount || a.votes || 0);
+    const votesB = Number(b.ratingCount || b.votes || 0);
+    const createdA = createdAtSeconds(a);
+    const createdB = createdAtSeconds(b);
+
+    if (sort === "rating") {
+      if (ratingB !== ratingA) return ratingB - ratingA;
+      if (votesB !== votesA) return votesB - votesA;
+      return createdB - createdA;
+    }
+
+    if (sort === "likes") {
+      if (votesB !== votesA) return votesB - votesA;
+      if (ratingB !== ratingA) return ratingB - ratingA;
+      return createdB - createdA;
+    }
+
+    // varsayılan: en yeni
+    if (createdB !== createdA) return createdB - createdA;
+    if (ratingB !== ratingA) return ratingB - ratingA;
+    return votesB - votesA;
+  });
+
+  if (routes.length > limitVal) {
+    routes = routes.slice(0, limitVal);
+  }
+
+  return { routes };
 }
 
 export default fetchViewportRoutes;

@@ -63,6 +63,143 @@
   text-align: center; color: #8e8e8e; padding: 40px 20px;
 }
 
+/* DIM 34: Mobil arama satırı + temizle + spinner */
+.routes-search-row {
+  position: relative;
+}
+
+.routes-search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+.routes-search-input-wrap .search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 6px 0;
+  font-size: 14px;
+  outline: none;
+}
+
+.routes-search-clear {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 4px;
+  border-radius: 999px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+.routes-search-clear:disabled {
+  opacity: .4;
+  cursor: default;
+}
+.routes-search-clear:not(:disabled):hover {
+  background: rgba(0,0,0,.04);
+  color: #4b5563;
+}
+
+.routes-explore-search-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid #d1d5db;
+  border-top-color: #111827;
+  border-right-color: #111827;
+  animation: routes-explore-search-spin .6s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes routes-explore-search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* DIM 34: Son aramalar kutusu */
+.routes-explore-recent {
+  padding: 0 10px 6px;
+  background: #ffffff;
+}
+.routes-explore-recent-inner {
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  padding: 6px 8px 8px 8px;
+}
+.routes-explore-recent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 4px;
+}
+.routes-explore-recent-clear {
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #6b7280;
+}
+.routes-explore-recent-clear:hover {
+  color: #111827;
+}
+.routes-explore-recent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.routes-explore-recent-item {
+  border: none;
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.08);
+  color: #111827;
+}
+.routes-explore-recent-item:hover {
+  background: #f3f4f6;
+}
+.routes-explore-recent-text {
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* DIM 34: Sonuç meta satırı */
+.routes-results-meta {
+  padding: 4px 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #4b5563;
+}
+.routes-results-title {
+  font-weight: 600;
+}
+.routes-results-count {
+  font-weight: 500;
+}
+
 /* — KEŞFET GRID — */
 .explore-grid {
   --gap: 14px;
@@ -603,6 +740,11 @@
   background: #eff6ff;
   transform: scale(1.02);
   box-shadow: 0 6px 20px rgba(37, 99, 235, 0.25);
+}
+
+/* DIM 34: Başlık vurgulaması */
+.route-card-title-mark {
+  font-weight: 700;
 }
 
 /* Küçük toast (sıralama / izin mesajları için) */

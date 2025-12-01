@@ -4,6 +4,7 @@
 // Mobil "Rotalar" sekmesi: Hepsi/Takip + Yakınımda/En yeni/En çok oy/En yüksek puan
 // Harita (Yakınımda) + viewport tabanlı liste + URL/localStorage senkronu
 // ADIM 33: Harita pin/cluster, kart↔pin senkronu, "Bu alanda ara" CTA, sel=<routeId> URL/LS durumu.
+// DIM 34: Arama UX – 300ms debounce + iptal edilebilir istek + son aramalar + eşleşme vurgulama.
 
 import React, {
   useCallback,
@@ -39,8 +40,10 @@ const PAGE_SIZE = 20;
 const NEAR_LIMIT = 200;
 
 // ADIM 32: audience için yeni anahtar r_audience, eski anahtar legacy olarak korunuyor.
+// DIM 34: r_sort + r_recentq ek.
 const LS_AUDIENCE = "r_audience";
 const LS_AUDIENCE_LEGACY = "routes.v1.audience";
+const LS_SORT_NEW = "r_sort";
 const LS_SORT = "routes.v1.sort";
 const LS_GROUP = "routes.v1.group";
 const LS_NEAR = "routes.v1.near";
@@ -48,6 +51,8 @@ const LS_RADIUS = "routes.v1.radius";
 const LS_QUERY = "routes.v1.q";
 // ADIM 33: seçili rota id’si
 const LS_SELECTED = "r_sel";
+// DIM 34: son aramalar
+const LS_RECENT_Q = "r_recentq";
 
 function normalizeAudience(raw) {
   if (!raw) return DEFAULT_AUDIENCE;
@@ -198,6 +203,18 @@ function mapSortToOrder(sort) {
   return "new";
 }
 
+// DIM 34: Son aramalar için başlangıç listesi
+function getInitialRecentQueries() {
+  if (typeof window === "undefined") return [];
+  const stored = readJSON(LS_RECENT_Q, null);
+  if (!Array.isArray(stored)) return [];
+  return stored
+    .map((v) => (v == null ? "" : String(v)))
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
 // ADIM 32 + 33: URL (m/a/s/q/sel) + localStorage(r_audience, r_sel) başlangıç durumu.
 function getInitialRouteUiState() {
   if (typeof window === "undefined") {
@@ -213,7 +230,7 @@ function getInitialRouteUiState() {
   }
 
   const urlModeRaw = readParam("m", null); // near | search
-  let query = (readParam("q", "") || "").toString();
+  let queryVal = (readParam("q", "") || "").toString();
 
   let audience = normalizeAudience(
     readParam("a", null) ?? readParam("aud", null)
@@ -224,10 +241,11 @@ function getInitialRouteUiState() {
     readParam("groupBy", null) ?? readParam("group", null);
   let group = normalizeGroup(urlGroupRaw);
 
-  // localStorage fallback (önce yeni anahtar, sonra legacy)
+  // localStorage fallback (önce yeni anahtarlar, sonra legacy)
   const lsAudNew = readJSON(LS_AUDIENCE, null);
   const lsAudLegacy = readJSON(LS_AUDIENCE_LEGACY, null);
-  const lsSort = readJSON(LS_SORT, null);
+  const lsSortNew = readJSON(LS_SORT_NEW, null);
+  const lsSortLegacy = readJSON(LS_SORT, null);
   const lsGroup = readJSON(LS_GROUP, null);
   const lsNear = readJSON(LS_NEAR, null);
   const lsRadius = readJSON(LS_RADIUS, null);
@@ -237,9 +255,11 @@ function getInitialRouteUiState() {
   if (!audience && (lsAudNew || lsAudLegacy)) {
     audience = normalizeAudience(lsAudNew ?? lsAudLegacy);
   }
-  if (!sort && lsSort) sort = normalizeSort(lsSort);
+  if (!sort && (lsSortNew || lsSortLegacy)) {
+    sort = normalizeSort(lsSortNew ?? lsSortLegacy);
+  }
   if (!group && lsGroup) group = normalizeGroup(lsGroup);
-  if (!query && typeof lsQuery === "string") query = lsQuery;
+  if (!queryVal && typeof lsQuery === "string") queryVal = lsQuery;
 
   const modeFromUrl =
     (urlModeRaw || "").toString().toLowerCase() === "search"
@@ -248,7 +268,7 @@ function getInitialRouteUiState() {
 
   const isSearchLike =
     modeFromUrl === "search" ||
-    (query && query.toString().trim().length > 0);
+    (queryVal && queryVal.toString().trim().length > 0);
 
   if (!audience) audience = DEFAULT_AUDIENCE;
   if (!sort) {
@@ -256,7 +276,7 @@ function getInitialRouteUiState() {
     sort = isSearchLike ? "new" : DEFAULT_SORT;
   }
   if (!group) group = DEFAULT_GROUP;
-  if (!query) query = "";
+  if (!queryVal) queryVal = "";
 
   let near = null;
   if (lsNear && typeof lsNear === "object") {
@@ -284,7 +304,7 @@ function getInitialRouteUiState() {
     selectedId = lsSel.trim();
   }
 
-  return { audience, sort, group, near, radius, query, selectedId };
+  return { audience, sort, group, near, radius, query: queryVal, selectedId };
 }
 
 function getInitialRouteFilters() {
@@ -342,6 +362,13 @@ function RoutesExploreMobile() {
     (initialRef.current.ui.query || "").trim()
   );
 
+  // DIM 34: Arama yükleme durumu + son aramalar + focus
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [recentQueries, setRecentQueries] = useState(() =>
+    getInitialRecentQueries()
+  );
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
   const [filters, setFilters] = useState(initialRef.current.filters);
 
   const [items, setItems] = useState([]);
@@ -369,6 +396,10 @@ function RoutesExploreMobile() {
   const sentinelRef = useRef(null);
   const nearViewportRef = useRef(null);
   const nearDebounceRef = useRef(null);
+  // DIM 34: arama debounce + abort + requestId
+  const searchDebounceRef = useRef(null);
+  const searchAbortRef = useRef(null);
+  const searchReqIdRef = useRef(0);
 
   const markersRef = useRef({});
   const clusterRef = useRef(null);
@@ -382,6 +413,7 @@ function RoutesExploreMobile() {
   });
   const toastTimerRef = useRef(null);
   const wasSearchingRef = useRef(false);
+  const recentBlurTimerRef = useRef(null);
 
   const {
     gmapsStatus,
@@ -396,6 +428,133 @@ function RoutesExploreMobile() {
 
   const hasSearch =
     !!debouncedQuery && debouncedQuery.trim().length > 0;
+
+  // ---- Son aramalar & arama yardımcıları (DIM 34) ----
+  const bumpRecentQuery = useCallback((raw) => {
+    const q = (raw || "").toString().trim();
+    if (!q) return;
+    setRecentQueries((prev) => {
+      const existing = Array.isArray(prev) ? prev : [];
+      const filtered = existing.filter(
+        (item) => item.toLowerCase() !== q.toLowerCase()
+      );
+      const next = [q, ...filtered].slice(0, 6);
+      try {
+        writeJSON(LS_RECENT_Q, next);
+      } catch {
+        // no-op
+      }
+      return next;
+    });
+  }, []);
+
+  const clearRecentQueries = useCallback(() => {
+    setRecentQueries([]);
+    try {
+      writeJSON(LS_RECENT_Q, []);
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  const triggerImmediateSearch = useCallback(
+    (value) => {
+      const raw =
+        typeof value === "string" ? value : searchText;
+      const q = (raw || "").toString();
+      const trimmed = q.trim();
+
+      if (typeof value === "string") {
+        setSearchText(q);
+      }
+
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = null;
+      }
+
+      // Yeni bir arama dalgası: önceki sonuçlar stale olsun
+      searchReqIdRef.current += 1;
+
+      if (!trimmed) {
+        if (searchAbortRef.current) {
+          searchAbortRef.current.abort();
+          searchAbortRef.current = null;
+        }
+        setDebouncedQuery("");
+        setLoadingSearch(false);
+        return;
+      }
+
+      setDebouncedQuery(trimmed);
+    },
+    [searchText]
+  );
+
+  const clearSearch = useCallback(() => {
+    searchReqIdRef.current += 1;
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+      searchAbortRef.current = null;
+    }
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+    setSearchText("");
+    setDebouncedQuery("");
+    setLoadingSearch(false);
+  }, []);
+
+  const handleSearchFocus = useCallback(() => {
+    if (recentBlurTimerRef.current) {
+      clearTimeout(recentBlurTimerRef.current);
+      recentBlurTimerRef.current = null;
+    }
+    setIsSearchFocused(true);
+  }, []);
+
+  const handleSearchBlur = useCallback(() => {
+    if (recentBlurTimerRef.current) {
+      clearTimeout(recentBlurTimerRef.current);
+    }
+    // Biraz geciktir, item tıklamaları bozulmasın
+    recentBlurTimerRef.current = window.setTimeout(() => {
+      setIsSearchFocused(false);
+      recentBlurTimerRef.current = null;
+    }, 120);
+  }, []);
+
+  const handleSearchKeyDown = useCallback(
+    (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        // Enter: debounce'ı atla, hemen ara
+        triggerImmediateSearch();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        // ESC: aramayı temizle ve near moduna dön (sort etkisi aşağıdaki effect'te)
+        clearSearch();
+      }
+    },
+    [triggerImmediateSearch, clearSearch]
+  );
+
+  const handleRecentClick = useCallback(
+    (q) => {
+      if (!q) return;
+      triggerImmediateSearch(q);
+    },
+    [triggerImmediateSearch]
+  );
+
+  const handleRecentClearClick = useCallback(
+    (e) => {
+      e.preventDefault();
+      clearRecentQueries();
+    },
+    [clearRecentQueries]
+  );
 
   // ---- open-route-modal event ----
   const openRoute = useCallback((routeId) => {
@@ -438,6 +597,18 @@ function RoutesExploreMobile() {
         clearTimeout(toastTimerRef.current);
         toastTimerRef.current = null;
       }
+      if (recentBlurTimerRef.current) {
+        clearTimeout(recentBlurTimerRef.current);
+        recentBlurTimerRef.current = null;
+      }
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = null;
+      }
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+        searchAbortRef.current = null;
+      }
     };
   }, []);
 
@@ -457,11 +628,22 @@ function RoutesExploreMobile() {
 
   // ---- Arama inputu debounce (ADIM 30: q paramı, 300ms debounce) ----
   useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
     const raw = searchText || "";
-    const handle = setTimeout(() => {
+    const handle = window.setTimeout(() => {
+      searchDebounceRef.current = null;
       setDebouncedQuery(raw.trim());
     }, 300);
-    return () => clearTimeout(handle);
+    searchDebounceRef.current = handle;
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = null;
+      }
+    };
   }, [searchText]);
 
   // ---- Audience: Hepsi / Takip → takip edilenler ----
@@ -496,6 +678,7 @@ function RoutesExploreMobile() {
   useEffect(() => {
     writeJSON(LS_AUDIENCE, audience);
     writeJSON(LS_AUDIENCE_LEGACY, audience); // legacy anahtar da güncel kalsın
+    writeJSON(LS_SORT_NEW, sort);
     writeJSON(LS_SORT, sort);
     writeJSON(LS_GROUP, group);
     writeJSON(LS_QUERY, searchText || "");
@@ -1093,7 +1276,7 @@ function RoutesExploreMobile() {
               });
             } catch {
               // no-op
-            }
+              }
           }
         });
 
@@ -1320,30 +1503,65 @@ function RoutesExploreMobile() {
     hasSearch,
   ]);
 
-  // ---- Arama modu (q paramı) → searchRoutes ----
+  // ---- Arama modu (q paramı) → searchRoutes (DIM 34: Abort + requestId + loadingSearch) ----
   useEffect(() => {
-    if (!hasSearch) return;
-    let cancelled = false;
+    if (!hasSearch) {
+      // Arama modundan çıkarken varsa aktif istekleri iptal et
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+        searchAbortRef.current = null;
+      }
+      setLoadingSearch(false);
+      return;
+    }
+
+    const trimmed = (debouncedQuery || "").trim();
+    if (!trimmed) {
+      setLoadingSearch(false);
+      return;
+    }
+
+    const currentReqId = searchReqIdRef.current + 1;
+    searchReqIdRef.current = currentReqId;
+
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
+    // Son aramalar listesine ekle
+    bumpRecentQuery(trimmed);
 
     setLoading(true);
+    setLoadingSearch(true);
     setInitialized(false);
     setItems([]);
     setCursor(null);
     setIsEnd(true);
     setVisibleCount(0);
 
+    const filtersSnapshot = { ...filters };
+
     (async () => {
       try {
         const { routes } = await searchRoutes({
-          query: debouncedQuery,
+          query: trimmed,
           limit: PAGE_SIZE * 3,
           audience,
           followingUids:
             audience === "following" ? followingUids : undefined,
           sort,
+          signal: controller.signal,
         });
 
-        if (cancelled) return;
+        if (
+          !isMountedRef.current ||
+          controller.signal.aborted ||
+          currentReqId !== searchReqIdRef.current
+        ) {
+          return;
+        }
 
         let list = (routes || []).map((r) => ({
           ...r,
@@ -1351,8 +1569,8 @@ function RoutesExploreMobile() {
         }));
 
         // City/ülke filtresi (arama modunda da uygula)
-        if (filters.city) {
-          const lcCity = filters.city.toLowerCase();
+        if (filtersSnapshot.city) {
+          const lcCity = filtersSnapshot.city.toLowerCase();
           list = list.filter(
             (r) =>
               (r?.areas?.city || "").toString().toLowerCase() ===
@@ -1360,8 +1578,8 @@ function RoutesExploreMobile() {
           );
         }
 
-        if (filters.country) {
-          const lcCountry = filters.country.toLowerCase();
+        if (filtersSnapshot.country) {
+          const lcCountry = filtersSnapshot.country.toLowerCase();
           list = list.filter((r) => {
             const cc =
               (r?.areas?.countryName ||
@@ -1376,8 +1594,8 @@ function RoutesExploreMobile() {
         }
 
         // Etiket filtresi
-        if (filters.tags && filters.tags.length) {
-          const wanted = filters.tags.map((t) =>
+        if (filtersSnapshot.tags && filtersSnapshot.tags.length) {
+          const wanted = filtersSnapshot.tags.map((t) =>
             String(t).toLowerCase()
           );
           list = list.filter((r) => {
@@ -1390,10 +1608,10 @@ function RoutesExploreMobile() {
 
         // Mesafe filtresi (search sonuçlarında distanceKm yoksa atla)
         if (
-          filters.dist &&
-          (filters.dist[0] > 0 || filters.dist[1] > 0)
+          filtersSnapshot.dist &&
+          (filtersSnapshot.dist[0] > 0 || filtersSnapshot.dist[1] > 0)
         ) {
-          const [minKm, maxKm] = filters.dist;
+          const [minKm, maxKm] = filtersSnapshot.dist;
           list = list.filter((r) => {
             if (typeof r.distanceKm !== "number") return true;
             if (minKm && r.distanceKm < minKm) return false;
@@ -1403,8 +1621,11 @@ function RoutesExploreMobile() {
         }
 
         // Süre filtresi (dk)
-        if (filters.dur && (filters.dur[0] > 0 || filters.dur[1] > 0)) {
-          const [minDur, maxDur] = filters.dur;
+        if (
+          filtersSnapshot.dur &&
+          (filtersSnapshot.dur[0] > 0 || filtersSnapshot.dur[1] > 0)
+        ) {
+          const [minDur, maxDur] = filtersSnapshot.dur;
           const minMs = minDur > 0 ? minDur * 60000 : 0;
           const maxMs = maxDur > 0 ? maxDur * 60000 : 0;
           list = list.filter((r) => {
@@ -1421,20 +1642,34 @@ function RoutesExploreMobile() {
         );
         setIsEnd(true);
         setInitialized(true);
-      } catch {
-        if (cancelled) return;
+      } catch (err) {
+        if (
+          controller.signal.aborted ||
+          err?.name === "AbortError" ||
+          !isMountedRef.current ||
+          currentReqId !== searchReqIdRef.current
+        ) {
+          return;
+        }
         setItems([]);
         setVisibleCount(0);
         setIsEnd(true);
         setInitialized(true);
       } finally {
-        if (cancelled) return;
+        if (
+          !isMountedRef.current ||
+          controller.signal.aborted ||
+          currentReqId !== searchReqIdRef.current
+        ) {
+          return;
+        }
         setLoading(false);
+        setLoadingSearch(false);
       }
     })();
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [
     hasSearch,
@@ -1443,6 +1678,7 @@ function RoutesExploreMobile() {
     followingUids,
     sort,
     filters,
+    bumpRecentQuery,
   ]);
 
   // ---- Sonsuz kaydırma (her modda) ----
@@ -1595,6 +1831,12 @@ function RoutesExploreMobile() {
       ? "Aramana uygun rota bulunamadı."
       : "Hiç rota bulunamadı.";
 
+  // DIM 34: Son aramalar kutusu görünürlüğü
+  const showRecentList =
+    isSearchFocused &&
+    !searchText.trim() &&
+    recentQueries.length > 0;
+
   return (
     <div
       className="RoutesExploreMobile"
@@ -1665,7 +1907,7 @@ function RoutesExploreMobile() {
         </button>
       </header>
 
-      {/* Katman 1.5 — Arama kutusu (ADIM 30: q + debounce) */}
+      {/* Katman 1.5 — Arama kutusu (ADIM 30 + DIM 34) */}
       <div
         className="routes-search-row"
         style={{
@@ -1673,19 +1915,74 @@ function RoutesExploreMobile() {
           background: "#ffffff",
         }}
       >
-        <input
-          type="search"
-          className="search-input"
-          placeholder="Rota ara (başlık, açıklama, şehir...)"
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          style={{
-            fontSize: 14,
-            padding: "8px 12px",
-            borderRadius: 999,
-          }}
-        />
+        <div className="routes-search-input-wrap">
+          <input
+            type="search"
+            className="search-input"
+            placeholder="Rota ara (başlık, açıklama, şehir...)"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            onFocus={handleSearchFocus}
+            onBlur={handleSearchBlur}
+            onKeyDown={handleSearchKeyDown}
+            autoComplete="off"
+            enterKeyHint="search"
+            style={{
+              fontSize: 14,
+            }}
+          />
+          {loadingSearch && (
+            <span
+              className="routes-explore-search-spinner"
+              aria-hidden="true"
+            />
+          )}
+          <button
+            type="button"
+            className="routes-search-clear"
+            onClick={clearSearch}
+            disabled={!searchText}
+            aria-label="Aramayı temizle"
+          >
+            ✕
+          </button>
+        </div>
       </div>
+
+      {/* Son aramalar (DIM 34) */}
+      {showRecentList && (
+        <div className="routes-explore-recent">
+          <div className="routes-explore-recent-inner">
+            <div className="routes-explore-recent-header">
+              <span>Son aramalar</span>
+              <button
+                type="button"
+                className="routes-explore-recent-clear"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleRecentClearClick}
+              >
+                <span>Temizle</span>
+                <span aria-hidden="true">🗑</span>
+              </button>
+            </div>
+            <div className="routes-explore-recent-list">
+              {recentQueries.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  className="routes-explore-recent-item"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleRecentClick(q)}
+                >
+                  <span className="routes-explore-recent-text">
+                    {q}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Katman 2 — Tek satır chip şeridi (yatay kaydırma) */}
       <div
@@ -1890,6 +2187,16 @@ function RoutesExploreMobile() {
         </>
       )}
 
+      {/* Arama modu için sonuç meta bilgisi (DIM 34) */}
+      {hasSearch && initialized && (
+        <div className="routes-results-meta">
+          <span className="routes-results-title">Sonuçlar</span>
+          <span className="routes-results-count">
+            {totalCount} sonuç
+          </span>
+        </div>
+      )}
+
       {/* Liste alanı */}
       <div
         aria-busy={loading && !initialized}
@@ -2032,6 +2339,7 @@ function RoutesExploreMobile() {
                       String(selectedRouteId) === String(r.id)
                     }
                     onClick={() => handleRouteCardClick(r)}
+                    highlightQuery={hasSearch ? debouncedQuery : ""}
                   />
                 </div>
               ))}

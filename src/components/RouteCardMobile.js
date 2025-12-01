@@ -1,6 +1,7 @@
 // src/components/RouteCardMobile.js
 // Kart: başlık, km, süre, ⭐ ortalama (N) + şehir/ülke + ilk 3 etiket + "uzakta/yakınında" mesafesi.
 // ADIM 33: seçili kart için .route-card-mobile / .route-card-mobile--selected class’ları ile stil.
+// DIM 34: başlık içi arama eşleşmesi vurgusu (.route-card-title-mark).
 
 import React from "react";
 import { km as formatKm } from "../utils/rating";
@@ -15,10 +16,50 @@ function fmtDur(ms) {
   return h > 0 ? `${h} sa ${mm} dk` : `${mm} dk`;
 }
 
+// DIM 34: Başlık vurgulama parçalama fonksiyonu (case-insensitive, basit split)
+function getHighlightedParts(text, query) {
+  const source = (text || "").toString();
+  const q = (query || "").toString().trim();
+  if (!q) {
+    return [{ text: source, match: false }];
+  }
+  const lower = source.toLowerCase();
+  const needle = q.toLowerCase();
+
+  const parts = [];
+  let index = 0;
+  while (index < lower.length) {
+    const found = lower.indexOf(needle, index);
+    if (found === -1) {
+      if (index < source.length) {
+        parts.push({ text: source.slice(index), match: false });
+      }
+      break;
+    }
+    if (found > index) {
+      parts.push({
+        text: source.slice(index, found),
+        match: false,
+      });
+    }
+    parts.push({
+      text: source.slice(found, found + q.length),
+      match: true,
+    });
+    index = found + q.length;
+  }
+
+  if (!parts.length) {
+    return [{ text: source, match: false }];
+  }
+  return parts;
+}
+
 export default function RouteCardMobile({
   route,
   onClick = () => {},
   selected = false,
+  highlightQuery = "",
 }) {
   if (!route) return null;
   const {
@@ -57,7 +98,9 @@ export default function RouteCardMobile({
     if (txt) distanceLabelText = `${txt} uzakta`;
   }
 
-  const label = title || "Rota";
+  const rawTitle = title || "Adsız rota";
+  const label = rawTitle;
+  const titleParts = getHighlightedParts(rawTitle, highlightQuery);
 
   return (
     <div
@@ -89,7 +132,18 @@ export default function RouteCardMobile({
           textOverflow: "ellipsis",
         }}
       >
-        {title || "Adsız rota"}
+        {titleParts.map((part, idx) =>
+          part.match ? (
+            <span
+              key={idx}
+              className="route-card-title-mark"
+            >
+              {part.text}
+            </span>
+          ) : (
+            <span key={idx}>{part.text}</span>
+          )
+        )}
       </div>
 
       <div
