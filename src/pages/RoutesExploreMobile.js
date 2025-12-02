@@ -22,13 +22,11 @@ import { fetchPublicRoutes } from "../services/routeSearch";
 import { getFollowingUids } from "../services/follows";
 
 import NearbyPromptMobile from "../components/NearbyPromptMobile";
-import RouteCardMobile from "../components/RouteCardMobile";
 import RouteFilterSheet from "../components/RouteFilterSheet";
 
 import {
   readParam,
   pushParams,
-  readJSON,
   writeJSON,
 } from "../utils/urlState";
 import { getRatingAvg } from "../utils/rating";
@@ -70,8 +68,13 @@ import {
   distanceMeters,
 } from "./RoutesExploreMobile/utils/routeFormatters";
 
-import { makeGroups } from "./RoutesExploreMobile/utils/grouping";
 import { mapSortToOrder } from "./RoutesExploreMobile/utils/sortMap";
+
+import ExploreToolbarMobile from "./RoutesExploreMobile/components/ExploreToolbarMobile";
+import ChipRowMobile from "./RoutesExploreMobile/components/ChipRowMobile";
+import ResultsMeta from "./RoutesExploreMobile/components/ResultsMeta";
+import GroupsList from "./RoutesExploreMobile/components/GroupsList";
+import ToastMini from "./RoutesExploreMobile/components/ToastMini";
 
 const PAGE_SIZE = 20;
 const NEAR_LIMIT = 200;
@@ -142,8 +145,6 @@ function RoutesExploreMobile() {
 
   const markersRef = useRef({});
   const clusterRef = useRef(null);
-  const cardRefs = useRef({});
-  const appliedSelectionRef = useRef(null);
 
   const nearPersistRef = useRef({
     lastCenter: null,
@@ -167,6 +168,35 @@ function RoutesExploreMobile() {
 
   const hasSearch =
     !!debouncedQuery && debouncedQuery.trim().length > 0;
+
+  const handleSelectAll = useCallback(() => {
+    setAudience("all");
+  }, []);
+
+  const handleSelectFollowing = useCallback(() => {
+    if (!auth?.currentUser?.uid) {
+      setAudience("all");
+      const msg =
+        "Takip ettiğin kullanıcıların rotalarını görmek için giriş yapmalısın.";
+      setToastMessage(msg);
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+      toastTimerRef.current = window.setTimeout(() => {
+        setToastMessage("");
+      }, 2600);
+      return;
+    }
+    setAudience("following");
+  }, []);
+
+  const handleOpenFilter = useCallback(() => {
+    setFilterSheetOpen(true);
+  }, []);
+
+  const handleChangeSort = useCallback((nextSort) => {
+    setSort(nextSort);
+  }, []);
 
   // ---- Son aramalar & arama yardımcıları (DIM 34) ----
   const bumpRecentQuery = useCallback((raw) => {
@@ -915,25 +945,12 @@ function RoutesExploreMobile() {
     searchAreaTick,
   ]);
 
-  // ADIM 33: kart seçili olduğunda ilk yüklemede kartı ve pini merkeze al
+  // ADIM 33: kart seçili olduğunda haritayı merkeze al
   useEffect(() => {
     if (!selectedRouteId) return;
     const selId = String(selectedRouteId);
     const target = items.find((r) => String(r.id) === selId);
     if (!target) return;
-
-    // Kartı liste içinde ortaya kaydır
-    const el = cardRefs.current[selId];
-    if (el && typeof el.scrollIntoView === "function") {
-      try {
-        el.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      } catch {
-        // no-op
-      }
-    }
 
     // Yakınımda modunda harita merkezini rota merkezine kaydır
     if (
@@ -953,8 +970,6 @@ function RoutesExploreMobile() {
         // no-op
       }
     }
-
-    appliedSelectionRef.current = selId;
   }, [selectedRouteId, items, sort, mapReady, mapRef]);
 
   // ---- Yakınımda: marker + cluster (nearMapPins utils, kart↔pin senkronu) ----
@@ -972,17 +987,6 @@ function RoutesExploreMobile() {
     const onSelect = (routeId) => {
       if (!routeId) return;
       setSelectedRouteId(routeId);
-      const el = cardRefs.current[routeId];
-      if (el && typeof el.scrollIntoView === "function") {
-        try {
-          el.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        } catch {
-          // no-op
-        }
-      }
     };
 
     const result = syncPins({
@@ -1454,7 +1458,6 @@ function RoutesExploreMobile() {
 
   const visibleItems =
     visibleCount > 0 ? items.slice(0, visibleCount) : items;
-  const groups = makeGroups(visibleItems, group);
   const totalCount = items.length;
 
   const showNearbyPrompt =
@@ -1512,65 +1515,12 @@ function RoutesExploreMobile() {
       }}
     >
       {/* Katman 1 — Sticky toolbar */}
-      <header
-        className="routes-toolbar"
-        role="region"
-        aria-label="Rotalar araç çubuğu"
-      >
-        <div className="routes-toolbar-title">Rotalar</div>
-        <div className="routes-toolbar-segment">
-          <div className="routes-segment" aria-label="Kapsam">
-            <button
-              type="button"
-              className={
-                "routes-segment-btn" +
-                (audience === "all"
-                  ? " routes-segment-btn--active"
-                  : "")
-              }
-              onClick={() => setAudience("all")}
-              aria-pressed={audience === "all"}
-            >
-              Hepsi
-            </button>
-            <button
-              type="button"
-              className={
-                "routes-segment-btn" +
-                (audience === "following"
-                  ? " routes-segment-btn--active"
-                  : "")
-              }
-              onClick={() => {
-                if (!auth?.currentUser?.uid) {
-                  setAudience("all");
-                  const msg =
-                    "Takip ettiğin kullanıcıların rotalarını görmek için giriş yapmalısın.";
-                  setToastMessage(msg);
-                  if (toastTimerRef.current) {
-                    clearTimeout(toastTimerRef.current);
-                  }
-                  toastTimerRef.current = window.setTimeout(() => {
-                    setToastMessage("");
-                  }, 2600);
-                  return;
-                }
-                setAudience("following");
-              }}
-              aria-pressed={audience === "following"}
-            >
-              Takip
-            </button>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="routes-filter-btn"
-          onClick={() => setFilterSheetOpen(true)}
-        >
-          Sırala
-        </button>
-      </header>
+      <ExploreToolbarMobile
+        audience={audience}
+        onSelectAll={handleSelectAll}
+        onSelectFollowing={handleSelectFollowing}
+        onOpenFilter={handleOpenFilter}
+      />
 
       {/* Katman 1.5 — Arama kutusu (ADIM 30 + DIM 34) */}
       <div
@@ -1650,61 +1600,12 @@ function RoutesExploreMobile() {
       )}
 
       {/* Katman 2 — Tek satır chip şeridi (yatay kaydırma) */}
-      <div
-        className="routes-chiprow"
-        aria-label="Rota sıralama seçenekleri"
-      >
-        <button
-          type="button"
-          className={"chip" + (sort === "near" ? " chip--active" : "")}
-          onClick={() => setSort("near")}
-          aria-pressed={sort === "near"}
-          aria-current={sort === "near" ? "true" : undefined}
-        >
-          Yakınımda
-        </button>
-        <button
-          type="button"
-          className={"chip" + (sort === "new" ? " chip--active" : "")}
-          onClick={() => setSort("new")}
-          aria-pressed={sort === "new"}
-          aria-current={sort === "new" ? "true" : undefined}
-        >
-          En yeni
-        </button>
-        <button
-          type="button"
-          className={
-            "chip" + (sort === "likes" ? " chip--active" : "")
-          }
-          onClick={() => setSort("likes")}
-          aria-pressed={sort === "likes"}
-          aria-current={sort === "likes" ? "true" : undefined}
-        >
-          En çok oy
-        </button>
-        <button
-          type="button"
-          className={
-            "chip" + (sort === "rating" ? " chip--active" : "")
-          }
-          onClick={() => setSort("rating")}
-          aria-pressed={sort === "rating"}
-          aria-current={sort === "rating" ? "true" : undefined}
-        >
-          En yüksek puan
-        </button>
-
-        {groupLabel && (
-          <button
-            type="button"
-            className="routes-badge"
-            onClick={() => setFilterSheetOpen(true)}
-          >
-            Grup: {groupLabel}
-          </button>
-        )}
-      </div>
+      <ChipRowMobile
+        sort={sort}
+        groupLabel={groupLabel}
+        onChangeSort={handleChangeSort}
+        onOpenFilter={handleOpenFilter}
+      />
 
       {/* Takip + Yakınımda + 0 sonuç bilgisi */}
       {showFollowingNearEmptyBadge && (
@@ -1791,8 +1692,7 @@ function RoutesExploreMobile() {
                   inset: 0,
                   background:
                     "linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%)",
-                  animation:
-                    "near-skel-pulse 1.4s ease infinite",
+                  animation: "near-skel-pulse 1.4s ease infinite",
                 }}
               />
             )}
@@ -1856,12 +1756,7 @@ function RoutesExploreMobile() {
 
       {/* Arama modu için sonuç meta bilgisi (DIM 34) */}
       {hasSearch && initialized && (
-        <div className="routes-results-meta">
-          <span className="routes-results-title">Sonuçlar</span>
-          <span className="routes-results-count">
-            {totalCount} sonuç
-          </span>
-        </div>
+        <ResultsMeta totalCount={totalCount} />
       )}
 
       {/* Liste alanı */}
@@ -1941,78 +1836,13 @@ function RoutesExploreMobile() {
             </div>
           )}
 
-        {groups.map((g) => (
-          <section
-            key={g.key}
-            className="ExploreGroup"
-            style={{ marginBottom: 8 }}
-          >
-            {g.label && (
-              <header
-                className="ExploreGroupHeader"
-                style={{
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 5,
-                  background: "#fff",
-                  padding: "4px 2px 4px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  borderBottom: "1px solid #eee",
-                }}
-              >
-                <span
-                  className="ExploreGroupHeaderTitle"
-                  style={{ fontSize: 13, fontWeight: 700 }}
-                >
-                  {g.label}
-                </span>
-                <span
-                  className="ExploreGroupHeaderBadge"
-                  style={{
-                    minWidth: 22,
-                    padding: "2px 6px",
-                    borderRadius: 999,
-                    background: "#f3f4f6",
-                    fontSize: 11,
-                    textAlign: "center",
-                  }}
-                >
-                  {g.items.length}
-                </span>
-              </header>
-            )}
-            <div
-              className="ExploreGroupBody"
-              style={{ paddingTop: g.label ? 6 : 0 }}
-            >
-              {g.items.map((r) => (
-                <div
-                  key={r.id}
-                  style={{ marginBottom: 8 }}
-                  ref={(el) => {
-                    if (!el) {
-                      delete cardRefs.current[r.id];
-                    } else {
-                      cardRefs.current[r.id] = el;
-                    }
-                  }}
-                >
-                  <RouteCardMobile
-                    route={r}
-                    selected={
-                      !!selectedRouteId &&
-                      String(selectedRouteId) === String(r.id)
-                    }
-                    onClick={() => handleRouteCardClick(r)}
-                    highlightQuery={hasSearch ? debouncedQuery : ""}
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
+        <GroupsList
+          items={visibleItems}
+          group={group}
+          selectedRouteId={selectedRouteId}
+          onRouteClick={handleRouteCardClick}
+          highlightQuery={hasSearch ? debouncedQuery : ""}
+        />
 
         {/* Sonsuz kaydırma sentinel */}
         <div ref={sentinelRef} style={{ height: 1 }} />
@@ -2061,11 +1891,69 @@ function RoutesExploreMobile() {
       />
 
       {/* Giriş yapılmadan Takip’e geçme denemesi için küçük toast (ADIM 30) */}
-      {toastMessage && (
-        <div className="explore-toast">{toastMessage}</div>
-      )}
+      <ToastMini message={toastMessage} />
     </div>
   );
 }
 
 export default RoutesExploreMobile;
+
+/*
+====================================================
+HIZLI TEST REHBERI — ROUTES EXPLORE MOBILE (ADIM 30–34)
+====================================================
+
+[ ] 1) Uygulama açılışında "Rotalar" sekmesi sorunsuz açılıyor, hata/log yok.
+[ ] 2) Hepsi / Takip segmentine tıklayınca:
+    - "Hepsi" → tüm rotalar,
+    - "Takip" (giriş yoksa) → toast çıkıyor ve state tekrar "Hepsi" oluyor.
+[ ] 3) Arama kutusuna yazarken:
+    - 300ms debounce ile istek atılıyor,
+    - Son aramalar listesi doluyor,
+    - "Temizle" çalışıyor, ESC ile arama sıfırlanıyor, near moda geri dönüyor.
+[ ] 4) Arama modunda:
+    - URL’de m=search, q=<arama> ve sort=new yazılıyor,
+    - Sonuç sayacı ("X sonuç") doğru totalCount’a göre gösteriliyor.
+[ ] 5) Yakınımda modunda:
+    - Konum izni soruluyor, reddedilirse NearbyPrompt çıkıyor,
+    - Harita yükleniyor; viewport değişince liste güncelleniyor.
+[ ] 6) Haritada sürükle/zoom sonrası:
+    - Sol altta "Bu alanda ara" butonu çıkıyor,
+    - Butona basınca yeni viewport’a göre near sorgusu atılıyor.
+[ ] 7) Kart ↔ pin senkronu:
+    - Pin’e tıklayınca ilgili kart vurgulanıyor,
+    - Kart’a tıklayınca modal açılıyor ve Yakınımda modunda harita o rotaya pan ediyor.
+[ ] 8) Sıralama çipleri:
+    - Yakınımda / En yeni / En çok oy / En yüksek puan arasında geçişte,
+    - URL s paramı (near/new/votes/rating) doğru değişiyor,
+    - Liste sıralaması beklenen şekilde değişiyor.
+[ ] 9) Filtreler:
+    - Şehir/ülke/etiket/distance/duration filtreleri RouteFilterSheet ile uygulanıyor,
+    - Aktif filtre chip’leri listede görünüyor,
+    - "Filtreleri temizle" her şeyi varsayılana sıfırlıyor.
+[ ] 10) Sonsuz kaydırma:
+    - Non-near modda (En yeni / En çok oy / En yüksek puan) aşağı inince yeni sayfa çekiliyor,
+    - Son sayfada "Hepsi bu kadar." mesajı görünüyor.
+[ ] 11) Arama + Near/Non-near geçişleri:
+    - Arama başlarken sort near ise otomatik "new" oluyor,
+    - Arama temizlenince sort tekrar "near" moduna dönüyor,
+    - URL/LS (m,a,s,q,sel,groupBy,city,country,tags) bütün akış boyunca tutarlı.
+[ ] 12) Build & ESLint:
+    - npm run build / npm run lint çıktısında RoutesExploreMobile ile ilgili uyarı/hata yok,
+    - Yeni hook/komponent dosyalarında da no-unused-vars/similar uyarısı yok.
+
+--------------------
+GERI ALMA NOTU
+--------------------
+Bu refaktörü geri almak istersen:
+
+1) Bu dosyanın (RoutesExploreMobile.js) mevcut halini bir kenara kaydet.
+2) Önceki monolit sürüme dönmek için git geçmişinden ya da elindeki yedekten
+   eski RoutesExploreMobile implementasyonunu geri koy.
+3) Eğer bu proje için alt klasör yapısı (src/pages/RoutesExploreMobile/...)
+   oluşturduysan ve artık kullanmak istemiyorsan:
+   - Bu klasördeki yalnızca bu ek refaktör için eklenen hook/komponent dosyalarını sil,
+   - Üst seviyedeki re-export yapısını (export { default } from "./RoutesExploreMobile/RoutesExploreMobile";)
+     gerekiyorsa eski haline çevir.
+4) Tekrar npm run build al; hata varsa git history üzerinden tam revert yap.
+*/

@@ -382,14 +382,14 @@ export async function fetchViewportRoutes({
  * @returns {Promise<{routes:any[]}>}
  */
 export async function searchRoutes({
-  query,
+  query: queryText,
   limit = 60,
   audience = "all",
   followingUids,
   sort = "new",
   signal,
 } = {}) {
-  const raw = (query || "").toString();
+  const raw = (queryText || "").toString();
   const trimmed = raw.trim();
   if (!trimmed) {
     return { routes: [] };
