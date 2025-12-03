@@ -5,10 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useGoogleMaps } from "../../../hooks/useGoogleMaps";
 import { writeJSON } from "../../../utils/urlState";
-import {
-  LS_NEAR,
-  LS_RADIUS,
-} from "../utils/stateInit";
+import { LS_NEAR, LS_RADIUS } from "../utils/stateInit";
 import { distanceMeters } from "../utils/routeFormatters";
 import { createCluster, syncPins, clearPins } from "../utils/nearMapPins";
 
@@ -31,9 +28,7 @@ export default function useNearMapController({
       : null
   );
   const [radius, setRadius] = useState(
-    typeof initialRadius === "number" && initialRadius > 0
-      ? initialRadius
-      : 5
+    typeof initialRadius === "number" && initialRadius > 0 ? initialRadius : 5
   );
   const [locationStatus, setLocationStatus] = useState("unknown"); // unknown | asking | granted | denied
   const [mapReady, setMapReady] = useState(false);
@@ -48,16 +43,26 @@ export default function useNearMapController({
   const markersRef = useRef({});
   const clusterRef = useRef(null);
 
-  const {
-    gmapsStatus,
-    errorMsg,
-    mapDivRef,
-    mapRef,
-    attemptLoad,
-  } = useGoogleMaps({
-    API_KEY: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-    MAP_ID: process.env.REACT_APP_GOOGLE_MAPS_MAP_ID,
+  // EMİR 9: listener ref’leri (tekil + temizlik)
+  const idleListenerRef = useRef(null);
+  const dragListenerRef = useRef(null);
+  const zoomListenerRef = useRef(null);
+
+  // EMİR 13: artımlı (chunked) pin render state’i
+  const pinChunkStateRef = useRef({
+    idleId: null,
+    batchIndex: 0,
+    itemsSnapshot: [],
   });
+
+  const { gmapsStatus, errorMsg, mapDivRef, mapRef, attemptLoad } =
+    useGoogleMaps({
+      API_KEY: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+      // EMİR 9: MAP_ID için fallback; proje env'de REACT_APP_GMAPS_MAP_ID kullanılıyorsa da çalışır.
+      MAP_ID:
+        process.env.REACT_APP_GOOGLE_MAPS_MAP_ID ||
+        process.env.REACT_APP_GMAPS_MAP_ID,
+    });
 
   const requestLocation = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -145,6 +150,15 @@ export default function useNearMapController({
 
     const map = mapRef.current;
 
+    // EMİR 9: idle listener tekilleştirme
+    if (
+      idleListenerRef.current &&
+      typeof idleListenerRef.current.remove === "function"
+    ) {
+      idleListenerRef.current.remove();
+      idleListenerRef.current = null;
+    }
+
     const handleIdle = () => {
       const boundsObj = map.getBounds();
       if (!boundsObj) return;
@@ -189,9 +203,15 @@ export default function useNearMapController({
     };
 
     const idleListener = map.addListener("idle", handleIdle);
+    idleListenerRef.current = idleListener;
+
     return () => {
-      if (idleListener && typeof idleListener.remove === "function") {
-        idleListener.remove();
+      if (
+        idleListenerRef.current &&
+        typeof idleListenerRef.current.remove === "function"
+      ) {
+        idleListenerRef.current.remove();
+        idleListenerRef.current = null;
       }
     };
   }, [mapReady, sort, hasSearch, mapRef, onViewportChange]);
@@ -205,15 +225,42 @@ export default function useNearMapController({
       setShowSearchAreaButton(true);
     };
 
+    // EMİR 9: drag/zoom listener tekilleştirme
+    if (
+      dragListenerRef.current &&
+      typeof dragListenerRef.current.remove === "function"
+    ) {
+      dragListenerRef.current.remove();
+      dragListenerRef.current = null;
+    }
+    if (
+      zoomListenerRef.current &&
+      typeof zoomListenerRef.current.remove === "function"
+    ) {
+      zoomListenerRef.current.remove();
+      zoomListenerRef.current = null;
+    }
+
     const dragListener = map.addListener("dragend", handleInteraction);
     const zoomListener = map.addListener("zoom_changed", handleInteraction);
 
+    dragListenerRef.current = dragListener;
+    zoomListenerRef.current = zoomListener;
+
     return () => {
-      if (dragListener && typeof dragListener.remove === "function") {
-        dragListener.remove();
+      if (
+        dragListenerRef.current &&
+        typeof dragListenerRef.current.remove === "function"
+      ) {
+        dragListenerRef.current.remove();
+        dragListenerRef.current = null;
       }
-      if (zoomListener && typeof zoomListener.remove === "function") {
-        zoomListener.remove();
+      if (
+        zoomListenerRef.current &&
+        typeof zoomListenerRef.current.remove === "function"
+      ) {
+        zoomListenerRef.current.remove();
+        zoomListenerRef.current = null;
       }
     };
   }, [mapReady, sort, hasSearch, mapRef]);
@@ -276,16 +323,55 @@ export default function useNearMapController({
     nearPersistRef.current.timeoutId = timeoutId;
   }, [sort, near, radius]);
 
-  // Marker + cluster yönetimi (nearMapPins)
+  // Marker + cluster yönetimi (nearMapPins) — EMİR 13: artımlı (chunked) pin render
   useEffect(() => {
     if (sort !== "near" || hasSearch) return;
     if (!mapReady || !mapRef.current || typeof window === "undefined") return;
 
     const map = mapRef.current;
 
+    // Cluster tek instance
     if (!clusterRef.current) {
       clusterRef.current = createCluster(map);
     }
+
+    const itemsSnapshot = Array.isArray(items) ? items.slice() : [];
+
+    // Items boşsa mevcut pinleri temizle ve çık
+    if (!itemsSnapshot.length) {
+      clearPins({
+        cluster: clusterRef.current,
+        markersMap: markersRef.current,
+      });
+      markersRef.current = {};
+      // clusterRef.current kalsın, bir sonraki yüklemede kullanılacak
+      return;
+    }
+
+    const BATCH_SIZE = 50;
+
+    const scheduleIdle =
+      typeof window.requestIdleCallback === "function"
+        ? window.requestIdleCallback.bind(window)
+        : (cb) =>
+            window.setTimeout(
+              () => cb({ didTimeout: false, timeRemaining: () => 0 }),
+              0
+            );
+
+    const cancelIdle =
+      typeof window.cancelIdleCallback === "function"
+        ? window.cancelIdleCallback.bind(window)
+        : (id) => window.clearTimeout(id);
+
+    // Eski batch job'u iptal et
+    if (pinChunkStateRef.current.idleId != null) {
+      cancelIdle(pinChunkStateRef.current.idleId);
+      pinChunkStateRef.current.idleId = null;
+    }
+
+    pinChunkStateRef.current.itemsSnapshot = itemsSnapshot;
+    pinChunkStateRef.current.batchIndex = 0;
 
     const handleSelectFromMap = (routeId) => {
       if (!routeId) return;
@@ -294,21 +380,66 @@ export default function useNearMapController({
       }
     };
 
-    const result = syncPins({
-      map,
-      cluster: clusterRef.current,
-      items,
-      selectedId: selectedRouteId ? String(selectedRouteId) : null,
-      markersMap: markersRef.current,
-      onSelect: handleSelectFromMap,
-    });
+    const processBatch = (deadline) => {
+      const state = pinChunkStateRef.current;
+      const snapshot = state.itemsSnapshot || [];
+      if (!snapshot.length || !clusterRef.current) {
+        state.idleId = null;
+        return;
+      }
 
-    if (result && result.markersMap) {
-      markersRef.current = result.markersMap;
-    }
+      const selectedIdStr = selectedRouteId ? String(selectedRouteId) : null;
+
+      // Her idle diliminde birden fazla batch işleyebilecek ama
+      // timeRemaining düşükse erken bırakacak.
+      while (state.batchIndex * BATCH_SIZE < snapshot.length) {
+        const nextBatchIndex = state.batchIndex + 1;
+        const sliceEnd = nextBatchIndex * BATCH_SIZE;
+        const slice = snapshot.slice(0, sliceEnd);
+
+        const result = syncPins({
+          map,
+          cluster: clusterRef.current,
+          items: slice,
+          selectedId: selectedIdStr,
+          markersMap: markersRef.current,
+          onSelect: handleSelectFromMap,
+        });
+
+        if (result && result.markersMap) {
+          markersRef.current = result.markersMap;
+        }
+
+        state.batchIndex = nextBatchIndex;
+
+        const shouldYield =
+          !deadline ||
+          typeof deadline.timeRemaining !== "function" ||
+          deadline.timeRemaining() <= 8;
+
+        if (shouldYield) {
+          break;
+        }
+      }
+
+      if (
+        state.batchIndex * BATCH_SIZE <
+        (state.itemsSnapshot ? state.itemsSnapshot.length : 0)
+      ) {
+        state.idleId = scheduleIdle(processBatch);
+      } else {
+        state.idleId = null;
+      }
+    };
+
+    pinChunkStateRef.current.idleId = scheduleIdle(processBatch);
 
     return () => {
-      // Ek temizlik mod değişiminde yapılacak
+      const state = pinChunkStateRef.current;
+      if (state.idleId != null) {
+        cancelIdle(state.idleId);
+        state.idleId = null;
+      }
     };
   }, [
     items,
@@ -341,7 +472,22 @@ export default function useNearMapController({
 
   // Unmount temizliği
   useEffect(() => {
+    const persistState = nearPersistRef.current;
+
     return () => {
+      // Chunk job iptali
+      if (typeof window !== "undefined") {
+        const id = pinChunkStateRef.current.idleId;
+        if (id != null) {
+          if (typeof window.cancelIdleCallback === "function") {
+            window.cancelIdleCallback(id);
+          } else {
+            clearTimeout(id);
+          }
+          pinChunkStateRef.current.idleId = null;
+        }
+      }
+
       clearPins({
         cluster: clusterRef.current,
         markersMap: markersRef.current,
@@ -349,9 +495,31 @@ export default function useNearMapController({
       clusterRef.current = null;
       markersRef.current = {};
 
-      if (nearPersistRef.current.timeoutId) {
-        clearTimeout(nearPersistRef.current.timeoutId);
-        nearPersistRef.current.timeoutId = null;
+      if (persistState.timeoutId) {
+        clearTimeout(persistState.timeoutId);
+        persistState.timeoutId = null;
+      }
+
+      if (
+        idleListenerRef.current &&
+        typeof idleListenerRef.current.remove === "function"
+      ) {
+        idleListenerRef.current.remove();
+        idleListenerRef.current = null;
+      }
+      if (
+        dragListenerRef.current &&
+        typeof dragListenerRef.current.remove === "function"
+      ) {
+        dragListenerRef.current.remove();
+        dragListenerRef.current = null;
+      }
+      if (
+        zoomListenerRef.current &&
+        typeof zoomListenerRef.current.remove === "function"
+      ) {
+        zoomListenerRef.current.remove();
+        zoomListenerRef.current = null;
       }
     };
   }, []);

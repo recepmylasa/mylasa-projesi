@@ -3,7 +3,7 @@
 // ADIM 33: seçili kart için .route-card-mobile / .route-card-mobile--selected class’ları ile stil.
 // DIM 34: başlık içi arama eşleşmesi vurgusu (.route-card-title-mark).
 
-import React from "react";
+import React, { memo } from "react";
 import { km as formatKm } from "../utils/rating";
 
 function totalKm(m) {
@@ -55,7 +55,7 @@ function getHighlightedParts(text, query) {
   return parts;
 }
 
-export default function RouteCardMobile({
+function RouteCardMobileInner({
   route,
   onClick = () => {},
   selected = false,
@@ -134,10 +134,7 @@ export default function RouteCardMobile({
       >
         {titleParts.map((part, idx) =>
           part.match ? (
-            <span
-              key={idx}
-              className="route-card-title-mark"
-            >
+            <span key={idx} className="route-card-title-mark">
               {part.text}
             </span>
           ) : (
@@ -205,3 +202,56 @@ export default function RouteCardMobile({
     </div>
   );
 }
+
+// EMİR 13: RouteCardMobile memo — props değişmedikçe yeniden render etme.
+function areEqual(prevProps, nextProps) {
+  const p = prevProps;
+  const n = nextProps;
+
+  if (p.selected !== n.selected) return false;
+  if (p.highlightQuery !== n.highlightQuery) return false;
+
+  const pr = p.route || {};
+  const nr = n.route || {};
+
+  // Anahtar alanlar (ID + ekranda gösterilen temel metrikler)
+  const scalarKeys = [
+    "id",
+    "title",
+    "totalDistanceM",
+    "durationMs",
+    "ratingAvg",
+    "ratingCount",
+    "distanceKm",
+    "__distanceM",
+  ];
+
+  for (let i = 0; i < scalarKeys.length; i++) {
+    const key = scalarKeys[i];
+    if (pr[key] !== nr[key]) {
+      return false;
+    }
+  }
+
+  const pa = pr.areas || {};
+  const na = nr.areas || {};
+  const areaKeys = ["city", "country", "countryName", "countryCode", "cc"];
+
+  for (let i = 0; i < areaKeys.length; i++) {
+    const key = areaKeys[i];
+    if (pa[key] !== na[key]) {
+      return false;
+    }
+  }
+
+  const pTags = Array.isArray(pr.tags) ? pr.tags : [];
+  const nTags = Array.isArray(nr.tags) ? nr.tags : [];
+  if (pTags.length !== nTags.length) return false;
+  for (let i = 0; i < pTags.length; i++) {
+    if (pTags[i] !== nTags[i]) return false;
+  }
+
+  return true;
+}
+
+export default memo(RouteCardMobileInner, areEqual);

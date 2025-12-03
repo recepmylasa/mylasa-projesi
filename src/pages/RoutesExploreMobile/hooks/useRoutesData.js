@@ -1,6 +1,7 @@
 // src/pages/RoutesExploreMobile/hooks/useRoutesData.js
 // Rota veri katmanı: Yakınımda / Arama / Non-near akışları + sentinel.
-// fetchViewportRoutes / searchRoutes / fetchPublicRoutes tek yerde toplanır.
+// EMİR 10: Tek in-flight AbortController, near'da sentinel görünür sayıyı artırır,
+// aramada tüm sonuçlar görünür. EMİR 12: dupe-guard + windowing uyumlu.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import fetchViewportRoutes, {
@@ -55,6 +56,34 @@ function applyDurationFilter(list, durRange) {
   });
 }
 
+// EMİR 12: id bazlı tekilleştirme (dupe-guard)
+function dedupeById(list) {
+  const seen = new Set();
+  const out = [];
+  for (const r of list || []) {
+    if (!r) continue;
+    const id = r.id !== undefined && r.id !== null ? String(r.id) : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(r);
+  }
+  return out;
+}
+function mergeDedup(prev, next) {
+  if (!prev?.length) return dedupeById(next);
+  if (!next?.length) return prev.slice();
+  const seen = new Set(prev.map((r) => String(r.id)));
+  const merged = prev.slice();
+  for (const r of next) {
+    if (!r) continue;
+    const id = r.id !== undefined && r.id !== null ? String(r.id) : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    merged.push(r);
+  }
+  return merged;
+}
+
 export default function useRoutesData({
   sort,
   audience,
@@ -76,21 +105,68 @@ export default function useRoutesData({
 
   const sentinelRef = useRef(null);
   const isMountedRef = useRef(true);
-  const searchAbortRef = useRef(null);
+  const inFlightRef = useRef(null); // EMİR 10 – tek in-flight
+  const observerRef = useRef(null);
 
-  // mount/unmount
+  // Mount / unmount cleanup
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (searchAbortRef.current) {
-        searchAbortRef.current.abort();
-        searchAbortRef.current = null;
+      if (inFlightRef.current) {
+        try {
+          inFlightRef.current.controller.abort();
+        } catch {}
+        inFlightRef.current = null;
+      }
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
       }
     };
   }, []);
 
+  // Tekil istek yönetimi (EMİR 10)
+  function beginRequest() {
+    if (inFlightRef.current) {
+      try {
+        inFlightRef.current.controller.abort();
+      } catch {}
+    }
+    const controller = new AbortController();
+    const reqId = (inFlightRef.current?.reqId || 0) + 1;
+    inFlightRef.current = { controller, reqId };
+    return { controller, reqId };
+  }
+  function isRequestStale(controller, reqId) {
+    if (!isMountedRef.current) return true;
+    if (!controller || controller.signal.aborted) return true;
+    if (!inFlightRef.current) return true;
+    if (inFlightRef.current.controller !== controller) return true;
+    if (inFlightRef.current.reqId !== reqId) return true;
+    return false;
+  }
+  function endRequest(controller, reqId) {
+    if (
+      inFlightRef.current &&
+      inFlightRef.current.controller === controller &&
+      inFlightRef.current.reqId === reqId
+    ) {
+      inFlightRef.current = null;
+    }
+  }
+
   const resetAll = useCallback(() => {
+    if (inFlightRef.current) {
+      try {
+        inFlightRef.current.controller.abort();
+      } catch {}
+      inFlightRef.current = null;
+    }
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
     setItems([]);
     setVisibleCount(0);
     setCursor(null);
@@ -100,19 +176,20 @@ export default function useRoutesData({
     setInitialized(false);
   }, []);
 
-  // Yakınımda: viewport değişince rotaları çek (fetchViewportRoutes)
+  // Yakınımda: viewport değişince rotaları çek
   useEffect(() => {
     if (sort !== "near" || hasSearch) return;
     if (!nearBounds) return;
 
     let cancelled = false;
-
     const timer = setTimeout(() => {
       if (!isMountedRef.current || cancelled) return;
 
       setLoading(true);
       setInitialized(true);
       setLoadingSearch(false);
+
+      const { controller, reqId } = beginRequest();
 
       (async () => {
         try {
@@ -136,9 +213,10 @@ export default function useRoutesData({
             audience: audience === "following" ? "following" : "all",
             followingUids:
               audience === "following" ? followingUids : undefined,
+            signal: controller.signal,
           });
 
-          if (!isMountedRef.current || cancelled) return;
+          if (isRequestStale(controller, reqId)) return;
 
           let list = normalizeRoutes(routes);
 
@@ -146,7 +224,7 @@ export default function useRoutesData({
           list = applyTagFilter(list, filters?.tags);
           list = applyDistanceFilter(list, filters?.dist);
 
-          // Yakınımda sıralama: distance → ratingAvg → createdAt desc
+          // Sıralama: distance → ratingAvg → createdAt desc
           list.sort((a, b) => {
             const da =
               typeof a.distanceKm === "number"
@@ -163,22 +241,25 @@ export default function useRoutesData({
             return getCreatedAtSec(b) - getCreatedAtSec(a);
           });
 
+          list = dedupeById(list);
+
           setItems(list);
           setCursor(null);
-          setIsEnd(true);
-          setVisibleCount(
-            list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0
-          );
-        } catch {
-          if (!isMountedRef.current || cancelled) return;
+          setIsEnd(true); // near: sayfalama yok
+          setVisibleCount(list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0);
+        } catch (err) {
+          if (isRequestStale(controller, reqId) || err?.name === "AbortError") {
+            return;
+          }
           setItems([]);
           setCursor(null);
           setIsEnd(true);
           setVisibleCount(0);
         } finally {
-          if (!isMountedRef.current || cancelled) return;
+          if (isRequestStale(controller, reqId)) return;
           setLoading(false);
           setLoadingSearch(false);
+          endRequest(controller, reqId);
         }
       })();
     }, 300);
@@ -197,11 +278,15 @@ export default function useRoutesData({
     nearBounds,
   ]);
 
-  // Non-near ilk sayfa (En yeni / En çok oy / En yüksek puan)
+  // Non-near ilk sayfa
   const loadFirstNonNear = useCallback(async () => {
+    if (sort === "near" || hasSearch) return;
+
     setLoading(true);
     setInitialized(false);
     setLoadingSearch(false);
+
+    const { controller, reqId } = beginRequest();
 
     try {
       const { items: page, nextCursor } = await fetchPublicRoutes({
@@ -209,17 +294,19 @@ export default function useRoutesData({
         limit: PAGE_SIZE,
         city: filters?.city || "",
         countryCode: filters?.country || "",
+        audience,
+        followingUids: audience === "following" ? followingUids : undefined,
+        signal: controller.signal,
       });
 
-      if (!isMountedRef.current) return;
+      if (isRequestStale(controller, reqId)) return;
 
       let list = normalizeRoutes(page);
 
+      // Ek güvenlik: following client-side
       if (audience === "following") {
         if (followingUids.length) {
-          const followSet = new Set(
-            followingUids.map((id) => String(id))
-          );
+          const followSet = new Set(followingUids.map((id) => String(id)));
           list = list.filter((r) => {
             const owner =
               r.ownerId ||
@@ -236,52 +323,69 @@ export default function useRoutesData({
         }
       }
 
-      // Non-near'da city/country server tarafında filtreleniyor; tags/dist/dur UI'da
       list = applyTagFilter(list, filters?.tags);
       list = applyDistanceFilter(list, filters?.dist);
       list = applyDurationFilter(list, filters?.dur);
+      list = dedupeById(list);
 
       setItems(list);
       setCursor(nextCursor || null);
-      setIsEnd(!nextCursor || !list.length);
+      setIsEnd(!nextCursor || !page.length);
       setVisibleCount(list.length ? Math.min(list.length, PAGE_SIZE) : 0);
       setInitialized(true);
-    } catch {
-      if (!isMountedRef.current) return;
+    } catch (err) {
+      if (isRequestStale(controller, reqId) || err?.name === "AbortError") {
+        return;
+      }
       setItems([]);
       setCursor(null);
       setIsEnd(true);
       setVisibleCount(0);
       setInitialized(true);
     } finally {
-      if (!isMountedRef.current) return;
+      if (isRequestStale(controller, reqId)) return;
       setLoading(false);
+      endRequest(controller, reqId);
     }
-  }, [sort, filters, audience, followingUids]);
+  }, [
+    sort,
+    hasSearch,
+    filters?.city,
+    filters?.country,
+    filters?.tags,
+    filters?.dist,
+    filters?.dur,
+    audience,
+    followingUids,
+  ]);
 
+  // Non-near sonraki sayfa
   const loadMoreNonNear = useCallback(async () => {
-    if (sort === "near") return;
-    if (loading || isEnd || !cursor) return;
+    if (sort === "near" || hasSearch) return;
+    if (loading || loadingSearch || isEnd || !cursor) return;
 
     setLoading(true);
+    const { controller, reqId } = beginRequest();
+
     try {
       const { items: page, nextCursor } = await fetchPublicRoutes({
         order: mapSortToOrder(sort),
         limit: PAGE_SIZE,
         city: filters?.city || "",
         countryCode: filters?.country || "",
+        audience,
+        followingUids: audience === "following" ? followingUids : undefined,
         cursor,
+        signal: controller.signal,
       });
 
-      if (!isMountedRef.current) return;
+      if (isRequestStale(controller, reqId)) return;
 
       let list = normalizeRoutes(page);
 
       if (audience === "following") {
         if (followingUids.length) {
-          const followSet = new Set(
-            followingUids.map((id) => String(id))
-          );
+          const followSet = new Set(followingUids.map((id) => String(id)));
           list = list.filter((r) => {
             const owner =
               r.ownerId ||
@@ -301,36 +405,44 @@ export default function useRoutesData({
       list = applyTagFilter(list, filters?.tags);
       list = applyDistanceFilter(list, filters?.dist);
       list = applyDurationFilter(list, filters?.dur);
+      list = dedupeById(list);
 
-      setItems((prev) => prev.concat(list));
+      setItems((prev) => mergeDedup(prev, list));
       setCursor(nextCursor || null);
-      setIsEnd(!nextCursor || !list.length);
-    } catch {
-      if (!isMountedRef.current) return;
+      setIsEnd(!nextCursor || !page.length);
+    } catch (err) {
+      if (isRequestStale(controller, reqId) || err?.name === "AbortError") {
+        return;
+      }
       setIsEnd(true);
     } finally {
-      if (!isMountedRef.current) return;
+      if (isRequestStale(controller, reqId)) return;
       setLoading(false);
+      endRequest(controller, reqId);
     }
   }, [
     sort,
-    filters,
-    audience,
-    followingUids,
+    hasSearch,
     loading,
+    loadingSearch,
     isEnd,
     cursor,
+    filters?.city,
+    filters?.country,
+    filters?.tags,
+    filters?.dist,
+    filters?.dur,
+    audience,
+    followingUids,
   ]);
 
-  // sort/audience/filtre değişince non-near akışını resetle
+  // Non-near akışı: sort/audience/filtre değişince ilk sayfa
   useEffect(() => {
     if (sort === "near" || hasSearch) return;
-
     setItems([]);
     setCursor(null);
     setIsEnd(false);
     setVisibleCount(0);
-
     loadFirstNonNear();
   }, [
     sort,
@@ -341,16 +453,18 @@ export default function useRoutesData({
     filters?.dist,
     filters?.dur,
     followingUids,
-    loadFirstNonNear,
     hasSearch,
+    loadFirstNonNear,
   ]);
 
-  // Arama modu (searchRoutes + AbortController + requestId)
+  // Arama modu
   useEffect(() => {
     if (!hasSearch) {
-      if (searchAbortRef.current) {
-        searchAbortRef.current.abort();
-        searchAbortRef.current = null;
+      if (inFlightRef.current) {
+        try {
+          inFlightRef.current.controller.abort();
+        } catch {}
+        inFlightRef.current = null;
       }
       setLoadingSearch(false);
       return;
@@ -358,22 +472,23 @@ export default function useRoutesData({
 
     const trimmed = (debouncedQuery || "").trim();
     if (!trimmed) {
+      if (inFlightRef.current) {
+        try {
+          inFlightRef.current.controller.abort();
+        } catch {}
+        inFlightRef.current = null;
+      }
+      setItems([]);
+      setVisibleCount(0);
+      setCursor(null);
+      setIsEnd(true);
+      setInitialized(true);
+      setLoading(false);
       setLoadingSearch(false);
       return;
     }
 
-    const currentReqId = (searchAbortRef.current?._reqId || 0) + 1;
-
-    if (searchAbortRef.current) {
-      searchAbortRef.current.abort();
-    }
-    const controller = new AbortController();
-    controller._reqId = currentReqId;
-    searchAbortRef.current = controller;
-
-    if (typeof onBumpRecentQuery === "function") {
-      onBumpRecentQuery(trimmed);
-    }
+    const { controller, reqId } = beginRequest();
 
     const filtersSnapshot = { ...(filters || {}) };
     const audienceSnapshot = audience;
@@ -384,9 +499,9 @@ export default function useRoutesData({
     setLoadingSearch(true);
     setInitialized(false);
     setItems([]);
+    setVisibleCount(0);
     setCursor(null);
     setIsEnd(true);
-    setVisibleCount(0);
 
     (async () => {
       try {
@@ -400,17 +515,11 @@ export default function useRoutesData({
           signal: controller.signal,
         });
 
-        if (
-          !isMountedRef.current ||
-          controller.signal.aborted ||
-          controller._reqId !== currentReqId
-        ) {
-          return;
-        }
+        if (isRequestStale(controller, reqId)) return;
 
         let list = normalizeRoutes(routes);
 
-        // City/ülke filtresi
+        // City/ülke
         if (filtersSnapshot.city) {
           const lcCity = filtersSnapshot.city.toLowerCase();
           list = list.filter(
@@ -418,42 +527,37 @@ export default function useRoutesData({
               (r?.areas?.city || "").toString().toLowerCase() === lcCity
           );
         }
-
         if (filtersSnapshot.country) {
           const lcCountry = filtersSnapshot.country.toLowerCase();
           list = list.filter((r) => {
-            const cc =
-              (
-                r?.areas?.countryName ||
-                r?.areas?.country ||
-                r?.areas?.countryCode ||
-                r?.areas?.cc ||
-                ""
-              )
-                .toString()
-                .toLowerCase();
+            const cc = (
+              r?.areas?.countryName ||
+              r?.areas?.country ||
+              r?.areas?.countryCode ||
+              r?.areas?.cc ||
+              ""
+            )
+              .toString()
+              .toLowerCase();
             return cc.includes(lcCountry);
           });
         }
 
-        // Etiket, mesafe, süre filtreleri
         list = applyTagFilter(list, filtersSnapshot.tags);
         list = applyDistanceFilter(list, filtersSnapshot.dist);
         list = applyDurationFilter(list, filtersSnapshot.dur);
+        list = dedupeById(list);
 
         setItems(list);
-        setVisibleCount(
-          list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0
-        );
+        setVisibleCount(list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0);
         setIsEnd(true);
         setInitialized(true);
+
+        if (typeof onBumpRecentQuery === "function") {
+          onBumpRecentQuery(trimmed);
+        }
       } catch (err) {
-        if (
-          controller.signal.aborted ||
-          err?.name === "AbortError" ||
-          !isMountedRef.current ||
-          controller._reqId !== currentReqId
-        ) {
+        if (isRequestStale(controller, reqId) || err?.name === "AbortError") {
           return;
         }
         setItems([]);
@@ -461,20 +565,17 @@ export default function useRoutesData({
         setIsEnd(true);
         setInitialized(true);
       } finally {
-        if (
-          !isMountedRef.current ||
-          controller.signal.aborted ||
-          controller._reqId !== currentReqId
-        ) {
-          return;
-        }
+        if (isRequestStale(controller, reqId)) return;
         setLoading(false);
         setLoadingSearch(false);
+        endRequest(controller, reqId);
       }
     })();
 
     return () => {
-      controller.abort();
+      try {
+        inFlightRef.current?.controller?.abort();
+      } catch {}
     };
   }, [
     hasSearch,
@@ -486,10 +587,30 @@ export default function useRoutesData({
     onBumpRecentQuery,
   ]);
 
-  // Sonsuz kaydırma (sentinel)
+  // Sonsuz kaydırma (sentinel) – near + non-near (arama hariç)
   useEffect(() => {
     const node = sentinelRef.current;
     if (!node) return;
+
+    // Arama modunda veya yükleme/sonda: observer devre dışı
+    // Not: EMİR 10 — near'da isEnd true olsa bile görünür sayıyı büyütmek için aktif kalabilir.
+    if (
+      hasSearch ||
+      loading ||
+      loadingSearch ||
+      (isEnd && sort !== "near")
+    ) {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+      return;
+    }
+
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -501,24 +622,52 @@ export default function useRoutesData({
           if (next > prev) {
             return next;
           }
-          if (!hasSearch && sort !== "near") {
+          // Non-near modda, tüm mevcut kartlar görünürse yeni sayfayı iste
+          if (
+            sort !== "near" &&
+            !loading &&
+            !loadingSearch &&
+            !isEnd
+          ) {
             loadMoreNonNear();
           }
           return prev;
         });
       },
       {
-        rootMargin: "800px 0px 800px 0px",
+        root: null,
+        rootMargin: "600px 0px 1200px 0px",
         threshold: 0.01,
       }
     );
 
     observer.observe(node);
-    return () => observer.disconnect();
-  }, [items.length, sort, hasSearch, loadMoreNonNear]);
+    observerRef.current = observer;
 
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+    };
+  }, [
+    hasSearch,
+    loading,
+    loadingSearch,
+    isEnd,
+    sort,
+    items.length,
+    loadMoreNonNear,
+  ]);
+
+  // Arama modunda tüm sonuçları göster; diğerlerinde görünür sayıya göre kısıtla
   const visibleItems =
-    visibleCount > 0 ? items.slice(0, visibleCount) : items;
+    hasSearch
+      ? items
+      : visibleCount > 0
+      ? items.slice(0, visibleCount)
+      : items;
+
   const totalCount = items.length;
 
   return {
@@ -530,7 +679,6 @@ export default function useRoutesData({
     initialized,
     loadingSearch,
     sentinelRef,
-    loadMoreNonNear,
     resetAll,
   };
 }

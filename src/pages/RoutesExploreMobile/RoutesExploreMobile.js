@@ -4,15 +4,24 @@
 // URL/LocalStorage senkronu (m/a/s/q/sel + groupBy/city/country/tags),
 // Yakınımda harita (Google Maps) + "Bu alanda ara" CTA + pin↔kart senkronu,
 // near/search/non-near veri akışı ve sonsuz kaydırma (useRoutesData).
+// EMİR 11: RouteFilterSheet lazy-load + memoization
+// EMİR 12: Hafif windowing (useWindowedList) + dupe-guard (useRoutesData içinde)
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  Suspense,
+  lazy,
+} from "react";
 import { auth } from "../../firebase";
 
 import { getFollowingUids } from "../../services/follows";
 
 import NearbyPromptMobile from "../../components/NearbyPromptMobile";
 import RouteCardMobile from "../../components/RouteCardMobile";
-import RouteFilterSheet from "../../components/RouteFilterSheet";
 
 import {
   DEFAULT_AUDIENCE,
@@ -28,10 +37,18 @@ import useSearchBar from "./hooks/useSearchBar";
 import useExploreParamsSync from "./hooks/useExploreParamsSync";
 import useNearMapController from "./hooks/useNearMapController";
 import useRoutesData from "./hooks/useRoutesData";
+import useWindowedList from "./hooks/useWindowedList";
 
+// EMİR 9: eksik import FIX
 import SearchBarMobile from "./components/SearchBarMobile";
-import NearMapPane from "./components/NearMapPane";
-import EmptyStateMobile from "./components/EmptyStateMobile";
+
+// NearMapPane lazy-load (EMİR 9)
+const NearMapPane = lazy(() => import("./components/NearMapPane"));
+
+// RouteFilterSheet lazy-load (EMİR 11)
+const RouteFilterSheetLazy = lazy(() =>
+  import("../../components/RouteFilterSheet")
+);
 
 function RoutesExploreMobile() {
   const initialRef = useRef(null);
@@ -81,6 +98,10 @@ function RoutesExploreMobile() {
   const cardRefs = useRef({});
   const toastTimerRef = useRef(null);
   const wasSearchingRef = useRef(false);
+  const listContainerRef = useRef(null);
+
+  // EMİR 13: Haritaya giden pin listesi için ayrı state
+  const [itemsForMap, setItemsForMap] = useState([]);
 
   // URL & LocalStorage senkronu (m/a/s/q/sel + groupBy/city/country/tags)
   useExploreParamsSync({
@@ -101,6 +122,33 @@ function RoutesExploreMobile() {
       setSelectedRouteId,
     },
   });
+
+  // RouteFilterSheet idle prefetch (EMİR 11)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let idleId = null;
+    let timeoutId = null;
+
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(() => {
+        import("../../components/RouteFilterSheet");
+      });
+    } else {
+      timeoutId = window.setTimeout(() => {
+        import("../../components/RouteFilterSheet");
+      }, 2000);
+    }
+
+    return () => {
+      if (idleId && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, []);
 
   // open-route-modal event’i
   const openRoute = useCallback((routeId) => {
@@ -140,11 +188,11 @@ function RoutesExploreMobile() {
     hasSearch,
     initialNear: initialRef.current.ui.near,
     initialRadius: initialRef.current.ui.radius,
-    items: [], // marker verisi useRoutesData’den bağımsız; nearMapPins kendi snapshot’ını kullanıyor
+    // EMİR 13: Harita pin verisi artık gerçek rotalardan geliyor (itemsForMap)
+    items: itemsForMap,
     selectedRouteId,
     onSelectRouteFromMap: handleSelectRouteFromMap,
     onViewportChange: setNearBounds,
-    // onSearchArea: gerekirse ileride kullanılabilir
   });
 
   // Veri katmanı hook’u (near/search/non-near + sentinel)
@@ -169,6 +217,15 @@ function RoutesExploreMobile() {
     near,
     onBumpRecentQuery: bumpRecentQuery,
   });
+
+  // EMİR 13: Yakınımda modundayken haritaya gidecek pin snapshot’ını güncelle
+  useEffect(() => {
+    if (sort === "near" && !hasSearch) {
+      setItemsForMap(items);
+    } else {
+      setItemsForMap([]);
+    }
+  }, [items, sort, hasSearch]);
 
   // unmount temizliği (toast timer)
   useEffect(() => {
@@ -333,7 +390,45 @@ function RoutesExploreMobile() {
     !!filters.country ||
     (filters.tags && filters.tags.length > 0);
 
-  const groups = makeGroups(visibleItems, group);
+  // Gruplar (EMİR 11)
+  const groups = useMemo(
+    () => makeGroups(visibleItems, group),
+    [visibleItems, group]
+  );
+
+  // EMİR 12: windowing için düz index haritası
+  const { flatIndexById, totalItemCount } = useMemo(() => {
+    const map = new Map();
+    let idx = 0;
+    for (const g of groups) {
+      for (const r of g.items) {
+        const id =
+          r && r.id !== undefined && r.id !== null
+            ? String(r.id)
+            : null;
+        if (!id) {
+          idx += 1;
+          continue;
+        }
+        if (!map.has(id)) {
+          map.set(id, idx);
+        }
+        idx += 1;
+      }
+    }
+    return { flatIndexById: map, totalItemCount: idx };
+  }, [groups]);
+
+  const windowingDisabled =
+    !!selectedRouteId || totalItemCount <= 40;
+
+  const { start: windowStart, end: windowEnd } = useWindowedList({
+    containerRef: listContainerRef,
+    itemCount: totalItemCount,
+    estimatedItemHeight: 96,
+    overscan: 6,
+    disabled: windowingDisabled,
+  });
 
   const showNearbyPrompt =
     sort === "near" && !hasSearch && !near && locationStatus === "denied";
@@ -370,15 +465,6 @@ function RoutesExploreMobile() {
       ? "Aramana uygun rota bulunamadı."
       : "Hiç rota bulunamadı.";
 
-  const isEmptyState =
-    initialized && !visibleItems.length && !loading && !showNearbyPrompt;
-
-  const emptyTitle = hasSearch
-    ? "Sonuç bulunamadı"
-    : audience === "following"
-    ? "Takiplerinde uygun rota yok"
-    : "Rota bulunamadı";
-
   return (
     <div
       className="RoutesExploreMobile"
@@ -401,7 +487,9 @@ function RoutesExploreMobile() {
               type="button"
               className={
                 "routes-segment-btn" +
-                (audience === "all" ? " routes-segment-btn--active" : "")
+                (audience === "all"
+                  ? " routes-segment-btn--active"
+                  : "")
               }
               onClick={() => setAudience("all")}
               aria-pressed={audience === "all"}
@@ -425,9 +513,12 @@ function RoutesExploreMobile() {
                   if (toastTimerRef.current) {
                     clearTimeout(toastTimerRef.current);
                   }
-                  toastTimerRef.current = window.setTimeout(() => {
-                    setToastMessage("");
-                  }, 2600);
+                  toastTimerRef.current = window.setTimeout(
+                    () => {
+                      setToastMessage("");
+                    },
+                    2600
+                  );
                   return;
                 }
                 setAudience("following");
@@ -560,17 +651,59 @@ function RoutesExploreMobile() {
         />
       )}
 
-      {/* Yakınımda: meta + harita alanı */}
+      {/* Yakınımda: meta + harita alanı (lazy load) */}
       {sort === "near" && !hasSearch && !showNearbyPrompt && (
         <>
-          <NearMapPane
-            mapDivRef={mapDivRef}
-            gmapsStatus={gmapsStatus}
-            errorMsg={errorMsg}
-            nearMetaText={nearMetaText}
-            showSearchAreaButton={showSearchAreaButton}
-            onSearchAreaClick={handleSearchInThisArea}
-          />
+          <Suspense
+            fallback={
+              <>
+                {nearMetaText && (
+                  <div
+                    style={{
+                      padding: "4px 10px 0",
+                      fontSize: 11,
+                      color: "#6b7280",
+                    }}
+                  >
+                    {nearMetaText}
+                  </div>
+                )}
+                <div
+                  className="near-mapWrap"
+                  style={{
+                    height: 300,
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    background: "#f1f3f4",
+                    margin: "4px 10px 8px",
+                    position: "relative",
+                  }}
+                >
+                  <div
+                    className="near-skel"
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background:
+                        "linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%)",
+                      animation:
+                        "near-skel-pulse 1.4s ease infinite",
+                    }}
+                  />
+                </div>
+              </>
+            }
+          >
+            <NearMapPane
+              mapDivRef={mapDivRef}
+              gmapsStatus={gmapsStatus}
+              errorMsg={errorMsg}
+              nearMetaText={nearMetaText}
+              showSearchAreaButton={showSearchAreaButton}
+              onSearchAreaClick={handleSearchInThisArea}
+            />
+          </Suspense>
 
           {hasActiveFilters && (
             <div
@@ -607,7 +740,9 @@ function RoutesExploreMobile() {
       {hasSearch && initialized && (
         <div className="routes-results-meta">
           <span className="routes-results-title">Sonuçlar</span>
-          <span className="routes-results-count">{totalCount} sonuç</span>
+          <span className="routes-results-count">
+            {totalCount} sonuç
+          </span>
         </div>
       )}
 
@@ -615,53 +750,81 @@ function RoutesExploreMobile() {
       <div
         aria-busy={loading && !initialized}
         style={{ paddingTop: 4, paddingInline: 10 }}
+        ref={listContainerRef}
       >
         {!initialized && !loading && (
           <div style={{ padding: "20px 4px" }}>Yükleniyor…</div>
         )}
 
-        {isEmptyState && (
-          <EmptyStateMobile
-            title={emptyTitle}
-            description={emptyMessage}
-            primaryLabel="Filtreleri temizle"
-            onPrimary={handleResetAll}
-          />
-        )}
-
-        {/* Near modunda ilk yükleme sırasında skeleton kartlar */}
-        {sort === "near" && !hasSearch && loading && !visibleItems.length && (
-          <div style={{ padding: "8px 2px" }}>
-            <div
-              className="near-skel"
+        {initialized && !visibleItems.length && !loading && (
+          <div
+            style={{
+              padding: "14px 4px",
+              opacity: 0.8,
+              fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span>{emptyMessage}</span>
+            <button
+              type="button"
+              onClick={handleResetAll}
               style={{
-                height: 80,
-                marginBottom: 8,
-                borderRadius: 12,
-                background: "#f3f4f6",
+                border: "none",
+                background: "transparent",
+                padding: 0,
+                margin: 0,
+                fontSize: 12,
+                fontWeight: 500,
+                color: "#1d4ed8",
+                textDecoration: "underline",
+                cursor: "pointer",
               }}
-            />
-            <div
-              className="near-skel"
-              style={{
-                height: 80,
-                marginBottom: 8,
-                borderRadius: 12,
-                background: "#f3f4f6",
-              }}
-            />
-            <div
-              className="near-skel"
-              style={{
-                height: 80,
-                marginBottom: 8,
-                borderRadius: 12,
-                background: "#f3f4f6",
-              }}
-            />
+            >
+              Filtreleri temizle
+            </button>
           </div>
         )}
 
+        {/* Near modunda ilk yükleme sırasında skeleton kartlar */}
+        {sort === "near" &&
+          !hasSearch &&
+          loading &&
+          !visibleItems.length && (
+            <div style={{ padding: "8px 2px" }}>
+              <div
+                className="near-skel"
+                style={{
+                  height: 80,
+                  marginBottom: 8,
+                  borderRadius: 12,
+                  background: "#f3f4f6",
+                }}
+              />
+              <div
+                className="near-skel"
+                style={{
+                  height: 80,
+                  marginBottom: 8,
+                  borderRadius: 12,
+                  background: "#f3f4f6",
+                }}
+              />
+              <div
+                className="near-skel"
+                style={{
+                  height: 80,
+                  marginBottom: 8,
+                  borderRadius: 12,
+                  background: "#f3f4f6",
+                }}
+              />
+            </div>
+          )}
+
+        {/* EMİR 12: Hafif windowing – pencere dışındaki kartlar boş blok olarak kalıyor */}
         {groups.map((g) => (
           <section
             key={g.key}
@@ -708,29 +871,57 @@ function RoutesExploreMobile() {
               className="ExploreGroupBody"
               style={{ paddingTop: g.label ? 6 : 0 }}
             >
-              {g.items.map((r) => (
-                <div
-                  key={r.id}
-                  style={{ marginBottom: 8 }}
-                  ref={(el) => {
-                    if (!el) {
-                      delete cardRefs.current[r.id];
-                    } else {
-                      cardRefs.current[r.id] = el;
-                    }
-                  }}
-                >
-                  <RouteCardMobile
-                    route={r}
-                    selected={
-                      !!selectedRouteId &&
-                      String(selectedRouteId) === String(r.id)
-                    }
-                    onClick={() => handleRouteCardClick(r)}
-                    highlightQuery={hasSearch ? debouncedQuery : ""}
-                  />
-                </div>
-              ))}
+              {g.items.map((r) => {
+                const id =
+                  r && r.id !== undefined && r.id !== null
+                    ? String(r.id)
+                    : "";
+                const flatIndex =
+                  id && flatIndexById.has(id)
+                    ? flatIndexById.get(id)
+                    : 0;
+
+                const shouldRenderCard =
+                  windowingDisabled ||
+                  (flatIndex >= windowStart &&
+                    flatIndex < windowEnd);
+
+                const selected =
+                  !!selectedRouteId &&
+                  String(selectedRouteId) === String(r.id);
+
+                return (
+                  <div
+                    key={r.id}
+                    style={{
+                      marginBottom: 8,
+                      minHeight: 88, // yaklaşık kart yüksekliği
+                    }}
+                  >
+                    {shouldRenderCard && (
+                      <div
+                        ref={(el) => {
+                          if (!id) return;
+                          if (!el) {
+                            delete cardRefs.current[id];
+                          } else {
+                            cardRefs.current[id] = el;
+                          }
+                        }}
+                      >
+                        <RouteCardMobile
+                          route={r}
+                          selected={selected}
+                          onClick={() => handleRouteCardClick(r)}
+                          highlightQuery={
+                            hasSearch ? debouncedQuery : ""
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         ))}
@@ -765,21 +956,25 @@ function RoutesExploreMobile() {
         )}
       </div>
 
-      {/* Alt çekmece filtre sheet */}
-      <RouteFilterSheet
-        open={filterSheetOpen}
-        initial={{
-          tagsText: (filters.tags || []).join(" "),
-          city: filters.city,
-          country: filters.country,
-          dist: filters.dist,
-          dur: filters.dur,
-          sort,
-          groupBy: group,
-        }}
-        onApply={handleFilterApply}
-        onClose={() => setFilterSheetOpen(false)}
-      />
+      {/* Alt çekmece filtre sheet – lazy + Suspense (EMİR 11) */}
+      {filterSheetOpen && (
+        <Suspense fallback={null}>
+          <RouteFilterSheetLazy
+            open={filterSheetOpen}
+            initial={{
+              tagsText: (filters.tags || []).join(" "),
+              city: filters.city,
+              country: filters.country,
+              dist: filters.dist,
+              dur: filters.dur,
+              sort,
+              groupBy: group,
+            }}
+            onApply={handleFilterApply}
+            onClose={() => setFilterSheetOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Giriş yapılmadan Takip’e geçme denemesi için küçük toast */}
       {toastMessage && (
@@ -789,7 +984,7 @@ function RoutesExploreMobile() {
   );
 }
 
-// HIZLI TEST (EMİR #1–8)
+// HIZLI TEST (EMİR #1–5 + 9 + 10 + 11 + 12 + 13)
 // [ ] Proje build oluyor, RoutesExploreMobile import hatası yok.
 // [ ] Mobil “Rotalar” sekmesi açılıyor, Hepsi/Takip ve Yakınımda/En yeni/En çok oy/En yüksek puan eskisi gibi çalışıyor.
 // [ ] Arama kutusu: yazınca ~300ms sonra arıyor, Enter’a basınca anında arıyor, ESC aramayı temizliyor.
@@ -798,8 +993,10 @@ function RoutesExploreMobile() {
 // [ ] Near/search/non-near veri akışları useRoutesData içinden yönetiliyor; sonsuz kaydırma sentinel üzerinden çalışıyor.
 // [ ] Geri/ileri ile m/a/s/q/sel + groupBy/city/country/tags state’i doğru geri yükleniyor.
 // [ ] “Hepsi bu kadar.” metni doğru yerde ve sadece verinin sonuna gelindiğinde çıkıyor.
-// [ ] 0 sonuç durumlarında EmptyStateMobile tek tip görsel dil ile çıkıyor; “Filtreleri temizle” butonu resetAll çağırıyor.
-// [ ] Harita hata durumunda (gmapsStatus === "error" | "no-key") ErrorStateMobile gösteriliyor.
-// [ ] Konum reddinde (Yakınımda + izin yok) yalnız NearbyPromptMobile görünüyor; boş state ile çakışmıyor.
+// [ ] EMİR 9: Google Maps bundle’ı sadece Yakınımda modunda yükleniyor, listener sayısı artmıyor.
+// [ ] EMİR 10: Sentinel rootMargin = "600px 0px 1200px 0px"; aynı cursor için çift istek yok; resetAll() sonrası ilk sayfa temiz yükleniyor.
+// [ ] EMİR 11: RouteFilterSheet chunk’ı lazy-load; idle prefetch sonrası “Sırala” anında açılıyor; makeGroups memoize.
+// [ ] EMİR 12: Büyük listelerde scroll sırasında sadece pencere içindeki kartlar gerçek <RouteCardMobile> olarak render ediliyor; pencere dışı kartlar boş blok olarak kalıyor (hafif windowing). Dupe-guard sayesinde aynı id’ye sahip rota iki kez görünmüyor.
+// [ ] EMİR 13: Yakınımda modunda harita pinleri useRoutesData.items ile senkron (itemsForMap); chunked pin render + marker clusterer ile 200+ pin sahnesinde FPS stabil.
 
 export default RoutesExploreMobile;
