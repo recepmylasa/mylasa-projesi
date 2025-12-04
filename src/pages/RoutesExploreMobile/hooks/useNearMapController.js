@@ -55,14 +55,21 @@ export default function useNearMapController({
     itemsSnapshot: [],
   });
 
-  const { gmapsStatus, errorMsg, mapDivRef, mapRef, attemptLoad } =
-    useGoogleMaps({
-      API_KEY: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-      // EMİR 9: MAP_ID için fallback; proje env'de REACT_APP_GMAPS_MAP_ID kullanılıyorsa da çalışır.
-      MAP_ID:
-        process.env.REACT_APP_GOOGLE_MAPS_MAP_ID ||
-        process.env.REACT_APP_GMAPS_MAP_ID,
-    });
+  const {
+    gmapsStatus,
+    errorMsg,
+    mapDivRef,
+    mapRef,
+    attemptLoad,
+    error,
+    reload,
+  } = useGoogleMaps({
+    API_KEY: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+    // EMİR 9: MAP_ID için fallback; proje env'de REACT_APP_GMAPS_MAP_ID kullanılıyorsa da çalışır.
+    MAP_ID:
+      process.env.REACT_APP_GOOGLE_MAPS_MAP_ID ||
+      process.env.REACT_APP_GMAPS_MAP_ID,
+  });
 
   const requestLocation = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -538,5 +545,7 @@ export default function useNearMapController({
     requestLocation,
     showSearchAreaButton,
     handleSearchInThisArea,
+    mapError: error || null,
+    reloadMap: reload,
   };
 }
