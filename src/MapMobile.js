@@ -9,7 +9,7 @@ import { useMarkers } from "./hooks/useMarkers";
 import {
   DEFAULT_CENTER, MOBILE_ZOOM, MAP_TYPES,
   SELECTED_MARKER_KEY, SELF_MARKER_KEY,
-  MIN_FAB_BOTTOM, FAB_EXTRA_LIFT, containerStyle, FALLBACK_STYLE,
+  MIN_FAB_BOTTOM, FAB_EXTRA_LIFT, containerStyle,
 } from "./constants/map";
 
 import { animateFlyTo, distanceMeters } from "./utils/anim";
@@ -21,6 +21,7 @@ import {
 import MapTopControls from "./components/MapTopControls";
 import MapTypeMenu from "./components/MapTypeMenu";
 import SearchOverlay from "./components/SearchOverlay";
+import MapErrorBoundary from "./components/MapErrorBoundary";
 
 import AvatarModal from "./AvatarModal";
 import MapSettingsModal from "./MapSettingsModal";
@@ -61,6 +62,31 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     ) return;
     _warn(...args);
   };
+}
+
+// --- Harita içeriği (ErrorBoundary çocuğu)
+function MapMobileMapContent({ mapDivRef, mapError, gmapsStatus, errorMsg }) {
+  if (mapError) {
+    throw mapError;
+  }
+
+  if (gmapsStatus === "no-key" || gmapsStatus === "error") {
+    const err = new Error(
+      errorMsg ||
+      (gmapsStatus === "no-key"
+        ? "Google Maps API anahtarı eksik veya geçersiz."
+        : "Google Maps yüklenemedi.")
+    );
+    err.code = gmapsStatus;
+    throw err;
+  }
+
+  return (
+    <div
+      ref={mapDivRef}
+      style={{ width: "100%", height: "100%", paddingBottom: 55 }}
+    />
+  );
 }
 
 // friends entegrasyonu: varsayılan props ekledik (geri uyumlu)
@@ -109,6 +135,8 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
     mapDivRef, mapRef, advancedAllowedRef,
     autocompleteServiceRef, placesServiceRef, sessionTokenRef,
     attemptLoad,
+    error: mapError,
+    reload: reloadMap,
   } = useGoogleMaps({ API_KEY, MAP_ID });
 
   useEffect(() => { attemptLoad(false); }, [attemptLoad]);
@@ -809,30 +837,6 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
     }
   }, [routeStatus, clearPolyline]);
 
-  // Render
-  if (gmapsStatus === "no-key") {
-    return (
-      <div style={FALLBACK_STYLE}>
-        <div style={{ fontSize: 18, fontWeight: 700 }}>Harita yapılandırması eksik</div>
-        <div style={{ maxWidth: 520, opacity: 0.85 }}>
-          <code>.env</code> dosyasında <code>REACT_APP_GOOGLE_MAPS_API_KEY</code> bulunamadı.
-          Sunucuyu durdurup yeniden başlat.
-        </div>
-      </div>
-    );
-  }
-  if (gmapsStatus === "error") {
-    return (
-      <div style={FALLBACK_STYLE}>
-        <div style={{ fontSize: 18, fontWeight: 700 }}>Harita yüklenemedi</div>
-        <div style={{ maxWidth: 520, opacity: 0.85 }}>{errorMsg || "Beklenmeyen bir hata oluştu."}</div>
-        <button onClick={() => attemptLoad(true)} style={{ marginTop: 8, padding: "10px 16px", borderRadius: 8, border: "1px solid #ddd", background: "#fff", cursor: "pointer" }}>
-          Tekrar dene
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div style={containerStyle}>
       <style>{`
@@ -921,8 +925,15 @@ export default function MapMobile({ currentUserProfile, friendsUids = [], friend
         </div>
       )}
 
-      {/* Google Map */}
-      <div ref={mapDivRef} style={{ width: "100%", height: "100%", paddingBottom: 55 }} />
+      {/* Google Map + Error Boundary */}
+      <MapErrorBoundary onRetry={reloadMap} compact>
+        <MapMobileMapContent
+          mapDivRef={mapDivRef}
+          mapError={mapError}
+          gmapsStatus={gmapsStatus}
+          errorMsg={errorMsg}
+        />
+      </MapErrorBoundary>
 
       {/* BEN için kısa adres chip */}
       {selfShortAddr && (

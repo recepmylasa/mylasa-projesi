@@ -171,6 +171,18 @@ function RoutesExploreMobile() {
   }, []);
 
   // Yakınımda/harita hook’u
+  const nearController = useNearMapController({
+    sort,
+    hasSearch,
+    initialNear: initialRef.current.ui.near,
+    initialRadius: initialRef.current.ui.radius,
+    // EMİR 13: Harita pin verisi artık gerçek rotalardan geliyor (itemsForMap)
+    items: itemsForMap,
+    selectedRouteId,
+    onSelectRouteFromMap: handleSelectRouteFromMap,
+    onViewportChange: setNearBounds,
+  });
+
   const {
     mapDivRef,
     mapRef,
@@ -183,17 +195,7 @@ function RoutesExploreMobile() {
     requestLocation,
     showSearchAreaButton,
     handleSearchInThisArea,
-  } = useNearMapController({
-    sort,
-    hasSearch,
-    initialNear: initialRef.current.ui.near,
-    initialRadius: initialRef.current.ui.radius,
-    // EMİR 13: Harita pin verisi artık gerçek rotalardan geliyor (itemsForMap)
-    items: itemsForMap,
-    selectedRouteId,
-    onSelectRouteFromMap: handleSelectRouteFromMap,
-    onViewportChange: setNearBounds,
-  });
+  } = nearController;
 
   // Veri katmanı hook’u (near/search/non-near + sentinel)
   const {
@@ -699,6 +701,8 @@ function RoutesExploreMobile() {
               mapDivRef={mapDivRef}
               gmapsStatus={gmapsStatus}
               errorMsg={errorMsg}
+              mapError={nearController.mapError}
+              reloadMap={nearController.reloadMap}
               nearMetaText={nearMetaText}
               showSearchAreaButton={showSearchAreaButton}
               onSearchAreaClick={handleSearchInThisArea}
