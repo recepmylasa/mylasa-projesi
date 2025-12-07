@@ -1,288 +1,195 @@
-// src/PostDetailModalMobile.js
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { db, auth } from "./firebase";
-import { doc, onSnapshot, updateDoc, arrayUnion } from "firebase/firestore";
-import StarRatingV2 from "./components/StarRatingV2/StarRatingV2";
-import { ensureContentDoc, rateContent as sendRating } from "./reputationClient";
-import { isSaved as fsIsSaved, toggleSave as fsToggleSave } from "./savesClient";
-import "./PostDetailModalMobile.css";
+// src/PlaceDetailModalMobile.js
+import React, { useState, useEffect } from "react";
+import { db } from "./firebase";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  orderBy,
+} from "firebase/firestore";
+import "./PlaceDetailModal.css";
 
-const CommentIcon = () => (
-  <svg aria-label="Yorum Yap" height="24" role="img" viewBox="0 0 24 24" width="24">
-    <path d="M20.656 17.008a9.993 9.993 0 1 0-3.59 3.615L22 22Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></path>
-  </svg>
-);
-const ShareIcon = () => (
-  <svg aria-label="Gönderiyi Paylaş" height="24" role="img" viewBox="0 0 24 24" width="24">
-    <line fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" x1="22" x2="11" y1="2" y2="13"></line>
-    <polygon fill="none" points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></polygon>
-  </svg>
-);
-const SaveIcon = ({ isSaved }) => (
-  <svg aria-label="Kaydet" height="24" role="img" viewBox="0 0 24 24" width="24">
-    <polygon fill={isSaved ? "currentColor" : "none"} points="20 21 12 13.44 4 21 4 3 20 3 20 21" stroke="currentColor" strokeLinejoin="round" strokeWidth="2"></polygon>
+const CloseIcon = () => (
+  <svg height="24" viewBox="0 0 24 24" width="24">
+    <path
+      d="M18 6L6 18M6 6l12 12"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 
-const formatTimeAgo = (ts) => {
-  if (!ts) return "";
-  const date = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
-  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (diff < 60) return `${diff}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}dk`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}sa`;
-  return `${Math.floor(diff / 86400)}g`;
-};
-const formatCount = (n) => {
-  if (typeof n !== "number") return "";
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return (n / 1000).toFixed(n % 1000 >= 100 ? 1 : 0) + "K";
-  if (n < 1_000_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 >= 100_000 ? 1 : 0) + "M";
-  return (n / 1_000_000_000).toFixed(1) + "B";
+const formatTimeAgo = (timestamp) => {
+  if (!timestamp || typeof timestamp.seconds !== "number") return "";
+  const now = new Date();
+  const postDate = new Date(timestamp.seconds * 1000);
+  const secondsPast = (now.getTime() - postDate.getTime()) / 1000;
+  if (secondsPast < 60) return `${Math.round(secondsPast)} sn`;
+  if (secondsPast < 3600) return `${Math.floor(secondsPast / 60)} dk`;
+  return `${Math.floor(secondsPast / 3600)} sa`;
 };
 
-export default function PostDetailModalMobile({ post, onClose, onUserClick, aktifKullaniciId }) {
-  const [contentData, setContentData] = useState(post);
-  const [authorProfile, setAuthorProfile] = useState(null);
-  const [yeniYorum, setYeniYorum] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
-  const [agg, setAgg] = useState(null);
-  const [shareToast, setShareToast] = useState("");
-  const inputRef = useRef(null);
-
-  const currentUser = auth.currentUser;
-
-  useEffect(() => {
-    if (!post || !post.id || !post.type) return;
-    const collectionName = post.type === "clip" ? "clips" : "posts";
-    const ref = doc(db, collectionName, post.id);
-    const unsub = onSnapshot(ref, (snap) => {
-      if (snap.exists()) setContentData({ id: snap.id, type: post.type, ...snap.data() });
-    });
-    return () => unsub();
-  }, [post]);
+function PlaceDetailModalMobile({
+  placeData,
+  placeId,
+  placeName,
+  coords, // şimdilik kullanılmıyor, API için tutuyoruz
+  onClose,
+  onUserClick,
+}) {
+  const [recentCheckIns, setRecentCheckIns] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!contentData?.authorId) return;
-    const ref = doc(db, "users", contentData.authorId);
-    const unsub = onSnapshot(ref, (snap) => snap.exists() && setAuthorProfile(snap.data()));
-    return () => unsub();
-  }, [contentData?.authorId]);
+    const effectivePlaceId = placeId || (placeData && placeData.placeId);
+    if (!effectivePlaceId) return;
 
-  useEffect(() => {
-    if (!contentData?.id) return;
-    const ref = doc(db, "content", contentData.id);
-    const unsub = onSnapshot(ref, (snap) => {
-      const d = snap.exists() ? snap.data() : null;
-      setAgg(d?.agg || null);
-    });
-    return () => unsub();
-  }, [contentData?.id]);
+    const fetchRecentCheckIns = async () => {
+      setIsLoading(true);
+      try {
+        const twentyFourHoursAgo = new Date(
+          Date.now() - 24 * 60 * 60 * 1000
+        );
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const saved = await fsIsSaved(contentData?.id);
-      if (!cancelled) setIsSaved(saved);
-    })();
-    return () => { cancelled = true; };
-  }, [contentData?.id]);
+        const checkInsQuery = query(
+          collection(db, "checkins"),
+          where("placeId", "==", effectivePlaceId),
+          where("timestamp", ">=", twentyFourHoursAgo),
+          orderBy("timestamp", "desc")
+        );
+        const checkInsSnap = await getDocs(checkInsQuery);
+        const checkIns = checkInsSnap.docs.map((d) => ({
+          ...d.data(),
+          id: d.id,
+        }));
 
-  const handleYorumGonder = async (e) => {
-    e.preventDefault();
-    if (!yeniYorum.trim() || !currentUser || !contentData) return;
-    setIsSubmitting(true);
-    try {
-      const coll = contentData.type === "clip" ? "clips" : "posts";
-      const ref = doc(db, coll, contentData.id);
-      const yorum = {
-        text: yeniYorum,
-        username: currentUser.displayName,
-        userId: currentUser.uid,
-        photoURL: currentUser.photoURL,
-        timestamp: new Date().toISOString(),
-        likes: [],
-      };
-      await updateDoc(ref, { yorumlar: arrayUnion(yorum) });
-      setYeniYorum("");
-      inputRef.current?.focus();
-    } catch (err) {
-      console.error("Yorum eklenirken hata:", err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+        if (checkIns.length === 0) {
+          setRecentCheckIns([]);
+          setIsLoading(false);
+          return;
+        }
 
-  const handleRate = async (value) => {
-    if (!contentData?.id || !contentData?.authorId) return;
-    const type = contentData.type === "clip" ? "clip" : "post";
-    await ensureContentDoc(contentData.id, contentData.authorId, type);
-    await sendRating({ contentId: contentData.id, authorId: contentData.authorId, value, type });
-  };
+        const userIds = [...new Set(checkIns.map((c) => c.userId))].filter(
+          Boolean
+        );
+        if (userIds.length === 0) {
+          setRecentCheckIns([]);
+          setIsLoading(false);
+          return;
+        }
 
-  const handleToggleSave = async () => {
-    setIsSaved((s) => !s);
-    try {
-      const { saved } = await fsToggleSave({
-        contentId: contentData.id,
-        type: contentData.type,
-        authorId: contentData.authorId,
-        mediaUrl: contentData.mediaUrl,
-        caption: contentData.aciklama || contentData.mesaj || "",
-      });
-      setIsSaved(saved);
-    } catch (e) {
-      setIsSaved((s) => !s);
-      console.error("Kaydet sırasında hata:", e);
-    }
-  };
+        // Firestore "in" limit: 10 eleman → 10'luk batch'lere böl
+        const usersData = {};
+        for (let i = 0; i < userIds.length; i += 10) {
+          const batchIds = userIds.slice(i, i + 10);
+          const usersQueryRef = query(
+            collection(db, "users"),
+            where("uid", "in", batchIds)
+          );
+          const usersSnap = await getDocs(usersQueryRef);
+          usersSnap.forEach((d) => {
+            const data = d.data();
+            if (data && data.uid) {
+              usersData[data.uid] = data;
+            }
+          });
+        }
 
-  const handleShare = async () => {
-    try {
-      const permalink = `${window.location.origin}/p/${contentData.id}`;
-      if (navigator.share) {
-        await navigator.share({ title: "Gönderi", url: permalink });
-      } else {
-        await navigator.clipboard.writeText(permalink);
-        setShareToast("Link kopyalandı");
-        setTimeout(() => setShareToast(""), 1600);
+        const combined = checkIns
+          .map((c) => ({
+            ...c,
+            userData: usersData[c.userId],
+          }))
+          .filter((item) => item.userData);
+
+        setRecentCheckIns(combined);
+      } catch (err) {
+        console.error("Yakındaki check-in'ler alınırken hata (mobile):", err);
+        setRecentCheckIns([]);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (e) {
-      console.error("Paylaşım başarısız:", e);
-    }
-  };
+    };
 
-  const aciklama = contentData?.aciklama || contentData?.mesaj;
-  const yorumlar = contentData?.yorumlar || [];
-  const sortedYorumlar = useMemo(
-    () => [...yorumlar].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
-    [yorumlar]
-  );
-  const isOwner = contentData?.authorId === aktifKullaniciId;
+    fetchRecentCheckIns();
+  }, [placeId, placeData]);
+
+  const effectivePlaceName =
+    placeName ||
+    (placeData && (placeData.placeName || placeData.name)) ||
+    "";
+
+  const hasPlaceInfo = !!(placeId || (placeData && placeData.placeId));
+
+  if (!hasPlaceInfo) return null;
 
   return (
-    <div className="pdmMb-sheet" role="dialog" aria-modal="true">
-      {/* Media üstte */}
-      <div className="pdmMb-media">
-        {contentData?.type === "clip" ? (
-          <video src={contentData?.mediaUrl} className="pdmMb-video" controls playsInline />
-        ) : (
-          <img src={contentData?.mediaUrl} alt="Gönderi" />
-        )}
-      </div>
-
-      {/* Alt sheet alanı */}
-      <div className="pdmMb-panel">
-        <div className="pdmMb-grabber" aria-hidden="true" />
-
-        <header className="pdmMb-header">
-          <div className="pdmMb-author" onClick={() => onUserClick?.(contentData.authorId)}>
-            <img
-              src={authorProfile?.profilFoto || "https://placehold.co/32x32/EFEFEF/AAAAAA?text=P"}
-              alt={authorProfile?.kullaniciAdi}
-              className="pdmMb-avatar"
-            />
-            <span className="pdmMb-username">{authorProfile?.kullaniciAdi}</span>
-          </div>
+    <div className="place-detail-modal-overlay" onClick={onClose}>
+      <div
+        className="place-detail-modal-content place-detail-mobile"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="place-detail-header">
+          <h2>{effectivePlaceName}</h2>
+          <button onClick={onClose} className="place-detail-close-btn">
+            <CloseIcon />
+          </button>
         </header>
 
-        <div className="pdmMb-comments">
-          {aciklama && (
-            <div className="pdmMb-commentItem">
-              <img
-                src={authorProfile?.profilFoto || "https://placehold.co/32x32/EFEFEF/AAAAAA?text=P"}
-                alt={authorProfile?.kullaniciAdi}
-                className="pdmMb-commentAvatar"
-              />
-              <div className="pdmMb-commentBody">
-                <p>
-                  <strong onClick={() => onUserClick?.(contentData.authorId)}>{authorProfile?.kullaniciAdi}</strong>{" "}
-                  {aciklama}
-                </p>
-              </div>
+        <div className="place-detail-body">
+          {isLoading ? (
+            <p>Yükleniyor...</p>
+          ) : recentCheckIns.length > 0 ? (
+            <div className="recent-checkins-list">
+              {recentCheckIns.map((item) => {
+                const u = item.userData || {};
+                const avatarSrc =
+                  u.avatarUrl ||
+                  u.profilFoto ||
+                  "https://placehold.co/40x40/EFEFEF/AAAAAA?text=P";
+                const displayName =
+                  u.username ||
+                  u.displayName ||
+                  u.kullaniciAdi ||
+                  "Kullanıcı";
+
+                return (
+                  <div
+                    key={item.id}
+                    className="user-item"
+                    onClick={() =>
+                      onUserClick && item.userId
+                        ? onUserClick(item.userId)
+                        : undefined
+                    }
+                  >
+                    <img
+                      src={avatarSrc}
+                      alt={displayName}
+                      className="user-avatar"
+                    />
+                    <div className="user-info">
+                      <span className="user-name">{displayName}</span>
+                      <span className="checkin-time-ago">
+                        {formatTimeAgo(item.timestamp)} önce
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          )}
-
-          {sortedYorumlar.map((y, i) => (
-            <div key={i} className="pdmMb-commentItem">
-              <img
-                src={y.photoURL || "https://placehold.co/32x32/EFEFEF/AAAAAA?text=P"}
-                alt={y.username}
-                className="pdmMb-commentAvatar"
-              />
-              <div className="pdmMb-commentBody">
-                <p>
-                  <strong onClick={() => onUserClick?.(y.userId)}>{y.username}</strong> {y.text}
-                </p>
-                <span className="pdmMb-commentTime">{formatTimeAgo(y.timestamp)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="pdmMb-footer">
-          <div className="pdmMb-actions">
-            <div className="pdmMb-starWrap">
-              <StarRatingV2 size={32} onRate={handleRate} readOnly={isOwner} />
-              {agg?.avg > 0 && agg?.count > 0 && (
-                <span className="pdmMb-starMeta" aria-label="Bu içeriğin puanı">
-                  {Number(agg.avg).toFixed(1)} ★ · {formatCount(agg.count)} oy
-                </span>
-              )}
-            </div>
-
-            <button
-              className="pdmMb-actionBtn"
-              aria-label="Yorumlar"
-              onClick={() => inputRef.current?.focus()}
-              title="Yorum yaz"
-            >
-              <CommentIcon />
-            </button>
-
-            <button className="pdmMb-actionBtn" aria-label="Paylaş" onClick={handleShare}>
-              <ShareIcon />
-            </button>
-
-            <button
-              className="pdmMb-actionBtn save"
-              aria-label={isSaved ? "Kaydedildi" : "Kaydet"}
-              onClick={handleToggleSave}
-            >
-              <SaveIcon isSaved={isSaved} />
-            </button>
-          </div>
-
-          {shareToast && <div className="pdmMb-shareToast" role="status">{shareToast}</div>}
-
-          {contentData?.yorumlarKapali && (
-            <div className="pdmMb-lockedBanner">Yorumlar kapalı</div>
-          )}
-
-          <p className="pdmMb-date">{formatTimeAgo(contentData?.tarih)}</p>
-
-          {!contentData?.yorumlarKapali && (
-            <form onSubmit={handleYorumGonder} className="pdmMb-commentForm">
-              <img
-                src={auth.currentUser?.photoURL || "https://placehold.co/32x32/EFEFEF/AAAAAA?text=P"}
-                alt="Profil"
-                className="pdmMb-commentFormAvatar"
-              />
-              <input
-                ref={inputRef}
-                type="text"
-                value={yeniYorum}
-                onChange={(e) => setYeniYorum(e.target.value)}
-                placeholder="Yorum ekle..."
-              />
-              <button type="submit" disabled={!yeniYorum.trim() || isSubmitting}>
-                Paylaş
-              </button>
-            </form>
+          ) : (
+            <p className="place-detail-placeholder">
+              Son 24 saatte kimse check-in yapmadı.
+            </p>
           )}
         </div>
       </div>
     </div>
   );
 }
+
+export default PlaceDetailModalMobile;
