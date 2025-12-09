@@ -6,8 +6,17 @@ import "./ProfileMobile.css";
 import { auth, db } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
-  collection, query, where, orderBy, getDocs, limit,
-  doc, onSnapshot, setDoc, deleteDoc, serverTimestamp
+  collection,
+  query,
+  where,
+  orderBy,
+  getDocs,
+  limit,
+  doc,
+  onSnapshot,
+  setDoc,
+  deleteDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 
 import UserPosts from "./UserPosts";
@@ -29,13 +38,14 @@ import useLabubu from "./hooks/useLabubu";
 import LabubuGridMobile from "./components/Labubu/LabubuGridMobile";
 import LabubuOpenModalMobile from "./components/Labubu/LabubuOpenModalMobile";
 
-// Rotalar (YENİ)
-import RoutesExploreMobile from "./pages/RoutesExploreMobile";
+// Rotalar (Profil sekmesi – read-only liste)
+import ProfileRoutesMobile from "./ProfileRoutesMobile";
 import RouteDetailMobile from "./pages/RouteDetailMobile"; // Profil içi modal
 
 export default function ProfileMobile({ user = null }) {
   const u = user ?? {};
-  const userId = u.id ?? u.uid ?? u.userId ?? u.accountId ?? u._id ?? null;
+  const userId =
+    u.id ?? u.uid ?? u.userId ?? u.accountId ?? u._id ?? null;
   const hasUserId = !!userId;
 
   // grid | clips | checkins | routes | collection | saved
@@ -51,9 +61,16 @@ export default function ProfileMobile({ user = null }) {
   // --- Adım 9: Following state ---
   const [isFollowing, setIsFollowing] = useState(false);
   useEffect(() => {
-    if (!myUid || !userId || myUid === userId) { setIsFollowing(false); return; }
+    if (!myUid || !userId || myUid === userId) {
+      setIsFollowing(false);
+      return;
+    }
     const ref = doc(db, "follows", `${myUid}_${userId}`);
-    const off = onSnapshot(ref, (snap) => setIsFollowing(snap.exists()), () => setIsFollowing(false));
+    const off = onSnapshot(
+      ref,
+      (snap) => setIsFollowing(snap.exists()),
+      () => setIsFollowing(false)
+    );
     return () => off && off();
   }, [myUid, userId]);
 
@@ -61,14 +78,24 @@ export default function ProfileMobile({ user = null }) {
     if (!myUid || !userId || myUid === userId) return;
     const ref = doc(db, "follows", `${myUid}_${userId}`);
     if (isFollowing) {
-      try { await deleteDoc(ref); } catch {}
+      try {
+        await deleteDoc(ref);
+      } catch {}
     } else {
-      try { await setDoc(ref, { followerId: myUid, followeeId: userId, createdAt: serverTimestamp() }); } catch {}
+      try {
+        await setDoc(ref, {
+          followerId: myUid,
+          followeeId: userId,
+          createdAt: serverTimestamp(),
+        });
+      } catch {}
     }
   }, [myUid, userId, isFollowing]);
 
   // Labubu state (yalnız profil sahibi için kutu açma izni)
-  const { cards, boxesReady, openBox } = useLabubu(isSelf ? myUid : userId);
+  const { cards, boxesReady, openBox } = useLabubu(
+    isSelf ? myUid : userId
+  );
   const [lastDrop, setLastDrop] = useState(null);
 
   // CHECK-IN state
@@ -83,21 +110,29 @@ export default function ProfileMobile({ user = null }) {
   const savedSentinelRef = useRef(null);
   const savedInitializedRef = useRef(false);
 
-  // Route Detail modal (YENİ)
+  // Route Detail modal (profil içi rota detayı)
   const [routeModalId, setRouteModalId] = useState(null);
   useEffect(() => {
-    const onOpen = (e) => setRouteModalId(e?.detail?.routeId || null);
+    const onOpen = (e) =>
+      setRouteModalId(e?.detail?.routeId || null);
     window.addEventListener("open-route-modal", onOpen);
-    return () => window.removeEventListener("open-route-modal", onOpen);
+    return () =>
+      window.removeEventListener("open-route-modal", onOpen);
   }, []);
 
   const sheetPushedRef = useRef(false);
 
-  const avatarUrl = u.photoURL || u.profilFoto || u.avatar || "/avatars/default.png";
-  const username = typeof u.username === "string" ? u.username.toLowerCase() : "kullanıcı";
+  const avatarUrl =
+    u.photoURL || u.profilFoto || u.avatar || "/avatars/default.png";
+  const username =
+    typeof u.username === "string"
+      ? u.username.toLowerCase()
+      : "kullanıcı";
 
   useEffect(() => {
-    const off = onAuthStateChanged(auth, (usr) => setMyUid(usr?.uid || null));
+    const off = onAuthStateChanged(auth, (usr) =>
+      setMyUid(usr?.uid || null)
+    );
     return () => off && off();
   }, []);
 
@@ -105,46 +140,94 @@ export default function ProfileMobile({ user = null }) {
     if (!Array.isArray(items) || items.length === 0) return;
     setViewer({
       items,
-      index: Math.max(0, Math.min(startIndex ?? 0, items.length - 1)),
+      index: Math.max(
+        0,
+        Math.min(startIndex ?? 0, items.length - 1)
+      ),
     });
   }, []);
 
   const closeViewer = useCallback(() => setViewer(null), []);
 
   const handleShare = useCallback(() => {
-    const shareData = { title: `${username} • Mylasa`, text: `${username} profilini gör`, url: typeof window !== "undefined" ? window.location.href : "" };
-    if (navigator?.share) { navigator.share(shareData).catch(() => {}); return; }
+    const shareData = {
+      title: `${username} • Mylasa`,
+      text: `${username} profilini gör`,
+      url:
+        typeof window !== "undefined"
+          ? window.location.href
+          : "",
+    };
+    if (navigator?.share) {
+      navigator.share(shareData).catch(() => {});
+      return;
+    }
     setQrOpen(true);
   }, [username]);
 
   const openActions = useCallback(() => {
     setActionsOpen(true);
-    try { window.history.pushState({ sheet: "profile-actions" }, "", window.location.href); sheetPushedRef.current = true; } catch {}
+    try {
+      window.history.pushState(
+        { sheet: "profile-actions" },
+        "",
+        window.location.href
+      );
+      sheetPushedRef.current = true;
+    } catch {}
   }, []);
   const closeActions = useCallback(() => {
     if (!actionsOpen) return;
-    try { if (sheetPushedRef.current) { window.history.back(); } else { setActionsOpen(false); } } catch { setActionsOpen(false); }
+    try {
+      if (sheetPushedRef.current) {
+        window.history.back();
+      } else {
+        setActionsOpen(false);
+      }
+    } catch {
+      setActionsOpen(false);
+    }
   }, [actionsOpen]);
 
   useEffect(() => {
     const onPop = () => {
-      if (actionsOpen) { setActionsOpen(false); sheetPushedRef.current = false; }
+      if (actionsOpen) {
+        setActionsOpen(false);
+        sheetPushedRef.current = false;
+      }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [actionsOpen]);
 
-  const highlights = u.highlights || u.oneCikanlar || u.arsivOneCikanlar || [];
-  const profileUrl = typeof window !== "undefined" ? window.location.href : "";
+  const highlights =
+    u.highlights || u.oneCikanlar || u.arsivOneCikanlar || [];
+  const profileUrl =
+    typeof window !== "undefined" ? window.location.href : "";
 
-  const handleActionSelect = useCallback((id) => {
-    switch (id) {
-      case "qr": setQrOpen(true); closeActions(); break;
-      case "share_experience": handleShare(); closeActions(); break;
-      case "saved": setMode("saved"); closeActions(); break;
-      default: console.log("action:", id); closeActions(); break;
-    }
-  }, [closeActions, handleShare]);
+  const handleActionSelect = useCallback(
+    (id) => {
+      switch (id) {
+        case "qr":
+          setQrOpen(true);
+          closeActions();
+          break;
+        case "share_experience":
+          handleShare();
+          closeActions();
+          break;
+        case "saved":
+          setMode("saved");
+          closeActions();
+          break;
+        default:
+          console.log("action:", id);
+          closeActions();
+          break;
+      }
+    },
+    [closeActions, handleShare]
+  );
 
   // CHECK-IN (tembel yükleme)
   useEffect(() => {
@@ -153,13 +236,25 @@ export default function ProfileMobile({ user = null }) {
     (async () => {
       try {
         setCheckInsLoading(true);
-        const colNames = ["checkins", "checkinler", "yerBildirimleri"];
+        const colNames = [
+          "checkins",
+          "checkinler",
+          "yerBildirimleri",
+        ];
         let rows = [];
         for (const cn of colNames) {
           try {
-            const qy = query(collection(db, cn), where("userId", "==", userId), orderBy("timestamp", "desc"), limit(50));
+            const qy = query(
+              collection(db, cn),
+              where("userId", "==", userId),
+              orderBy("timestamp", "desc"),
+              limit(50)
+            );
             const snap = await getDocs(qy);
-            rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            rows = snap.docs.map((d) => ({
+              id: d.id,
+              ...d.data(),
+            }));
             if (rows.length) break;
           } catch {}
         }
@@ -168,17 +263,22 @@ export default function ProfileMobile({ user = null }) {
         if (alive) setCheckInsLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [mode, hasUserId, userId]);
 
   // SAVED ilk sayfa
   useEffect(() => {
-    if (mode !== "saved" || !isSelf || savedInitializedRef.current) return;
+    if (mode !== "saved" || !isSelf || savedInitializedRef.current)
+      return;
     let alive = true;
     (async () => {
       setSavedLoading(true);
       try {
-        const { items, nextCursor } = await listSaved({ pageSize: 18 });
+        const { items, nextCursor } = await listSaved({
+          pageSize: 18,
+        });
         if (!alive) return;
         setSavedItems(items);
         setSavedCursor(nextCursor);
@@ -188,7 +288,9 @@ export default function ProfileMobile({ user = null }) {
         if (alive) setSavedLoading(false);
       }
     })();
-    return () => { let _ = (alive = false); };
+    return () => {
+      let _ = (alive = false);
+    };
   }, [mode, isSelf]);
 
   // SAVED sonsuz
@@ -196,28 +298,49 @@ export default function ProfileMobile({ user = null }) {
     if (mode !== "saved" || !isSelf || savedEnd) return;
     const el = savedSentinelRef.current;
     if (!el) return;
-    const io = new IntersectionObserver(async (entries) => {
-      if (!entries[0]?.isIntersecting) return;
-      if (savedLoading || !savedCursor) return;
-      setSavedLoading(true);
-      try {
-        const { items, nextCursor } = await listSaved({ pageSize: 18, cursor: savedCursor });
-        setSavedItems((prev) => prev.concat(items));
-        setSavedCursor(nextCursor);
-        setSavedEnd(!nextCursor);
-      } finally {
-        setSavedLoading(false);
+    const io = new IntersectionObserver(
+      async (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        if (savedLoading || !savedCursor) return;
+        setSavedLoading(true);
+        try {
+          const { items, nextCursor } = await listSaved({
+            pageSize: 18,
+            cursor: savedCursor,
+          });
+          setSavedItems((prev) => prev.concat(items));
+          setSavedCursor(nextCursor);
+          setSavedEnd(!nextCursor);
+        } finally {
+          setSavedLoading(false);
+        }
+      },
+      {
+        rootMargin: "800px 0px 1200px 0px",
+        threshold: 0.01,
       }
-    }, { rootMargin: "800px 0px 1200px 0px", threshold: 0.01 });
+    );
     io.observe(el);
     return () => io.disconnect();
   }, [mode, isSelf, savedCursor, savedLoading, savedEnd]);
 
-  const openFromSaved = useCallback((picked) => {
-    const list = savedItems.map((s) => ({ id: s.contentId, type: s.type || "post", mediaUrl: s.mediaUrl || null, authorId: s.authorId || null, caption: s.caption || "" }));
-    const idx = Math.max(0, list.findIndex((x) => x.id === picked.id));
-    setViewer({ items: list, index: idx });
-  }, [savedItems]);
+  const openFromSaved = useCallback(
+    (picked) => {
+      const list = savedItems.map((s) => ({
+        id: s.contentId,
+        type: s.type || "post",
+        mediaUrl: s.mediaUrl || null,
+        authorId: s.authorId || null,
+        caption: s.caption || "",
+      }));
+      const idx = Math.max(
+        0,
+        list.findIndex((x) => x.id === picked.id)
+      );
+      setViewer({ items: list, index: idx });
+    },
+    [savedItems]
+  );
 
   // Labubu: kutu aç
   const handleOpenStandard = useCallback(async () => {
@@ -242,94 +365,191 @@ export default function ProfileMobile({ user = null }) {
 
       {/* Adım 9: Takip Et / Takibi Bırak + sayaçlar */}
       {!isSelf && hasUserId && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "6px 12px",
+          }}
+        >
           <button
             onClick={toggleFollow}
             style={{
-              padding: "8px 12px", borderRadius: 10, fontWeight: 800, cursor: "pointer",
-              border: "1px solid #ddd", background: isFollowing ? "#111" : "#fff", color: isFollowing ? "#fff" : "#111"
+              padding: "8px 12px",
+              borderRadius: 10,
+              fontWeight: 800,
+              cursor: "pointer",
+              border: "1px solid #ddd",
+              background: isFollowing ? "#111" : "#fff",
+              color: isFollowing ? "#fff" : "#111",
             }}
           >
             {isFollowing ? "Takibi Bırak" : "Takip Et"}
           </button>
-          <div style={{ fontSize: 12, opacity: .7 }}>
-            <b>{Number(u.followersCount || 0)}</b> takipçi • <b>{Number(u.followingCount || 0)}</b> takip
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            <b>{Number(u.followersCount || 0)}</b> takipçi •{" "}
+            <b>{Number(u.followingCount || 0)}</b> takip
           </div>
         </div>
       )}
 
       <ProfileHighlightsMobile
-        items={u.highlights || u.oneCikanlar || u.arsivOneCikanlar || []}
-        username={typeof u.username === "string" ? u.username.toLowerCase() : "kullanıcı"}
+        items={
+          u.highlights ||
+          u.oneCikanlar ||
+          u.arsivOneCikanlar ||
+          []
+        }
+        username={
+          typeof u.username === "string"
+            ? u.username.toLowerCase()
+            : "kullanıcı"
+        }
         onAdd={() => {}}
-        onOpen={(item) => { console.log("highlight open:", item); }}
+        onOpen={(item) => {
+          console.log("highlight open:", item);
+        }}
       />
 
       {/* Sekmeler: grid / clips / checkins / routes / collection (+saved self ise ProfileTabsMobile içinde) */}
-      <ProfileTabsMobile mode={mode} onChange={setMode} showSavedTab={isSelf} showCollectionTab />
+      <ProfileTabsMobile
+        mode={mode}
+        onChange={setMode}
+        showSavedTab={isSelf}
+        showCollectionTab
+      />
 
       {/* Gönderiler */}
-      <div id="tab-panel-grid" role="tabpanel" hidden={mode !== "grid"} className="tab-panel">
+      <div
+        id="tab-panel-grid"
+        role="tabpanel"
+        hidden={mode !== "grid"}
+        className="tab-panel"
+      >
         {hasUserId ? (
           <div className="userposts-container">
             <UserPosts userId={userId} onOpen={onOpenFromGrid} />
           </div>
         ) : (
-          <div className="userposts-container"><div className="user-posts-message">Profil yükleniyor…</div></div>
+          <div className="userposts-container">
+            <div className="user-posts-message">
+              Profil yükleniyor…
+            </div>
+          </div>
         )}
       </div>
 
       {/* Clips */}
-      <div id="tab-panel-clips" role="tabpanel" hidden={mode !== "clips"} className="tab-panel">
+      <div
+        id="tab-panel-clips"
+        role="tabpanel"
+        hidden={mode !== "clips"}
+        className="tab-panel"
+      >
         {hasUserId ? (
           <div className="userposts-container">
-            <UserPosts userId={userId} onlyClips onOpen={onOpenFromGrid} />
+            <UserPosts
+              userId={userId}
+              onlyClips
+              onOpen={onOpenFromGrid}
+            />
           </div>
         ) : (
-          <div className="userposts-container"><div className="user-posts-message">Profil yükleniyor…</div></div>
+          <div className="userposts-container">
+            <div className="user-posts-message">
+              Profil yükleniyor…
+            </div>
+          </div>
         )}
       </div>
 
       {/* Check-ins */}
-      <div id="tab-panel-checkins" role="tabpanel" hidden={mode !== "checkins"} className="tab-panel">
+      <div
+        id="tab-panel-checkins"
+        role="tabpanel"
+        hidden={mode !== "checkins"}
+        className="tab-panel"
+      >
         <div className="userposts-container">
           {checkInsLoading ? (
-            <div className="user-posts-message">Check-in’ler yükleniyor…</div>
+            <div className="user-posts-message">
+              Check-in’ler yükleniyor…
+            </div>
           ) : (
             <UserCheckIns checkIns={checkIns} />
           )}
         </div>
       </div>
 
-      {/* Rotalar (YENİ) – Explore mobil entegrasyonu */}
-      <div id="tab-panel-routes" role="tabpanel" hidden={mode !== "routes"} className="tab-panel">
+      {/* Rotalar – Profil sahibine ait rotalar (read-only liste) */}
+      <div
+        id="tab-panel-routes"
+        role="tabpanel"
+        hidden={mode !== "routes"}
+        className="tab-panel"
+      >
         <div className="userposts-container">
-          <RoutesExploreMobile />
+          {hasUserId ? (
+            <ProfileRoutesMobile
+              userId={userId}
+              isSelf={isSelf}
+              viewerId={myUid}
+              isFollowing={isFollowing}
+            />
+          ) : (
+            <div className="user-posts-message">
+              Profil yükleniyor…
+            </div>
+          )}
         </div>
       </div>
 
       {/* Labubu Koleksiyon */}
-      <div id="tab-panel-collection" role="tabpanel" hidden={mode !== "collection"} className="tab-panel">
+      <div
+        id="tab-panel-collection"
+        role="tabpanel"
+        hidden={mode !== "collection"}
+        className="tab-panel"
+      >
         <div className="userposts-container">
           <LabubuGridMobile
             cards={cards}
             boxesReady={isSelf ? boxesReady : 0}
             onOpenBox={isSelf ? handleOpenStandard : undefined}
-            onOpenCard={(c)=>setLastDrop(c)}
+            onOpenCard={(c) => setLastDrop(c)}
           />
         </div>
       </div>
 
       {/* Saved */}
-      <div id="tab-panel-saved" role="tabpanel" hidden={mode !== "saved"} className="tab-panel">
+      <div
+        id="tab-panel-saved"
+        role="tabpanel"
+        hidden={mode !== "saved"}
+        className="tab-panel"
+      >
         {isSelf ? (
           <>
-            <SavedGrid items={savedItems} onItemClick={openFromSaved} />
-            {!savedEnd && <div ref={savedSentinelRef} style={{ height: 1 }} aria-hidden="true" />}
-            {savedLoading && savedItems.length === 0 && (<div className="user-posts-message">Yükleniyor…</div>)}
+            <SavedGrid
+              items={savedItems}
+              onItemClick={openFromSaved}
+            />
+            {!savedEnd && (
+              <div
+                ref={savedSentinelRef}
+                style={{ height: 1 }}
+                aria-hidden="true"
+              />
+            )}
+            {savedLoading && savedItems.length === 0 && (
+              <div className="user-posts-message">Yükleniyor…</div>
+            )}
           </>
         ) : (
-          <div className="user-posts-message">Kaydedilenler yalnızca sana görünür.</div>
+          <div className="user-posts-message">
+            Kaydedilenler yalnızca sana görünür.
+          </div>
         )}
       </div>
 
@@ -339,33 +559,78 @@ export default function ProfileMobile({ user = null }) {
           items={viewer.items}
           startIndex={viewer.index}
           onClose={closeViewer}
-          viewerUser={{ name: typeof u.username === "string" ? u.username.toLowerCase() : "kullanıcı", avatar: avatarUrl }}
+          viewerUser={{
+            name:
+              typeof u.username === "string"
+                ? u.username.toLowerCase()
+                : "kullanıcı",
+            avatar: avatarUrl,
+          }}
         />
       )}
 
-      {/* Rota Detay Modal (YENİ) */}
+      {/* Rota Detay Modal */}
       {routeModalId && (
-        <RouteDetailMobile routeId={routeModalId} onClose={() => setRouteModalId(null)} />
+        <RouteDetailMobile
+          routeId={routeModalId}
+          onClose={() => setRouteModalId(null)}
+        />
       )}
 
       {/* Labubu modal */}
-      {lastDrop && <LabubuOpenModalMobile drop={lastDrop} onClose={()=>setLastDrop(null)} />}
+      {lastDrop && (
+        <LabubuOpenModalMobile
+          drop={lastDrop}
+          onClose={() => setLastDrop(null)}
+        />
+      )}
 
       {/* Create sheet */}
-      <CreateSheet open={createOpen} onClose={() => setCreateOpen(false)} onSelect={(t) => { setCreateOpen(false); }} />
+      <CreateSheet
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSelect={(t) => {
+          setCreateOpen(false);
+        }}
+      />
 
       {/* QR Modal */}
-      <ProfileShareQRModal open={qrOpen} onClose={() => setQrOpen(false)} url={profileUrl} username={typeof u.username === "string" ? u.username.toLowerCase() : "kullanıcı"} />
+      <ProfileShareQRModal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        url={profileUrl}
+        username={
+          typeof u.username === "string"
+            ? u.username.toLowerCase()
+            : "kullanıcı"
+        }
+      />
 
       {/* Actions sheet */}
-      <ProfileActionsSheetMobile open={actionsOpen} onClose={closeActions} onSelect={(id) => {
-        switch (id) {
-          case "qr": setQrOpen(true); closeActions(); break;
-        case "share_experience": handleShare(); closeActions(); break;
-          case "saved": setMode("saved"); closeActions(); break;
-          default: console.log("action:", id); closeActions(); break;
-        }
-      }} />
+      <ProfileActionsSheetMobile
+        open={actionsOpen}
+        onClose={closeActions}
+        onSelect={(id) => {
+          switch (id) {
+            case "qr":
+              setQrOpen(true);
+              closeActions();
+              break;
+            case "share_experience":
+              handleShare();
+              closeActions();
+              break;
+            case "saved":
+              setMode("saved");
+              closeActions();
+              break;
+            default:
+              console.log("action:", id);
+              closeActions();
+              break;
+          }
+        }}
+      />
     </div>
   );
 }

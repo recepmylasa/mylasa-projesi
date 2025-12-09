@@ -1,0 +1,242 @@
+/* src/pages/RouteDetailMobile.css */
+
+.route-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.route-detail-sheet {
+  width: 100%;
+  max-width: 720px;
+  max-height: 90vh;
+  background: #ffffff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (min-width: 769px) {
+  .route-detail-sheet {
+    border-radius: 16px;
+    max-height: 80vh;
+  }
+}
+
+.route-detail-grab {
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  margin: 8px auto 4px;
+}
+
+.route-detail-header {
+  padding: 4px 12px 8px;
+  border-bottom: 1px solid #eeeeee;
+}
+
+.route-detail-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.route-detail-header-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.route-detail-title {
+  font-weight: 800;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 56vw;
+}
+
+.route-detail-header-rating {
+  font-size: 12px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.route-detail-header-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.route-detail-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.route-detail-chip {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  white-space: nowrap;
+}
+
+.route-detail-chip--public {
+  border-color: #16a34a;
+  color: #166534;
+  background: #dcfce7;
+}
+
+.route-detail-chip--followers {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.route-detail-chip--private {
+  border-color: #6b7280;
+  color: #374151;
+  background: #e5e7eb;
+}
+
+.route-detail-chip--unknown {
+  border-color: #f97316;
+  color: #9a3412;
+  background: #ffedd5;
+}
+
+.route-detail-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.route-detail-map {
+  width: 100%;
+  height: 240px;
+  background: #f1f5f9;
+  position: relative;
+}
+
+.route-detail-map-inner {
+  width: 100%;
+  height: 100%;
+}
+
+.route-detail-map-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.route-detail-map-note {
+  padding: 6px 12px 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.route-detail-rate-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #eeeeee;
+}
+
+.route-detail-rate-label {
+  font-weight: 700;
+}
+
+.route-detail-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 8px 0;
+}
+
+.route-detail-tab-button {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #111827;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.route-detail-tab-button--active {
+  background: #111827;
+  color: #ffffff;
+}
+
+.route-detail-tabpanel {
+  padding: 10px 8px 14px;
+}
+
+.route-detail-footer {
+  padding: 8px 12px 12px;
+  border-top: 1px solid #eeeeee;
+}
+
+.route-detail-close-btn {
+  border: none;
+  background: #111827;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 800;
+  font-size: 14px;
+  width: 100%;
+  cursor: pointer;
+}
+
+.route-detail-pill-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.route-detail-close-icon {
+  border: none;
+  background: #111827;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.route-detail-share-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 12px;
+}

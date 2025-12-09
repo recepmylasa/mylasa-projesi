@@ -2,7 +2,14 @@
 // Mobil Rota Detayı (Duraklar | Galeri | Rapor | Görsel Paylaş)
 // Mevcut takip/puanlama/paylaş davranışlarına DOKUNMAZ, yalnız sekmeler + medya + rapor + “Görsel Paylaş” ekler.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import "./RouteDetailMobile.css";
 import { auth, db, storage } from "../firebase";
 
 // Firestore
@@ -66,6 +73,180 @@ function calcAvg(sum, count) {
   return (Number(count) || 0) > 0
     ? (Number(sum || 0) / Number(count)).toFixed(1)
     : "—";
+}
+
+function isFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+// useUserRoutes.buildStats ile aynı mantık
+function buildStatsFromRoute(raw = {}) {
+  // Mesafe (metre)
+  let distanceMeters = null;
+  if (isFiniteNumber(raw.totalDistanceM) && raw.totalDistanceM > 0) {
+    distanceMeters = raw.totalDistanceM;
+  } else if (isFiniteNumber(raw.distanceMeters) && raw.distanceMeters > 0) {
+    distanceMeters = raw.distanceMeters;
+  } else if (isFiniteNumber(raw.distance) && raw.distance > 0) {
+    distanceMeters = raw.distance;
+  }
+
+  // Süre (saniye)
+  let durationSeconds = null;
+  if (isFiniteNumber(raw.durationSeconds) && raw.durationSeconds > 0) {
+    durationSeconds = raw.durationSeconds;
+  } else if (isFiniteNumber(raw.durationMs) && raw.durationMs > 0) {
+    durationSeconds = Math.round(raw.durationMs / 1000);
+  } else if (isFiniteNumber(raw.duration) && raw.duration > 0) {
+    durationSeconds = raw.duration;
+  } else if (
+    isFiniteNumber(raw.durationMinutes) &&
+    raw.durationMinutes > 0
+  ) {
+    durationSeconds = Math.round(raw.durationMinutes * 60);
+  }
+
+  // Durak sayısı
+  let stopCount = null;
+  if (isFiniteNumber(raw.stopCount) && raw.stopCount > 0) {
+    stopCount = raw.stopCount;
+  } else if (Array.isArray(raw.stops)) {
+    stopCount = raw.stops.length;
+  } else if (Array.isArray(raw.waypoints)) {
+    stopCount = raw.waypoints.length;
+  }
+
+  // Ortalama hız (km/s)
+  let avgSpeedKmh = null;
+  if (
+    isFiniteNumber(distanceMeters) &&
+    isFiniteNumber(durationSeconds) &&
+    durationSeconds > 0
+  ) {
+    const km = distanceMeters / 1000;
+    const hours = durationSeconds / 3600;
+    if (hours > 0) {
+      avgSpeedKmh = Math.round((km / hours) * 10) / 10;
+    }
+  }
+
+  return {
+    distanceMeters: isFiniteNumber(distanceMeters) ? distanceMeters : null,
+    durationSeconds: isFiniteNumber(durationSeconds) ? durationSeconds : null,
+    stopCount: isFiniteNumber(stopCount) ? stopCount : null,
+    avgSpeedKmh: isFiniteNumber(avgSpeedKmh) ? avgSpeedKmh : null,
+  };
+}
+
+function getVisibilityKeyFromRoute(raw = {}) {
+  const source =
+    raw.visibility ??
+    raw.audience ??
+    raw.routeVisibility ??
+    raw.privacy ??
+    "";
+  const v = source.toString().toLowerCase();
+
+  if (!v || v === "public" || v === "everyone") return "public";
+
+  if (
+    v === "followers" ||
+    v === "followers_only" ||
+    v === "followers-only" ||
+    v === "friends" ||
+    v.includes("follower")
+  ) {
+    return "followers";
+  }
+
+  if (v === "private" || v === "only_me") return "private";
+
+  return "unknown";
+}
+
+function getAudienceFromRoute(raw = {}) {
+  const key = getVisibilityKeyFromRoute(raw);
+  if (key === "public") {
+    return { key, label: "Herkese açık" };
+  }
+  if (key === "followers") {
+    return { key, label: "Takipçilere açık" };
+  }
+  if (key === "private") {
+    return { key, label: "Özel" };
+  }
+  return { key: "unknown", label: "Sınırlı" };
+}
+
+function toDateSafe(dt) {
+  if (!dt) return null;
+  try {
+    if (dt instanceof Date) return dt;
+    if (typeof dt.toDate === "function") return dt.toDate();
+    if (typeof dt.seconds === "number") {
+      return new Date(dt.seconds * 1000);
+    }
+    if (typeof dt === "number") {
+      return new Date(dt);
+    }
+    return new Date(dt);
+  } catch {
+    return null;
+  }
+}
+
+function formatDateTimeTR(dt) {
+  const d = toDateSafe(dt);
+  if (!d) return "";
+  try {
+    return d.toLocaleString("tr-TR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+function formatDistanceFromStats(stats) {
+  if (!stats) return "";
+  const m = stats.distanceMeters;
+  if (!isFiniteNumber(m) || m <= 0) return "";
+  const km = m / 1000;
+  const fixed = km >= 10 ? Math.round(km) : Math.round(km * 10) / 10;
+  return `${fixed} km`;
+}
+
+function formatDurationFromStats(stats) {
+  if (!stats) return "";
+  const s = stats.durationSeconds;
+  if (!isFiniteNumber(s) || s <= 0) return "";
+  const minutes = Math.round(s / 60);
+  if (minutes < 60) {
+    return `${minutes} dk`;
+  }
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (m === 0) return `${h} sa`;
+  return `${h} sa ${m} dk`;
+}
+
+function formatStopsFromStats(stats) {
+  if (!stats) return "";
+  const c = stats.stopCount;
+  if (!isFiniteNumber(c) || c <= 0) return "";
+  if (c === 1) return "1 durak";
+  return `${c} durak`;
+}
+
+function formatAvgSpeedFromStats(stats) {
+  if (!stats) return "";
+  const v = stats.avgSpeedKmh;
+  if (!isFiniteNumber(v) || v <= 0) return "";
+  return `${v} km/s`;
 }
 
 // Paylaşım için rota payload’unu zenginleştir
@@ -134,7 +315,7 @@ function Lightbox({ items = [], index = 0, onClose = () => {} }) {
     fontSize: 20,
     cursor: "pointer",
   });
-  const closeBtn = {
+  const closeBtnStyle = {
     position: "absolute",
     top: 10,
     right: 10,
@@ -150,7 +331,7 @@ function Lightbox({ items = [], index = 0, onClose = () => {} }) {
   return (
     <div style={overlay} onMouseDown={onClose}>
       <button
-        style={closeBtn}
+        style={closeBtnStyle}
         onClick={(e) => {
           e.stopPropagation();
           onClose();
@@ -383,7 +564,13 @@ function readVideoDims(fileOrBlob) {
     }
   });
 }
-async function uploadStopMediaInline({ routeId, stopId, file, onProgress, signal }) {
+async function uploadStopMediaInline({
+  routeId,
+  stopId,
+  file,
+  onProgress,
+  signal,
+}) {
   if (!routeId || !stopId || !file) throw new Error("Eksik parametre");
   const u = auth.currentUser;
   if (!u?.uid) throw new Error("Kullanıcı yok");
@@ -497,7 +684,12 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     try {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t === "gallery" || t === "report" || t === "comments" || t === "stops") {
+      if (
+        t === "gallery" ||
+        t === "report" ||
+        t === "comments" ||
+        t === "stops"
+      ) {
         return t === "stops" ? "stops" : t;
       }
     } catch {
@@ -550,15 +742,22 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
   const [uploadState, setUploadState] = useState({});
 
   // Google Maps
-  const { gmapsStatus, mapDivRef, mapRef } = useGoogleMaps({ API_KEY, MAP_ID });
+  const { gmapsStatus, mapDivRef, mapRef } = useGoogleMaps({
+    API_KEY,
+    MAP_ID,
+  });
 
   // Haritaya polyline & durak markerları
   const polylineRef = useRef(null);
   const stopMarkersRef = useRef([]);
 
-  /* ========== İzin (403) kontrolü ========== */
+  /* ========== İzin (403 / not-found) kontrolü ========== */
   useEffect(() => {
-    if (!routeId) return;
+    if (!routeId) {
+      setPermError(null);
+      setRouteDoc(null);
+      return;
+    }
     let alive = true;
     (async () => {
       try {
@@ -913,6 +1112,21 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     if (tab === "report") loadReportAgg();
   }, [tab, loadAllGallery, loadReportAgg]);
 
+  // ESC: önce lightbox varsa onu, yoksa sheet’i kapat
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape") {
+        if (lightboxItems) {
+          setLightboxItems(null);
+          return;
+        }
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose, lightboxItems]);
+
   /* ========== UI ========== */
   const isOwner =
     auth.currentUser && routeDoc && auth.currentUser.uid === routeDoc.ownerId;
@@ -925,54 +1139,49 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
     return "—";
   }, [routeDoc?.ratingSum, routeDoc?.ratingCount]);
 
-  // İzin reddi: followers/private ve kullanıcı takip etmiyor → 403 uyarısı
-  if (permError === "forbidden") {
-    return (
-      <div style={wrapModal()}>
-        <div style={card()}>
-          <div style={header()}>
-            <div style={titleCss()}>Rota</div>
-            <button style={closeBtn()} onClick={onClose}>
-              ✕
-            </button>
-          </div>
-          <div style={{ padding: "14px", fontSize: 14 }}>
-            Bu rota <b>yalnızca takipçilere</b> açık veya özeldir.
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const stats = useMemo(
+    () => (routeDoc ? buildStatsFromRoute(routeDoc) : null),
+    [routeDoc]
+  );
+  const { key: audienceKey, label: audienceLabel } = useMemo(
+    () => getAudienceFromRoute(routeDoc || {}),
+    [routeDoc]
+  );
+  const dateText = useMemo(
+    () => formatDateTimeTR(routeDoc?.finishedAt || routeDoc?.createdAt),
+    [routeDoc?.finishedAt, routeDoc?.createdAt]
+  );
+  const distanceText = formatDistanceFromStats(stats);
+  const durationText = formatDurationFromStats(stats);
+  const stopsText = formatStopsFromStats(stats);
+  const avgSpeedText = formatAvgSpeedFromStats(stats);
 
-  if (!routeDoc) {
-    return (
-      <div style={wrapModal()}>
-        <div style={card()}>
-          <div style={header()}>
-            <div style={titleCss()}>Rota</div>
-            <button style={closeBtn()} onClick={onClose}>
-              ✕
-            </button>
-          </div>
-          <div style={{ padding: "14px" }}>Yükleniyor…</div>
-        </div>
-      </div>
-    );
-  }
+  const metaBits = [];
+  if (dateText) metaBits.push(dateText);
+  if (distanceText) metaBits.push(distanceText);
+  if (durationText) metaBits.push(durationText);
+  if (stopsText) metaBits.push(stopsText);
+  if (avgSpeedText) metaBits.push(avgSpeedText);
+  const metaLine = metaBits.join(" · ");
 
   const kpis = [
-    { label: "Mesafe", value: fmtKm(routeDoc.totalDistanceM || 0) },
-    { label: "Süre", value: fmtDur(routeDoc.durationMs || 0) },
+    { label: "Mesafe", value: distanceText || "—" },
+    { label: "Süre", value: durationText || "—" },
     {
       label: "Ort. hız",
-      value: (() => {
-        const m = (routeDoc.totalDistanceM || 0) / 1000; // km
-        const h = (routeDoc.durationMs || 0) / (1000 * 3600);
-        if (!m || !h) return "—";
-        return `${(m / h).toFixed(1)} km/sa`;
-      })(),
+      value:
+        stats && stats.avgSpeedKmh
+          ? `${stats.avgSpeedKmh} km/s`
+          : "—",
     },
-    { label: "Durak", value: String((stops || []).length) },
+    {
+      label: "Durak",
+      value:
+        stopsText ||
+        ((stops || []).length
+          ? `${(stops || []).length} durak`
+          : "—"),
+    },
   ];
 
   // Rapor sekmesi: top 3 durak
@@ -999,47 +1208,137 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
       .slice(0, 3);
   }
 
-  return (
-    <div style={wrapModal()}>
-      <div style={card()}>
-        {/* Başlık */}
-        <div style={header()}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              minWidth: 0,
-            }}
-          >
-            <div
-              style={titleCss()}
-              title={routeDoc.title || "Rota"}
-            >
-              {routeDoc.title || "Rota"}
+  const handleBackdropClick = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  const renderSimpleSheet = (message) => (
+    <div
+      className="route-detail-backdrop"
+      onClick={handleBackdropClick}
+    >
+      <div
+        className="route-detail-sheet"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="route-detail-grab" />
+        <div className="route-detail-header">
+          <div className="route-detail-header-top">
+            <div className="route-detail-header-main">
+              <div className="route-detail-title">Rota</div>
             </div>
+          </div>
+        </div>
+        <div className="route-detail-body">
+          <div className="route-detail-tabpanel">
             <div
               style={{
-                fontSize: 12,
-                opacity: 0.75,
-                whiteSpace: "nowrap",
+                fontSize: 14,
+                padding: "8px 4px",
               }}
             >
+              {message}
+            </div>
+          </div>
+        </div>
+        <div className="route-detail-footer">
+          <button
+            type="button"
+            className="route-detail-close-btn"
+            onClick={onClose}
+          >
+            Kapat
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (!routeId) {
+    return renderSimpleSheet("Rota bulunamadı.");
+  }
+
+  // İzin reddi: followers/private ve kullanıcı takip etmiyor → 403 uyarısı
+  if (permError === "forbidden") {
+    return renderSimpleSheet(
+      "Bu rota yalnızca takipçilere açık veya özeldir."
+    );
+  }
+
+  if (permError === "not-found") {
+    return renderSimpleSheet("Rota bulunamadı.");
+  }
+
+  if (!routeDoc) {
+    return renderSimpleSheet("Rota yükleniyor…");
+  }
+
+  return (
+    <div
+      className="route-detail-backdrop"
+      onClick={handleBackdropClick}
+    >
+      <div
+        className="route-detail-sheet"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="route-detail-grab" />
+
+        {/* Başlık */}
+        <div className="route-detail-header">
+          <div className="route-detail-header-top">
+            <div className="route-detail-header-main">
+              <div
+                className="route-detail-title"
+                title={routeDoc.title || "Rota"}
+              >
+                {routeDoc.title || "Rota"}
+              </div>
+              {audienceLabel && (
+                <span
+                  className={
+                    "route-detail-chip" +
+                    (audienceKey
+                      ? ` route-detail-chip--${audienceKey}`
+                      : "")
+                  }
+                >
+                  {audienceLabel}
+                </span>
+              )}
+            </div>
+            <div className="route-detail-header-rating">
               {ratingAvgLabel}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button style={pillBtn()} onClick={onShare}>
+          {metaLine && (
+            <div className="route-detail-meta">{metaLine}</div>
+          )}
+          <div className="route-detail-header-actions">
+            <button
+              type="button"
+              className="route-detail-pill-btn"
+              onClick={onShare}
+            >
               Paylaş
             </button>
-            <button style={pillBtn()} onClick={onShareVisual}>
+            <button
+              type="button"
+              className="route-detail-pill-btn"
+              onClick={onShareVisual}
+            >
               Görsel Paylaş
             </button>
-            <button style={pillBtn()} onClick={onExportGpx}>
+            <button
+              type="button"
+              className="route-detail-pill-btn"
+              onClick={onExportGpx}
+            >
               GPX
             </button>
             <button
-              style={closeBtn()}
+              type="button"
+              className="route-detail-close-icon"
               onClick={onClose}
               title="Kapat"
             >
@@ -1048,259 +1347,118 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
           </div>
         </div>
 
-        {/* HARİTA */}
-        <div
-          style={{
-            width: "100%",
-            height: 280,
-            background: "#f1f5f9",
-            position: "relative",
-          }}
-        >
-          <div
-            ref={mapDivRef}
-            style={{ width: "100%", height: "100%" }}
-          />
-          {gmapsStatus === "error" && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#555",
-              }}
-            >
-              Harita yüklenemedi
-            </div>
-          )}
-        </div>
+        <div className="route-detail-body">
+          {/* HARİTA */}
+          <div className="route-detail-map">
+            <div ref={mapDivRef} className="route-detail-map-inner" />
+            {gmapsStatus === "error" && (
+              <div className="route-detail-map-error">
+                Harita yüklenemedi
+              </div>
+            )}
+          </div>
+          <div className="route-detail-map-note">
+            Harita önizlemesi bir sonraki adımda geliştirilecek.
+          </div>
 
-        {/* Rota genel rating */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "10px 12px",
-            borderBottom: "1px solid #eee",
-          }}
-        >
-          <div style={{ fontWeight: 700 }}>Puanla:</div>
-          <StarRatingV2
-            // bu versiyonda onRated kullanılıyor
-            onRated={(v) => onRouteRate(v)}
-            size={32}
-            disabled={!canRateRoute}
-          />
-        </div>
+          {/* Rota genel rating */}
+          <div className="route-detail-rate-row">
+            <div className="route-detail-rate-label">Puanla:</div>
+            <StarRatingV2
+              onRated={(v) => onRouteRate(v)}
+              size={32}
+              disabled={!canRateRoute}
+            />
+          </div>
 
-        {/* Sekmeler */}
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            padding: "8px 8px 0",
-          }}
-        >
-          {["stops", "gallery", "report", "comments"].map((key) => {
-            let label;
-            if (key === "stops") label = "Duraklar";
-            else if (key === "gallery") label = "Galeri";
-            else if (key === "report") label = "Rapor";
-            else if (key === "comments") {
-              label =
-                commentsCount && commentsCount > 0
-                  ? `Yorumlar (${commentsCount})`
-                  : "Yorumlar";
-            }
-            return (
-              <button
-                key={key}
-                onClick={() => onTabChange(key)}
+          {/* Sekmeler */}
+          <div className="route-detail-tabs">
+            {["stops", "gallery", "report", "comments"].map((key) => {
+              let label;
+              if (key === "stops") label = "Duraklar";
+              else if (key === "gallery") label = "Galeri";
+              else if (key === "report") label = "Rapor";
+              else if (key === "comments") {
+                label =
+                  commentsCount && commentsCount > 0
+                    ? `Yorumlar (${commentsCount})`
+                    : "Yorumlar";
+              }
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onTabChange(key)}
+                  className={
+                    "route-detail-tab-button" +
+                    (tab === key
+                      ? " route-detail-tab-button--active"
+                      : "")
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* İçerik */}
+          <div className="route-detail-tabpanel">
+            {tab === "stops" && (
+              <div
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: tab === key ? "#111" : "#fff",
-                  color: tab === key ? "#fff" : "#111",
-                  fontWeight: 700,
-                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
                 }}
               >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* İçerik */}
-        <div style={{ padding: "10px 8px 14px" }}>
-          {tab === "stops" && (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-              }}
-            >
-              {(stops || []).map((s) => {
-                const cache = mediaCacheRef.current[s.id] || {};
-                const media = cache.items || [];
-                const up = uploadState[s.id];
-                const hadPermErr =
-                  cache.__error && cache.__error.includes("permission");
-                return (
-                  <div
-                    key={s.id}
-                    style={{
-                      border: "1px solid #eee",
-                      borderRadius: 12,
-                      overflow: "hidden",
-                    }}
-                  >
+                {(stops || []).map((s) => {
+                  const cache = mediaCacheRef.current[s.id] || {};
+                  const media = cache.items || [];
+                  const up = uploadState[s.id];
+                  const hadPermErr =
+                    cache.__error &&
+                    cache.__error.includes("permission");
+                  return (
                     <div
+                      key={s.id}
                       style={{
-                        padding: "10px 12px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        justifyContent: "space-between",
+                        border: "1px solid #eee",
+                        borderRadius: 12,
+                        overflow: "hidden",
                       }}
                     >
-                      <div>
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            fontSize: 14,
-                          }}
-                        >
-                          {s.order ? `${s.order}. ` : ""}
-                          {s.title || `Durak ${s.order || ""}`}
-                        </div>
-                        {s.note && (
-                          <div
-                            style={{
-                              fontSize: 12,
-                              opacity: 0.8,
-                              marginTop: 2,
-                            }}
-                          >
-                            {s.note}
-                          </div>
-                        )}
-                      </div>
                       <div
                         style={{
+                          padding: "10px 12px",
                           display: "flex",
                           alignItems: "center",
-                          gap: 10,
+                          gap: 8,
+                          justifyContent: "space-between",
                         }}
                       >
-                        {stopAgg && stopAgg[s.id] && (
-                          <div style={{ minWidth: 120 }}>
-                            <StarBars
-                              counts={stopAgg[s.id].counts}
-                              total={stopAgg[s.id].total}
-                              compact
-                              height={8}
-                              showNumbers={false}
-                            />
-                          </div>
-                        )}
-                        <StarRatingV2
-                          onRated={(v) => onStopRate(s.id, v)}
-                          size={22}
-                          disabled={isOwner}
-                        />
-                        {isOwner && (
-                          <button
-                            onClick={() => onPickMedia(s.id)}
+                        <div>
+                          <div
                             style={{
-                              padding: "8px 10px",
-                              borderRadius: 8,
-                              border: "1px solid #ddd",
-                              background: "#fff",
                               fontWeight: 700,
-                              cursor: "pointer",
+                              fontSize: 14,
                             }}
                           >
-                            Medya Ekle
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Medya şeridi (ilk 4) */}
-                    <div
-                      onMouseEnter={() => ensureStopThumbs(s.id)}
-                      onTouchStart={() => ensureStopThumbs(s.id)}
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        padding: "8px 10px",
-                        overflowX: "auto",
-                      }}
-                    >
-                      {media.slice(0, 4).map((m, idx) => (
-                        <div
-                          key={m.id}
-                          onClick={() => {
-                            setLightboxItems(
-                              media.map((x) => ({
-                                url: x.url,
-                                type: x.type,
-                              }))
-                            );
-                            setLightboxIndex(idx);
-                          }}
-                          style={{
-                            width: 76,
-                            height: 76,
-                            borderRadius: 8,
-                            overflow: "hidden",
-                            background: "#f3f4f6",
-                            flex: "0 0 auto",
-                            cursor: "pointer",
-                          }}
-                          title={m.type}
-                        >
-                          {m.type === "video" ? (
-                            <video
-                              src={m.url}
-                              muted
+                            {s.order ? `${s.order}. ` : ""}
+                            {s.title || `Durak ${s.order || ""}`}
+                          </div>
+                          {s.note && (
+                            <div
                               style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
+                                fontSize: 12,
+                                opacity: 0.8,
+                                marginTop: 2,
                               }}
-                            />
-                          ) : (
-                            <img
-                              src={m.url}
-                              alt="media"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                              }}
-                            />
+                            >
+                              {s.note}
+                            </div>
                           )}
                         </div>
-                      ))}
-                      {media.length === 0 && (
-                        <div style={{ fontSize: 12, opacity: 0.7 }}>
-                          {hadPermErr
-                            ? "Medya erişimi kısıtlı."
-                            : "Medya yok"}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Upload progress */}
-                    {up && (
-                      <div style={{ padding: "0 10px 10px" }}>
                         <div
                           style={{
                             display: "flex",
@@ -1308,161 +1466,302 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
                             gap: 10,
                           }}
                         >
+                          {stopAgg && stopAgg[s.id] && (
+                            <div style={{ minWidth: 120 }}>
+                              <StarBars
+                                counts={stopAgg[s.id].counts}
+                                total={stopAgg[s.id].total}
+                                compact
+                                height={8}
+                                showNumbers={false}
+                              />
+                            </div>
+                          )}
+                          <StarRatingV2
+                            onRated={(v) => onStopRate(s.id, v)}
+                            size={22}
+                            disabled={isOwner}
+                          />
+                          {isOwner && (
+                            <button
+                              type="button"
+                              onClick={() => onPickMedia(s.id)}
+                              style={{
+                                padding: "8px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #ddd",
+                                background: "#fff",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Medya Ekle
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Medya şeridi (ilk 4) */}
+                      <div
+                        onMouseEnter={() => ensureStopThumbs(s.id)}
+                        onTouchStart={() => ensureStopThumbs(s.id)}
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          padding: "8px 10px",
+                          overflowX: "auto",
+                        }}
+                      >
+                        {media.slice(0, 4).map((m, idx) => (
+                          <div
+                            key={m.id}
+                            onClick={() => {
+                              setLightboxItems(
+                                media.map((x) => ({
+                                  url: x.url,
+                                  type: x.type,
+                                }))
+                              );
+                              setLightboxIndex(idx);
+                            }}
+                            style={{
+                              width: 76,
+                              height: 76,
+                              borderRadius: 8,
+                              overflow: "hidden",
+                              background: "#f3f4f6",
+                              flex: "0 0 auto",
+                              cursor: "pointer",
+                            }}
+                            title={m.type}
+                          >
+                            {m.type === "video" ? (
+                              <video
+                                src={m.url}
+                                muted
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                }}
+                              />
+                            ) : (
+                              <img
+                                src={m.url}
+                                alt="media"
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                }}
+                              />
+                            )}
+                          </div>
+                        ))}
+                        {media.length === 0 && (
+                          <div
+                            style={{ fontSize: 12, opacity: 0.7 }}
+                          >
+                            {hadPermErr
+                              ? "Medya erişimi kısıtlı."
+                              : "Medya yok"}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Upload progress */}
+                      {up && (
+                        <div style={{ padding: "0 10px 10px" }}>
                           <div
                             style={{
-                              flex: 1,
-                              height: 8,
-                              background: "#eee",
-                              borderRadius: 999,
-                              overflow: "hidden",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
                             }}
                           >
                             <div
                               style={{
-                                width: `${up.p || 0}%`,
-                                height: "100%",
-                                background: "#1a73e8",
+                                flex: 1,
+                                height: 8,
+                                background: "#eee",
+                                borderRadius: 999,
+                                overflow: "hidden",
                               }}
-                            />
+                            >
+                              <div
+                                style={{
+                                  width: `${up.p || 0}%`,
+                                  height: "100%",
+                                  background: "#1a73e8",
+                                }}
+                              />
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                width: 36,
+                                textAlign: "right",
+                              }}
+                            >
+                              {up.p || 0}%
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => cancelUpload(s.id)}
+                              style={{
+                                fontSize: 12,
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                              }}
+                            >
+                              İptal
+                            </button>
                           </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              width: 36,
-                              textAlign: "right",
-                            }}
-                          >
-                            {up.p || 0}%
-                          </div>
-                          <button
-                            onClick={() => cancelUpload(s.id)}
-                            style={{
-                              fontSize: 12,
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                            }}
-                          >
-                            İptal
-                          </button>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {(stops || []).length === 0 && (
-                <div
-                  style={{
-                    padding: "10px 4px",
-                    fontSize: 13,
-                    opacity: 0.7,
-                  }}
-                >
-                  Bu rotada durak yok.
-                </div>
-              )}
-            </div>
-          )}
-
-          {tab === "gallery" && (
-            <div>
-              {!galleryLoaded && (
-                <div
-                  style={{
-                    padding: "8px 4px",
-                    fontSize: 13,
-                    opacity: 0.75,
-                  }}
-                >
-                  Galeri yükleniyor…
-                </div>
-              )}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: 6,
-                }}
-              >
-                {galleryItems.map((m, idx) => (
+                      )}
+                    </div>
+                  );
+                })}
+                {(stops || []).length === 0 && (
                   <div
-                    key={`${m.stopId}_${m.id}`}
-                    onClick={() => {
-                      setLightboxItems(
-                        galleryItems.map((x) => ({
-                          url: x.url,
-                          type: x.type,
-                        }))
-                      );
-                      setLightboxIndex(idx);
-                    }}
                     style={{
-                      width: "100%",
-                      aspectRatio: "1/1",
-                      background: "#f3f4f6",
-                      borderRadius: 8,
-                      overflow: "hidden",
-                      cursor: "pointer",
+                      padding: "10px 4px",
+                      fontSize: 13,
+                      opacity: 0.7,
                     }}
                   >
-                    {m.type === "video" ? (
-                      <video
-                        src={m.url}
-                        muted
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                      />
-                    ) : (
-                      <img
-                        src={m.url}
-                        alt="media"
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                      />
-                    )}
+                    Bu rotada durak yok.
                   </div>
-                ))}
+                )}
               </div>
-              {galleryItems.length === 0 && (
+            )}
+
+            {tab === "gallery" && (
+              <div>
+                {!galleryLoaded && (
+                  <div
+                    style={{
+                      padding: "8px 4px",
+                      fontSize: 13,
+                      opacity: 0.75,
+                    }}
+                  >
+                    Galeri yükleniyor…
+                  </div>
+                )}
                 <div
                   style={{
-                    padding: "10px 4px",
-                    fontSize: 13,
-                    opacity: 0.7,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: 6,
                   }}
                 >
-                  Gösterilecek medya yok.
+                  {galleryItems.map((m, idx) => (
+                    <div
+                      key={`${m.stopId}_${m.id}`}
+                      onClick={() => {
+                        setLightboxItems(
+                          galleryItems.map((x) => ({
+                            url: x.url,
+                            type: x.type,
+                          }))
+                        );
+                        setLightboxIndex(idx);
+                      }}
+                      style={{
+                        width: "100%",
+                        aspectRatio: "1/1",
+                        background: "#f3f4f6",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {m.type === "video" ? (
+                        <video
+                          src={m.url}
+                          muted
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      ) : (
+                        <img
+                          src={m.url}
+                          alt="media"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
-          )}
+                {galleryItems.length === 0 && (
+                  <div
+                    style={{
+                      padding: "10px 4px",
+                      fontSize: 13,
+                      opacity: 0.7,
+                    }}
+                  >
+                    Gösterilecek medya yok.
+                  </div>
+                )}
+              </div>
+            )}
 
-          {tab === "report" && (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-              }}
-            >
-              {/* KPI Şeridi */}
+            {tab === "report" && (
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, 1fr)",
-                  gap: 8,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
                 }}
               >
-                {kpis.map((k) => (
+                {/* KPI Şeridi */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, 1fr)",
+                    gap: 8,
+                  }}
+                >
+                  {kpis.map((k) => (
+                    <div
+                      key={k.label}
+                      style={{
+                        border: "1px solid #eee",
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          opacity: 0.7,
+                        }}
+                      >
+                        {k.label}
+                      </div>
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          fontSize: 16,
+                          marginTop: 2,
+                        }}
+                      >
+                        {k.value}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Medya KPI: toplam medya sayısı */}
                   <div
-                    key={k.label}
                     style={{
                       border: "1px solid #eee",
                       borderRadius: 10,
@@ -1475,7 +1774,7 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
                         opacity: 0.7,
                       }}
                     >
-                      {k.label}
+                      Medya
                     </div>
                     <div
                       style={{
@@ -1484,154 +1783,142 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
                         marginTop: 2,
                       }}
                     >
-                      {k.value}
+                      {Object.values(mediaCacheRef.current).reduce(
+                        (acc, v) =>
+                          acc + ((v?.items || []).length || 0),
+                        0
+                      )}
                     </div>
                   </div>
-                ))}
-                {/* Medya KPI: toplam medya sayısı */}
+                </div>
+
+                {/* Rota yıldız dağılımı */}
                 <div
                   style={{
                     border: "1px solid #eee",
                     borderRadius: 10,
-                    padding: "10px 12px",
+                    padding: "12px 12px",
                   }}
                 >
                   <div
                     style={{
-                      fontSize: 12,
-                      opacity: 0.7,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "baseline",
                     }}
                   >
-                    Medya
+                    <div style={{ fontWeight: 800 }}>
+                      Yıldız dağılımı (rota)
+                    </div>
+                    <div
+                      style={{ fontSize: 12, opacity: 0.75 }}
+                    >
+                      Ort:{" "}
+                      {routeAgg ? routeAgg.avg.toFixed(1) : "—"} • Oy:{" "}
+                      {routeAgg ? routeAgg.total : "—"}
+                    </div>
                   </div>
+                  <div style={{ marginTop: 10 }}>
+                    <StarBars
+                      counts={
+                        routeAgg?.counts || {
+                          1: 0,
+                          2: 0,
+                          3: 0,
+                          4: 0,
+                          5: 0,
+                        }
+                      }
+                      total={routeAgg?.total || 0}
+                    />
+                  </div>
+                </div>
+
+                {/* En çok beğenilen 3 durak */}
+                <div
+                  style={{
+                    border: "1px solid #eee",
+                    borderRadius: 10,
+                    padding: "12px 12px",
+                  }}
+                >
                   <div
                     style={{
                       fontWeight: 800,
-                      fontSize: 16,
-                      marginTop: 2,
+                      marginBottom: 8,
                     }}
                   >
-                    {Object.values(mediaCacheRef.current).reduce(
-                      (acc, v) => acc + ((v?.items || []).length || 0),
-                      0
-                    )}
+                    En çok beğenilen 3 durak
                   </div>
-                </div>
-              </div>
-
-              {/* Rota yıldız dağılımı */}
-              <div
-                style={{
-                  border: "1px solid #eee",
-                  borderRadius: 10,
-                  padding: "12px 12px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                  }}
-                >
-                  <div style={{ fontWeight: 800 }}>
-                    Yıldız dağılımı (rota)
-                  </div>
-                  <div
-                    style={{ fontSize: 12, opacity: 0.75 }}
-                  >
-                    Ort: {routeAgg ? routeAgg.avg.toFixed(1) : "—"} •
-                    Oy: {routeAgg ? routeAgg.total : "—"}
-                  </div>
-                </div>
-                <div style={{ marginTop: 10 }}>
-                  <StarBars
-                    counts={
-                      routeAgg?.counts || {
-                        1: 0,
-                        2: 0,
-                        3: 0,
-                        4: 0,
-                        5: 0,
-                      }
-                    }
-                    total={routeAgg?.total || 0}
-                  />
-                </div>
-              </div>
-
-              {/* En çok beğenilen 3 durak */}
-              <div
-                style={{
-                  border: "1px solid #eee",
-                  borderRadius: 10,
-                  padding: "12px 12px",
-                }}
-              >
-                <div
-                  style={{
-                    fontWeight: 800,
-                    marginBottom: 8,
-                  }}
-                >
-                  En çok beğenilen 3 durak
-                </div>
-                {topStops.length === 0 && (
-                  <div
-                    style={{ fontSize: 13, opacity: 0.7 }}
-                  >
-                    Veri yok.
-                  </div>
-                )}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                  }}
-                >
-                  {topStops.map((it, i) => (
+                  {topStops.length === 0 && (
                     <div
-                      key={it.stop.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        border: "1px solid #f2f2f2",
-                        padding: "10px",
-                        borderRadius: 8,
-                      }}
+                      style={{ fontSize: 13, opacity: 0.7 }}
                     >
-                      <div style={{ fontWeight: 700 }}>
-                        {i + 1}.{" "}
-                        {it.stop.title ||
-                          `Durak ${it.stop.order || ""}`}
-                      </div>
+                      Veri yok.
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    {topStops.map((it, i) => (
                       <div
+                        key={it.stop.id}
                         style={{
-                          fontSize: 12,
-                          opacity: 0.8,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          border: "1px solid #f2f2f2",
+                          padding: "10px",
+                          borderRadius: 8,
                         }}
                       >
-                        Ort: {it.avg.toFixed(1)} • Oy: {it.total} •
-                        Medya: {it.mediaCount}
+                        <div style={{ fontWeight: 700 }}>
+                          {i + 1}.{" "}
+                          {it.stop.title ||
+                            `Durak ${it.stop.order || ""}`}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            opacity: 0.8,
+                          }}
+                        >
+                          Ort: {it.avg.toFixed(1)} • Oy: {it.total} •
+                          Medya: {it.mediaCount}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                </div>
+
+                <div
+                  style={{ fontSize: 12, opacity: 0.6 }}
+                >
+                  Not: Dağılımlar client’ta hesaplanır; çok büyük
+                  veride sınırlı gösterim yapılır (≈).
                 </div>
               </div>
+            )}
+          </div>
+        </div>
 
-              <div style={{ fontSize: 12, opacity: 0.6 }}>
-                Not: Dağılımlar client’ta hesaplanır; çok büyük veride
-                sınırlı gösterim yapılır (≈).
-              </div>
-            </div>
-          )}
+        <div className="route-detail-footer">
+          <button
+            type="button"
+            className="route-detail-close-btn"
+            onClick={onClose}
+          >
+            Kapat
+          </button>
         </div>
       </div>
 
       {/* Görsel Paylaşım Sheet (overlay) */}
       {showShareSheet && (
-        <div style={shareOverlay()}>
+        <div className="route-detail-share-overlay">
           <ShareSheetMobile
             route={buildShareRoutePayload(routeDoc, owner, routeId)}
             stops={stops}
@@ -1659,84 +1946,4 @@ export default function RouteDetailMobile({ routeId, onClose = () => {} }) {
       )}
     </div>
   );
-}
-
-/* ======================= Stil yardımcıları ======================= */
-function wrapModal() {
-  return {
-    position: "fixed",
-    inset: 0,
-    zIndex: 2000,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "rgba(0,0,0,.65)",
-  };
-}
-function card() {
-  const isMobile = window.innerWidth <= 768;
-  return {
-    width: isMobile ? "100%" : 720,
-    maxWidth: "100%",
-    maxHeight: "96vh",
-    margin: isMobile ? "0" : "12px",
-    background: "#fff",
-    borderRadius: isMobile ? "12px 12px 0 0" : 16,
-    overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
-  };
-}
-function header() {
-  return {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "10px 12px",
-    borderBottom: "1px solid #eee",
-    gap: 8,
-  };
-}
-function titleCss() {
-  return {
-    fontWeight: 800,
-    fontSize: 16,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    maxWidth: "56vw",
-  };
-}
-function pillBtn() {
-  return {
-    padding: "8px 12px",
-    borderRadius: 10,
-    border: "1px solid #ddd", // 🔧 BURASI DÜZELDİ
-    background: "#fff",
-    fontWeight: 700,
-    cursor: "pointer",
-  };
-}
-function closeBtn() {
-  return {
-    border: "none",
-    background: "#111",
-    color: "#fff",
-    borderRadius: 10,
-    padding: "8px 12px",
-    fontWeight: 800,
-    cursor: "pointer",
-  };
-}
-function shareOverlay() {
-  return {
-    position: "fixed",
-    inset: 0,
-    zIndex: 2500,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "rgba(0,0,0,.45)",
-    padding: "12px",
-  };
 }

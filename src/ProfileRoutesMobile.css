@@ -1,0 +1,158 @@
+/* src/ProfileRoutesMobile.css */
+/* Profil "Rotalarım" sekmesi – hafif, IG'ye yakın kart listesi */
+
+.profile-routes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 12px;
+}
+
+.profile-routes-empty {
+  padding: 16px 4px 20px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.profile-route-card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.08s ease;
+}
+
+.profile-route-card:active {
+  transform: scale(0.98);
+  background: #f9fafb;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+.profile-route-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.profile-route-card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-route-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+  background: #f9fafb;
+  white-space: nowrap;
+}
+
+.profile-route-chip--public {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.profile-route-chip--followers {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.profile-route-chip--private {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+/* bilinmeyen/sınırlı görünürlük */
+.profile-route-chip--unknown {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+  color: #4b5563;
+}
+
+.profile-route-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.profile-route-card-meta span::after {
+  content: "•";
+  margin: 0 4px;
+  color: #d1d5db;
+}
+
+.profile-route-card-meta span:last-child::after {
+  content: "";
+  margin: 0;
+}
+
+/* Skeleton kartlar */
+.profile-routes-skel {
+  height: 64px;
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    #f3f4f6 0%,
+    #e5e7eb 40%,
+    #f3f4f6 80%
+  );
+  background-size: 200% 100%;
+  animation: profile-routes-skel-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes profile-routes-skel-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.profile-routes-more {
+  margin-top: 4px;
+  display: flex;
+  justify-content: center;
+}
+
+.profile-routes-more-btn {
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+}
+
+.profile-routes-more-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
