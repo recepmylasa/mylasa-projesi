@@ -99,6 +99,8 @@ function RoutesExploreMobile() {
   const toastTimerRef = useRef(null);
   const wasSearchingRef = useRef(false);
   const listContainerRef = useRef(null);
+  // EMİR 8: "Bu alanda ara" → resetAll köprüsü için ref
+  const resetDataStateRef = useRef(null);
 
   // EMİR 13: Haritaya giden pin listesi için ayrı state
   const [itemsForMap, setItemsForMap] = useState([]);
@@ -170,6 +172,13 @@ function RoutesExploreMobile() {
     setSelectedRouteId(String(routeId));
   }, []);
 
+  // EMİR 8: "Bu alanda ara" CTA'sı → useRoutesData.resetAll
+  const handleSearchAreaFromMap = useCallback(() => {
+    if (resetDataStateRef.current) {
+      resetDataStateRef.current();
+    }
+  }, []);
+
   // Yakınımda/harita hook’u
   const nearController = useNearMapController({
     sort,
@@ -181,6 +190,8 @@ function RoutesExploreMobile() {
     selectedRouteId,
     onSelectRouteFromMap: handleSelectRouteFromMap,
     onViewportChange: setNearBounds,
+    // EMİR 8: Bu alanda ara → veri katmanında resetAll
+    onSearchArea: handleSearchAreaFromMap,
   });
 
   const {
@@ -219,6 +230,11 @@ function RoutesExploreMobile() {
     near,
     onBumpRecentQuery: bumpRecentQuery,
   });
+
+  // EMİR 8: "Bu alanda ara" callback'i için resetAll referansını güncel tut
+  useEffect(() => {
+    resetDataStateRef.current = resetDataState;
+  }, [resetDataState]);
 
   // EMİR 13: Yakınımda modundayken haritaya gidecek pin snapshot’ını güncelle
   useEffect(() => {
@@ -405,9 +421,7 @@ function RoutesExploreMobile() {
     for (const g of groups) {
       for (const r of g.items) {
         const id =
-          r && r.id !== undefined && r.id !== null
-            ? String(r.id)
-            : null;
+          r && r.id !== undefined && r.id !== null ? String(r.id) : null;
         if (!id) {
           idx += 1;
           continue;
@@ -421,8 +435,7 @@ function RoutesExploreMobile() {
     return { flatIndexById: map, totalItemCount: idx };
   }, [groups]);
 
-  const windowingDisabled =
-    !!selectedRouteId || totalItemCount <= 40;
+  const windowingDisabled = !!selectedRouteId || totalItemCount <= 40;
 
   const { start: windowStart, end: windowEnd } = useWindowedList({
     containerRef: listContainerRef,
@@ -489,9 +502,7 @@ function RoutesExploreMobile() {
               type="button"
               className={
                 "routes-segment-btn" +
-                (audience === "all"
-                  ? " routes-segment-btn--active"
-                  : "")
+                (audience === "all" ? " routes-segment-btn--active" : "")
               }
               onClick={() => setAudience("all")}
               aria-pressed={audience === "all"}
@@ -515,12 +526,9 @@ function RoutesExploreMobile() {
                   if (toastTimerRef.current) {
                     clearTimeout(toastTimerRef.current);
                   }
-                  toastTimerRef.current = window.setTimeout(
-                    () => {
-                      setToastMessage("");
-                    },
-                    2600
-                  );
+                  toastTimerRef.current = window.setTimeout(() => {
+                    setToastMessage("");
+                  }, 2600);
                   return;
                 }
                 setAudience("following");
@@ -556,10 +564,7 @@ function RoutesExploreMobile() {
       />
 
       {/* Katman 2 — Tek satır chip şeridi */}
-      <div
-        className="routes-chiprow"
-        aria-label="Rota sıralama seçenekleri"
-      >
+      <div className="routes-chiprow" aria-label="Rota sıralama seçenekleri">
         <button
           type="button"
           className={"chip" + (sort === "near" ? " chip--active" : "")}
@@ -689,8 +694,7 @@ function RoutesExploreMobile() {
                       inset: 0,
                       background:
                         "linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%)",
-                      animation:
-                        "near-skel-pulse 1.4s ease infinite",
+                      animation: "near-skel-pulse 1.4s ease infinite",
                     }}
                   />
                 </div>
@@ -744,9 +748,7 @@ function RoutesExploreMobile() {
       {hasSearch && initialized && (
         <div className="routes-results-meta">
           <span className="routes-results-title">Sonuçlar</span>
-          <span className="routes-results-count">
-            {totalCount} sonuç
-          </span>
+          <span className="routes-results-count">{totalCount} sonuç</span>
         </div>
       )}
 
@@ -877,9 +879,7 @@ function RoutesExploreMobile() {
             >
               {g.items.map((r) => {
                 const id =
-                  r && r.id !== undefined && r.id !== null
-                    ? String(r.id)
-                    : "";
+                  r && r.id !== undefined && r.id !== null ? String(r.id) : "";
                 const flatIndex =
                   id && flatIndexById.has(id)
                     ? flatIndexById.get(id)
@@ -887,8 +887,7 @@ function RoutesExploreMobile() {
 
                 const shouldRenderCard =
                   windowingDisabled ||
-                  (flatIndex >= windowStart &&
-                    flatIndex < windowEnd);
+                  (flatIndex >= windowStart && flatIndex < windowEnd);
 
                 const selected =
                   !!selectedRouteId &&
@@ -981,19 +980,18 @@ function RoutesExploreMobile() {
       )}
 
       {/* Giriş yapılmadan Takip’e geçme denemesi için küçük toast */}
-      {toastMessage && (
-        <div className="explore-toast">{toastMessage}</div>
-      )}
+      {toastMessage && <div className="explore-toast">{toastMessage}</div>}
     </div>
   );
 }
 
-// HIZLI TEST (EMİR #1–5 + 9 + 10 + 11 + 12 + 13)
+// HIZLI TEST (EMİR #1–5 + 8 + 9 + 10 + 11 + 12 + 13)
 // [ ] Proje build oluyor, RoutesExploreMobile import hatası yok.
 // [ ] Mobil “Rotalar” sekmesi açılıyor, Hepsi/Takip ve Yakınımda/En yeni/En çok oy/En yüksek puan eskisi gibi çalışıyor.
 // [ ] Arama kutusu: yazınca ~300ms sonra arıyor, Enter’a basınca anında arıyor, ESC aramayı temizliyor.
 // [ ] Son aramalar (r_recentq) listesi çalışıyor, yeni aramalar listeye ekleniyor.
 // [ ] Yakınımda: Harita yükleniyor, konum izni prompt’u çıkıyor, pin/kart senkronu ve “Bu alanda ara” butonu çalışıyor.
+//     → Haritada yeni bir alana kaydır/zoom yap, CTA çıksın; tıklayınca liste resetlenip yeni alana göre near sonuçları geliyor.
 // [ ] Near/search/non-near veri akışları useRoutesData içinden yönetiliyor; sonsuz kaydırma sentinel üzerinden çalışıyor.
 // [ ] Geri/ileri ile m/a/s/q/sel + groupBy/city/country/tags state’i doğru geri yükleniyor.
 // [ ] “Hepsi bu kadar.” metni doğru yerde ve sadece verinin sonuna gelindiğinde çıkıyor.
