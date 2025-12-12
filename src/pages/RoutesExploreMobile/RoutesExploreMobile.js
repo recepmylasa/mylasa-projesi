@@ -152,20 +152,6 @@ function RoutesExploreMobile() {
     };
   }, []);
 
-  // open-route-modal event’i
-  const openRoute = useCallback((routeId) => {
-    if (!routeId) return;
-    try {
-      window.dispatchEvent(
-        new CustomEvent("open-route-modal", {
-          detail: { routeId },
-        })
-      );
-    } catch {
-      // no-op
-    }
-  }, []);
-
   // Harita pin’inden seçim geldiğinde kartı seç
   const handleSelectRouteFromMap = useCallback((routeId) => {
     if (!routeId) return;
@@ -398,9 +384,25 @@ function RoutesExploreMobile() {
         }
       }
 
-      openRoute(id);
+      try {
+        window.dispatchEvent(
+          new CustomEvent("open-route-modal", {
+            detail: {
+              routeId: id,
+              route,
+              source: hasSearch
+                ? "search"
+                : sort === "near"
+                ? "near"
+                : "explore",
+            },
+          })
+        );
+      } catch {
+        // no-op
+      }
     },
-    [sort, mapReady, mapRef, openRoute]
+    [sort, mapReady, mapRef, hasSearch]
   );
 
   const hasActiveFilters =

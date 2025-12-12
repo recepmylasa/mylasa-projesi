@@ -1,3 +1,7 @@
+// src/hooks/useUserRoutes.js
+// Profil “Rotalarım” sekmesi için rota listesi hook’u
+// EMİR 2 + EMİR 3: RouteCardMobile için standardize model (buildRouteCardModel).
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   collection,
@@ -8,95 +12,13 @@ import {
   getDocs,
 } from "firebase/firestore";
 import { db } from "../firebase";
-
-/**
- * Kullanıcının rotalarını profilde listelemek için hook.
- *
- * Amaç:
- * - Mevcut Firestore şemasını uydurmadan kullanmak
- * - Gizlilik kurallarına uymak (public / followers / private)
- * - Sayfalama (loadMore) desteklemek
- */
+import {
+  buildRouteCardModel,
+  getOwnerIdFromRaw,
+  getVisibilityKey,
+} from "../routes/routeCardModel";
 
 const DEFAULT_PAGE_SIZE = 20;
-
-function getVisibilityKey(raw) {
-  const source =
-    raw.visibility ??
-    raw.audience ??
-    raw.routeVisibility ??
-    raw.privacy ??
-    "";
-  const v = source.toString().toLowerCase();
-
-  if (!v || v === "public" || v === "everyone") return "public";
-
-  if (
-    v === "followers" ||
-    v === "followers_only" ||
-    v === "followers-only" ||
-    v === "friends" ||
-    v.includes("follower")
-  ) {
-    return "followers";
-  }
-
-  if (v === "private" || v === "only_me") return "private";
-
-  return "unknown";
-}
-
-function buildStats(raw) {
-  const distanceM =
-    raw.totalDistanceM ??
-    raw.distanceMeters ??
-    raw.distance ??
-    raw.total_distance_m ??
-    0;
-
-  const durationMs =
-    raw.durationMs ??
-    raw.durationMilliseconds ??
-    (typeof raw.durationSeconds === "number"
-      ? raw.durationSeconds * 1000
-      : undefined) ??
-    raw.duration ??
-    0;
-
-  const stops =
-    (Array.isArray(raw.stops) && raw.stops.length) ||
-    (Array.isArray(raw.waypoints) && raw.waypoints.length) ||
-    0;
-
-  const distanceKm = distanceM / 1000;
-  const durationHours = durationMs / (1000 * 60 * 60);
-  const avgKmh =
-    distanceKm > 0 && durationHours > 0
-      ? Math.round((distanceKm / durationHours) * 10) / 10
-      : null;
-
-  return {
-    distanceM,
-    durationMs,
-    stops,
-    distanceKm,
-    avgKmh,
-  };
-}
-
-function getOwnerIdFromRaw(raw, fallbackOwnerId) {
-  if (!raw) return fallbackOwnerId || null;
-
-  const v =
-    raw.ownerId ||
-    raw.userId ||
-    raw.uid ||
-    raw.accountId ||
-    raw.createdBy ||
-    fallbackOwnerId;
-
-  return v || null;
-}
 
 export default function useUserRoutes(ownerId, options = {}) {
   const {
@@ -224,35 +146,15 @@ export default function useUserRoutes(ownerId, options = {}) {
               }
             }
 
-            const stats = buildStats(raw);
-
-            const createdAt =
-              raw.createdAt ||
-              raw.startedAt ||
-              raw.startTime ||
-              raw.finishedAt ||
-              null;
-
-            const finishedAt = raw.finishedAt || raw.endTime || null;
-
-            return {
+            // EMİR 3: Tek tip RouteCardMobile modeli
+            const model = buildRouteCardModel({
               id: d.id,
-              ownerId: docOwnerId,
-              title: raw.title || raw.name || "",
-              visibility:
-                raw.visibility ||
-                raw.audience ||
-                raw.routeVisibility ||
-                raw.privacy ||
-                visibilityKey ||
-                "public",
-              createdAt,
-              finishedAt,
-              deletedAt: raw.deletedAt || null,
-              stats,
               raw,
+              ownerIdFallback: docOwnerId,
               viewerId,
-            };
+            });
+
+            return model;
           })
           .filter(Boolean);
 
@@ -265,6 +167,7 @@ export default function useUserRoutes(ownerId, options = {}) {
         if (!isMountedRef.current || reqId !== requestIdRef.current) {
           return;
         }
+        // eslint-disable-next-line no-console
         console.warn("[useUserRoutes] load error", err);
         if (mode === "reset") {
           setRoutes([]);

@@ -2,6 +2,7 @@
 // Rota veri katmanı: Yakınımda / Arama / Non-near akışları + sentinel.
 // EMİR 10: Tek in-flight AbortController, near'da sentinel görünür sayıyı artırır,
 // aramada tüm sonuçlar görünür. EMİR 12: dupe-guard + windowing uyumlu.
+// EMİR 3: Tüm rotalar RouteCardMobile standard modeline maplenir (buildRouteCardModel).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import fetchViewportRoutes, {
@@ -10,15 +11,39 @@ import fetchViewportRoutes, {
 import { fetchPublicRoutes } from "../../../services/routeSearch";
 import { getCreatedAtSec } from "../utils/routeFormatters";
 import { mapSortToOrder } from "../utils/sortMap";
+import { buildRouteCardModel } from "../../../routes/routeCardModel";
 
 const PAGE_SIZE = 20;
 const NEAR_LIMIT = 200;
 
+// EMİR 3: RouteCardMobile canonical modeli
 function normalizeRoutes(routes) {
-  return (routes || []).map((r) => ({
-    ...r,
-    ratingAvg: r.ratingAvg ?? r.avgRating ?? 0,
-  }));
+  return (routes || []).map((r) => {
+    const model = buildRouteCardModel({ raw: r });
+
+    // Eski davranışla uyum: Eğer upstream ratingAvg/avgRating varsa ve
+    // helper 0 üretmişse, bunu koru.
+    const fallbackRating =
+      typeof r.ratingAvg === "number"
+        ? r.ratingAvg
+        : typeof r.avgRating === "number"
+        ? r.avgRating
+        : null;
+
+    if (
+      fallbackRating !== null &&
+      (typeof model.ratingAvg !== "number" ||
+        Number.isNaN(model.ratingAvg) ||
+        model.ratingAvg === 0)
+    ) {
+      return {
+        ...model,
+        ratingAvg: fallbackRating,
+      };
+    }
+
+    return model;
+  });
 }
 
 function applyTagFilter(list, tags) {
@@ -246,7 +271,9 @@ export default function useRoutesData({
           setItems(list);
           setCursor(null);
           setIsEnd(true); // near: sayfalama yok
-          setVisibleCount(list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0);
+          setVisibleCount(
+            list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0
+          );
         } catch (err) {
           if (isRequestStale(controller, reqId) || err?.name === "AbortError") {
             return;
@@ -549,7 +576,9 @@ export default function useRoutesData({
         list = dedupeById(list);
 
         setItems(list);
-        setVisibleCount(list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0);
+        setVisibleCount(
+          list.length > 0 ? Math.min(list.length, PAGE_SIZE) : 0
+        );
         setIsEnd(true);
         setInitialized(true);
 

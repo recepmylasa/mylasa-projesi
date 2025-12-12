@@ -245,7 +245,7 @@ function areEqual(prevProps, nextProps) {
   }
 
   const pTags = Array.isArray(pr.tags) ? pr.tags : [];
-  const nTags = Array.isArray(nr.tags) ? nr.tags : [];
+  const nTags = Array.isArray(n.route?.tags) ? n.route.tags : [];
   if (pTags.length !== nTags.length) return false;
   for (let i = 0; i < pTags.length; i++) {
     if (pTags[i] !== nTags[i]) return false;
