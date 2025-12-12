@@ -91,6 +91,74 @@ function getAudience(visibilityRaw) {
   return { key: "unknown", label: "Sınırlı" };
 }
 
+function buildRoutePrefill(route) {
+  const id = route?.id ? String(route.id) : "";
+
+  const title =
+    (route?.title && route.title.toString().trim()) ||
+    (route?.raw?.title && route.raw.title.toString().trim()) ||
+    (route?.raw?.name && route.raw.name.toString().trim()) ||
+    (route?.name && route.name.toString().trim()) ||
+    "Rota";
+
+  const distanceMeters =
+    typeof route?.stats?.distanceMeters === "number" && Number.isFinite(route.stats.distanceMeters)
+      ? route.stats.distanceMeters
+      : typeof route?.totalDistanceM === "number" && Number.isFinite(route.totalDistanceM)
+      ? route.totalDistanceM
+      : typeof route?.distanceMeters === "number" && Number.isFinite(route.distanceMeters)
+      ? route.distanceMeters
+      : typeof route?.distance === "number" && Number.isFinite(route.distance)
+      ? route.distance
+      : null;
+
+  const durationSeconds =
+    typeof route?.stats?.durationSeconds === "number" && Number.isFinite(route.stats.durationSeconds)
+      ? route.stats.durationSeconds
+      : typeof route?.durationSeconds === "number" && Number.isFinite(route.durationSeconds)
+      ? route.durationSeconds
+      : typeof route?.durationMs === "number" && Number.isFinite(route.durationMs)
+      ? Math.round(route.durationMs / 1000)
+      : typeof route?.duration === "number" && Number.isFinite(route.duration)
+      ? route.duration
+      : null;
+
+  const ratingAvg =
+    typeof route?.ratingAvg === "number" && Number.isFinite(route.ratingAvg)
+      ? route.ratingAvg
+      : typeof route?.avgRating === "number" && Number.isFinite(route.avgRating)
+      ? route.avgRating
+      : typeof route?.raw?.ratingAvg === "number" && Number.isFinite(route.raw.ratingAvg)
+      ? route.raw.ratingAvg
+      : null;
+
+  const ratingCount =
+    typeof route?.ratingCount === "number" && Number.isFinite(route.ratingCount)
+      ? route.ratingCount
+      : typeof route?.raw?.ratingCount === "number" && Number.isFinite(route.raw.ratingCount)
+      ? route.raw.ratingCount
+      : null;
+
+  const areas = route?.areas ?? route?.raw?.areas ?? null;
+  const tags = route?.tags ?? route?.raw?.tags ?? null;
+
+  const prefill = {
+    id,
+    title,
+    totalDistanceM: typeof distanceMeters === "number" ? distanceMeters : null,
+    durationMs: typeof durationSeconds === "number" ? durationSeconds * 1000 : null,
+    ratingAvg: typeof ratingAvg === "number" ? ratingAvg : null,
+    ratingCount: typeof ratingCount === "number" ? ratingCount : null,
+    areas,
+    tags,
+  };
+
+  if (route?.visibility != null) prefill.visibility = route.visibility;
+  if (route?.ownerId != null) prefill.ownerId = route.ownerId;
+
+  return prefill;
+}
+
 export default function ProfileRoutesMobile({
   userId,
   isSelf = false,
@@ -115,11 +183,19 @@ export default function ProfileRoutesMobile({
   const handleClick = useCallback((route) => {
     if (!route || !route.id) return;
     const id = String(route.id);
+    // eslint-disable-next-line no-console
     console.log("[ProfileRoutesMobile] route clicked", id);
+
+    const routePrefill = buildRoutePrefill(route);
+
     try {
       window.dispatchEvent(
         new CustomEvent("open-route-modal", {
-          detail: { routeId: id },
+          detail: {
+            routeId: id,
+            route: routePrefill,
+            source: "profile",
+          },
         })
       );
     } catch {
@@ -178,9 +254,7 @@ export default function ProfileRoutesMobile({
             route.raw.name.toString().trim()) ||
           "Adsız rota";
 
-        const dateText = formatDateTime(
-          route.finishedAt || route.createdAt
-        );
+        const dateText = formatDateTime(route.finishedAt || route.createdAt);
         const distanceText = formatDistanceKm(route.stats);
         const durationText = formatDuration(route.stats);
         const stopsText = formatStops(route.stats);
@@ -192,8 +266,7 @@ export default function ProfileRoutesMobile({
         if (stopsText) metaBits.push(stopsText);
         const metaLine = metaBits.join(" · ");
 
-        const { key: audienceKey, label: audienceLabel } =
-          getAudience(route.visibility);
+        const { key: audienceKey, label: audienceLabel } = getAudience(route.visibility);
 
         return (
           <button
@@ -207,19 +280,13 @@ export default function ProfileRoutesMobile({
               <span
                 className={
                   "profile-route-chip" +
-                  (audienceKey
-                    ? ` profile-route-chip--${audienceKey}`
-                    : "")
+                  (audienceKey ? ` profile-route-chip--${audienceKey}` : "")
                 }
               >
                 {audienceLabel}
               </span>
             </div>
-            {metaLine && (
-              <div className="profile-route-card-meta">
-                {metaLine}
-              </div>
-            )}
+            {metaLine && <div className="profile-route-card-meta">{metaLine}</div>}
           </button>
         );
       })}

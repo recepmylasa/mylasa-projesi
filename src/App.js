@@ -91,7 +91,10 @@ function App() {
         const newWorker = reg.installing;
         if (!newWorker) return;
         newWorker.addEventListener("statechange", () => {
-          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+          if (
+            newWorker.state === "installed" &&
+            navigator.serviceWorker.controller
+          ) {
             setSwWaiting(newWorker);
             setShowUpdateToast(true);
           }
@@ -106,11 +109,17 @@ function App() {
       refreshing = true;
       window.location.reload();
     };
-    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    navigator.serviceWorker.addEventListener(
+      "controllerchange",
+      onControllerChange
+    );
 
     return () => {
       if (regUnsub) regUnsub();
-      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+      navigator.serviceWorker.removeEventListener(
+        "controllerchange",
+        onControllerChange
+      );
     };
   }, []);
 
@@ -206,27 +215,24 @@ function App() {
       }
     };
 
+    // 🔧 FIX: visibility üzerinden canRead kontrolü kaldırıldı.
+    // getDoc izin veriyorsa zaten okuyabiliyoruz; izin yoksa RouteDetailMobile "forbidden" mesajını basar.
     const openRouteFromUrl = async (id) => {
+      const follow = urlFollowFlag();
       try {
         const snap = await getDoc(doc(db, "routes", id));
         if (!snap.exists()) {
           window.history.replaceState({}, "", "/");
           return;
         }
-        const d = snap.data() || {};
-        const isOwner = d.ownerId === auth.currentUser?.uid;
-        const canRead = d.visibility === "public" || isOwner;
-        if (!canRead) {
-          setModalData({ error: "Erişim yok veya rota bulunamadı." });
-          setModalContent("viewingRouteError");
-          pushedByAppRef.current = false;
-          return;
-        }
-        setModalData({ id: snap.id, follow: urlFollowFlag() });
+        setModalData({ id: snap.id, follow });
         setModalContent("viewingRoute");
         pushedByAppRef.current = false;
       } catch {
-        window.history.replaceState({}, "", "/");
+        // permission / network vb. durumlarda da modalı açalım; RouteDetailMobile kendi mesajını gösterir
+        setModalData({ id, follow });
+        setModalContent("viewingRoute");
+        pushedByAppRef.current = false;
       }
     };
 
@@ -343,27 +349,22 @@ function App() {
         }
       };
 
+      // 🔧 FIX: visibility üzerinden canRead kontrolü kaldırıldı (takipçilere açık rotalar için).
       const openRoute = async (id) => {
+        const follow = urlFollowFlag();
         try {
           const snap = await getDoc(doc(db, "routes", id));
           if (!snap.exists()) {
             window.history.replaceState({}, "", "/");
             return;
           }
-          const d = snap.data() || {};
-          const isOwner = d.ownerId === auth.currentUser?.uid;
-          const canRead = d.visibility === "public" || isOwner;
-          if (!canRead) {
-            setModalData({ error: "Erişim yok veya rota bulunamadı." });
-            setModalContent("viewingRouteError");
-            pushedByAppRef.current = false;
-            return;
-          }
-          setModalData({ id: snap.id, follow: urlFollowFlag() });
+          setModalData({ id: snap.id, follow });
           setModalContent("viewingRoute");
           pushedByAppRef.current = false;
         } catch {
-          window.history.replaceState({}, "", "/");
+          setModalData({ id, follow });
+          setModalContent("viewingRoute");
+          pushedByAppRef.current = false;
         }
       };
 
@@ -411,7 +412,11 @@ function App() {
       }
 
       // Modal açıkken ve permalinkte değilsek → kapat
-      if (["viewingComments", "viewingClip", "viewingRoute", "viewingRouteError"].includes(modalContent)) {
+      if (
+        ["viewingComments", "viewingClip", "viewingRoute", "viewingRouteError"].includes(
+          modalContent
+        )
+      ) {
         setModalContent(null);
         setModalData(null);
         pushedByAppRef.current = false;
@@ -440,9 +445,14 @@ function App() {
     const handler = (e) => {
       const routeId = e?.detail?.routeId;
       const follow = !!e?.detail?.follow;
+      const initialRoute = e?.detail?.route || null;
+      const source = e?.detail?.source || null;
+
       if (!routeId) return;
-      setModalData({ id: routeId, follow });
+
+      setModalData({ id: routeId, follow, initialRoute, source });
       setModalContent("viewingRoute");
+
       // follow paramını da URL'ye yaz
       const url = follow ? `/r/${routeId}?follow=1` : `/r/${routeId}`;
       window.history.pushState({ modal: "route", id: routeId }, "", url);
@@ -476,7 +486,9 @@ function App() {
     } else if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
       const target = `/u/${encodeURIComponent(currentUserProfile.kullaniciAdi)}`;
       if (window.location.pathname !== target) window.history.pushState({}, "", target);
-    } else if (!/^\/(p|c|r|u|explore(\/routes)?|admin\/share-metrics)/.test(window.location.pathname)) {
+    } else if (
+      !/^\/(p|c|r|u|explore(\/routes)?|admin\/share-metrics)/.test(window.location.pathname)
+    ) {
       // explore, explore/routes ve admin/share-metrics izinli
       window.history.replaceState({}, "", "/");
     }
@@ -537,7 +549,7 @@ function App() {
       await updateDoc(userDocRef, {
         sharingWhitelist: selectedFriendIds,
         sharingMode: "selected_friends",
-        isSharing: true
+        isSharing: true,
       });
       setModalContent("mapSettings");
     } catch {}
@@ -669,7 +681,7 @@ function App() {
       const storiesWithAuthorInfo = modalData.stories.map((story) => ({
         ...story,
         authorUsername: modalData.kullaniciAdi,
-        authorProfilePic: modalData.profilFoto
+        authorProfilePic: modalData.profilFoto,
       }));
       return <StoryModal stories={storiesWithAuthorInfo} onClose={closeModal} />;
     }
@@ -685,12 +697,12 @@ function App() {
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: "rgba(0, 0, 0, 0.65)",
-      zIndex: 2000
+      zIndex: 2000,
     };
     const commentsModalStyle = {
       ...modalStyle,
       alignItems: "flex-end",
-      backgroundColor: "rgba(0, 0, 0, 0.5)"
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
     };
 
     const isCommentModal = modalContent === "viewingComments";
@@ -746,6 +758,8 @@ function App() {
           {modalContent === "viewingRoute" && (
             <RouteDetailMobile
               routeId={modalData?.id}
+              initialRoute={modalData?.initialRoute || null}
+              source={modalData?.source || null}
               followInitially={!!modalData?.follow}
               onClose={closeModal}
             />
@@ -757,12 +771,18 @@ function App() {
                 background: "#fff",
                 borderRadius: 12,
                 padding: "16px 14px",
-                boxShadow: "0 10px 28px rgba(0,0,0,.35)"
+                boxShadow: "0 10px 28px rgba(0,0,0,.35)",
               }}
             >
               <div style={{ fontWeight: 800, marginBottom: 6 }}>Erişim yok</div>
               <div style={{ color: "#444" }}>Bu rota ya özel ya da bulunamadı.</div>
-              <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+              <div
+                style={{
+                  marginTop: 12,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                }}
+              >
                 <button
                   onClick={closeModal}
                   style={{
@@ -770,7 +790,7 @@ function App() {
                     borderRadius: 10,
                     padding: "8px 12px",
                     fontWeight: 700,
-                    cursor: "pointer"
+                    cursor: "pointer",
                   }}
                 >
                   Kapat
@@ -802,7 +822,7 @@ function App() {
       zIndex: 5000,
       display: "flex",
       justifyContent: "center",
-      pointerEvents: "none"
+      pointerEvents: "none",
     };
     const card = {
       pointerEvents: "auto",
@@ -815,7 +835,7 @@ function App() {
       boxShadow: "0 8px 24px rgba(0,0,0,.35)",
       display: "flex",
       alignItems: "center",
-      gap: 10
+      gap: 10,
     };
     const btn = {
       marginLeft: "auto",
@@ -825,7 +845,7 @@ function App() {
       borderRadius: 10,
       padding: "10px 14px",
       fontWeight: 700,
-      cursor: "pointer"
+      cursor: "pointer",
     };
     return (
       <div style={wrap}>
@@ -867,9 +887,7 @@ function App() {
         />
       )}
       <main className={mainContentClass}>
-        {activePage === "home" && (
-          <Hikayeler currentUserProfile={currentUserProfile} />
-        )}
+        {activePage === "home" && <Hikayeler currentUserProfile={currentUserProfile} />}
         {renderPageContent()}
       </main>
       {renderModal()}
