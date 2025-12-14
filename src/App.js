@@ -1,6 +1,4 @@
 // src/App.js
-// Tek overlay App’te, /p/:id - /c/:id - /r/:id (?follow=1) permalink uyumlu,
-// profil sekmesi /u/<username> rotasına taşıyor.
 
 import { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
@@ -34,15 +32,12 @@ import StoryModal from "./StoryModal";
 import MapSettingsModal from "./MapSettingsModal";
 import FriendPickerModal from "./FriendPickerModal";
 
-// Clips modal bileşenleri
 import ClipDetailModalDesktop from "./ClipDetailModalDesktop";
 import ClipDetailModalMobile from "./ClipDetailModalMobile";
 
-// Rota: detay modal ve keşfet listesi
 import RouteDetailMobile from "./pages/RouteDetailMobile";
 import RoutesExploreMobile from "./pages/RoutesExploreMobile";
 
-// Admin paylaşım metrikleri
 import AdminShareMetrics from "./pages/AdminShareMetrics";
 
 import "./App.css";
@@ -57,6 +52,17 @@ const useWindowSize = () => {
   return size;
 };
 
+// Permalink helper'ları (query'yi değil pathname'i baz alır)
+const isPostOrClipPermalinkPath = (pathname) =>
+  /^\/(p|c)\/[A-Za-z0-9_-]+$/.test(pathname || "");
+
+const isRoutePermalinkPath = (pathname) =>
+  /^\/r\/[A-Za-z0-9_-]+$/.test(pathname || "") ||
+  /^\/s\/r\/[A-Za-z0-9_-]+$/.test(pathname || "");
+
+const isAnyPermalinkPath = (pathname) =>
+  isPostOrClipPermalinkPath(pathname) || isRoutePermalinkPath(pathname);
+
 function App() {
   const [user, setUser] = useState(null);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
@@ -67,14 +73,27 @@ function App() {
   const [width] = useWindowSize();
   const isMobile = width <= 768;
 
-  // Post/Clip/Route modallarında pushState bizim mi yaptı?
   const pushedByAppRef = useRef(false);
 
-  // SW update toast state
+  // Profil modalını, route modalından açınca geri dönüş için küçük “return stack”
+  const modalReturnRef = useRef(null);
+
+  // Event handler’larda güncel modal state’e erişmek için ref
+  const modalStateRef = useRef({ content: null, data: null });
+  useEffect(() => {
+    modalStateRef.current = { content: modalContent, data: modalData };
+  }, [modalContent, modalData]);
+
+  // Profil modalından çıkınca “return stack” tüketildiyse / gereksizse temizle
+  useEffect(() => {
+    if (modalContent !== "viewingProfile") {
+      modalReturnRef.current = null;
+    }
+  }, [modalContent]);
+
   const [swWaiting, setSwWaiting] = useState(null);
   const [showUpdateToast, setShowUpdateToast] = useState(false);
 
-  /* ===== Service Worker update toast ===== */
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
@@ -130,7 +149,6 @@ function App() {
     setShowUpdateToast(false);
   };
 
-  // Modal varken body scroll kilidi
   useEffect(() => {
     if (!modalContent) return;
     const prev = document.body.style.overflow;
@@ -140,7 +158,6 @@ function App() {
     };
   }, [modalContent]);
 
-  // Kimlik + profil dinleyicisi
   useEffect(() => {
     let unsubscribeProfile = () => {};
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -181,7 +198,7 @@ function App() {
     }
   };
 
-  /* ====== DEEP LINKS on mount: /p/:id , /c/:id , /r/:id (?follow=1)  +  /explore , /explore/routes , /admin/share-metrics , /open-route ====== */
+  // DEEP LINKS (mount): /p/:id , /c/:id , /r/:id , /s/r/:id , /explore , /explore/routes , /admin/share-metrics , /open-route
   useEffect(() => {
     if (loading || !user) return;
 
@@ -215,30 +232,21 @@ function App() {
       }
     };
 
-    // 🔧 FIX: visibility üzerinden canRead kontrolü kaldırıldı.
-    // getDoc izin veriyorsa zaten okuyabiliyoruz; izin yoksa RouteDetailMobile "forbidden" mesajını basar.
-    const openRouteFromUrl = async (id) => {
-      const follow = urlFollowFlag();
-      try {
-        const snap = await getDoc(doc(db, "routes", id));
-        if (!snap.exists()) {
-          window.history.replaceState({}, "", "/");
-          return;
-        }
-        setModalData({ id: snap.id, follow });
-        setModalContent("viewingRoute");
-        pushedByAppRef.current = false;
-      } catch {
-        // permission / network vb. durumlarda da modalı açalım; RouteDetailMobile kendi mesajını gösterir
-        setModalData({ id, follow });
-        setModalContent("viewingRoute");
-        pushedByAppRef.current = false;
+    // /r/:id → App hiçbir izin/visibility kontrolü yapmadan modal açar (UI RouteDetailMobile içinde)
+    const openRouteFromUrl = (id) => {
+      if (!id) {
+        window.history.replaceState({}, "", "/");
+        return;
       }
+      setModalData({ id: String(id), follow: urlFollowFlag() });
+      setModalContent("viewingRoute");
+      pushedByAppRef.current = false;
     };
 
     const path = window.location.pathname;
     const mPost = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
     const mClip = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+    const mShareRoute = path.match(/^\/s\/r\/([A-Za-z0-9_-]+)$/);
     const mRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
     const mProfile = path.match(/^\/u\/([^/]+)\/?$/);
     const mExploreRoutes = path.match(/^\/explore\/routes\/?$/);
@@ -246,26 +254,36 @@ function App() {
     const mAdminShareMetrics = path.match(/^\/admin\/share-metrics\/?$/);
     const isOpenRoute = /^\/open-route\/?$/.test(path);
 
-    // /open-route?query=...  →  /r/:id?from=protocol
+    // /open-route?query=...  →  /r/:id?follow=1&from=protocol
     if (isOpenRoute) {
       try {
-        const search = window.location.search || "";
-        const sp = new URLSearchParams(search);
+        const sp = new URLSearchParams(window.location.search || "");
         const raw = sp.get("query") || "";
         const decoded = decodeURIComponent(raw || "");
-        // decoded örnek: "route?id=ROUTE_ID" veya "web+mylasa:route?id=ROUTE_ID"
+
         let work = decoded;
         const colonIdx = work.indexOf(":");
         if (colonIdx !== -1 && work.startsWith("web+mylasa")) {
           work = work.slice(colonIdx + 1); // "route?id=..."
         }
+
         const qIdx = work.indexOf("?");
         let queryPart = work;
         if (qIdx !== -1) queryPart = work.slice(qIdx + 1);
+
         const qs = new URLSearchParams(queryPart);
         const rid = qs.get("id") || qs.get("routeId");
+
+        const followRaw = qs.get("follow") || sp.get("follow") || "";
+        const follow =
+          followRaw === "1" || followRaw === "true" || followRaw === "yes";
+
         if (rid) {
-          const dest = `/r/${encodeURIComponent(rid)}?from=protocol=1`;
+          const params = new URLSearchParams();
+          if (follow) params.set("follow", "1");
+          params.set("from", "protocol");
+
+          const dest = `/r/${encodeURIComponent(rid)}?${params.toString()}`;
           window.history.replaceState({}, "", dest);
           openRouteFromUrl(rid);
           return;
@@ -275,6 +293,21 @@ function App() {
       } catch {
         window.history.replaceState({}, "", "/");
       }
+    }
+
+    // /s/r/:id → (uyumluluk için) /r/:id?follow=1&from=share + modal aç
+    // Not: Burada Firestore okuması yok; tüm yetki/404 UI RouteDetailMobile’da.
+    if (mShareRoute) {
+      const rid = mShareRoute[1];
+      try {
+        window.history.replaceState(
+          {},
+          "",
+          `/r/${encodeURIComponent(rid)}?follow=1&from=share`
+        );
+      } catch {}
+      openRouteFromUrl(rid);
+      return;
     }
 
     if (mPost) {
@@ -294,24 +327,23 @@ function App() {
       setActivePage("profile");
       return;
     }
-
     if (mAdminShareMetrics) {
       setActivePage("adminShareMetrics");
       return;
     }
-
     if (mExploreRoutes || mExplore) {
       setActivePage("explore");
       return;
     }
   }, [loading, user]);
 
-  /* ====== POPSTATE (geri/ileri) ====== */
+  // POPSTATE (geri/ileri)
   useEffect(() => {
     const onPop = async () => {
       const path = window.location.pathname;
       const matchPost = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
       const matchClip = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+      const matchShareRoute = path.match(/^\/s\/r\/([A-Za-z0-9_-]+)$/);
       const matchRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
       const matchProfile = path.match(/^\/u\/([^/]+)\/?$/);
       const matchExploreRoutes = path.match(/^\/explore\/routes\/?$/);
@@ -349,46 +381,46 @@ function App() {
         }
       };
 
-      // 🔧 FIX: visibility üzerinden canRead kontrolü kaldırıldı (takipçilere açık rotalar için).
-      const openRoute = async (id) => {
-        const follow = urlFollowFlag();
-        try {
-          const snap = await getDoc(doc(db, "routes", id));
-          if (!snap.exists()) {
-            window.history.replaceState({}, "", "/");
-            return;
-          }
-          setModalData({ id: snap.id, follow });
-          setModalContent("viewingRoute");
-          pushedByAppRef.current = false;
-        } catch {
-          setModalData({ id, follow });
-          setModalContent("viewingRoute");
-          pushedByAppRef.current = false;
-        }
+      // /r/:id → direkt modal aç (Firestore ön kontrol yok)
+      const openRoute = (id) => {
+        if (!id) return;
+        setModalData({ id: String(id), follow: urlFollowFlag() });
+        setModalContent("viewingRoute");
+        pushedByAppRef.current = false;
       };
 
       // /open-route → /r/:id yönlendirme (geri/ileri ile)
       if (isOpenRoute) {
         try {
-          const search = window.location.search || "";
-          const sp = new URLSearchParams(search);
+          const sp = new URLSearchParams(window.location.search || "");
           const raw = sp.get("query") || "";
           const decoded = decodeURIComponent(raw || "");
+
           let work = decoded;
           const colonIdx = work.indexOf(":");
           if (colonIdx !== -1 && work.startsWith("web+mylasa")) {
             work = work.slice(colonIdx + 1);
           }
+
           const qIdx = work.indexOf("?");
           let queryPart = work;
           if (qIdx !== -1) queryPart = work.slice(qIdx + 1);
+
           const qs = new URLSearchParams(queryPart);
           const rid = qs.get("id") || qs.get("routeId");
+
+          const followRaw = qs.get("follow") || sp.get("follow") || "";
+          const follow =
+            followRaw === "1" || followRaw === "true" || followRaw === "yes";
+
           if (rid) {
-            const dest = `/r/${encodeURIComponent(rid)}?from=protocol=1`;
+            const params = new URLSearchParams();
+            if (follow) params.set("follow", "1");
+            params.set("from", "protocol");
+
+            const dest = `/r/${encodeURIComponent(rid)}?${params.toString()}`;
             window.history.replaceState({}, "", dest);
-            await openRoute(rid);
+            openRoute(rid);
             return;
           } else {
             window.history.replaceState({}, "", "/");
@@ -396,6 +428,20 @@ function App() {
         } catch {
           window.history.replaceState({}, "", "/");
         }
+      }
+
+      // /s/r/:id → /r/:id?follow=1&from=share + modal aç
+      if (matchShareRoute) {
+        const rid = matchShareRoute[1];
+        try {
+          window.history.replaceState(
+            {},
+            "",
+            `/r/${encodeURIComponent(rid)}?follow=1&from=share`
+          );
+        } catch {}
+        openRoute(rid);
+        return;
       }
 
       if (matchPost) {
@@ -407,11 +453,10 @@ function App() {
         return;
       }
       if (matchRoute) {
-        await openRoute(matchRoute[1]);
+        openRoute(matchRoute[1]);
         return;
       }
 
-      // Modal açıkken ve permalinkte değilsek → kapat
       if (
         ["viewingComments", "viewingClip", "viewingRoute", "viewingRouteError"].includes(
           modalContent
@@ -440,7 +485,7 @@ function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, [modalContent]);
 
-  /* ===== Custom event: Route kart tık → modal aç ===== */
+  // Route kart tık → modal aç
   useEffect(() => {
     const handler = (e) => {
       const routeId = e?.detail?.routeId;
@@ -453,7 +498,6 @@ function App() {
       setModalData({ id: routeId, follow, initialRoute, source });
       setModalContent("viewingRoute");
 
-      // follow paramını da URL'ye yaz
       const url = follow ? `/r/${routeId}?follow=1` : `/r/${routeId}`;
       window.history.pushState({ modal: "route", id: routeId }, "", url);
       pushedByAppRef.current = true;
@@ -462,10 +506,59 @@ function App() {
     return () => window.removeEventListener("open-route-modal", handler);
   }, []);
 
-  /* ===== Nav değişimi ===== */
+  // Global event → profil modal aç
+  // Not: Route forbidden sheet’ten gelince (open-profile-modal), asla redirect yok:
+  // route permalink korunur; profil kapanınca tekrar route modalına dönülebilir.
+  useEffect(() => {
+    const handler = (e) => {
+      const userId = e?.detail?.userId;
+      if (!userId) return;
+
+      const pathname = window.location.pathname;
+      const currentModal = modalStateRef.current?.content;
+      const currentData = modalStateRef.current?.data;
+
+      const cameFromRouteModal =
+        currentModal === "viewingRoute" && !!currentData?.id;
+
+      if (cameFromRouteModal || isRoutePermalinkPath(pathname)) {
+        // Route -> Profil geçişinde URL’yi bozma/redirect yapma.
+        // Geri dönüş için mevcut route modal state’ini sakla.
+        modalReturnRef.current = {
+          modalContent: "viewingRoute",
+          modalData: currentData,
+          pushedByApp: pushedByAppRef.current,
+          url: window.location.pathname + window.location.search,
+        };
+      } else {
+        // Post/Clip permalinklerinde (veya başka durumlarda) mevcut davranış: URL’yi temizle
+        // (Bu, PermalinkPage ile App’in karışmaması için.)
+        try {
+          if (isPostOrClipPermalinkPath(pathname)) {
+            window.history.replaceState({}, "", "/");
+          }
+        } catch {
+          try {
+            window.history.replaceState({}, "", "/");
+          } catch {}
+        }
+      }
+
+      setModalData(String(userId));
+      setModalContent("viewingProfile");
+      pushedByAppRef.current = false;
+    };
+
+    window.addEventListener("open-profile-modal", handler);
+    return () => window.removeEventListener("open-profile-modal", handler);
+  }, []);
+
   const handleNavChange = (tab) => {
+    // Profil modalı route üzerinden açıldıysa, tab değişince geri dönüş stack’ini iptal et.
+    modalReturnRef.current = null;
+
     const path = window.location.pathname;
-    const isPermalink = /^\/(p|c|r)\/[A-Za-z0-9_-]+/.test(path);
+    const isPermalink = isAnyPermalinkPath(path);
     if (isPermalink) {
       if (pushedByAppRef.current) window.history.back();
       else window.history.replaceState({}, "", "/");
@@ -477,7 +570,6 @@ function App() {
       return;
     }
 
-    // Keşfet sekmesi: varsayılan hedef /explore
     if (tab === "explore") {
       const target = "/explore";
       if (window.location.pathname !== target) {
@@ -485,11 +577,13 @@ function App() {
       }
     } else if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
       const target = `/u/${encodeURIComponent(currentUserProfile.kullaniciAdi)}`;
-      if (window.location.pathname !== target) window.history.pushState({}, "", target);
+      if (window.location.pathname !== target)
+        window.history.pushState({}, "", target);
     } else if (
-      !/^\/(p|c|r|u|explore(\/routes)?|admin\/share-metrics)/.test(window.location.pathname)
+      !/^\/(p|c|r|u|explore(\/routes)?|admin\/share-metrics)/.test(
+        window.location.pathname
+      )
     ) {
-      // explore, explore/routes ve admin/share-metrics izinli
       window.history.replaceState({}, "", "/");
     }
 
@@ -568,7 +662,6 @@ function App() {
           />
         );
       case "explore": {
-        // Basit derin link: /explore/routes ise rota keşfet sayfasını göster
         const path = window.location.pathname;
         if (/^\/explore\/routes\/?$/.test(path)) {
           return <RoutesExploreMobile />;
@@ -617,9 +710,24 @@ function App() {
     if (!modalContent) return null;
 
     const closeModal = () => {
-      // /p/:id /c/:id /r/:id üzerindeysek URL’i temizle
-      const path = window.location.pathname + window.location.search;
-      const isPermalink = /^\/(p|c|r)\/[A-Za-z0-9_-]+/.test(path);
+      // Eğer profil, route’dan “Profili aç” ile açıldıysa: kapatınca route modalına dön
+      if (modalContent === "viewingProfile" && modalReturnRef.current) {
+        const ret = modalReturnRef.current;
+        modalReturnRef.current = null;
+
+        try {
+          if (ret.url) window.history.replaceState({}, "", ret.url);
+        } catch {}
+
+        setModalContent(ret.modalContent || "viewingRoute");
+        setModalData(ret.modalData || null);
+        pushedByAppRef.current = !!ret.pushedByApp;
+        return;
+      }
+
+      const pathname = window.location.pathname;
+      const isPermalink = isAnyPermalinkPath(pathname);
+
       if (isPermalink) {
         if (pushedByAppRef.current) window.history.back();
         else window.history.replaceState({}, "", "/");
@@ -686,7 +794,6 @@ function App() {
       return <StoryModal stories={storiesWithAuthorInfo} onClose={closeModal} />;
     }
 
-    // Overlay stilleri
     const modalStyle = {
       display: "flex",
       position: "fixed",
@@ -706,7 +813,8 @@ function App() {
     };
 
     const isCommentModal = modalContent === "viewingComments";
-    const currentStyle = isCommentModal && isMobile ? commentsModalStyle : modalStyle;
+    const currentStyle =
+      isCommentModal && isMobile ? commentsModalStyle : modalStyle;
 
     return (
       <div style={currentStyle} onMouseDown={closeModal}>
@@ -743,7 +851,6 @@ function App() {
             />
           )}
 
-          {/* CLIP */}
           {modalContent === "viewingClip" && (
             <>
               {isMobile ? (
@@ -754,7 +861,6 @@ function App() {
             </>
           )}
 
-          {/* ROUTE DETAIL */}
           {modalContent === "viewingRoute" && (
             <RouteDetailMobile
               routeId={modalData?.id}
@@ -764,6 +870,7 @@ function App() {
               onClose={closeModal}
             />
           )}
+
           {modalContent === "viewingRouteError" && (
             <div
               style={{
@@ -775,7 +882,9 @@ function App() {
               }}
             >
               <div style={{ fontWeight: 800, marginBottom: 6 }}>Erişim yok</div>
-              <div style={{ color: "#444" }}>Bu rota ya özel ya da bulunamadı.</div>
+              <div style={{ color: "#444" }}>
+                Bu rota ya özel ya da bulunamadı.
+              </div>
               <div
                 style={{
                   marginTop: 12,
@@ -811,7 +920,6 @@ function App() {
       ? "main-content-wide"
       : "main-content-narrow";
 
-  // Update toast render
   const renderUpdateToast = () => {
     if (!showUpdateToast) return null;
     const wrap = {
@@ -887,7 +995,9 @@ function App() {
         />
       )}
       <main className={mainContentClass}>
-        {activePage === "home" && <Hikayeler currentUserProfile={currentUserProfile} />}
+        {activePage === "home" && (
+          <Hikayeler currentUserProfile={currentUserProfile} />
+        )}
         {renderPageContent()}
       </main>
       {renderModal()}

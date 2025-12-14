@@ -1,18 +1,9 @@
 // src/pages/RouteDetailMobile.js
-// Mobil Rota Detayı (Duraklar | Galeri | Rapor | Görsel Paylaş)
-// Mevcut takip/puanlama/paylaş davranışlarına DOKUNMAZ, yalnız sekmeler + medya + rapor + “Görsel Paylaş” ekler.
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./RouteDetailMobile.css";
 import { auth, db, storage } from "../firebase";
 
-// Firestore
 import {
   doc,
   collection,
@@ -26,34 +17,18 @@ import {
   getDoc,
 } from "firebase/firestore";
 
-// Storage
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
-// Puan servisleri (projede mevcut sayıyoruz)
 import { setRouteRating, setStopRating } from "../services/routeRatings";
-
-// Okuma servisleri (projede mevcut sayıyoruz)
 import { watchRoute, watchStops } from "../services/routesRead";
-
-// GPX servisleri (projede mevcut sayıyoruz)
 import { buildGpx, downloadGpx } from "../services/gpx";
 
-// Yıldız bileşeni (projede mevcut)
 import StarRatingV2 from "../components/StarRatingV2/StarRatingV2";
-
-// ADIM 31: Yorumlar için CommentsPanel
 import CommentsPanel from "../components/CommentsPanel/CommentsPanel";
-
-// Google Maps hook’u (projede mevcut)
 import { useGoogleMaps } from "../hooks/useGoogleMaps";
-
-// Görsel paylaşım sheet’i (projede mevcut)
 import ShareSheetMobile from "../components/ShareSheetMobile";
-
-// ADIM 31: Yorum sayaç takibi
 import { watchCommentsCount } from "../commentsClient";
 
-// Ufak yardımcılar
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 const MAP_ID = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
 
@@ -74,14 +49,22 @@ function calcAvg(sum, count) {
     ? (Number(sum || 0) / Number(count)).toFixed(1)
     : "—";
 }
-
 function isFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
+function toFiniteNumber(value) {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+function getValidLatLng(lat, lng) {
+  const la = toFiniteNumber(lat);
+  const ln = toFiniteNumber(lng);
+  if (la == null || ln == null) return null;
+  if (Math.abs(la) > 90 || Math.abs(ln) > 180) return null;
+  return { lat: la, lng: ln };
+}
 
-// useUserRoutes.buildStats ile aynı mantık
 function buildStatsFromRoute(raw = {}) {
-  // Mesafe (metre)
   let distanceMeters = null;
   if (isFiniteNumber(raw.totalDistanceM) && raw.totalDistanceM > 0) {
     distanceMeters = raw.totalDistanceM;
@@ -89,11 +72,13 @@ function buildStatsFromRoute(raw = {}) {
     distanceMeters = raw.distanceMeters;
   } else if (isFiniteNumber(raw.distance) && raw.distance > 0) {
     distanceMeters = raw.distance;
-  } else if (isFiniteNumber(raw.stats?.distanceMeters) && raw.stats.distanceMeters > 0) {
+  } else if (
+    isFiniteNumber(raw.stats?.distanceMeters) &&
+    raw.stats.distanceMeters > 0
+  ) {
     distanceMeters = raw.stats.distanceMeters;
   }
 
-  // Süre (saniye)
   let durationSeconds = null;
   if (isFiniteNumber(raw.durationSeconds) && raw.durationSeconds > 0) {
     durationSeconds = raw.durationSeconds;
@@ -103,11 +88,13 @@ function buildStatsFromRoute(raw = {}) {
     durationSeconds = raw.duration;
   } else if (isFiniteNumber(raw.durationMinutes) && raw.durationMinutes > 0) {
     durationSeconds = Math.round(raw.durationMinutes * 60);
-  } else if (isFiniteNumber(raw.stats?.durationSeconds) && raw.stats.durationSeconds > 0) {
+  } else if (
+    isFiniteNumber(raw.stats?.durationSeconds) &&
+    raw.stats.durationSeconds > 0
+  ) {
     durationSeconds = raw.stats.durationSeconds;
   }
 
-  // Durak sayısı
   let stopCount = null;
   if (isFiniteNumber(raw.stopCount) && raw.stopCount > 0) {
     stopCount = raw.stopCount;
@@ -119,7 +106,6 @@ function buildStatsFromRoute(raw = {}) {
     stopCount = raw.stats.stopCount;
   }
 
-  // Ortalama hız (km/s)
   let avgSpeedKmh = null;
   if (
     isFiniteNumber(distanceMeters) &&
@@ -143,15 +129,10 @@ function buildStatsFromRoute(raw = {}) {
 
 function getVisibilityKeyFromRoute(raw = {}) {
   const source =
-    raw.visibility ??
-    raw.audience ??
-    raw.routeVisibility ??
-    raw.privacy ??
-    "";
+    raw.visibility ?? raw.audience ?? raw.routeVisibility ?? raw.privacy ?? "";
   const v = source.toString().toLowerCase();
 
   if (!v || v === "public" || v === "everyone") return "public";
-
   if (
     v === "followers" ||
     v === "followers_only" ||
@@ -161,23 +142,15 @@ function getVisibilityKeyFromRoute(raw = {}) {
   ) {
     return "followers";
   }
-
   if (v === "private" || v === "only_me") return "private";
-
   return "unknown";
 }
 
 function getAudienceFromRoute(raw = {}) {
   const key = getVisibilityKeyFromRoute(raw);
-  if (key === "public") {
-    return { key, label: "Herkese açık" };
-  }
-  if (key === "followers") {
-    return { key, label: "Takipçilere açık" };
-  }
-  if (key === "private") {
-    return { key, label: "Özel" };
-  }
+  if (key === "public") return { key, label: "Herkese açık" };
+  if (key === "followers") return { key, label: "Takipçilere açık" };
+  if (key === "private") return { key, label: "Özel" };
   return { key: "unknown", label: "Sınırlı" };
 }
 
@@ -186,12 +159,8 @@ function toDateSafe(dt) {
   try {
     if (dt instanceof Date) return dt;
     if (typeof dt.toDate === "function") return dt.toDate();
-    if (typeof dt.seconds === "number") {
-      return new Date(dt.seconds * 1000);
-    }
-    if (typeof dt === "number") {
-      return new Date(dt);
-    }
+    if (typeof dt.seconds === "number") return new Date(dt.seconds * 1000);
+    if (typeof dt === "number") return new Date(dt);
     return new Date(dt);
   } catch {
     return null;
@@ -222,21 +191,17 @@ function formatDistanceFromStats(stats) {
   const fixed = km >= 10 ? Math.round(km) : Math.round(km * 10) / 10;
   return `${fixed} km`;
 }
-
 function formatDurationFromStats(stats) {
   if (!stats) return "";
   const s = stats.durationSeconds;
   if (!isFiniteNumber(s) || s <= 0) return "";
   const minutes = Math.round(s / 60);
-  if (minutes < 60) {
-    return `${minutes} dk`;
-  }
+  if (minutes < 60) return `${minutes} dk`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   if (m === 0) return `${h} sa`;
   return `${h} sa ${m} dk`;
 }
-
 function formatStopsFromStats(stats) {
   if (!stats) return "";
   const c = stats.stopCount;
@@ -244,12 +209,11 @@ function formatStopsFromStats(stats) {
   if (c === 1) return "1 durak";
   return `${c} durak`;
 }
-
 function formatAvgSpeedFromStats(stats) {
   if (!stats) return "";
   const v = stats.avgSpeedKmh;
   if (!isFiniteNumber(v) || v <= 0) return "";
-  return `${v} km/s`;
+  return `${v} km/sa`;
 }
 
 function getRouteTitleSafe(model) {
@@ -265,21 +229,30 @@ function getRouteTitleSafe(model) {
 
 function getRouteRatingLabelSafe(model) {
   const m = model || {};
-
   if (m.ratingSum != null && m.ratingCount != null) {
     const avg = calcAvg(m.ratingSum, m.ratingCount);
     const cnt = Number(m.ratingCount) || 0;
     return `${avg} ★ (${cnt})`;
   }
-
   const avg =
-    (typeof m.ratingAvg === "number" && Number.isFinite(m.ratingAvg) && m.ratingAvg) ||
-    (typeof m.avgRating === "number" && Number.isFinite(m.avgRating) && m.avgRating) ||
+    (typeof m.ratingAvg === "number" &&
+      Number.isFinite(m.ratingAvg) &&
+      m.ratingAvg) ||
+    (typeof m.avgRating === "number" &&
+      Number.isFinite(m.avgRating) &&
+      m.avgRating) ||
+    (typeof m.raw?.ratingAvg === "number" &&
+      Number.isFinite(m.raw.ratingAvg) &&
+      m.raw.ratingAvg) ||
     null;
 
   const cnt =
-    (typeof m.ratingCount === "number" && Number.isFinite(m.ratingCount) && m.ratingCount) ||
-    (typeof m.rating?.count === "number" && Number.isFinite(m.rating.count) && m.rating.count) ||
+    (typeof m.ratingCount === "number" &&
+      Number.isFinite(m.ratingCount) &&
+      m.ratingCount) ||
+    (typeof m.raw?.ratingCount === "number" &&
+      Number.isFinite(m.raw.ratingCount) &&
+      m.raw.ratingCount) ||
     null;
 
   if (typeof avg === "number") {
@@ -287,11 +260,9 @@ function getRouteRatingLabelSafe(model) {
     if (typeof cnt === "number") return `${avgText} ★ (${Number(cnt) || 0})`;
     return `${avgText} ★`;
   }
-
   return "—";
 }
 
-// Paylaşım için rota payload’unu zenginleştir
 function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
   const r = { ...(routeDoc || {}), id: routeId };
   if (ownerDoc) {
@@ -302,27 +273,35 @@ function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
       ownerDoc.name ||
       r.ownerUsername ||
       r.ownerName;
-    r.ownerName =
-      ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
+    r.ownerName = ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
     r.ownerAvatar =
-      ownerDoc.photoURL ||
-      ownerDoc.profilFoto ||
-      ownerDoc.avatar ||
-      r.ownerAvatar;
+      ownerDoc.photoURL || ownerDoc.profilFoto || ownerDoc.avatar || r.ownerAvatar;
   }
   return r;
 }
 
-/* ======================= Lightbox (inline) ======================= */
 function Lightbox({ items = [], index = 0, onClose = () => {} }) {
-  const [i, setI] = useState(
-    Math.min(Math.max(0, index), Math.max(0, items.length - 1))
+  const clamp = useCallback(
+    (v) => {
+      const max = Math.max(0, items.length - 1);
+      return Math.min(Math.max(0, Number(v) || 0), max);
+    },
+    [items.length]
   );
+
+  const [i, setI] = useState(() => clamp(index));
+
+  // index/state senkronu (açılışta + sonradan prop değişiminde garanti)
+  useEffect(() => {
+    setI(clamp(index));
+  }, [index, clamp]);
+
   const goPrev = useCallback(() => setI((p) => Math.max(0, p - 1)), []);
   const goNext = useCallback(
     () => setI((p) => Math.min(items.length - 1, p + 1)),
     [items.length]
   );
+
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
@@ -332,8 +311,10 @@ function Lightbox({ items = [], index = 0, onClose = () => {} }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [goPrev, goNext, onClose]);
+
   if (!items.length) return null;
   const cur = items[i];
+
   const overlay = {
     position: "fixed",
     inset: 0,
@@ -370,6 +351,7 @@ function Lightbox({ items = [], index = 0, onClose = () => {} }) {
     fontSize: 18,
     cursor: "pointer",
   };
+
   return (
     <div style={overlay} onMouseDown={onClose}>
       <button
@@ -403,25 +385,14 @@ function Lightbox({ items = [], index = 0, onClose = () => {} }) {
           ›
         </button>
       )}
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{ maxWidth: "92vw", maxHeight: "86vh" }}
-      >
+      <div onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: "92vw", maxHeight: "86vh" }}>
         {cur.type === "video" ? (
-          <video
-            src={cur.url}
-            controls
-            style={{ maxWidth: "92vw", maxHeight: "86vh" }}
-          />
+          <video src={cur.url} controls style={{ maxWidth: "92vw", maxHeight: "86vh" }} />
         ) : (
           <img
             src={cur.url}
             alt={cur.title || "media"}
-            style={{
-              maxWidth: "92vw",
-              maxHeight: "86vh",
-              objectFit: "contain",
-            }}
+            style={{ maxWidth: "92vw", maxHeight: "86vh", objectFit: "contain" }}
           />
         )}
       </div>
@@ -429,7 +400,6 @@ function Lightbox({ items = [], index = 0, onClose = () => {} }) {
   );
 }
 
-/* ======================= StarBars (inline) ======================= */
 function StarBars({
   counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
   total = 0,
@@ -461,13 +431,7 @@ function StarBars({
         {rows.map((r) => (
           <div key={r} style={rowCss}>
             {!compact && <div style={{ fontSize: 12, opacity: 0.7 }}>{r}★</div>}
-            <div
-              style={{
-                background: "#e5e7eb",
-                borderRadius: 999,
-                overflow: "hidden",
-              }}
-            >
+            <div style={{ background: "#e5e7eb", borderRadius: 999, overflow: "hidden" }}>
               <div style={barStyle(r)} />
             </div>
             {!compact && showNumbers && (
@@ -479,15 +443,12 @@ function StarBars({
         ))}
       </div>
       {!compact && (
-        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-          Toplam: {total}
-        </div>
+        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>Toplam: {total}</div>
       )}
     </div>
   );
 }
 
-/* ======================= Ratings Aggregation (inline) ======================= */
 async function getRouteStarsAgg(routeId, max = 1000) {
   const col = collection(db, "route_ratings");
   const q = query(col, where("routeId", "==", routeId), qlimit(Math.max(1, max)));
@@ -536,7 +497,6 @@ async function getStopsStarsAgg(routeId, max = 1000) {
   return map;
 }
 
-/* ======================= Media Upload/List (inline) ======================= */
 function sanitizeName(name = "") {
   return name.replace(/[^\w.-]+/g, "_").slice(0, 120);
 }
@@ -587,6 +547,7 @@ function readVideoDims(fileOrBlob) {
     }
   });
 }
+
 async function uploadStopMediaInline({ routeId, stopId, file, onProgress, signal }) {
   if (!routeId || !stopId || !file) throw new Error("Eksik parametre");
   const u = auth.currentUser;
@@ -599,7 +560,6 @@ async function uploadStopMediaInline({ routeId, stopId, file, onProgress, signal
   let toUpload = file;
   let dims = { w: 0, h: 0 };
 
-  // compress (opsiyonel)
   if (isImage) {
     try {
       const mod = await import("browser-image-compression");
@@ -609,9 +569,7 @@ async function uploadStopMediaInline({ routeId, stopId, file, onProgress, signal
         maxSizeMB: 8,
         useWebWorker: true,
       });
-    } catch {
-      /* yoksa orijinali yükleriz */
-    }
+    } catch {}
     dims = await readImageDims(toUpload);
   } else {
     dims = await readVideoDims(toUpload);
@@ -670,7 +628,6 @@ async function uploadStopMediaInline({ routeId, stopId, file, onProgress, signal
   return { id: docRef.id, ...payload, url };
 }
 
-// 🔧 DÜZELTME: Listelemede hata yutma yok; izin/indeks hatasını UI’ya yansıtacağız
 async function listStopMediaInline({ routeId, stopId, limit = 50 }) {
   const mediaCol = collection(db, "routes", routeId, "stops", stopId, "media");
   const q = query(
@@ -693,82 +650,88 @@ async function listStopMediaInline({ routeId, stopId, limit = 50 }) {
   }
 }
 
-/* ======================= ANA BİLEŞEN ======================= */
 export default function RouteDetailMobile({
   routeId,
   initialRoute = null,
   source = null,
+  followInitially = false, // EMİR 2: ?follow=1 ipucu
   onClose = () => {},
 }) {
-  // ADIM 31: Sekmeler: "stops" | "gallery" | "report" | "comments" + URL ?tab=
   const [tab, setTab] = useState(() => {
     if (typeof window === "undefined") return "stops";
     try {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t === "gallery" || t === "report" || t === "comments" || t === "stops") {
-        return t === "stops" ? "stops" : t;
-      }
-    } catch {
-      // ignore URL issues
-    }
+      if (t === "gallery" || t === "report" || t === "comments" || t === "stops") return t;
+    } catch {}
     return "stops";
   });
 
-  // ADIM 31: Sekme değişiminde URL ?tab= güncelle
   const onTabChange = useCallback((nextTab) => {
     setTab(nextTab);
     if (typeof window === "undefined") return;
     try {
       const url = new URL(window.location.href);
-      if (!nextTab || nextTab === "stops") {
-        url.searchParams.delete("tab");
-      } else {
-        url.searchParams.set("tab", nextTab);
-      }
+      if (!nextTab || nextTab === "stops") url.searchParams.delete("tab");
+      else url.searchParams.set("tab", nextTab);
       window.history.replaceState(window.history.state, "", url.toString());
-    } catch {
-      // history hataları UI'yı bozmasın
-    }
+    } catch {}
   }, []);
 
-  // ADIM 31: Yorum sayacı (sekme etiketi için)
   const [commentsCount, setCommentsCount] = useState(null);
 
   const [routeDoc, setRouteDoc] = useState(null);
-  const [stops, setStops] = useState([]); // [{id, order, title, note, lat,lng,t}]
+  const [stops, setStops] = useState([]);
   const [owner, setOwner] = useState(null);
-  const [permError, setPermError] = useState(null); // followers/private → 403 mesajı için
+  const [permError, setPermError] = useState(null);
 
-  // Medya cache: { stopId: { items:[], __loadedThumbs:boolean, __error?:string } }
+  const [permCheckTick, setPermCheckTick] = useState(0);
+  const [reloadTick, setReloadTick] = useState(0);
+
   const mediaCacheRef = useRef({});
-  const [mediaTick, setMediaTick] = useState(0); // 🔧 useMemo bağımlılığı için
+  const [mediaTick, setMediaTick] = useState(0);
 
-  // Lightbox state (galeri)
-  const [lightboxItems, setLightboxItems] = useState(null); // [{url,type}]
+  const [lightboxItems, setLightboxItems] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
-  // Görsel paylaşım sheet görünürlüğü
   const [showShareSheet, setShowShareSheet] = useState(false);
 
-  // Rating dağılımı (rapor sekmesinde lazy)
-  const [routeAgg, setRouteAgg] = useState(null); // {counts,total,avg}
-  const [stopAgg, setStopAgg] = useState(null); // {stopId:{counts,total,avg}}
-
-  // Upload progress (stopId: {p:0-100, abort:AbortController})
+  const [routeAgg, setRouteAgg] = useState(null);
+  const [stopAgg, setStopAgg] = useState(null);
   const [uploadState, setUploadState] = useState({});
 
-  // Google Maps
-  const { gmapsStatus, mapDivRef, mapRef } = useGoogleMaps({
-    API_KEY,
-    MAP_ID,
-  });
-
-  // Haritaya polyline & durak markerları
+  const { gmapsStatus, mapDivRef, mapRef } = useGoogleMaps({ API_KEY, MAP_ID });
   const polylineRef = useRef(null);
   const stopMarkersRef = useRef([]);
 
-  /* ========== İzin (403 / not-found) kontrolü ========== */
+  const clearMapArtifacts = useCallback(() => {
+    try {
+      stopMarkersRef.current.forEach((m) => {
+        try {
+          m.setMap(null);
+        } catch {}
+      });
+    } catch {}
+    stopMarkersRef.current = [];
+
+    try {
+      if (polylineRef.current) {
+        try {
+          polylineRef.current.setMap(null);
+        } catch {}
+      }
+    } catch {}
+    polylineRef.current = null;
+  }, []);
+
+  // route değişiminde / unmount'ta harita objelerini temizle
+  useEffect(() => {
+    return () => {
+      clearMapArtifacts();
+    };
+  }, [routeId, clearMapArtifacts]);
+
+  // İzin / 404 kontrolü (UI RouteDetailMobile’da)
   useEffect(() => {
     if (!routeId) {
       setPermError(null);
@@ -780,11 +743,8 @@ export default function RouteDetailMobile({
       try {
         const s = await getDoc(doc(db, "routes", routeId));
         if (!alive) return;
-        if (!s.exists()) {
-          setPermError("not-found");
-        } else {
-          setPermError(null);
-        }
+        if (!s.exists()) setPermError("not-found");
+        else setPermError(null);
       } catch (e) {
         const code = String(e?.code || e?.message || "");
         if (!alive) return;
@@ -798,18 +758,21 @@ export default function RouteDetailMobile({
     return () => {
       alive = false;
     };
-  }, [routeId]);
+  }, [routeId, permCheckTick]);
 
-  // ADIM 31: Route yorum sayısı için gerçek zamanlı izleme
+  const retryPermCheck = useCallback(() => {
+    setPermError(null);
+    setPermCheckTick((x) => x + 1);
+    setReloadTick((x) => x + 1);
+  }, []);
+
   useEffect(() => {
     if (!routeId) return;
     let unsubscribe;
     try {
       unsubscribe = watchCommentsCount(
         { targetType: "route", targetId: routeId },
-        (cnt) => {
-          setCommentsCount(typeof cnt === "number" ? cnt : 0);
-        }
+        (cnt) => setCommentsCount(typeof cnt === "number" ? cnt : 0)
       );
     } catch (e) {
       if (process.env.NODE_ENV !== "production") {
@@ -824,9 +787,8 @@ export default function RouteDetailMobile({
         } catch {}
       }
     };
-  }, [routeId]);
+  }, [routeId, reloadTick]);
 
-  /* ========== Veri izleme ========== */
   useEffect(() => {
     if (!routeId) return;
     let offRoute = () => {};
@@ -834,14 +796,11 @@ export default function RouteDetailMobile({
 
     offRoute = watchRoute(routeId, async (d) => {
       setRouteDoc(d);
-      // owner cache
       if (d?.ownerId) {
         try {
           const u = await getDoc(doc(db, "users", d.ownerId));
           if (u.exists()) setOwner({ id: u.id, ...u.data() });
-        } catch {
-          /* noop */
-        }
+        } catch {}
       }
     });
 
@@ -858,9 +817,8 @@ export default function RouteDetailMobile({
         offStops();
       } catch {}
     };
-  }, [routeId]);
+  }, [routeId, reloadTick]);
 
-  /* ========== Haritayı çiz ========== */
   useEffect(() => {
     if (gmapsStatus !== "ready" || !mapRef.current) return;
     const map = mapRef.current;
@@ -876,12 +834,19 @@ export default function RouteDetailMobile({
           strokeWeight: 4,
         });
       }
-      const path = (routeDoc?.path || []).map((p) => new window.google.maps.LatLng(p.lat, p.lng));
-      polylineRef.current.setPath(path);
 
-      if (path.length) {
+      const pts = [];
+      (routeDoc?.path || []).forEach((p) => {
+        const ll = getValidLatLng(p?.lat, p?.lng);
+        if (!ll) return;
+        pts.push(new window.google.maps.LatLng(ll.lat, ll.lng));
+      });
+
+      polylineRef.current.setPath(pts);
+
+      if (pts.length) {
         const b = new window.google.maps.LatLngBounds();
-        path.forEach((pt) => b.extend(pt));
+        pts.forEach((pt) => b.extend(pt));
         map.fitBounds(b, 40);
       }
 
@@ -893,35 +858,35 @@ export default function RouteDetailMobile({
       stopMarkersRef.current = [];
 
       (stops || []).forEach((s) => {
+        const ll = getValidLatLng(s?.lat, s?.lng);
+        if (!ll) return; // lat/lng bozuksa marker üretme
         try {
           const mk = new window.google.maps.Marker({
-            position: { lat: s.lat, lng: s.lng },
+            position: { lat: ll.lat, lng: ll.lng },
             map,
             title: s.title || `Durak ${s.order || ""}`,
           });
           stopMarkersRef.current.push(mk);
         } catch {}
       });
-    } catch {
-      /* noop */
-    }
+    } catch {}
   }, [gmapsStatus, mapRef, routeDoc?.path, stops]);
 
-  /* ========== Medya küçük şeridi için 4'lü liste (lazy) ========== */
   const ensureStopThumbs = useCallback(
     async (stopId) => {
       if (!routeId || !stopId) return;
-      // Hata yaşanmışsa tekrar denemeye izin ver (loaded flag'i hatada set etmiyoruz)
       if (mediaCacheRef.current[stopId]?.__loadedThumbs) return;
+
       const { items, error } = await listStopMediaInline({
         routeId,
         stopId,
         limit: 4,
       });
+
       mediaCacheRef.current[stopId] = {
         ...(mediaCacheRef.current[stopId] || {}),
         items,
-        __loadedThumbs: !error, // yalnız başarıda lockla
+        __loadedThumbs: !error,
         ...(error ? { __error: error } : { __error: null }),
       };
       setMediaTick((x) => x + 1);
@@ -929,7 +894,6 @@ export default function RouteDetailMobile({
     [routeId]
   );
 
-  /* 🔧 DÜZELTME: İlk yüklemede (yenile sonrası) 6 durağa kadar otomatik preload */
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -944,7 +908,6 @@ export default function RouteDetailMobile({
     };
   }, [stops, ensureStopThumbs]);
 
-  /* ========== Galeri sekmesi için tüm medyayı topla (lazy) ========== */
   const [galleryLoaded, setGalleryLoaded] = useState(false);
   const galleryItems = useMemo(() => {
     const arr = [];
@@ -953,7 +916,7 @@ export default function RouteDetailMobile({
       items.forEach((it) => arr.push({ ...it, stopId: sid }));
     });
     return arr.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-  }, [mediaTick, galleryLoaded]); // 🔧 mediaTick ile güncellenir
+  }, [mediaTick, galleryLoaded]);
 
   const loadAllGallery = useCallback(async () => {
     if (galleryLoaded) return;
@@ -973,7 +936,6 @@ export default function RouteDetailMobile({
     setMediaTick((x) => x + 1);
   }, [galleryLoaded, routeId, stops]);
 
-  /* ========== Rapor sekmesi verileri (lazy) ========== */
   const [reportLoaded, setReportLoaded] = useState(false);
   const loadReportAgg = useCallback(async () => {
     if (reportLoaded || !routeId) return;
@@ -986,7 +948,6 @@ export default function RouteDetailMobile({
     setReportLoaded(true);
   }, [reportLoaded, routeId]);
 
-  /* ========== Medya Ekle ========== */
   const onPickMedia = useCallback(
     async (stopId) => {
       if (!auth.currentUser || !routeDoc) return;
@@ -1052,26 +1013,18 @@ export default function RouteDetailMobile({
     [uploadState]
   );
 
-  /* ========== Link Paylaşımı ========== */
   const onShare = useCallback(async () => {
-    const url = `${window.location.origin}/s/r/${routeId}`; // 🔧 SSR share URL
+    const url = `${window.location.origin}/s/r/${routeId}`;
     const title = getRouteTitleSafe(routeDoc || initialRoute);
     try {
       if (navigator.share) await navigator.share({ url, title, text: title });
       else {
         await navigator.clipboard.writeText(url);
-        // eslint-disable-next-line no-alert
         alert("Bağlantı kopyalandı");
       }
     } catch {}
   }, [routeId, routeDoc, initialRoute]);
 
-  /* ========== Görsel Paylaşımı ========== */
-  const onShareVisual = useCallback(() => {
-    setShowShareSheet(true);
-  }, []);
-
-  /* ========== GPX ========== */
   const onExportGpx = useCallback(async () => {
     try {
       const xml = buildGpx({
@@ -1086,15 +1039,13 @@ export default function RouteDetailMobile({
         .replace(/^-|-$/g, "");
       const y = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       downloadGpx(xml, `route-${slug || "route"}-${y}.gpx`);
-    } catch (e) {
-      // eslint-disable-next-line no-alert
+    } catch {
       alert("GPX oluşturulamadı");
     }
   }, [routeDoc, stops]);
 
-  /* ========== Rating handlers ========== */
-  const canRateRoute =
-    auth.currentUser && routeDoc && auth.currentUser.uid !== routeDoc.ownerId;
+  const canRateRoute = auth.currentUser && routeDoc && auth.currentUser.uid !== routeDoc.ownerId;
+
   const onRouteRate = useCallback(
     async (v) => {
       if (!canRateRoute) return;
@@ -1108,7 +1059,7 @@ export default function RouteDetailMobile({
   const onStopRate = useCallback(
     async (stopId, v) => {
       if (!auth.currentUser || !routeDoc) return;
-      if (auth.currentUser.uid === routeDoc.ownerId) return; // sahibi oy veremez
+      if (auth.currentUser.uid === routeDoc.ownerId) return;
       try {
         await setStopRating(stopId, routeId, v);
       } catch {}
@@ -1116,13 +1067,11 @@ export default function RouteDetailMobile({
     [routeId, routeDoc]
   );
 
-  /* ========== Sekme Lazy yüklemeleri ========== */
   useEffect(() => {
     if (tab === "gallery") loadAllGallery();
     if (tab === "report") loadReportAgg();
   }, [tab, loadAllGallery, loadReportAgg]);
 
-  // ESC: önce lightbox varsa onu, yoksa sheet’i kapat
   useEffect(() => {
     const handler = (e) => {
       if (e.key === "Escape") {
@@ -1137,20 +1086,13 @@ export default function RouteDetailMobile({
     return () => document.removeEventListener("keydown", handler);
   }, [onClose, lightboxItems]);
 
-  /* ========== UI ========== */
   const routeModel = routeDoc || initialRoute;
 
-  const isOwner =
-    auth.currentUser && routeDoc && auth.currentUser.uid === routeDoc.ownerId;
+  const isOwner = auth.currentUser && routeDoc && auth.currentUser.uid === routeDoc.ownerId;
 
-  const ratingAvgLabel = useMemo(() => {
-    return getRouteRatingLabelSafe(routeModel);
-  }, [routeDoc, initialRoute]); // routeModel derive
+  const ratingAvgLabel = useMemo(() => getRouteRatingLabelSafe(routeModel), [routeDoc, initialRoute]);
 
-  const stats = useMemo(() => (routeModel ? buildStatsFromRoute(routeModel) : null), [
-    routeDoc,
-    initialRoute,
-  ]);
+  const stats = useMemo(() => (routeModel ? buildStatsFromRoute(routeModel) : null), [routeDoc, initialRoute]);
 
   const { key: audienceKey, label: audienceLabel } = useMemo(
     () => getAudienceFromRoute(routeModel || {}),
@@ -1180,28 +1122,21 @@ export default function RouteDetailMobile({
     { label: "Süre", value: durationText || "—" },
     {
       label: "Ort. hız",
-      value: stats && stats.avgSpeedKmh ? `${stats.avgSpeedKmh} km/s` : "—",
+      value: stats && stats.avgSpeedKmh ? `${stats.avgSpeedKmh} km/sa` : "—",
     },
     {
       label: "Durak",
-      value:
-        stopsText || ((stops || []).length ? `${(stops || []).length} durak` : "—"),
+      value: stopsText || ((stops || []).length ? `${(stops || []).length} durak` : "—"),
     },
   ];
 
-  // Rapor sekmesi: top 3 durak
   let topStops = [];
   if (stopAgg && stops && stops.length) {
     topStops = stops
       .map((s) => {
         const agg = stopAgg[s.id] || { total: 0, avg: 0 };
         const mediaCount = mediaCacheRef.current[s.id]?.items?.length || 0;
-        return {
-          stop: s,
-          total: agg.total,
-          avg: agg.avg,
-          mediaCount,
-        };
+        return { stop: s, total: agg.total, avg: agg.avg, mediaCount };
       })
       .sort((a, b) => {
         if ((b.avg || 0) !== (a.avg || 0)) return (b.avg || 0) - (a.avg || 0);
@@ -1211,11 +1146,9 @@ export default function RouteDetailMobile({
       .slice(0, 3);
   }
 
-  const handleBackdropClick = useCallback(() => {
-    onClose();
-  }, [onClose]);
+  const handleBackdropClick = useCallback(() => onClose(), [onClose]);
 
-  const renderSimpleSheet = (message) => (
+  const renderSimpleSheet = (message, extraBody = null) => (
     <div className="route-detail-backdrop" onClick={handleBackdropClick}>
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
@@ -1229,6 +1162,7 @@ export default function RouteDetailMobile({
         <div className="route-detail-body">
           <div className="route-detail-tabpanel">
             <div style={{ fontSize: 14, padding: "8px 4px" }}>{message}</div>
+            {extraBody}
           </div>
         </div>
         <div className="route-detail-footer">
@@ -1240,13 +1174,85 @@ export default function RouteDetailMobile({
     </div>
   );
 
+  // EMİR 2 + EMİR 4: Forbidden sheet → “Profili aç” + “Yeniden dene”
+  const renderForbiddenSheet = () => {
+    const ownerId = routeDoc?.ownerId || initialRoute?.ownerId || null;
+    const msg = followInitially
+      ? "Bu rota takipçilere açık veya özel. Profili açıp takip etmeyi deneyebilirsin."
+      : "Bu rota yalnızca takipçilere açık veya özeldir.";
+
+    const cta = (
+      <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+        {ownerId ? (
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("open-profile-modal", { detail: { userId: ownerId } })
+                );
+              } catch {}
+            }}
+            style={{
+              flex: 1,
+              borderRadius: 12,
+              border: "1px solid #111",
+              background: "#111",
+              color: "#fff",
+              padding: "12px 12px",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            Profili aç
+          </button>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={retryPermCheck}
+          style={{
+            flex: 1,
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "#fff",
+            color: "#111",
+            padding: "12px 12px",
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          Yeniden dene
+        </button>
+
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            flex: 1,
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "#fff",
+            color: "#111",
+            padding: "12px 12px",
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          Kapat
+        </button>
+      </div>
+    );
+
+    return renderSimpleSheet(msg, cta);
+  };
+
   const renderPrefillSheet = () => {
     const title = getRouteTitleSafe(routeModel);
     return (
       <div className="route-detail-backdrop" onClick={handleBackdropClick}>
         <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
           <div className="route-detail-grab" />
-
           <div className="route-detail-header">
             <div className="route-detail-header-top">
               <div className="route-detail-header-main">
@@ -1256,8 +1262,7 @@ export default function RouteDetailMobile({
                 {audienceLabel && (
                   <span
                     className={
-                      "route-detail-chip" +
-                      (audienceKey ? ` route-detail-chip--${audienceKey}` : "")
+                      "route-detail-chip" + (audienceKey ? ` route-detail-chip--${audienceKey}` : "")
                     }
                   >
                     {audienceLabel}
@@ -1266,9 +1271,7 @@ export default function RouteDetailMobile({
               </div>
               <div className="route-detail-header-rating">{ratingAvgLabel}</div>
             </div>
-
             {metaLine && <div className="route-detail-meta">{metaLine}</div>}
-
             <div className="route-detail-header-actions">
               <button
                 type="button"
@@ -1280,13 +1283,11 @@ export default function RouteDetailMobile({
               </button>
             </div>
           </div>
-
           <div className="route-detail-body">
             <div className="route-detail-tabpanel">
               <div style={{ fontSize: 14, padding: "8px 4px" }}>Rota yükleniyor…</div>
             </div>
           </div>
-
           <div className="route-detail-footer">
             <button type="button" className="route-detail-close-btn" onClick={onClose}>
               Kapat
@@ -1297,26 +1298,11 @@ export default function RouteDetailMobile({
     );
   };
 
-  if (!routeId) {
-    return renderSimpleSheet("Rota bulunamadı.");
-  }
-
-  // İzin reddi: followers/private ve kullanıcı takip etmiyor → 403 uyarısı
-  if (permError === "forbidden") {
-    return renderSimpleSheet("Bu rota yalnızca takipçilere açık veya özeldir.");
-  }
-
-  if (permError === "not-found") {
-    return renderSimpleSheet("Rota bulunamadı.");
-  }
-
-  if (!routeDoc && initialRoute) {
-    return renderPrefillSheet();
-  }
-
-  if (!routeDoc) {
-    return renderSimpleSheet("Rota yükleniyor…");
-  }
+  if (!routeId) return renderSimpleSheet("Rota bulunamadı.");
+  if (permError === "forbidden") return renderForbiddenSheet();
+  if (permError === "not-found") return renderSimpleSheet("Rota bulunamadı.");
+  if (!routeDoc && initialRoute) return renderPrefillSheet();
+  if (!routeDoc) return renderSimpleSheet("Rota yükleniyor…");
 
   const title = getRouteTitleSafe(routeModel);
 
@@ -1325,7 +1311,6 @@ export default function RouteDetailMobile({
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
-        {/* Başlık */}
         <div className="route-detail-header">
           <div className="route-detail-header-top">
             <div className="route-detail-header-main">
@@ -1335,8 +1320,7 @@ export default function RouteDetailMobile({
               {audienceLabel && (
                 <span
                   className={
-                    "route-detail-chip" +
-                    (audienceKey ? ` route-detail-chip--${audienceKey}` : "")
+                    "route-detail-chip" + (audienceKey ? ` route-detail-chip--${audienceKey}` : "")
                   }
                 >
                   {audienceLabel}
@@ -1345,7 +1329,9 @@ export default function RouteDetailMobile({
             </div>
             <div className="route-detail-header-rating">{ratingAvgLabel}</div>
           </div>
+
           {metaLine && <div className="route-detail-meta">{metaLine}</div>}
+
           <div className="route-detail-header-actions">
             <button type="button" className="route-detail-pill-btn" onClick={onShare}>
               Paylaş
@@ -1353,7 +1339,7 @@ export default function RouteDetailMobile({
             <button
               type="button"
               className="route-detail-pill-btn"
-              onClick={onShareVisual}
+              onClick={() => setShowShareSheet(true)}
             >
               Görsel Paylaş
             </button>
@@ -1372,24 +1358,17 @@ export default function RouteDetailMobile({
         </div>
 
         <div className="route-detail-body">
-          {/* HARİTA */}
           <div className="route-detail-map">
             <div ref={mapDivRef} className="route-detail-map-inner" />
-            {gmapsStatus === "error" && (
-              <div className="route-detail-map-error">Harita yüklenemedi</div>
-            )}
+            {gmapsStatus === "error" && <div className="route-detail-map-error">Harita yüklenemedi</div>}
           </div>
-          <div className="route-detail-map-note">
-            Harita önizlemesi bir sonraki adımda geliştirilecek.
-          </div>
+          <div className="route-detail-map-note">Harita önizlemesi bir sonraki adımda geliştirilecek.</div>
 
-          {/* Rota genel rating */}
           <div className="route-detail-rate-row">
             <div className="route-detail-rate-label">Puanla:</div>
             <StarRatingV2 onRated={(v) => onRouteRate(v)} size={32} disabled={!canRateRoute} />
           </div>
 
-          {/* Sekmeler */}
           <div className="route-detail-tabs">
             {["stops", "gallery", "report", "comments"].map((key) => {
               let label;
@@ -1397,10 +1376,7 @@ export default function RouteDetailMobile({
               else if (key === "gallery") label = "Galeri";
               else if (key === "report") label = "Rapor";
               else if (key === "comments") {
-                label =
-                  commentsCount && commentsCount > 0
-                    ? `Yorumlar (${commentsCount})`
-                    : "Yorumlar";
+                label = commentsCount && commentsCount > 0 ? `Yorumlar (${commentsCount})` : "Yorumlar";
               }
               return (
                 <button
@@ -1408,8 +1384,7 @@ export default function RouteDetailMobile({
                   type="button"
                   onClick={() => onTabChange(key)}
                   className={
-                    "route-detail-tab-button" +
-                    (tab === key ? " route-detail-tab-button--active" : "")
+                    "route-detail-tab-button" + (tab === key ? " route-detail-tab-button--active" : "")
                   }
                 >
                   {label}
@@ -1418,7 +1393,6 @@ export default function RouteDetailMobile({
             })}
           </div>
 
-          {/* İçerik */}
           <div className="route-detail-tabpanel">
             {tab === "stops" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1427,10 +1401,15 @@ export default function RouteDetailMobile({
                   const media = cache.items || [];
                   const up = uploadState[s.id];
                   const hadPermErr = cache.__error && cache.__error.includes("permission");
+
                   return (
                     <div
                       key={s.id}
-                      style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}
+                      style={{
+                        border: "1px solid #eee",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                      }}
                     >
                       <div
                         style={{
@@ -1447,11 +1426,10 @@ export default function RouteDetailMobile({
                             {s.title || `Durak ${s.order || ""}`}
                           </div>
                           {s.note && (
-                            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
-                              {s.note}
-                            </div>
+                            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{s.note}</div>
                           )}
                         </div>
+
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           {stopAgg && stopAgg[s.id] && (
                             <div style={{ minWidth: 120 }}>
@@ -1464,11 +1442,9 @@ export default function RouteDetailMobile({
                               />
                             </div>
                           )}
-                          <StarRatingV2
-                            onRated={(v) => onStopRate(s.id, v)}
-                            size={22}
-                            disabled={isOwner}
-                          />
+
+                          <StarRatingV2 onRated={(v) => onStopRate(s.id, v)} size={22} disabled={isOwner} />
+
                           {isOwner && (
                             <button
                               type="button"
@@ -1488,7 +1464,6 @@ export default function RouteDetailMobile({
                         </div>
                       </div>
 
-                      {/* Medya şeridi (ilk 4) */}
                       <div
                         onMouseEnter={() => ensureStopThumbs(s.id)}
                         onTouchStart={() => ensureStopThumbs(s.id)}
@@ -1503,8 +1478,8 @@ export default function RouteDetailMobile({
                           <div
                             key={m.id}
                             onClick={() => {
-                              setLightboxItems(media.map((x) => ({ url: x.url, type: x.type })));
                               setLightboxIndex(idx);
+                              setLightboxItems(media.map((x) => ({ url: x.url, type: x.type })));
                             }}
                             style={{
                               width: 76,
@@ -1521,21 +1496,13 @@ export default function RouteDetailMobile({
                               <video
                                 src={m.url}
                                 muted
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                }}
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
                               />
                             ) : (
                               <img
                                 src={m.url}
                                 alt="media"
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                }}
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
                               />
                             )}
                           </div>
@@ -1547,7 +1514,6 @@ export default function RouteDetailMobile({
                         )}
                       </div>
 
-                      {/* Upload progress */}
                       {up && (
                         <div style={{ padding: "0 10px 10px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1560,17 +1526,9 @@ export default function RouteDetailMobile({
                                 overflow: "hidden",
                               }}
                             >
-                              <div
-                                style={{
-                                  width: `${up.p || 0}%`,
-                                  height: "100%",
-                                  background: "#1a73e8",
-                                }}
-                              />
+                              <div style={{ width: `${up.p || 0}%`, height: "100%", background: "#1a73e8" }} />
                             </div>
-                            <div style={{ fontSize: 12, width: 36, textAlign: "right" }}>
-                              {up.p || 0}%
-                            </div>
+                            <div style={{ fontSize: 12, width: 36, textAlign: "right" }}>{up.p || 0}%</div>
                             <button
                               type="button"
                               onClick={() => cancelUpload(s.id)}
@@ -1589,6 +1547,7 @@ export default function RouteDetailMobile({
                     </div>
                   );
                 })}
+
                 {(stops || []).length === 0 && (
                   <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>
                     Bu rotada durak yok.
@@ -1604,19 +1563,13 @@ export default function RouteDetailMobile({
                     Galeri yükleniyor…
                   </div>
                 )}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
-                    gap: 6,
-                  }}
-                >
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                   {galleryItems.map((m, idx) => (
                     <div
                       key={`${m.stopId}_${m.id}`}
                       onClick={() => {
-                        setLightboxItems(galleryItems.map((x) => ({ url: x.url, type: x.type })));
                         setLightboxIndex(idx);
+                        setLightboxItems(galleryItems.map((x) => ({ url: x.url, type: x.type })));
                       }}
                       style={{
                         width: "100%",
@@ -1628,17 +1581,9 @@ export default function RouteDetailMobile({
                       }}
                     >
                       {m.type === "video" ? (
-                        <video
-                          src={m.url}
-                          muted
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
+                        <video src={m.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       ) : (
-                        <img
-                          src={m.url}
-                          alt="media"
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
+                        <img src={m.url} alt="media" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       )}
                     </div>
                   ))}
@@ -1653,7 +1598,6 @@ export default function RouteDetailMobile({
 
             {tab === "report" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {/* KPI Şeridi */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                   {kpis.map((k) => (
                     <div
@@ -1664,7 +1608,6 @@ export default function RouteDetailMobile({
                       <div style={{ fontWeight: 800, fontSize: 16, marginTop: 2 }}>{k.value}</div>
                     </div>
                   ))}
-                  {/* Medya KPI: toplam medya sayısı */}
                   <div style={{ border: "1px solid #eee", borderRadius: 10, padding: "10px 12px" }}>
                     <div style={{ fontSize: 12, opacity: 0.7 }}>Medya</div>
                     <div style={{ fontWeight: 800, fontSize: 16, marginTop: 2 }}>
@@ -1676,36 +1619,21 @@ export default function RouteDetailMobile({
                   </div>
                 </div>
 
-                {/* Rota yıldız dağılımı */}
                 <div style={{ border: "1px solid #eee", borderRadius: 10, padding: "12px 12px" }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "baseline",
-                    }}
-                  >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                     <div style={{ fontWeight: 800 }}>Yıldız dağılımı (rota)</div>
                     <div style={{ fontSize: 12, opacity: 0.75 }}>
                       Ort: {routeAgg ? routeAgg.avg.toFixed(1) : "—"} • Oy: {routeAgg ? routeAgg.total : "—"}
                     </div>
                   </div>
                   <div style={{ marginTop: 10 }}>
-                    <StarBars
-                      counts={
-                        routeAgg?.counts || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
-                      }
-                      total={routeAgg?.total || 0}
-                    />
+                    <StarBars counts={routeAgg?.counts || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }} total={routeAgg?.total || 0} />
                   </div>
                 </div>
 
-                {/* En çok beğenilen 3 durak */}
                 <div style={{ border: "1px solid #eee", borderRadius: 10, padding: "12px 12px" }}>
                   <div style={{ fontWeight: 800, marginBottom: 8 }}>En çok beğenilen 3 durak</div>
-                  {topStops.length === 0 && (
-                    <div style={{ fontSize: 13, opacity: 0.7 }}>Veri yok.</div>
-                  )}
+                  {topStops.length === 0 && <div style={{ fontSize: 13, opacity: 0.7 }}>Veri yok.</div>}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {topStops.map((it, i) => (
                       <div
@@ -1744,7 +1672,6 @@ export default function RouteDetailMobile({
         </div>
       </div>
 
-      {/* Görsel Paylaşım Sheet (overlay) */}
       {showShareSheet && (
         <div className="route-detail-share-overlay">
           <ShareSheetMobile
@@ -1755,7 +1682,6 @@ export default function RouteDetailMobile({
         </div>
       )}
 
-      {/* ADIM 31: Yorumlar Paneli (route) */}
       <CommentsPanel
         open={tab === "comments"}
         targetType="route"
@@ -1764,7 +1690,6 @@ export default function RouteDetailMobile({
         onClose={() => onTabChange("stops")}
       />
 
-      {/* Lightbox */}
       {lightboxItems && (
         <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />
       )}
