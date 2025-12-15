@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.exportShareAggCsv = exports.purgeOldShareEvents = exports.aggregateShareMetricsDaily = exports.logShareEvent = exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
+exports.openBlindBox = exports.incrementStars = exports.seedSeriesS1 = exports.backfillContentStubs = exports.recomputeUserReputation = exports.onRatingWrite = exports.processUploadedVideo = exports.exportShareAggCsv = exports.purgeOldShareEvents = exports.aggregateShareMetricsDaily = exports.logShareEvent = exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
 // Node 20 / TS (firebase-functions v4 - v1 API)
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
@@ -49,18 +49,14 @@ function asPoint(p) {
         return null;
     if (Array.isArray(p) && p.length >= 2) {
         const [lat, lng] = p;
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        if (Number.isFinite(lat) && Number.isFinite(lng))
             return { lat, lng };
-        }
     }
     if (typeof p === "object") {
         const lat = p.lat ?? p.latitude;
-        const lng = p.lng ??
-            p.longitude ??
-            p.lon;
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        const lng = p.lng ?? p.longitude ?? p.lon;
+        if (Number.isFinite(lat) && Number.isFinite(lng))
             return { lat, lng };
-        }
     }
     return null;
 }
@@ -73,15 +69,9 @@ function sample3FromPath(path) {
     const last = asPoint(path[path.length - 1]);
     if (first)
         pts.push(first);
-    if (mid &&
-        (pts.length === 0 ||
-            mid.lat !== pts[0].lat ||
-            mid.lng !== pts[0].lng))
+    if (mid && (pts.length === 0 || mid.lat !== pts[0].lat || mid.lng !== pts[0].lng))
         pts.push(mid);
-    if (last &&
-        (pts.length === 0 ||
-            last.lat !== pts[pts.length - 1].lat ||
-            last.lng !== pts[pts.length - 1].lng))
+    if (last && (pts.length === 0 || last.lat !== pts[pts.length - 1].lat || last.lng !== pts[pts.length - 1].lng))
         pts.push(last);
     return pts;
 }
@@ -119,9 +109,8 @@ function majority(vals) {
 }
 async function geocodeForRoute(data) {
     let points = [];
-    if (Array.isArray(data?.path)) {
+    if (Array.isArray(data?.path))
         points = sample3FromPath(data.path);
-    }
     if (points.length === 0 && Array.isArray(data?.stops)) {
         const c = centroidOfStops(data.stops);
         if (c)
@@ -132,10 +121,7 @@ async function geocodeForRoute(data) {
         const b = asPoint(data?.end) || asPoint(data?.to);
         if (a)
             points.push(a);
-        if (b &&
-            (points.length === 0 ||
-                b.lat !== points[0].lat ||
-                b.lng !== points[0].lng))
+        if (b && (points.length === 0 || b.lat !== points[0].lat || b.lng !== points[0].lng))
             points.push(b);
     }
     if (points.length === 0)
@@ -147,55 +133,37 @@ async function geocodeForRoute(data) {
         results.push(r);
     }
     const city = majority(results.map((x) => x.city)) || results[0]?.city;
-    const admin1 = majority(results.map((x) => x.admin1)) ||
-        results[0]?.admin1;
-    const country = majority(results.map((x) => x.country)) ||
-        results[0]?.country;
-    const countryCode = majority(results.map((x) => x.countryCode)) ||
-        results[0]?.countryCode;
+    const admin1 = majority(results.map((x) => x.admin1)) || results[0]?.admin1;
+    const country = majority(results.map((x) => x.country)) || results[0]?.country;
+    const countryCode = majority(results.map((x) => x.countryCode)) || results[0]?.countryCode;
     return { city, admin1, country, countryCode };
 }
 exports.onRouteAreasFinish = functions
-    .runWith({
-    secrets: ["GEOCODING_API_KEY", "GEOCODING_PROVIDER"],
-})
+    .runWith({ secrets: ["GEOCODING_API_KEY", "GEOCODING_PROVIDER"] })
     .firestore.document("routes/{routeId}")
     .onUpdate(async (change) => {
     const before = change.before.data() || {};
     const after = change.after.data() || {};
     if (!isFinished(after) || isDone(after) || isDone(before))
         return;
-    if (after?.areas &&
-        (after.areas.city || after.areas.countryCode)) {
+    if (after?.areas && (after.areas.city || after.areas.countryCode)) {
         await change.after.ref.set({ areasStatus: "done" }, { merge: true });
         return;
     }
     try {
         const areas = await geocodeForRoute(after);
         if (!areas.city && !areas.countryCode) {
-            await change.after.ref.set({
-                areasStatus: "error",
-                areasErrorCode: "NO_RESULT",
-            }, { merge: true });
+            await change.after.ref.set({ areasStatus: "error", areasErrorCode: "NO_RESULT" }, { merge: true });
             return;
         }
-        await change.after.ref.set({
-            areas,
-            areasStatus: "done",
-            areasErrorCode: admin.firestore.FieldValue.delete(),
-        }, { merge: true });
+        await change.after.ref.set({ areas, areasStatus: "done", areasErrorCode: admin.firestore.FieldValue.delete() }, { merge: true });
     }
     catch (e) {
-        await change.after.ref.set({
-            areasStatus: "error",
-            areasErrorCode: String(e?.message || e || "ERR"),
-        }, { merge: true });
+        await change.after.ref.set({ areasStatus: "error", areasErrorCode: String(e?.message || e || "ERR") }, { merge: true });
     }
 });
 exports.backfillAreasCallable = functions
-    .runWith({
-    secrets: ["GEOCODING_API_KEY", "GEOCODING_PROVIDER"],
-})
+    .runWith({ secrets: ["GEOCODING_API_KEY", "GEOCODING_PROVIDER"] })
     .https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Auth required.");
@@ -204,10 +172,7 @@ exports.backfillAreasCallable = functions
     let scanned = 0, updated = 0, errors = 0;
     let last;
     for (let page = 0; page < 5; page++) {
-        let q = db
-            .collection("routes")
-            .where("status", "==", "finished")
-            .limit(pageSize);
+        let q = db.collection("routes").where("status", "==", "finished").limit(pageSize);
         if (last)
             q = q.startAfter(last);
         const snap = await q.get();
@@ -219,34 +184,23 @@ exports.backfillAreasCallable = functions
             const d = docSnap.data() || {};
             if (isDone(d))
                 continue;
-            if (d?.areas &&
-                (d.areas.city || d.areas.countryCode)) {
+            if (d?.areas && (d.areas.city || d.areas.countryCode)) {
                 await docSnap.ref.set({ areasStatus: "done" }, { merge: true });
                 continue;
             }
             try {
                 const areas = await geocodeForRoute(d);
                 if (!areas.city && !areas.countryCode) {
-                    await docSnap.ref.set({
-                        areasStatus: "error",
-                        areasErrorCode: "NO_RESULT",
-                    }, { merge: true });
+                    await docSnap.ref.set({ areasStatus: "error", areasErrorCode: "NO_RESULT" }, { merge: true });
                 }
                 else {
-                    await docSnap.ref.set({
-                        areas,
-                        areasStatus: "done",
-                        areasErrorCode: admin.firestore.FieldValue.delete(),
-                    }, { merge: true });
+                    await docSnap.ref.set({ areas, areasStatus: "done", areasErrorCode: admin.firestore.FieldValue.delete() }, { merge: true });
                     updated++;
                 }
             }
             catch {
                 errors++;
-                await docSnap.ref.set({
-                    areasStatus: "error",
-                    areasErrorCode: "EXC",
-                }, { merge: true });
+                await docSnap.ref.set({ areasStatus: "error", areasErrorCode: "EXC" }, { merge: true });
             }
             await new Promise((r) => setTimeout(r, SLOW_THROTTLE_MS));
         }
@@ -262,16 +216,10 @@ async function adjustCounts(targetUid, followerUid, delta) {
     if (!targetUid || !followerUid || targetUid === followerUid)
         return;
     const targetRef = db.collection("users").doc(String(targetUid));
-    const followerRef = db
-        .collection("users")
-        .doc(String(followerUid));
+    const followerRef = db.collection("users").doc(String(followerUid));
     await db.runTransaction(async (t) => {
-        t.set(targetRef, {
-            followersCount: admin.firestore.FieldValue.increment(delta),
-        }, { merge: true });
-        t.set(followerRef, {
-            followingCount: admin.firestore.FieldValue.increment(delta),
-        }, { merge: true });
+        t.set(targetRef, { followersCount: admin.firestore.FieldValue.increment(delta) }, { merge: true });
+        t.set(followerRef, { followingCount: admin.firestore.FieldValue.increment(delta) }, { merge: true });
     });
 }
 exports.onFollowersCreate = functions.firestore
@@ -322,7 +270,7 @@ exports.onFollowsDelete = functions.firestore
         await adjustCounts(followee, follower, -1);
     }
 });
-/* === Modül exportları === */
+/* === Modül exportları (mevcutlar) === */
 var share_1 = require("./share");
 Object.defineProperty(exports, "renderRouteShare", { enumerable: true, get: function () { return share_1.renderRouteShare; } });
 var og_1 = require("./og");
@@ -336,3 +284,15 @@ Object.defineProperty(exports, "aggregateShareMetricsDaily", { enumerable: true,
 var telemetry_retention_1 = require("./telemetry_retention");
 Object.defineProperty(exports, "purgeOldShareEvents", { enumerable: true, get: function () { return telemetry_retention_1.purgeOldShareEvents; } });
 Object.defineProperty(exports, "exportShareAggCsv", { enumerable: true, get: function () { return telemetry_retention_1.exportShareAggCsv; } });
+/* === YENİ: v2 fonksiyonları (video + content/reputation + backfill + labubu) === */
+var video_v2_1 = require("./video_v2");
+Object.defineProperty(exports, "processUploadedVideo", { enumerable: true, get: function () { return video_v2_1.processUploadedVideo; } });
+var content_reputation_v2_1 = require("./content_reputation_v2");
+Object.defineProperty(exports, "onRatingWrite", { enumerable: true, get: function () { return content_reputation_v2_1.onRatingWrite; } });
+Object.defineProperty(exports, "recomputeUserReputation", { enumerable: true, get: function () { return content_reputation_v2_1.recomputeUserReputation; } });
+var backfill_content_stubs_v2_1 = require("./backfill_content_stubs_v2");
+Object.defineProperty(exports, "backfillContentStubs", { enumerable: true, get: function () { return backfill_content_stubs_v2_1.backfillContentStubs; } });
+var labubu_v2_1 = require("./labubu_v2");
+Object.defineProperty(exports, "seedSeriesS1", { enumerable: true, get: function () { return labubu_v2_1.seedSeriesS1; } });
+Object.defineProperty(exports, "incrementStars", { enumerable: true, get: function () { return labubu_v2_1.incrementStars; } });
+Object.defineProperty(exports, "openBlindBox", { enumerable: true, get: function () { return labubu_v2_1.openBlindBox; } });

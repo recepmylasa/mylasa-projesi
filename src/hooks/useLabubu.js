@@ -6,6 +6,21 @@ import { db, functions } from "../firebase";
 
 const SERIES_ID = "S1";
 
+function normalizeDrop(resData) {
+  const data = resData || {};
+  const drop = data.drop || data || {};
+
+  return {
+    seriesId: drop.seriesId || data.seriesId || SERIES_ID,
+    code: drop.code || drop.id || drop.cardId || drop.cardCode || "",
+    name: drop.name || drop.title || "",
+    rarity: drop.rarity || "",
+    asset: drop.asset || drop.imageUrl || drop.image || "",
+    dupe: Boolean(drop.dupe),
+    counts: drop.counts || data.counts || null,
+  };
+}
+
 export default function useLabubu(uid) {
   const [user, setUser] = useState(null);
   const [series, setSeries] = useState(null);
@@ -13,12 +28,24 @@ export default function useLabubu(uid) {
 
   useEffect(() => {
     if (!uid) return;
-    const offUser = onSnapshot(doc(db, "users", uid), d => setUser(d.data() || {}));
-    const offSeries = onSnapshot(doc(db, "series", SERIES_ID), d => setSeries(d.data() || null));
-    const offCards = onSnapshot(collection(db, "users", uid, "cards"), snap =>
-      setCards(snap.docs.map(d => d.data()).sort((a,b)=>a.name.localeCompare(b.name)))
-    );
-    return () => { offUser && offUser(); offSeries && offSeries(); offCards && offCards(); };
+
+    const offUser = onSnapshot(doc(db, "users", uid), (d) => setUser(d.data() || {}));
+    const offSeries = onSnapshot(doc(db, "series", SERIES_ID), (d) => setSeries(d.data() || null));
+    const offCards = onSnapshot(collection(db, "users", uid, "cards"), (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => {
+        const an = (a.name || a.title || a.code || a.id || "").toString();
+        const bn = (b.name || b.title || b.code || b.id || "").toString();
+        return an.localeCompare(bn);
+      });
+      setCards(list);
+    });
+
+    return () => {
+      offUser && offUser();
+      offSeries && offSeries();
+      offCards && offCards();
+    };
   }, [uid]);
 
   const boxesReady = useMemo(() => {
@@ -29,7 +56,10 @@ export default function useLabubu(uid) {
   const openBox = async (type = "standardBox") => {
     const fn = httpsCallable(functions, "openBlindBox");
     const res = await fn({ boxType: type });
-    return res.data.drop; // {code,name,asset,rarity,dupe}
+
+    const normalized = normalizeDrop(res?.data);
+    // UI eski davranışı bozulmasın diye “drop objesi” döndürüyoruz
+    return normalized;
   };
 
   const incStar = async () => {

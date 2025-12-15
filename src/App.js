@@ -198,6 +198,16 @@ function App() {
     }
   };
 
+  const urlOwnerHint = () => {
+    try {
+      const u = new URL(window.location.href);
+      const o = u.searchParams.get("owner") || u.searchParams.get("o");
+      return o ? String(o) : null;
+    } catch {
+      return null;
+    }
+  };
+
   // DEEP LINKS (mount): /p/:id , /c/:id , /r/:id , /s/r/:id , /explore , /explore/routes , /admin/share-metrics , /open-route
   useEffect(() => {
     if (loading || !user) return;
@@ -238,7 +248,11 @@ function App() {
         window.history.replaceState({}, "", "/");
         return;
       }
-      setModalData({ id: String(id), follow: urlFollowFlag() });
+      setModalData({
+        id: String(id),
+        follow: urlFollowFlag(),
+        owner: urlOwnerHint(),
+      });
       setModalContent("viewingRoute");
       pushedByAppRef.current = false;
     };
@@ -254,7 +268,7 @@ function App() {
     const mAdminShareMetrics = path.match(/^\/admin\/share-metrics\/?$/);
     const isOpenRoute = /^\/open-route\/?$/.test(path);
 
-    // /open-route?query=...  →  /r/:id?follow=1&from=protocol
+    // /open-route?query=...  →  /r/:id?follow=1&from=protocol(&owner=...)
     if (isOpenRoute) {
       try {
         const sp = new URLSearchParams(window.location.search || "");
@@ -278,9 +292,17 @@ function App() {
         const follow =
           followRaw === "1" || followRaw === "true" || followRaw === "yes";
 
+        const owner =
+          qs.get("owner") ||
+          qs.get("o") ||
+          sp.get("owner") ||
+          sp.get("o") ||
+          "";
+
         if (rid) {
           const params = new URLSearchParams();
           if (follow) params.set("follow", "1");
+          if (owner) params.set("owner", String(owner));
           params.set("from", "protocol");
 
           const dest = `/r/${encodeURIComponent(rid)}?${params.toString()}`;
@@ -295,15 +317,24 @@ function App() {
       }
     }
 
-    // /s/r/:id → (uyumluluk için) /r/:id?follow=1&from=share + modal aç
+    // /s/r/:id → (uyumluluk için) /r/:id?follow=1&from=share(&owner=...) + modal aç
     // Not: Burada Firestore okuması yok; tüm yetki/404 UI RouteDetailMobile’da.
     if (mShareRoute) {
       const rid = mShareRoute[1];
       try {
+        const sp = new URLSearchParams(window.location.search || "");
+        const owner = sp.get("owner") || sp.get("o");
+
+        const params = new URLSearchParams();
+        // follow=1: varsa da zaten 1 olur; yoksa default olarak 1 set ediyoruz (mevcut davranış korunur)
+        params.set("follow", "1");
+        params.set("from", "share");
+        if (owner) params.set("owner", String(owner));
+
         window.history.replaceState(
           {},
           "",
-          `/r/${encodeURIComponent(rid)}?follow=1&from=share`
+          `/r/${encodeURIComponent(rid)}?${params.toString()}`
         );
       } catch {}
       openRouteFromUrl(rid);
@@ -384,7 +415,11 @@ function App() {
       // /r/:id → direkt modal aç (Firestore ön kontrol yok)
       const openRoute = (id) => {
         if (!id) return;
-        setModalData({ id: String(id), follow: urlFollowFlag() });
+        setModalData({
+          id: String(id),
+          follow: urlFollowFlag(),
+          owner: urlOwnerHint(),
+        });
         setModalContent("viewingRoute");
         pushedByAppRef.current = false;
       };
@@ -413,9 +448,17 @@ function App() {
           const follow =
             followRaw === "1" || followRaw === "true" || followRaw === "yes";
 
+          const owner =
+            qs.get("owner") ||
+            qs.get("o") ||
+            sp.get("owner") ||
+            sp.get("o") ||
+            "";
+
           if (rid) {
             const params = new URLSearchParams();
             if (follow) params.set("follow", "1");
+            if (owner) params.set("owner", String(owner));
             params.set("from", "protocol");
 
             const dest = `/r/${encodeURIComponent(rid)}?${params.toString()}`;
@@ -430,14 +473,22 @@ function App() {
         }
       }
 
-      // /s/r/:id → /r/:id?follow=1&from=share + modal aç
+      // /s/r/:id → /r/:id?follow=1&from=share(&owner=...) + modal aç
       if (matchShareRoute) {
         const rid = matchShareRoute[1];
         try {
+          const sp = new URLSearchParams(window.location.search || "");
+          const owner = sp.get("owner") || sp.get("o");
+
+          const params = new URLSearchParams();
+          params.set("follow", "1");
+          params.set("from", "share");
+          if (owner) params.set("owner", String(owner));
+
           window.history.replaceState(
             {},
             "",
-            `/r/${encodeURIComponent(rid)}?follow=1&from=share`
+            `/r/${encodeURIComponent(rid)}?${params.toString()}`
           );
         } catch {}
         openRoute(rid);
@@ -493,12 +544,26 @@ function App() {
       const initialRoute = e?.detail?.route || null;
       const source = e?.detail?.source || null;
 
+      const ownerHint =
+        e?.detail?.ownerId ||
+        e?.detail?.ownerUid ||
+        initialRoute?.ownerId ||
+        initialRoute?.owner ||
+        null;
+
       if (!routeId) return;
 
-      setModalData({ id: routeId, follow, initialRoute, source });
+      setModalData({ id: routeId, follow, initialRoute, source, owner: ownerHint || null });
       setModalContent("viewingRoute");
 
-      const url = follow ? `/r/${routeId}?follow=1` : `/r/${routeId}`;
+      const params = new URLSearchParams();
+      if (follow) params.set("follow", "1");
+      if (follow && ownerHint) params.set("owner", String(ownerHint));
+
+      const url = params.toString()
+        ? `/r/${routeId}?${params.toString()}`
+        : `/r/${routeId}`;
+
       window.history.pushState({ modal: "route", id: routeId }, "", url);
       pushedByAppRef.current = true;
     };
@@ -867,6 +932,7 @@ function App() {
               initialRoute={modalData?.initialRoute || null}
               source={modalData?.source || null}
               followInitially={!!modalData?.follow}
+              ownerFromLink={modalData?.owner || null}
               onClose={closeModal}
             />
           )}

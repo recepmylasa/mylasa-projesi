@@ -1,0 +1,1326 @@
+// src/pages/RouteDetailMobile/RouteDetailMobile.js
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "../RouteDetailMobile.css";
+
+import { auth, db } from "../../firebase";
+import { doc, getDoc } from "firebase/firestore";
+
+import { setRouteRating, setStopRating } from "../../services/routeRatings";
+import { watchRoute, watchStops } from "../../services/routesRead";
+import { buildGpx, downloadGpx } from "../../services/gpx";
+
+import StarRatingV2 from "../../components/StarRatingV2/StarRatingV2";
+import CommentsPanel from "../../components/CommentsPanel/CommentsPanel";
+import { useGoogleMaps } from "../../hooks/useGoogleMaps";
+import ShareSheetMobile from "../../components/ShareSheetMobile";
+import { watchCommentsCount } from "../../commentsClient";
+
+import Lightbox from "./components/Lightbox";
+import StarBars from "./components/StarBars";
+
+import {
+  buildShareRoutePayload,
+  buildStatsFromRoute,
+  formatAvgSpeedFromStats,
+  formatDateTimeTR,
+  formatDistanceFromStats,
+  formatDurationFromStats,
+  formatStopsFromStats,
+  getAudienceFromRoute,
+  getOwnerHintFromUrl,
+  getRouteRatingLabelSafe,
+  getRouteTitleSafe,
+  getValidLatLng,
+  getVisibilityKeyFromRoute,
+  resolveOwnerIdForLockedRoute,
+} from "./routeDetailUtils";
+
+import { getRouteStarsAgg, getStopsStarsAgg } from "./routeDetailAgg";
+import { listStopMediaInline, uploadStopMediaInline } from "./routeDetailMedia";
+
+const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
+const MAP_ID = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
+
+// Emir 2: share link tek standart → /s/r/:id?follow=1&owner=...
+const buildRouteShareUrl = ({ routeId, ownerUid }) => {
+  if (!routeId) return "";
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams();
+  params.set("follow", "1");
+  if (ownerUid) params.set("owner", String(ownerUid));
+  const qs = params.toString();
+  return `${window.location.origin}/s/r/${encodeURIComponent(routeId)}${
+    qs ? `?${qs}` : ""
+  }`;
+};
+
+export default function RouteDetailMobile({
+  routeId,
+  initialRoute = null,
+  source = null,
+  followInitially = false, // ?follow=1 ipucu
+  ownerFromLink = null, // ?owner=... (doc okunamasa bile CTA çalışsın)
+  onClose = () => {},
+}) {
+  const [tab, setTab] = useState(() => {
+    if (typeof window === "undefined") return "stops";
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get("tab");
+      if (t === "gallery" || t === "report" || t === "comments" || t === "stops")
+        return t;
+    } catch {}
+    return "stops";
+  });
+
+  const onTabChange = useCallback((nextTab) => {
+    setTab(nextTab);
+    if (typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      if (!nextTab || nextTab === "stops") url.searchParams.delete("tab");
+      else url.searchParams.set("tab", nextTab);
+      window.history.replaceState(window.history.state, "", url.toString());
+    } catch {}
+  }, []);
+
+  const [commentsCount, setCommentsCount] = useState(null);
+
+  const [routeDoc, setRouteDoc] = useState(null);
+  const [stops, setStops] = useState([]);
+  const [owner, setOwner] = useState(null);
+  const [permError, setPermError] = useState(null); // null | "forbidden" | "private" | "not-found"
+
+  const [permCheckTick, setPermCheckTick] = useState(0);
+  const [reloadTick, setReloadTick] = useState(0);
+
+  const mediaCacheRef = useRef({});
+  const [mediaTick, setMediaTick] = useState(0);
+
+  const [lightboxItems, setLightboxItems] = useState(null);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  const [showShareSheet, setShowShareSheet] = useState(false);
+
+  const [routeAgg, setRouteAgg] = useState(null);
+  const [stopAgg, setStopAgg] = useState(null);
+  const [uploadState, setUploadState] = useState({});
+
+  const { gmapsStatus, mapDivRef, mapRef } = useGoogleMaps({ API_KEY, MAP_ID });
+  const polylineRef = useRef(null);
+  const stopMarkersRef = useRef([]);
+
+  const routeModel = routeDoc || initialRoute;
+
+  const ownerHint = useMemo(() => {
+    if (ownerFromLink) return String(ownerFromLink);
+    const fromUrl = getOwnerHintFromUrl();
+    if (fromUrl) return fromUrl;
+    const fromInitial = initialRoute?.ownerId || initialRoute?.owner || null;
+    return fromInitial ? String(fromInitial) : null;
+  }, [ownerFromLink, initialRoute]);
+
+  const [lockedOwnerId, setLockedOwnerId] = useState(null);
+  const [lockedOwnerDoc, setLockedOwnerDoc] = useState(null);
+
+  const openProfile = useCallback((userId) => {
+    if (!userId) return;
+    try {
+      window.dispatchEvent(
+        new CustomEvent("open-profile-modal", { detail: { userId } })
+      );
+    } catch {}
+  }, []);
+
+  const clearMapArtifacts = useCallback(() => {
+    try {
+      stopMarkersRef.current.forEach((m) => {
+        try {
+          m.setMap(null);
+        } catch {}
+      });
+    } catch {}
+    stopMarkersRef.current = [];
+
+    try {
+      if (polylineRef.current) {
+        try {
+          polylineRef.current.setMap(null);
+        } catch {}
+      }
+    } catch {}
+    polylineRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearMapArtifacts();
+    };
+  }, [routeId, clearMapArtifacts]);
+
+  // İzin / 404 kontrolü
+  useEffect(() => {
+    if (!routeId) {
+      setPermError("not-found");
+      setRouteDoc(null);
+      setOwner(null);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const s = await getDoc(doc(db, "routes", routeId));
+        if (!alive) return;
+        if (!s.exists()) setPermError("not-found");
+        else {
+          // doc okunabiliyor → temel olarak erişim var; private gating ayrı effect’te
+          setPermError(null);
+        }
+      } catch (e) {
+        const code = String(e?.code || e?.message || "");
+        if (!alive) return;
+        if (code.includes("permission") || code.includes("denied")) {
+          setPermError("forbidden");
+        } else {
+          // geçici ağ vs olabilir; watcherlar yine de çalışabilir
+          setPermError(null);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [routeId, permCheckTick]);
+
+  const retryPermCheck = useCallback(() => {
+    setPermError(null);
+    setPermCheckTick((x) => x + 1);
+    setReloadTick((x) => x + 1);
+  }, []);
+
+  // Locked (forbidden/private/not-found) durumunda ownerId resolve et (owner param yoksa)
+  useEffect(() => {
+    if (!routeId) return;
+    if (!(permError === "forbidden" || permError === "private" || permError === "not-found"))
+      return;
+
+    let alive = true;
+    (async () => {
+      // 1) Önce elimizdeki hint’ler
+      const direct =
+        ownerHint ||
+        routeModel?.ownerId ||
+        routeModel?.owner ||
+        owner?.id ||
+        null;
+
+      const baseOwnerId = direct ? String(direct) : null;
+
+      if (baseOwnerId) {
+        if (!alive) return;
+        setLockedOwnerId(baseOwnerId);
+
+        // (opsiyonel) owner doc çek
+        try {
+          const u = await getDoc(doc(db, "users", baseOwnerId));
+          if (!alive) return;
+          if (u.exists()) setLockedOwnerDoc({ id: u.id, ...u.data() });
+        } catch {
+          if (!alive) return;
+          setLockedOwnerDoc(null);
+        }
+        return;
+      }
+
+      // 2) Public meta denemeleri
+      const oid = await resolveOwnerIdForLockedRoute(routeId);
+      if (!alive) return;
+
+      if (oid) {
+        setLockedOwnerId(oid);
+        try {
+          const u = await getDoc(doc(db, "users", oid));
+          if (!alive) return;
+          if (u.exists()) setLockedOwnerDoc({ id: u.id, ...u.data() });
+        } catch {
+          if (!alive) return;
+          setLockedOwnerDoc(null);
+        }
+      } else {
+        setLockedOwnerId(null);
+        setLockedOwnerDoc(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId, permError, ownerHint]);
+
+  // Route okunabiliyorsa ama visibility “private” ise UI’da da kilitle (tek standart)
+  useEffect(() => {
+    if (!routeId) return;
+    if (!routeModel) return;
+
+    const vis = getVisibilityKeyFromRoute(routeModel);
+    if (vis !== "private") {
+      if (permError === "private") setPermError(null);
+      return;
+    }
+
+    const uid = auth.currentUser?.uid ? String(auth.currentUser.uid) : "";
+    const oid = routeModel?.ownerId ? String(routeModel.ownerId) : "";
+    const mine = uid && oid && uid === oid;
+
+    if (!mine) setPermError("private");
+    else if (permError === "private") setPermError(null);
+  }, [routeId, routeModel, permError]);
+
+  const ownerIdForProfile = useMemo(() => {
+    const fromRoute =
+      routeDoc?.ownerId || initialRoute?.ownerId || initialRoute?.owner || null;
+    return (
+      (fromRoute ? String(fromRoute) : null) ||
+      (owner?.id ? String(owner.id) : null) ||
+      (lockedOwnerId ? String(lockedOwnerId) : null) ||
+      (ownerHint ? String(ownerHint) : null) ||
+      null
+    );
+  }, [routeDoc?.ownerId, initialRoute, owner?.id, lockedOwnerId, ownerHint]);
+
+  const accessSheet = useCallback(
+    (kind) => {
+      const loggedIn = !!auth.currentUser;
+
+      let headerTitle = "Rota";
+      let desc = "Bu rota şu anda görüntülenemiyor.";
+      if (kind === "not-found") {
+        headerTitle = "Rota bulunamadı";
+        desc = "Bağlantı hatalı olabilir veya rota kaldırılmış olabilir.";
+      } else if (kind === "private") {
+        headerTitle = "Bu rota özel";
+        desc = "Bu rota yalnızca sahibi tarafından görüntülenebilir.";
+      } else if (kind === "forbidden") {
+        headerTitle = "Bu rota sınırlı";
+        desc = followInitially
+          ? "Rotayı görüntülemek için rota sahibini takip etmen gerekebilir."
+          : "Rotayı görüntülemek için izin gerekiyor (rota özel veya takipçilere açık olabilir).";
+      }
+
+      const loginNote = loggedIn ? null : "Devam etmek için giriş yapman gerekebilir.";
+
+      const btnRow = {
+        marginTop: 12,
+        display: "flex",
+        gap: 10,
+        flexWrap: "wrap",
+      };
+
+      const primaryBtn = {
+        flex: "1 1 160px",
+        borderRadius: 12,
+        border: "1px solid #111",
+        background: "#111",
+        color: "#fff",
+        padding: followInitially ? "14px 12px" : "12px 12px",
+        fontWeight: 900,
+        cursor: ownerIdForProfile ? "pointer" : "not-allowed",
+        opacity: ownerIdForProfile ? 1 : 0.55,
+      };
+
+      const secondaryBtn = {
+        flex: "1 1 160px",
+        borderRadius: 12,
+        border: "1px solid #ddd",
+        background: "#fff",
+        color: "#111",
+        padding: "12px 12px",
+        fontWeight: 900,
+        cursor: "pointer",
+      };
+
+      const userPreview = lockedOwnerDoc || owner;
+
+      return (
+        <div className="route-detail-backdrop" onClick={onClose}>
+          <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="route-detail-grab" />
+
+            <div className="route-detail-header">
+              <div className="route-detail-header-top">
+                <div className="route-detail-header-main">
+                  <div className="route-detail-title">{headerTitle}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="route-detail-body">
+              <div className="route-detail-tabpanel">
+                <div style={{ fontSize: 14, padding: "6px 4px", fontWeight: 800 }}>
+                  {desc}
+                </div>
+
+                {loginNote && (
+                  <div style={{ fontSize: 12, padding: "4px 4px 0", opacity: 0.75 }}>
+                    {loginNote}
+                  </div>
+                )}
+
+                {userPreview && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 10px",
+                      border: "1px solid #eee",
+                      borderRadius: 12,
+                      background: "#fff",
+                    }}
+                  >
+                    {userPreview.photoURL || userPreview.profilFoto || userPreview.avatar ? (
+                      <img
+                        src={
+                          userPreview.photoURL ||
+                          userPreview.profilFoto ||
+                          userPreview.avatar
+                        }
+                        alt=""
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 999,
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 999,
+                          background: "#eee",
+                        }}
+                      />
+                    )}
+
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: 13, color: "#111" }}>
+                        {userPreview.username ||
+                          userPreview.userName ||
+                          userPreview.handle ||
+                          userPreview.name ||
+                          "Profil"}
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        {ownerIdForProfile ? `ID: ${ownerIdForProfile}` : "Profil bilgisi bulunamadı"}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div style={btnRow}>
+                  <button
+                    type="button"
+                    style={primaryBtn}
+                    onClick={() => {
+                      if (!ownerIdForProfile) return;
+                      openProfile(ownerIdForProfile);
+                    }}
+                  >
+                    Profili aç
+                  </button>
+
+                  {(kind === "forbidden" || kind === "private") && (
+                    <button type="button" style={secondaryBtn} onClick={retryPermCheck}>
+                      Yeniden dene
+                    </button>
+                  )}
+
+                  <button type="button" style={secondaryBtn} onClick={onClose}>
+                    Kapat
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="route-detail-footer">
+              <button type="button" className="route-detail-close-btn" onClick={onClose}>
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    },
+    [followInitially, lockedOwnerDoc, onClose, openProfile, owner, ownerIdForProfile, retryPermCheck]
+  );
+
+  // Comments count (forbidden/private/not-found iken izleme yapma)
+  useEffect(() => {
+    if (!routeId) return;
+    if (permError === "forbidden" || permError === "private" || permError === "not-found") return;
+
+    let unsubscribe;
+    try {
+      unsubscribe = watchCommentsCount(
+        { targetType: "route", targetId: routeId },
+        (cnt) => setCommentsCount(typeof cnt === "number" ? cnt : 0)
+      );
+    } catch (e) {
+      if (process.env.NODE_ENV !== "production") {
+        // eslint-disable-next-line no-console
+        console.warn("[RouteDetailMobile] yorum sayaç izleme hatası:", e);
+      }
+    }
+    return () => {
+      if (typeof unsubscribe === "function") {
+        try {
+          unsubscribe();
+        } catch {}
+      }
+    };
+  }, [routeId, reloadTick, permError]);
+
+  // Route + Stops watchers (forbidden/private/not-found iken subscribe etme)
+  useEffect(() => {
+    if (!routeId) return;
+    if (permError === "forbidden" || permError === "private" || permError === "not-found") return;
+
+    let offRoute = () => {};
+    let offStops = () => {};
+
+    offRoute = watchRoute(routeId, async (d) => {
+      setRouteDoc(d);
+      if (d?.ownerId) {
+        try {
+          const u = await getDoc(doc(db, "users", d.ownerId));
+          if (u.exists()) setOwner({ id: u.id, ...u.data() });
+        } catch {}
+      }
+    });
+
+    offStops = watchStops(routeId, (arr) => {
+      const sorted = (arr || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      setStops(sorted);
+    });
+
+    return () => {
+      try {
+        offRoute();
+      } catch {}
+      try {
+        offStops();
+      } catch {}
+    };
+  }, [routeId, reloadTick, permError]);
+
+  useEffect(() => {
+    if (gmapsStatus !== "ready" || !mapRef.current) return;
+    const map = mapRef.current;
+
+    try {
+      if (!polylineRef.current) {
+        polylineRef.current = new window.google.maps.Polyline({
+          map,
+          clickable: false,
+          geodesic: true,
+          strokeColor: "#1a73e8",
+          strokeOpacity: 0.95,
+          strokeWeight: 4,
+        });
+      }
+
+      const pts = [];
+      (routeDoc?.path || []).forEach((p) => {
+        const ll = getValidLatLng(p?.lat, p?.lng);
+        if (!ll) return;
+        pts.push(new window.google.maps.LatLng(ll.lat, ll.lng));
+      });
+
+      polylineRef.current.setPath(pts);
+
+      if (pts.length) {
+        const b = new window.google.maps.LatLngBounds();
+        pts.forEach((pt) => b.extend(pt));
+        map.fitBounds(b, 40);
+      }
+
+      stopMarkersRef.current.forEach((m) => {
+        try {
+          m.setMap(null);
+        } catch {}
+      });
+      stopMarkersRef.current = [];
+
+      (stops || []).forEach((s) => {
+        const ll = getValidLatLng(s?.lat, s?.lng);
+        if (!ll) return;
+        try {
+          const mk = new window.google.maps.Marker({
+            position: { lat: ll.lat, lng: ll.lng },
+            map,
+            title: s.title || `Durak ${s.order || ""}`,
+          });
+          stopMarkersRef.current.push(mk);
+        } catch {}
+      });
+    } catch {}
+  }, [gmapsStatus, mapRef, routeDoc?.path, stops]);
+
+  const ensureStopThumbs = useCallback(
+    async (stopId) => {
+      if (!routeId || !stopId) return;
+      if (mediaCacheRef.current[stopId]?.__loadedThumbs) return;
+
+      const { items, error } = await listStopMediaInline({
+        routeId,
+        stopId,
+        limit: 4,
+      });
+
+      mediaCacheRef.current[stopId] = {
+        ...(mediaCacheRef.current[stopId] || {}),
+        items,
+        __loadedThumbs: !error,
+        ...(error ? { __error: error } : { __error: null }),
+      };
+      setMediaTick((x) => x + 1);
+    },
+    [routeId]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pre = (stops || []).slice(0, 6);
+      for (const s of pre) {
+        if (cancelled) break;
+        await ensureStopThumbs(s.id);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stops, ensureStopThumbs]);
+
+  const [galleryLoaded, setGalleryLoaded] = useState(false);
+  const galleryItems = useMemo(() => {
+    const arr = [];
+    Object.keys(mediaCacheRef.current).forEach((sid) => {
+      const items = mediaCacheRef.current[sid]?.items || [];
+      items.forEach((it) => arr.push({ ...it, stopId: sid }));
+    });
+    return arr.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  }, [mediaTick, galleryLoaded]);
+
+  const loadAllGallery = useCallback(async () => {
+    if (galleryLoaded) return;
+    for (const s of stops || []) {
+      const { items } = await listStopMediaInline({
+        routeId,
+        stopId: s.id,
+        limit: 20,
+      });
+      mediaCacheRef.current[s.id] = {
+        items,
+        __loadedThumbs: true,
+        __error: null,
+      };
+    }
+    setGalleryLoaded(true);
+    setMediaTick((x) => x + 1);
+  }, [galleryLoaded, routeId, stops]);
+
+  const [reportLoaded, setReportLoaded] = useState(false);
+  const loadReportAgg = useCallback(async () => {
+    if (reportLoaded || !routeId) return;
+    const [rAgg, sAgg] = await Promise.all([
+      getRouteStarsAgg(routeId, 1000).catch(() => null),
+      getStopsStarsAgg(routeId, 1000).catch(() => null),
+    ]);
+    setRouteAgg(rAgg);
+    setStopAgg(sAgg);
+    setReportLoaded(true);
+  }, [reportLoaded, routeId]);
+
+  const onPickMedia = useCallback(
+    async (stopId) => {
+      if (!auth.currentUser || !routeDoc) return;
+      if (auth.currentUser.uid !== routeDoc.ownerId) return;
+
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*,video/*";
+      input.multiple = true;
+      input.onchange = async () => {
+        const files = Array.from(input.files || []).slice(0, 8);
+        for (const f of files) {
+          const ac = new AbortController();
+          setUploadState((s) => ({ ...s, [stopId]: { p: 0, abort: ac } }));
+          try {
+            const res = await uploadStopMediaInline({
+              routeId,
+              stopId,
+              file: f,
+              onProgress: (p) =>
+                setUploadState((s) => ({
+                  ...s,
+                  [stopId]: { ...(s[stopId] || {}), p },
+                })),
+              signal: ac.signal,
+            });
+            const cur = mediaCacheRef.current[stopId]?.items || [];
+            mediaCacheRef.current[stopId] = {
+              items: [res, ...cur],
+              __loadedThumbs: true,
+              __error: null,
+            };
+            setMediaTick((x) => x + 1);
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn("upload hata:", e?.message || e);
+          } finally {
+            setUploadState((s) => {
+              const ns = { ...s };
+              delete ns[stopId];
+              return ns;
+            });
+          }
+        }
+      };
+      input.click();
+    },
+    [routeId, routeDoc]
+  );
+
+  const cancelUpload = useCallback(
+    (stopId) => {
+      const us = uploadState[stopId];
+      try {
+        us?.abort?.abort();
+      } catch {}
+      setUploadState((s) => {
+        const ns = { ...s };
+        delete ns[stopId];
+        return ns;
+      });
+    },
+    [uploadState]
+  );
+
+  // Emir 2: Paylaş → /s/r/:id?follow=1&owner=... (from paramı YOK)
+  const onShare = useCallback(async () => {
+    const ownerUid =
+      routeDoc?.ownerId ||
+      initialRoute?.ownerId ||
+      owner?.id ||
+      ownerHint ||
+      lockedOwnerId ||
+      null;
+
+    const url = buildRouteShareUrl({ routeId, ownerUid });
+    const title = getRouteTitleSafe(routeDoc || initialRoute);
+
+    try {
+      if (navigator.share) await navigator.share({ url, title, text: title });
+      else {
+        await navigator.clipboard.writeText(url);
+        alert("Bağlantı kopyalandı");
+      }
+    } catch {}
+  }, [routeId, routeDoc, initialRoute, owner, ownerHint, lockedOwnerId]);
+
+  const onExportGpx = useCallback(async () => {
+    try {
+      const xml = buildGpx({
+        route: routeDoc,
+        stops,
+        path: routeDoc?.path || [],
+      });
+      const slug = (getRouteTitleSafe(routeDoc) || "rota")
+        .toLowerCase()
+        .replace(/[^\w-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      const y = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      downloadGpx(xml, `route-${slug || "route"}-${y}.gpx`);
+    } catch {
+      alert("GPX oluşturulamadı");
+    }
+  }, [routeDoc, stops]);
+
+  const canRateRoute =
+    auth.currentUser && routeDoc && auth.currentUser.uid !== routeDoc.ownerId;
+
+  const onRouteRate = useCallback(
+    async (v) => {
+      if (!canRateRoute) return;
+      try {
+        await setRouteRating(routeId, v);
+      } catch {}
+    },
+    [canRateRoute, routeId]
+  );
+
+  const onStopRate = useCallback(
+    async (stopId, v) => {
+      if (!auth.currentUser || !routeDoc) return;
+      if (auth.currentUser.uid === routeDoc.ownerId) return;
+      try {
+        await setStopRating(stopId, routeId, v);
+      } catch {}
+    },
+    [routeId, routeDoc]
+  );
+
+  useEffect(() => {
+    if (tab === "gallery") loadAllGallery();
+    if (tab === "report") loadReportAgg();
+  }, [tab, loadAllGallery, loadReportAgg]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape") {
+        if (lightboxItems) {
+          setLightboxItems(null);
+          return;
+        }
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose, lightboxItems]);
+
+  const isOwner =
+    auth.currentUser && routeDoc && auth.currentUser.uid === routeDoc.ownerId;
+
+  const ratingAvgLabel = useMemo(() => getRouteRatingLabelSafe(routeModel), [routeModel]);
+
+  const stats = useMemo(() => (routeModel ? buildStatsFromRoute(routeModel) : null), [routeModel]);
+
+  const { key: audienceKey, label: audienceLabel } = useMemo(
+    () => getAudienceFromRoute(routeModel || {}),
+    [routeModel]
+  );
+
+  const dateText = useMemo(
+    () => formatDateTimeTR(routeModel?.finishedAt || routeModel?.createdAt),
+    [routeModel]
+  );
+
+  const distanceText = formatDistanceFromStats(stats);
+  const durationText = formatDurationFromStats(stats);
+  const stopsText = formatStopsFromStats(stats);
+  const avgSpeedText = formatAvgSpeedFromStats(stats);
+
+  const metaBits = [];
+  if (dateText) metaBits.push(dateText);
+  if (distanceText) metaBits.push(distanceText);
+  if (durationText) metaBits.push(durationText);
+  if (stopsText) metaBits.push(stopsText);
+  if (avgSpeedText) metaBits.push(avgSpeedText);
+  const metaLine = metaBits.join(" · ");
+
+  const kpis = [
+    { label: "Mesafe", value: distanceText || "—" },
+    { label: "Süre", value: durationText || "—" },
+    { label: "Ort. hız", value: stats && stats.avgSpeedKmh ? `${stats.avgSpeedKmh} km/sa` : "—" },
+    { label: "Durak", value: stopsText || ((stops || []).length ? `${(stops || []).length} durak` : "—") },
+  ];
+
+  let topStops = [];
+  if (stopAgg && stops && stops.length) {
+    topStops = stops
+      .map((s) => {
+        const agg = stopAgg[s.id] || { total: 0, avg: 0 };
+        const mediaCount = mediaCacheRef.current[s.id]?.items?.length || 0;
+        return { stop: s, total: agg.total, avg: agg.avg, mediaCount };
+      })
+      .sort((a, b) => {
+        if ((b.avg || 0) !== (a.avg || 0)) return (b.avg || 0) - (a.avg || 0);
+        if ((b.total || 0) !== (a.total || 0)) return (b.total || 0) - (a.total || 0);
+        return (b.mediaCount || 0) - (a.mediaCount || 0);
+      })
+      .slice(0, 3);
+  }
+
+  const handleBackdropClick = useCallback(() => onClose(), [onClose]);
+
+  const renderPrefillSheet = () => {
+    const title = getRouteTitleSafe(routeModel);
+    return (
+      <div className="route-detail-backdrop" onClick={handleBackdropClick}>
+        <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="route-detail-grab" />
+          <div className="route-detail-header">
+            <div className="route-detail-header-top">
+              <div className="route-detail-header-main">
+                <div className="route-detail-title" title={title || "Rota"}>
+                  {title || "Rota"}
+                </div>
+                {audienceLabel && (
+                  <span
+                    className={
+                      "route-detail-chip" + (audienceKey ? ` route-detail-chip--${audienceKey}` : "")
+                    }
+                  >
+                    {audienceLabel}
+                  </span>
+                )}
+              </div>
+              <div className="route-detail-header-rating">{ratingAvgLabel}</div>
+            </div>
+            {metaLine && <div className="route-detail-meta">{metaLine}</div>}
+            <div className="route-detail-header-actions">
+              <button
+                type="button"
+                className="route-detail-close-icon"
+                onClick={onClose}
+                title="Kapat"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <div className="route-detail-body">
+            <div className="route-detail-tabpanel">
+              <div style={{ fontSize: 14, padding: "8px 4px" }}>Rota yükleniyor…</div>
+            </div>
+          </div>
+          <div className="route-detail-footer">
+            <button type="button" className="route-detail-close-btn" onClick={onClose}>
+              Kapat
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // === Tek standart erişim sheet’leri ===
+  if (!routeId) return accessSheet("not-found");
+  if (permError === "forbidden") return accessSheet("forbidden");
+  if (permError === "private") return accessSheet("private");
+  if (permError === "not-found") return accessSheet("not-found");
+
+  if (!routeDoc && initialRoute) return renderPrefillSheet();
+  if (!routeDoc) return accessSheet("forbidden");
+
+  const title = getRouteTitleSafe(routeModel);
+
+  return (
+    <div className="route-detail-backdrop" onClick={handleBackdropClick}>
+      <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="route-detail-grab" />
+
+        <div className="route-detail-header">
+          <div className="route-detail-header-top">
+            <div className="route-detail-header-main">
+              <div className="route-detail-title" title={title || "Rota"}>
+                {title || "Rota"}
+              </div>
+              {audienceLabel && (
+                <span
+                  className={
+                    "route-detail-chip" + (audienceKey ? ` route-detail-chip--${audienceKey}` : "")
+                  }
+                >
+                  {audienceLabel}
+                </span>
+              )}
+            </div>
+            <div className="route-detail-header-rating">{ratingAvgLabel}</div>
+          </div>
+
+          {metaLine && <div className="route-detail-meta">{metaLine}</div>}
+
+          <div className="route-detail-header-actions">
+            <button type="button" className="route-detail-pill-btn" onClick={onShare}>
+              Paylaş
+            </button>
+            <button
+              type="button"
+              className="route-detail-pill-btn"
+              onClick={() => setShowShareSheet(true)}
+            >
+              Görsel Paylaş
+            </button>
+            <button type="button" className="route-detail-pill-btn" onClick={onExportGpx}>
+              GPX
+            </button>
+            <button type="button" className="route-detail-close-icon" onClick={onClose} title="Kapat">
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div className="route-detail-body">
+          <div className="route-detail-map">
+            <div ref={mapDivRef} className="route-detail-map-inner" />
+            {gmapsStatus === "error" && (
+              <div className="route-detail-map-error">Harita yüklenemedi</div>
+            )}
+          </div>
+          <div className="route-detail-map-note">
+            Harita önizlemesi bir sonraki adımda geliştirilecek.
+          </div>
+
+          <div className="route-detail-rate-row">
+            <div className="route-detail-rate-label">Puanla:</div>
+            <StarRatingV2 onRated={(v) => onRouteRate(v)} size={32} disabled={!canRateRoute} />
+          </div>
+
+          <div className="route-detail-tabs">
+            {["stops", "gallery", "report", "comments"].map((key) => {
+              let label;
+              if (key === "stops") label = "Duraklar";
+              else if (key === "gallery") label = "Galeri";
+              else if (key === "report") label = "Rapor";
+              else if (key === "comments") {
+                label = commentsCount && commentsCount > 0 ? `Yorumlar (${commentsCount})` : "Yorumlar";
+              }
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onTabChange(key)}
+                  className={
+                    "route-detail-tab-button" + (tab === key ? " route-detail-tab-button--active" : "")
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="route-detail-tabpanel">
+            {/* (Aşağısı değişmedi) */}
+            {tab === "stops" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {(stops || []).map((s) => {
+                  const cache = mediaCacheRef.current[s.id] || {};
+                  const media = cache.items || [];
+                  const up = uploadState[s.id];
+                  const hadPermErr = cache.__error && cache.__error.includes("permission");
+
+                  return (
+                    <div
+                      key={s.id}
+                      style={{
+                        border: "1px solid #eee",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "10px 12px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>
+                            {s.order ? `${s.order}. ` : ""}
+                            {s.title || `Durak ${s.order || ""}`}
+                          </div>
+                          {s.note && (
+                            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
+                              {s.note}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          {stopAgg && stopAgg[s.id] && (
+                            <div style={{ minWidth: 120 }}>
+                              <StarBars
+                                counts={stopAgg[s.id].counts}
+                                total={stopAgg[s.id].total}
+                                compact
+                                height={8}
+                                showNumbers={false}
+                              />
+                            </div>
+                          )}
+
+                          <StarRatingV2 onRated={(v) => onStopRate(s.id, v)} size={22} disabled={isOwner} />
+
+                          {isOwner && (
+                            <button
+                              type="button"
+                              onClick={() => onPickMedia(s.id)}
+                              style={{
+                                padding: "8px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #ddd",
+                                background: "#fff",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Medya Ekle
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div
+                        onMouseEnter={() => ensureStopThumbs(s.id)}
+                        onTouchStart={() => ensureStopThumbs(s.id)}
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          padding: "8px 10px",
+                          overflowX: "auto",
+                        }}
+                      >
+                        {media.slice(0, 4).map((m, idx) => (
+                          <div
+                            key={m.id}
+                            onClick={() => {
+                              setLightboxIndex(idx);
+                              setLightboxItems(media.map((x) => ({ url: x.url, type: x.type })));
+                            }}
+                            style={{
+                              width: 76,
+                              height: 76,
+                              borderRadius: 8,
+                              overflow: "hidden",
+                              background: "#f3f4f6",
+                              flex: "0 0 auto",
+                              cursor: "pointer",
+                            }}
+                            title={m.type}
+                          >
+                            {m.type === "video" ? (
+                              <video
+                                src={m.url}
+                                muted
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            ) : (
+                              <img
+                                src={m.url}
+                                alt="media"
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            )}
+                          </div>
+                        ))}
+
+                        {media.length === 0 && (
+                          <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            {hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}
+                          </div>
+                        )}
+                      </div>
+
+                      {up && (
+                        <div style={{ padding: "0 10px 10px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div
+                              style={{
+                                flex: 1,
+                                height: 8,
+                                background: "#eee",
+                                borderRadius: 999,
+                                overflow: "hidden",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${up.p || 0}%`,
+                                  height: "100%",
+                                  background: "#1a73e8",
+                                }}
+                              />
+                            </div>
+                            <div style={{ fontSize: 12, width: 36, textAlign: "right" }}>
+                              {up.p || 0}%
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => cancelUpload(s.id)}
+                              style={{
+                                fontSize: 12,
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                              }}
+                            >
+                              İptal
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {(stops || []).length === 0 && (
+                  <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>
+                    Bu rotada durak yok.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tab === "gallery" && (
+              <div>
+                {!galleryLoaded && (
+                  <div style={{ padding: "8px 4px", fontSize: 13, opacity: 0.75 }}>
+                    Galeri yükleniyor…
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                  {galleryItems.map((m, idx) => (
+                    <div
+                      key={`${m.stopId}_${m.id}`}
+                      onClick={() => {
+                        setLightboxIndex(idx);
+                        setLightboxItems(galleryItems.map((x) => ({ url: x.url, type: x.type })));
+                      }}
+                      style={{
+                        width: "100%",
+                        aspectRatio: "1/1",
+                        background: "#f3f4f6",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {m.type === "video" ? (
+                        <video
+                          src={m.url}
+                          muted
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <img
+                          src={m.url}
+                          alt="media"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {galleryItems.length === 0 && (
+                  <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>
+                    Gösterilecek medya yok.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tab === "report" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+                  {kpis.map((k) => (
+                    <div
+                      key={k.label}
+                      style={{ border: "1px solid #eee", borderRadius: 10, padding: "10px 12px" }}
+                    >
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>{k.label}</div>
+                      <div style={{ fontWeight: 800, fontSize: 16, marginTop: 2 }}>{k.value}</div>
+                    </div>
+                  ))}
+
+                  <div style={{ border: "1px solid #eee", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>Medya</div>
+                    <div style={{ fontWeight: 800, fontSize: 16, marginTop: 2 }}>
+                      {Object.values(mediaCacheRef.current).reduce(
+                        (acc, v) => acc + ((v?.items || []).length || 0),
+                        0
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ border: "1px solid #eee", borderRadius: 10, padding: "12px 12px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <div style={{ fontWeight: 800 }}>Yıldız dağılımı (rota)</div>
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                      Ort: {routeAgg ? routeAgg.avg.toFixed(1) : "—"} • Oy: {routeAgg ? routeAgg.total : "—"}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <StarBars counts={routeAgg?.counts || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }} total={routeAgg?.total || 0} />
+                  </div>
+                </div>
+
+                <div style={{ border: "1px solid #eee", borderRadius: 10, padding: "12px 12px" }}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>En çok beğenilen 3 durak</div>
+                  {topStops.length === 0 && <div style={{ fontSize: 13, opacity: 0.7 }}>Veri yok.</div>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {topStops.map((it, i) => (
+                      <div
+                        key={it.stop.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          border: "1px solid #f2f2f2",
+                          padding: "10px",
+                          borderRadius: 8,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>
+                          {i + 1}. {it.stop.title || `Durak ${it.stop.order || ""}`}
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>
+                          Ort: {it.avg.toFixed(1)} • Oy: {it.total} • Medya: {it.mediaCount}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 12, opacity: 0.6 }}>
+                  Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="route-detail-footer">
+          <button type="button" className="route-detail-close-btn" onClick={onClose}>
+            Kapat
+          </button>
+        </div>
+      </div>
+
+      {showShareSheet && (
+        <div className="route-detail-share-overlay">
+          <ShareSheetMobile
+            route={buildShareRoutePayload(routeDoc || initialRoute, owner, routeId)}
+            stops={stops}
+            onClose={() => setShowShareSheet(false)}
+          />
+        </div>
+      )}
+
+      <CommentsPanel
+        open={tab === "comments"}
+        targetType="route"
+        targetId={routeId}
+        placeholder="Bu rota hakkında ne düşünüyorsun?"
+        onClose={() => onTabChange("stops")}
+      />
+
+      {lightboxItems && (
+        <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />
+      )}
+    </div>
+  );
+}
