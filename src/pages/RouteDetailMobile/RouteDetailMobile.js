@@ -1,6 +1,6 @@
 // src/pages/RouteDetailMobile/RouteDetailMobile.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import "../RouteDetailMobile.css";
+import "./RouteDetailMobile.css";
 
 import { auth, db } from "../../firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -40,19 +40,6 @@ import { listStopMediaInline, uploadStopMediaInline } from "./routeDetailMedia";
 
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 const MAP_ID = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
-
-// Emir 2: share link tek standart → /s/r/:id?follow=1&owner=...
-const buildRouteShareUrl = ({ routeId, ownerUid }) => {
-  if (!routeId) return "";
-  if (typeof window === "undefined") return "";
-  const params = new URLSearchParams();
-  params.set("follow", "1");
-  if (ownerUid) params.set("owner", String(ownerUid));
-  const qs = params.toString();
-  return `${window.location.origin}/s/r/${encodeURIComponent(routeId)}${
-    qs ? `?${qs}` : ""
-  }`;
-};
 
 export default function RouteDetailMobile({
   routeId,
@@ -126,9 +113,7 @@ export default function RouteDetailMobile({
   const openProfile = useCallback((userId) => {
     if (!userId) return;
     try {
-      window.dispatchEvent(
-        new CustomEvent("open-profile-modal", { detail: { userId } })
-      );
+      window.dispatchEvent(new CustomEvent("open-profile-modal", { detail: { userId } }));
     } catch {}
   }, []);
 
@@ -201,18 +186,12 @@ export default function RouteDetailMobile({
   // Locked (forbidden/private/not-found) durumunda ownerId resolve et (owner param yoksa)
   useEffect(() => {
     if (!routeId) return;
-    if (!(permError === "forbidden" || permError === "private" || permError === "not-found"))
-      return;
+    if (!(permError === "forbidden" || permError === "private" || permError === "not-found")) return;
 
     let alive = true;
     (async () => {
       // 1) Önce elimizdeki hint’ler
-      const direct =
-        ownerHint ||
-        routeModel?.ownerId ||
-        routeModel?.owner ||
-        owner?.id ||
-        null;
+      const direct = ownerHint || routeModel?.ownerId || routeModel?.owner || owner?.id || null;
 
       const baseOwnerId = direct ? String(direct) : null;
 
@@ -278,8 +257,7 @@ export default function RouteDetailMobile({
   }, [routeId, routeModel, permError]);
 
   const ownerIdForProfile = useMemo(() => {
-    const fromRoute =
-      routeDoc?.ownerId || initialRoute?.ownerId || initialRoute?.owner || null;
+    const fromRoute = routeDoc?.ownerId || initialRoute?.ownerId || initialRoute?.owner || null;
     return (
       (fromRoute ? String(fromRoute) : null) ||
       (owner?.id ? String(owner.id) : null) ||
@@ -357,14 +335,10 @@ export default function RouteDetailMobile({
 
             <div className="route-detail-body">
               <div className="route-detail-tabpanel">
-                <div style={{ fontSize: 14, padding: "6px 4px", fontWeight: 800 }}>
-                  {desc}
-                </div>
+                <div style={{ fontSize: 14, padding: "6px 4px", fontWeight: 800 }}>{desc}</div>
 
                 {loginNote && (
-                  <div style={{ fontSize: 12, padding: "4px 4px 0", opacity: 0.75 }}>
-                    {loginNote}
-                  </div>
+                  <div style={{ fontSize: 12, padding: "4px 4px 0", opacity: 0.75 }}>{loginNote}</div>
                 )}
 
                 {userPreview && (
@@ -382,28 +356,12 @@ export default function RouteDetailMobile({
                   >
                     {userPreview.photoURL || userPreview.profilFoto || userPreview.avatar ? (
                       <img
-                        src={
-                          userPreview.photoURL ||
-                          userPreview.profilFoto ||
-                          userPreview.avatar
-                        }
+                        src={userPreview.photoURL || userPreview.profilFoto || userPreview.avatar}
                         alt=""
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 999,
-                          objectFit: "cover",
-                        }}
+                        style={{ width: 34, height: 34, borderRadius: 999, objectFit: "cover" }}
                       />
                     ) : (
-                      <div
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 999,
-                          background: "#eee",
-                        }}
-                      />
+                      <div style={{ width: 34, height: 34, borderRadius: 999, background: "#eee" }} />
                     )}
 
                     <div style={{ minWidth: 0 }}>
@@ -465,9 +423,8 @@ export default function RouteDetailMobile({
 
     let unsubscribe;
     try {
-      unsubscribe = watchCommentsCount(
-        { targetType: "route", targetId: routeId },
-        (cnt) => setCommentsCount(typeof cnt === "number" ? cnt : 0)
+      unsubscribe = watchCommentsCount({ targetType: "route", targetId: routeId }, (cnt) =>
+        setCommentsCount(typeof cnt === "number" ? cnt : 0)
       );
     } catch (e) {
       if (process.env.NODE_ENV !== "production") {
@@ -575,11 +532,7 @@ export default function RouteDetailMobile({
       if (!routeId || !stopId) return;
       if (mediaCacheRef.current[stopId]?.__loadedThumbs) return;
 
-      const { items, error } = await listStopMediaInline({
-        routeId,
-        stopId,
-        limit: 4,
-      });
+      const { items, error } = await listStopMediaInline({ routeId, stopId, limit: 4 });
 
       mediaCacheRef.current[stopId] = {
         ...(mediaCacheRef.current[stopId] || {}),
@@ -619,16 +572,8 @@ export default function RouteDetailMobile({
   const loadAllGallery = useCallback(async () => {
     if (galleryLoaded) return;
     for (const s of stops || []) {
-      const { items } = await listStopMediaInline({
-        routeId,
-        stopId: s.id,
-        limit: 20,
-      });
-      mediaCacheRef.current[s.id] = {
-        items,
-        __loadedThumbs: true,
-        __error: null,
-      };
+      const { items } = await listStopMediaInline({ routeId, stopId: s.id, limit: 20 });
+      mediaCacheRef.current[s.id] = { items, __loadedThumbs: true, __error: null };
     }
     setGalleryLoaded(true);
     setMediaTick((x) => x + 1);
@@ -666,18 +611,11 @@ export default function RouteDetailMobile({
               stopId,
               file: f,
               onProgress: (p) =>
-                setUploadState((s) => ({
-                  ...s,
-                  [stopId]: { ...(s[stopId] || {}), p },
-                })),
+                setUploadState((s) => ({ ...s, [stopId]: { ...(s[stopId] || {}), p } })),
               signal: ac.signal,
             });
             const cur = mediaCacheRef.current[stopId]?.items || [];
-            mediaCacheRef.current[stopId] = {
-              items: [res, ...cur],
-              __loadedThumbs: true,
-              __error: null,
-            };
+            mediaCacheRef.current[stopId] = { items: [res, ...cur], __loadedThumbs: true, __error: null };
             setMediaTick((x) => x + 1);
           } catch (e) {
             // eslint-disable-next-line no-console
@@ -711,17 +649,16 @@ export default function RouteDetailMobile({
     [uploadState]
   );
 
-  // Emir 2: Paylaş → /s/r/:id?follow=1&owner=... (from paramı YOK)
   const onShare = useCallback(async () => {
     const ownerUid =
-      routeDoc?.ownerId ||
-      initialRoute?.ownerId ||
-      owner?.id ||
-      ownerHint ||
-      lockedOwnerId ||
-      null;
+      routeDoc?.ownerId || initialRoute?.ownerId || owner?.id || ownerHint || lockedOwnerId || null;
 
-    const url = buildRouteShareUrl({ routeId, ownerUid });
+    const params = new URLSearchParams();
+    params.set("follow", "1");
+    params.set("from", "share");
+    if (ownerUid) params.set("owner", String(ownerUid));
+
+    const url = `${window.location.origin}/r/${encodeURIComponent(routeId)}?${params.toString()}`;
     const title = getRouteTitleSafe(routeDoc || initialRoute);
 
     try {
@@ -735,11 +672,7 @@ export default function RouteDetailMobile({
 
   const onExportGpx = useCallback(async () => {
     try {
-      const xml = buildGpx({
-        route: routeDoc,
-        stops,
-        path: routeDoc?.path || [],
-      });
+      const xml = buildGpx({ route: routeDoc, stops, path: routeDoc?.path || [] });
       const slug = (getRouteTitleSafe(routeDoc) || "rota")
         .toLowerCase()
         .replace(/[^\w-]+/g, "-")
@@ -752,8 +685,7 @@ export default function RouteDetailMobile({
     }
   }, [routeDoc, stops]);
 
-  const canRateRoute =
-    auth.currentUser && routeDoc && auth.currentUser.uid !== routeDoc.ownerId;
+  const canRateRoute = auth.currentUser && routeDoc && auth.currentUser.uid !== routeDoc.ownerId;
 
   const onRouteRate = useCallback(
     async (v) => {
@@ -795,22 +727,14 @@ export default function RouteDetailMobile({
     return () => document.removeEventListener("keydown", handler);
   }, [onClose, lightboxItems]);
 
-  const isOwner =
-    auth.currentUser && routeDoc && auth.currentUser.uid === routeDoc.ownerId;
+  const isOwner = auth.currentUser && routeDoc && auth.currentUser.uid === routeDoc.ownerId;
 
   const ratingAvgLabel = useMemo(() => getRouteRatingLabelSafe(routeModel), [routeModel]);
-
   const stats = useMemo(() => (routeModel ? buildStatsFromRoute(routeModel) : null), [routeModel]);
 
-  const { key: audienceKey, label: audienceLabel } = useMemo(
-    () => getAudienceFromRoute(routeModel || {}),
-    [routeModel]
-  );
+  const { key: audienceKey, label: audienceLabel } = useMemo(() => getAudienceFromRoute(routeModel || {}), [routeModel]);
 
-  const dateText = useMemo(
-    () => formatDateTimeTR(routeModel?.finishedAt || routeModel?.createdAt),
-    [routeModel]
-  );
+  const dateText = useMemo(() => formatDateTimeTR(routeModel?.finishedAt || routeModel?.createdAt), [routeModel]);
 
   const distanceText = formatDistanceFromStats(stats);
   const durationText = formatDurationFromStats(stats);
@@ -863,11 +787,7 @@ export default function RouteDetailMobile({
                   {title || "Rota"}
                 </div>
                 {audienceLabel && (
-                  <span
-                    className={
-                      "route-detail-chip" + (audienceKey ? ` route-detail-chip--${audienceKey}` : "")
-                    }
-                  >
+                  <span className={"route-detail-chip" + (audienceKey ? ` route-detail-chip--${audienceKey}` : "")}>
                     {audienceLabel}
                   </span>
                 )}
@@ -876,12 +796,7 @@ export default function RouteDetailMobile({
             </div>
             {metaLine && <div className="route-detail-meta">{metaLine}</div>}
             <div className="route-detail-header-actions">
-              <button
-                type="button"
-                className="route-detail-close-icon"
-                onClick={onClose}
-                title="Kapat"
-              >
+              <button type="button" className="route-detail-close-icon" onClick={onClose} title="Kapat">
                 ✕
               </button>
             </div>
@@ -924,11 +839,7 @@ export default function RouteDetailMobile({
                 {title || "Rota"}
               </div>
               {audienceLabel && (
-                <span
-                  className={
-                    "route-detail-chip" + (audienceKey ? ` route-detail-chip--${audienceKey}` : "")
-                  }
-                >
+                <span className={"route-detail-chip" + (audienceKey ? ` route-detail-chip--${audienceKey}` : "")}>
                   {audienceLabel}
                 </span>
               )}
@@ -942,11 +853,7 @@ export default function RouteDetailMobile({
             <button type="button" className="route-detail-pill-btn" onClick={onShare}>
               Paylaş
             </button>
-            <button
-              type="button"
-              className="route-detail-pill-btn"
-              onClick={() => setShowShareSheet(true)}
-            >
+            <button type="button" className="route-detail-pill-btn" onClick={() => setShowShareSheet(true)}>
               Görsel Paylaş
             </button>
             <button type="button" className="route-detail-pill-btn" onClick={onExportGpx}>
@@ -961,13 +868,9 @@ export default function RouteDetailMobile({
         <div className="route-detail-body">
           <div className="route-detail-map">
             <div ref={mapDivRef} className="route-detail-map-inner" />
-            {gmapsStatus === "error" && (
-              <div className="route-detail-map-error">Harita yüklenemedi</div>
-            )}
+            {gmapsStatus === "error" && <div className="route-detail-map-error">Harita yüklenemedi</div>}
           </div>
-          <div className="route-detail-map-note">
-            Harita önizlemesi bir sonraki adımda geliştirilecek.
-          </div>
+          <div className="route-detail-map-note">Harita önizlemesi bir sonraki adımda geliştirilecek.</div>
 
           <div className="route-detail-rate-row">
             <div className="route-detail-rate-label">Puanla:</div>
@@ -988,9 +891,7 @@ export default function RouteDetailMobile({
                   key={key}
                   type="button"
                   onClick={() => onTabChange(key)}
-                  className={
-                    "route-detail-tab-button" + (tab === key ? " route-detail-tab-button--active" : "")
-                  }
+                  className={"route-detail-tab-button" + (tab === key ? " route-detail-tab-button--active" : "")}
                 >
                   {label}
                 </button>
@@ -999,7 +900,6 @@ export default function RouteDetailMobile({
           </div>
 
           <div className="route-detail-tabpanel">
-            {/* (Aşağısı değişmedi) */}
             {tab === "stops" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {(stops || []).map((s) => {
@@ -1009,14 +909,7 @@ export default function RouteDetailMobile({
                   const hadPermErr = cache.__error && cache.__error.includes("permission");
 
                   return (
-                    <div
-                      key={s.id}
-                      style={{
-                        border: "1px solid #eee",
-                        borderRadius: 12,
-                        overflow: "hidden",
-                      }}
-                    >
+                    <div key={s.id} style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
                       <div
                         style={{
                           padding: "10px 12px",
@@ -1031,11 +924,7 @@ export default function RouteDetailMobile({
                             {s.order ? `${s.order}. ` : ""}
                             {s.title || `Durak ${s.order || ""}`}
                           </div>
-                          {s.note && (
-                            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
-                              {s.note}
-                            </div>
-                          )}
+                          {s.note && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{s.note}</div>}
                         </div>
 
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1075,12 +964,7 @@ export default function RouteDetailMobile({
                       <div
                         onMouseEnter={() => ensureStopThumbs(s.id)}
                         onTouchStart={() => ensureStopThumbs(s.id)}
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          padding: "8px 10px",
-                          overflowX: "auto",
-                        }}
+                        style={{ display: "flex", gap: 6, padding: "8px 10px", overflowX: "auto" }}
                       >
                         {media.slice(0, 4).map((m, idx) => (
                           <div
@@ -1101,60 +985,29 @@ export default function RouteDetailMobile({
                             title={m.type}
                           >
                             {m.type === "video" ? (
-                              <video
-                                src={m.url}
-                                muted
-                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                              />
+                              <video src={m.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             ) : (
-                              <img
-                                src={m.url}
-                                alt="media"
-                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                              />
+                              <img src={m.url} alt="media" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             )}
                           </div>
                         ))}
 
                         {media.length === 0 && (
-                          <div style={{ fontSize: 12, opacity: 0.7 }}>
-                            {hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}
-                          </div>
+                          <div style={{ fontSize: 12, opacity: 0.7 }}>{hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}</div>
                         )}
                       </div>
 
                       {up && (
                         <div style={{ padding: "0 10px 10px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <div
-                              style={{
-                                flex: 1,
-                                height: 8,
-                                background: "#eee",
-                                borderRadius: 999,
-                                overflow: "hidden",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: `${up.p || 0}%`,
-                                  height: "100%",
-                                  background: "#1a73e8",
-                                }}
-                              />
+                            <div style={{ flex: 1, height: 8, background: "#eee", borderRadius: 999, overflow: "hidden" }}>
+                              <div style={{ width: `${up.p || 0}%`, height: "100%", background: "#1a73e8" }} />
                             </div>
-                            <div style={{ fontSize: 12, width: 36, textAlign: "right" }}>
-                              {up.p || 0}%
-                            </div>
+                            <div style={{ fontSize: 12, width: 36, textAlign: "right" }}>{up.p || 0}%</div>
                             <button
                               type="button"
                               onClick={() => cancelUpload(s.id)}
-                              style={{
-                                fontSize: 12,
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                              }}
+                              style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}
                             >
                               İptal
                             </button>
@@ -1165,21 +1018,13 @@ export default function RouteDetailMobile({
                   );
                 })}
 
-                {(stops || []).length === 0 && (
-                  <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>
-                    Bu rotada durak yok.
-                  </div>
-                )}
+                {(stops || []).length === 0 && <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Bu rotada durak yok.</div>}
               </div>
             )}
 
             {tab === "gallery" && (
               <div>
-                {!galleryLoaded && (
-                  <div style={{ padding: "8px 4px", fontSize: 13, opacity: 0.75 }}>
-                    Galeri yükleniyor…
-                  </div>
-                )}
+                {!galleryLoaded && <div style={{ padding: "8px 4px", fontSize: 13, opacity: 0.75 }}>Galeri yükleniyor…</div>}
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                   {galleryItems.map((m, idx) => (
@@ -1189,37 +1034,18 @@ export default function RouteDetailMobile({
                         setLightboxIndex(idx);
                         setLightboxItems(galleryItems.map((x) => ({ url: x.url, type: x.type })));
                       }}
-                      style={{
-                        width: "100%",
-                        aspectRatio: "1/1",
-                        background: "#f3f4f6",
-                        borderRadius: 8,
-                        overflow: "hidden",
-                        cursor: "pointer",
-                      }}
+                      style={{ width: "100%", aspectRatio: "1/1", background: "#f3f4f6", borderRadius: 8, overflow: "hidden", cursor: "pointer" }}
                     >
                       {m.type === "video" ? (
-                        <video
-                          src={m.url}
-                          muted
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
+                        <video src={m.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       ) : (
-                        <img
-                          src={m.url}
-                          alt="media"
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
+                        <img src={m.url} alt="media" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       )}
                     </div>
                   ))}
                 </div>
 
-                {galleryItems.length === 0 && (
-                  <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>
-                    Gösterilecek medya yok.
-                  </div>
-                )}
+                {galleryItems.length === 0 && <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Gösterilecek medya yok.</div>}
               </div>
             )}
 
@@ -1227,10 +1053,7 @@ export default function RouteDetailMobile({
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                   {kpis.map((k) => (
-                    <div
-                      key={k.label}
-                      style={{ border: "1px solid #eee", borderRadius: 10, padding: "10px 12px" }}
-                    >
+                    <div key={k.label} style={{ border: "1px solid #eee", borderRadius: 10, padding: "10px 12px" }}>
                       <div style={{ fontSize: 12, opacity: 0.7 }}>{k.label}</div>
                       <div style={{ fontWeight: 800, fontSize: 16, marginTop: 2 }}>{k.value}</div>
                     </div>
@@ -1239,10 +1062,7 @@ export default function RouteDetailMobile({
                   <div style={{ border: "1px solid #eee", borderRadius: 10, padding: "10px 12px" }}>
                     <div style={{ fontSize: 12, opacity: 0.7 }}>Medya</div>
                     <div style={{ fontWeight: 800, fontSize: 16, marginTop: 2 }}>
-                      {Object.values(mediaCacheRef.current).reduce(
-                        (acc, v) => acc + ((v?.items || []).length || 0),
-                        0
-                      )}
+                      {Object.values(mediaCacheRef.current).reduce((acc, v) => acc + ((v?.items || []).length || 0), 0)}
                     </div>
                   </div>
                 </div>
@@ -1264,16 +1084,7 @@ export default function RouteDetailMobile({
                   {topStops.length === 0 && <div style={{ fontSize: 13, opacity: 0.7 }}>Veri yok.</div>}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {topStops.map((it, i) => (
-                      <div
-                        key={it.stop.id}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          border: "1px solid #f2f2f2",
-                          padding: "10px",
-                          borderRadius: 8,
-                        }}
-                      >
+                      <div key={it.stop.id} style={{ display: "flex", justifyContent: "space-between", border: "1px solid #f2f2f2", padding: "10px", borderRadius: 8 }}>
                         <div style={{ fontWeight: 700 }}>
                           {i + 1}. {it.stop.title || `Durak ${it.stop.order || ""}`}
                         </div>
@@ -1285,9 +1096,7 @@ export default function RouteDetailMobile({
                   </div>
                 </div>
 
-                <div style={{ fontSize: 12, opacity: 0.6 }}>
-                  Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).
-                </div>
+                <div style={{ fontSize: 12, opacity: 0.6 }}>Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).</div>
               </div>
             )}
           </div>
@@ -1318,9 +1127,10 @@ export default function RouteDetailMobile({
         onClose={() => onTabChange("stops")}
       />
 
-      {lightboxItems && (
-        <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />
-      )}
+      {lightboxItems && <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />}
     </div>
   );
 }
+
+// ✅ Backward compatibility: eski import’lar kırılmasın
+export { formatTimeAgo, formatCount, formatDateTR } from "./routeDetailUtils";

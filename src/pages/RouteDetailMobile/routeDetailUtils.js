@@ -158,6 +158,66 @@ export function formatDateTimeTR(dt) {
   }
 }
 
+/**
+ * EMİR 36 — Formatter’lar buraya taşındı
+ * Not: RouteDetailMobile.js içinden kaldırılacak; orada gerekiyorsa re-export yapılacak.
+ */
+export function formatDateTR(dt) {
+  const d = toDateSafe(dt);
+  if (!d) return "";
+  try {
+    return d.toLocaleDateString("tr-TR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
+export function formatCount(value) {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return "0";
+  try {
+    // TR locale compact: 1.200 → "1,2 B", 1.000.000 → "1 Mn" (tarayıcıya göre boşluk değişebilir)
+    return new Intl.NumberFormat("tr-TR", {
+      notation: "compact",
+      compactDisplay: "short",
+      maximumFractionDigits: 1,
+    }).format(n);
+  } catch {
+    // Fallback (çok basit)
+    if (n < 1000) return String(Math.round(n));
+    if (n < 1_000_000) return `${Math.round((n / 1000) * 10) / 10} B`;
+    if (n < 1_000_000_000) return `${Math.round((n / 1_000_000) * 10) / 10} Mn`;
+    return `${Math.round((n / 1_000_000_000) * 10) / 10} Mr`;
+  }
+}
+
+export function formatTimeAgo(dt) {
+  const d = toDateSafe(dt);
+  if (!d) return "";
+  const now = Date.now();
+  const diffMs = now - d.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+
+  if (!Number.isFinite(diffSec)) return "";
+  if (diffSec <= 30) return "az önce";
+  if (diffSec < 60) return "1 dk önce";
+
+  const min = Math.floor(diffSec / 60);
+  if (min < 60) return `${min} dk önce`;
+
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour} sa önce`;
+
+  const day = Math.floor(hour / 24);
+  if (day < 30) return `${day} gün önce`;
+
+  return formatDateTR(d);
+}
+
 export function formatDistanceFromStats(stats) {
   if (!stats) return "";
   const m = stats.distanceMeters;
