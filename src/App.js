@@ -63,6 +63,88 @@ const isRoutePermalinkPath = (pathname) =>
 const isAnyPermalinkPath = (pathname) =>
   isPostOrClipPermalinkPath(pathname) || isRoutePermalinkPath(pathname);
 
+/**
+ * EMİR 40 — DRY normalize helper:
+ * /open-route?query=...  -> /r/:id?follow=1&from=protocol(&owner=...)
+ * /s/r/:id               -> /r/:id?follow=1&from=share(&owner=...)
+ *
+ * Not: Davranış aynı kalsın diye sadece bu iki path’i normalize eder.
+ */
+const normalizeRouteLink = ({ pathname, search }) => {
+  const path = pathname || "";
+  const searchStr = search || "";
+
+  // /open-route
+  if (/^\/open-route\/?$/.test(path)) {
+    try {
+      const sp = new URLSearchParams(searchStr);
+      const raw = sp.get("query") || "";
+      const decoded = decodeURIComponent(raw || "");
+
+      let work = decoded;
+      const colonIdx = work.indexOf(":");
+      if (colonIdx !== -1 && work.startsWith("web+mylasa")) {
+        work = work.slice(colonIdx + 1); // "route?id=..."
+      }
+
+      const qIdx = work.indexOf("?");
+      let queryPart = work;
+      if (qIdx !== -1) queryPart = work.slice(qIdx + 1);
+
+      const qs = new URLSearchParams(queryPart);
+      const rid = qs.get("id") || qs.get("routeId");
+
+      const followRaw = qs.get("follow") || sp.get("follow") || "";
+      const follow =
+        followRaw === "1" || followRaw === "true" || followRaw === "yes";
+
+      const owner =
+        qs.get("owner") ||
+        qs.get("o") ||
+        sp.get("owner") ||
+        sp.get("o") ||
+        "";
+
+      if (!rid) {
+        return { kind: "open-route", rid: null, dest: null, goHome: true };
+      }
+
+      const params = new URLSearchParams();
+      if (follow) params.set("follow", "1");
+      if (owner) params.set("owner", String(owner));
+      params.set("from", "protocol");
+
+      const dest = `/r/${encodeURIComponent(rid)}?${params.toString()}`;
+      return { kind: "open-route", rid, dest, goHome: false };
+    } catch {
+      return { kind: "open-route", rid: null, dest: null, goHome: true };
+    }
+  }
+
+  // /s/r/:id
+  const mShareRoute = path.match(/^\/s\/r\/([A-Za-z0-9_-]+)$/);
+  if (mShareRoute) {
+    const rid = mShareRoute[1];
+    try {
+      const sp = new URLSearchParams(searchStr);
+      const owner = sp.get("owner") || sp.get("o");
+
+      const params = new URLSearchParams();
+      params.set("follow", "1");
+      params.set("from", "share");
+      if (owner) params.set("owner", String(owner));
+
+      const dest = `/r/${encodeURIComponent(rid)}?${params.toString()}`;
+      return { kind: "share-route", rid, dest };
+    } catch {
+      const dest = `/r/${encodeURIComponent(rid)}?follow=1&from=share`;
+      return { kind: "share-route", rid, dest };
+    }
+  }
+
+  return null;
+};
+
 function App() {
   const [user, setUser] = useState(null);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
@@ -258,88 +340,49 @@ function App() {
     };
 
     const path = window.location.pathname;
+
+    // EMİR 40: /open-route + /s/r normalize tek helper’dan
+    const norm = normalizeRouteLink({
+      pathname: path,
+      search: window.location.search || "",
+    });
+
+    if (norm?.kind === "open-route") {
+      if (norm.rid && norm.dest) {
+        try {
+          window.history.replaceState({}, "", norm.dest);
+          openRouteFromUrl(norm.rid);
+          return;
+        } catch {
+          try {
+            window.history.replaceState({}, "", "/");
+          } catch {}
+          return;
+        }
+      }
+      if (norm.goHome) {
+        try {
+          window.history.replaceState({}, "", "/");
+        } catch {}
+        // Not: eski davranış gibi burada return şart değil.
+      }
+    }
+
+    if (norm?.kind === "share-route") {
+      try {
+        window.history.replaceState({}, "", norm.dest);
+      } catch {}
+      openRouteFromUrl(norm.rid);
+      return;
+    }
+
     const mPost = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
     const mClip = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
-    const mShareRoute = path.match(/^\/s\/r\/([A-Za-z0-9_-]+)$/);
     const mRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
     const mProfile = path.match(/^\/u\/([^/]+)\/?$/);
     const mExploreRoutes = path.match(/^\/explore\/routes\/?$/);
     const mExplore = path.match(/^\/explore\/?$/);
     const mAdminShareMetrics = path.match(/^\/admin\/share-metrics\/?$/);
-    const isOpenRoute = /^\/open-route\/?$/.test(path);
-
-    // /open-route?query=...  →  /r/:id?follow=1&from=protocol(&owner=...)
-    if (isOpenRoute) {
-      try {
-        const sp = new URLSearchParams(window.location.search || "");
-        const raw = sp.get("query") || "";
-        const decoded = decodeURIComponent(raw || "");
-
-        let work = decoded;
-        const colonIdx = work.indexOf(":");
-        if (colonIdx !== -1 && work.startsWith("web+mylasa")) {
-          work = work.slice(colonIdx + 1); // "route?id=..."
-        }
-
-        const qIdx = work.indexOf("?");
-        let queryPart = work;
-        if (qIdx !== -1) queryPart = work.slice(qIdx + 1);
-
-        const qs = new URLSearchParams(queryPart);
-        const rid = qs.get("id") || qs.get("routeId");
-
-        const followRaw = qs.get("follow") || sp.get("follow") || "";
-        const follow =
-          followRaw === "1" || followRaw === "true" || followRaw === "yes";
-
-        const owner =
-          qs.get("owner") ||
-          qs.get("o") ||
-          sp.get("owner") ||
-          sp.get("o") ||
-          "";
-
-        if (rid) {
-          const params = new URLSearchParams();
-          if (follow) params.set("follow", "1");
-          if (owner) params.set("owner", String(owner));
-          params.set("from", "protocol");
-
-          const dest = `/r/${encodeURIComponent(rid)}?${params.toString()}`;
-          window.history.replaceState({}, "", dest);
-          openRouteFromUrl(rid);
-          return;
-        } else {
-          window.history.replaceState({}, "", "/");
-        }
-      } catch {
-        window.history.replaceState({}, "", "/");
-      }
-    }
-
-    // /s/r/:id → (uyumluluk için) /r/:id?follow=1&from=share(&owner=...) + modal aç
-    // Not: Burada Firestore okuması yok; tüm yetki/404 UI RouteDetailMobile’da.
-    if (mShareRoute) {
-      const rid = mShareRoute[1];
-      try {
-        const sp = new URLSearchParams(window.location.search || "");
-        const owner = sp.get("owner") || sp.get("o");
-
-        const params = new URLSearchParams();
-        // follow=1: varsa da zaten 1 olur; yoksa default olarak 1 set ediyoruz (mevcut davranış korunur)
-        params.set("follow", "1");
-        params.set("from", "share");
-        if (owner) params.set("owner", String(owner));
-
-        window.history.replaceState(
-          {},
-          "",
-          `/r/${encodeURIComponent(rid)}?${params.toString()}`
-        );
-      } catch {}
-      openRouteFromUrl(rid);
-      return;
-    }
 
     if (mPost) {
       openPostFromUrl(mPost[1]);
@@ -374,13 +417,11 @@ function App() {
       const path = window.location.pathname;
       const matchPost = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
       const matchClip = path.match(/^\/c\/([A-Za-z0-9_-]+)$/);
-      const matchShareRoute = path.match(/^\/s\/r\/([A-Za-z0-9_-]+)$/);
       const matchRoute = path.match(/^\/r\/([A-Za-z0-9_-]+)$/);
       const matchProfile = path.match(/^\/u\/([^/]+)\/?$/);
       const matchExploreRoutes = path.match(/^\/explore\/routes\/?$/);
       const matchExplore = path.match(/^\/explore\/?$/);
       const matchAdminShareMetrics = path.match(/^\/admin\/share-metrics\/?$/);
-      const isOpenRoute = /^\/open-route\/?$/.test(path);
 
       const openPost = async (id) => {
         try {
@@ -424,74 +465,38 @@ function App() {
         pushedByAppRef.current = false;
       };
 
-      // /open-route → /r/:id yönlendirme (geri/ileri ile)
-      if (isOpenRoute) {
-        try {
-          const sp = new URLSearchParams(window.location.search || "");
-          const raw = sp.get("query") || "";
-          const decoded = decodeURIComponent(raw || "");
+      // EMİR 40: /open-route + /s/r normalize tek helper’dan
+      const norm = normalizeRouteLink({
+        pathname: path,
+        search: window.location.search || "",
+      });
 
-          let work = decoded;
-          const colonIdx = work.indexOf(":");
-          if (colonIdx !== -1 && work.startsWith("web+mylasa")) {
-            work = work.slice(colonIdx + 1);
-          }
-
-          const qIdx = work.indexOf("?");
-          let queryPart = work;
-          if (qIdx !== -1) queryPart = work.slice(qIdx + 1);
-
-          const qs = new URLSearchParams(queryPart);
-          const rid = qs.get("id") || qs.get("routeId");
-
-          const followRaw = qs.get("follow") || sp.get("follow") || "";
-          const follow =
-            followRaw === "1" || followRaw === "true" || followRaw === "yes";
-
-          const owner =
-            qs.get("owner") ||
-            qs.get("o") ||
-            sp.get("owner") ||
-            sp.get("o") ||
-            "";
-
-          if (rid) {
-            const params = new URLSearchParams();
-            if (follow) params.set("follow", "1");
-            if (owner) params.set("owner", String(owner));
-            params.set("from", "protocol");
-
-            const dest = `/r/${encodeURIComponent(rid)}?${params.toString()}`;
-            window.history.replaceState({}, "", dest);
-            openRoute(rid);
+      if (norm?.kind === "open-route") {
+        if (norm.rid && norm.dest) {
+          try {
+            window.history.replaceState({}, "", norm.dest);
+            openRoute(norm.rid);
             return;
-          } else {
-            window.history.replaceState({}, "", "/");
+          } catch {
+            try {
+              window.history.replaceState({}, "", "/");
+            } catch {}
+            return;
           }
-        } catch {
-          window.history.replaceState({}, "", "/");
+        }
+        if (norm.goHome) {
+          try {
+            window.history.replaceState({}, "", "/");
+          } catch {}
+          // Not: Eski davranış gibi burada return yok; aşağıdaki “modal kapatma” vs. çalışsın.
         }
       }
 
-      // /s/r/:id → /r/:id?follow=1&from=share(&owner=...) + modal aç
-      if (matchShareRoute) {
-        const rid = matchShareRoute[1];
+      if (norm?.kind === "share-route") {
         try {
-          const sp = new URLSearchParams(window.location.search || "");
-          const owner = sp.get("owner") || sp.get("o");
-
-          const params = new URLSearchParams();
-          params.set("follow", "1");
-          params.set("from", "share");
-          if (owner) params.set("owner", String(owner));
-
-          window.history.replaceState(
-            {},
-            "",
-            `/r/${encodeURIComponent(rid)}?${params.toString()}`
-          );
+          window.history.replaceState({}, "", norm.dest);
         } catch {}
-        openRoute(rid);
+        openRoute(norm.rid);
         return;
       }
 
@@ -509,9 +514,12 @@ function App() {
       }
 
       if (
-        ["viewingComments", "viewingClip", "viewingRoute", "viewingRouteError"].includes(
-          modalContent
-        )
+        [
+          "viewingComments",
+          "viewingClip",
+          "viewingRoute",
+          "viewingRouteError",
+        ].includes(modalContent)
       ) {
         setModalContent(null);
         setModalData(null);
@@ -553,7 +561,13 @@ function App() {
 
       if (!routeId) return;
 
-      setModalData({ id: routeId, follow, initialRoute, source, owner: ownerHint || null });
+      setModalData({
+        id: routeId,
+        follow,
+        initialRoute,
+        source,
+        owner: ownerHint || null,
+      });
       setModalContent("viewingRoute");
 
       const params = new URLSearchParams();
@@ -641,7 +655,9 @@ function App() {
         window.history.pushState({}, "", target);
       }
     } else if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
-      const target = `/u/${encodeURIComponent(currentUserProfile.kullaniciAdi)}`;
+      const target = `/u/${encodeURIComponent(
+        currentUserProfile.kullaniciAdi
+      )}`;
       if (window.location.pathname !== target)
         window.history.pushState({}, "", target);
     } else if (

@@ -1,5 +1,6 @@
 // src/pages/RouteDetailMobile/RouteDetailMobile.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "./RouteDetailMobile.css";
 
 import { auth, db } from "../../firebase";
@@ -35,6 +36,9 @@ import {
   resolveOwnerIdForLockedRoute,
 } from "./routeDetailUtils";
 
+// ✅ Backward export güvenliği için (named export yoksa bile build patlamasın)
+import * as routeDetailUtilsNS from "./routeDetailUtils";
+
 import { getRouteStarsAgg, getStopsStarsAgg } from "./routeDetailAgg";
 import { listStopMediaInline, uploadStopMediaInline } from "./routeDetailMedia";
 
@@ -47,18 +51,43 @@ export default function RouteDetailMobile({
   source = null,
   followInitially = false, // ?follow=1 ipucu
   ownerFromLink = null, // ?owner=... (doc okunamasa bile CTA çalışsın)
-  onClose = () => {},
+  onClose = () => {
+    try {
+      window.history.back();
+    } catch {}
+  },
 }) {
-  const [tab, setTab] = useState(() => {
+  const readTabFromUrl = () => {
     if (typeof window === "undefined") return "stops";
     try {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t === "gallery" || t === "report" || t === "comments" || t === "stops")
-        return t;
+      if (t === "gallery" || t === "report" || t === "comments" || t === "stops") return t;
     } catch {}
     return "stops";
-  });
+  };
+
+  // ✅ Portal hedefi (fixed + transform problemlerini kökten çözer)
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
+  const withPortal = useCallback(
+    (node) => (portalTarget ? createPortal(node, portalTarget) : node),
+    [portalTarget]
+  );
+
+  // ✅ Modal açıkken body scroll’u kilitle (arka sayfa “kaymasın”)
+  useEffect(() => {
+    if (!portalTarget) return;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBody;
+      document.documentElement.style.overflow = prevHtml;
+    };
+  }, [portalTarget]);
+
+  const [tab, setTab] = useState(() => readTabFromUrl());
 
   const onTabChange = useCallback((nextTab) => {
     setTab(nextTab);
@@ -81,7 +110,8 @@ export default function RouteDetailMobile({
   const [permCheckTick, setPermCheckTick] = useState(0);
   const [reloadTick, setReloadTick] = useState(0);
 
-  const mediaCacheRef = useRef({});
+  // ✅ Map-based cache (EMİR 42 uyumlu) + EMİR 43 reset’te temizlenecek
+  const mediaCacheRef = useRef(new Map());
   const [mediaTick, setMediaTick] = useState(0);
 
   const [lightboxItems, setLightboxItems] = useState(null);
@@ -109,6 +139,55 @@ export default function RouteDetailMobile({
 
   const [lockedOwnerId, setLockedOwnerId] = useState(null);
   const [lockedOwnerDoc, setLockedOwnerDoc] = useState(null);
+
+  // =========================
+  // ✅ EMİR 43 — routeId değişince TAM RESET
+  // =========================
+  useEffect(() => {
+    // 1) temel veri/state
+    setRouteDoc(null);
+    setStops([]);
+    setOwner(null);
+
+    // 2) izin + sayaçlar
+    setPermError(null);
+    setCommentsCount(null);
+
+    // 3) rapor/galeri
+    setGalleryLoaded(false);
+    setReportLoaded(false);
+    setRouteAgg(null);
+    setStopAgg(null);
+
+    // 4) overlay/UI
+    setShowShareSheet(false);
+    setLightboxItems(null);
+    setLightboxIndex(0);
+
+    // 5) locked owner
+    setLockedOwnerId(null);
+    setLockedOwnerDoc(null);
+
+    // 6) upload’ları abort et + state sıfırla
+    setUploadState((prev) => {
+      try {
+        Object.values(prev || {}).forEach((v) => {
+          try {
+            v?.abort?.abort?.();
+          } catch {}
+        });
+      } catch {}
+      return {};
+    });
+
+    // 7) media cache sıfırla
+    mediaCacheRef.current = new Map();
+    setMediaTick((x) => x + 1);
+
+    // 8) tab’i URL’den tekrar oku (ya da default “stops”)
+    setTab(readTabFromUrl());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId]);
 
   const openProfile = useCallback((userId) => {
     if (!userId) return;
@@ -157,19 +236,12 @@ export default function RouteDetailMobile({
         const s = await getDoc(doc(db, "routes", routeId));
         if (!alive) return;
         if (!s.exists()) setPermError("not-found");
-        else {
-          // doc okunabiliyor → temel olarak erişim var; private gating ayrı effect’te
-          setPermError(null);
-        }
+        else setPermError(null);
       } catch (e) {
         const code = String(e?.code || e?.message || "");
         if (!alive) return;
-        if (code.includes("permission") || code.includes("denied")) {
-          setPermError("forbidden");
-        } else {
-          // geçici ağ vs olabilir; watcherlar yine de çalışabilir
-          setPermError(null);
-        }
+        if (code.includes("permission") || code.includes("denied")) setPermError("forbidden");
+        else setPermError(null);
       }
     })();
     return () => {
@@ -190,16 +262,13 @@ export default function RouteDetailMobile({
 
     let alive = true;
     (async () => {
-      // 1) Önce elimizdeki hint’ler
       const direct = ownerHint || routeModel?.ownerId || routeModel?.owner || owner?.id || null;
-
       const baseOwnerId = direct ? String(direct) : null;
 
       if (baseOwnerId) {
         if (!alive) return;
         setLockedOwnerId(baseOwnerId);
 
-        // (opsiyonel) owner doc çek
         try {
           const u = await getDoc(doc(db, "users", baseOwnerId));
           if (!alive) return;
@@ -211,7 +280,6 @@ export default function RouteDetailMobile({
         return;
       }
 
-      // 2) Public meta denemeleri
       const oid = await resolveOwnerIdForLockedRoute(routeId);
       if (!alive) return;
 
@@ -288,12 +356,7 @@ export default function RouteDetailMobile({
 
       const loginNote = loggedIn ? null : "Devam etmek için giriş yapman gerekebilir.";
 
-      const btnRow = {
-        marginTop: 12,
-        display: "flex",
-        gap: 10,
-        flexWrap: "wrap",
-      };
+      const btnRow = { marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" };
 
       const primaryBtn = {
         flex: "1 1 160px",
@@ -324,7 +387,6 @@ export default function RouteDetailMobile({
         <div className="route-detail-backdrop" onClick={onClose}>
           <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="route-detail-grab" />
-
             <div className="route-detail-header">
               <div className="route-detail-header-top">
                 <div className="route-detail-header-main">
@@ -336,7 +398,6 @@ export default function RouteDetailMobile({
             <div className="route-detail-body">
               <div className="route-detail-tabpanel">
                 <div style={{ fontSize: 14, padding: "6px 4px", fontWeight: 800 }}>{desc}</div>
-
                 {loginNote && (
                   <div style={{ fontSize: 12, padding: "4px 4px 0", opacity: 0.75 }}>{loginNote}</div>
                 )}
@@ -530,16 +591,17 @@ export default function RouteDetailMobile({
   const ensureStopThumbs = useCallback(
     async (stopId) => {
       if (!routeId || !stopId) return;
-      if (mediaCacheRef.current[stopId]?.__loadedThumbs) return;
+      if (mediaCacheRef.current.get(stopId)?.__loadedThumbs) return;
 
       const { items, error } = await listStopMediaInline({ routeId, stopId, limit: 4 });
 
-      mediaCacheRef.current[stopId] = {
-        ...(mediaCacheRef.current[stopId] || {}),
+      const prev = mediaCacheRef.current.get(stopId) || {};
+      mediaCacheRef.current.set(stopId, {
+        ...prev,
         items,
         __loadedThumbs: !error,
         ...(error ? { __error: error } : { __error: null }),
-      };
+      });
       setMediaTick((x) => x + 1);
     },
     [routeId]
@@ -562,10 +624,12 @@ export default function RouteDetailMobile({
   const [galleryLoaded, setGalleryLoaded] = useState(false);
   const galleryItems = useMemo(() => {
     const arr = [];
-    Object.keys(mediaCacheRef.current).forEach((sid) => {
-      const items = mediaCacheRef.current[sid]?.items || [];
-      items.forEach((it) => arr.push({ ...it, stopId: sid }));
-    });
+    try {
+      for (const [sid, val] of mediaCacheRef.current.entries()) {
+        const items = val?.items || [];
+        items.forEach((it) => arr.push({ ...it, stopId: sid }));
+      }
+    } catch {}
     return arr.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
   }, [mediaTick, galleryLoaded]);
 
@@ -573,7 +637,7 @@ export default function RouteDetailMobile({
     if (galleryLoaded) return;
     for (const s of stops || []) {
       const { items } = await listStopMediaInline({ routeId, stopId: s.id, limit: 20 });
-      mediaCacheRef.current[s.id] = { items, __loadedThumbs: true, __error: null };
+      mediaCacheRef.current.set(s.id, { items, __loadedThumbs: true, __error: null });
     }
     setGalleryLoaded(true);
     setMediaTick((x) => x + 1);
@@ -614,8 +678,13 @@ export default function RouteDetailMobile({
                 setUploadState((s) => ({ ...s, [stopId]: { ...(s[stopId] || {}), p } })),
               signal: ac.signal,
             });
-            const cur = mediaCacheRef.current[stopId]?.items || [];
-            mediaCacheRef.current[stopId] = { items: [res, ...cur], __loadedThumbs: true, __error: null };
+
+            const cur = mediaCacheRef.current.get(stopId)?.items || [];
+            mediaCacheRef.current.set(stopId, {
+              items: [res, ...cur],
+              __loadedThumbs: true,
+              __error: null,
+            });
             setMediaTick((x) => x + 1);
           } catch (e) {
             // eslint-disable-next-line no-console
@@ -650,8 +719,7 @@ export default function RouteDetailMobile({
   );
 
   const onShare = useCallback(async () => {
-    const ownerUid =
-      routeDoc?.ownerId || initialRoute?.ownerId || owner?.id || ownerHint || lockedOwnerId || null;
+    const ownerUid = routeDoc?.ownerId || initialRoute?.ownerId || owner?.id || ownerHint || lockedOwnerId || null;
 
     const params = new URLSearchParams();
     params.set("follow", "1");
@@ -761,7 +829,7 @@ export default function RouteDetailMobile({
     topStops = stops
       .map((s) => {
         const agg = stopAgg[s.id] || { total: 0, avg: 0 };
-        const mediaCount = mediaCacheRef.current[s.id]?.items?.length || 0;
+        const mediaCount = mediaCacheRef.current.get(s.id)?.items?.length || 0;
         return { stop: s, total: agg.total, avg: agg.avg, mediaCount };
       })
       .sort((a, b) => {
@@ -817,17 +885,17 @@ export default function RouteDetailMobile({
   };
 
   // === Tek standart erişim sheet’leri ===
-  if (!routeId) return accessSheet("not-found");
-  if (permError === "forbidden") return accessSheet("forbidden");
-  if (permError === "private") return accessSheet("private");
-  if (permError === "not-found") return accessSheet("not-found");
+  if (!routeId) return withPortal(accessSheet("not-found"));
+  if (permError === "forbidden") return withPortal(accessSheet("forbidden"));
+  if (permError === "private") return withPortal(accessSheet("private"));
+  if (permError === "not-found") return withPortal(accessSheet("not-found"));
 
-  if (!routeDoc && initialRoute) return renderPrefillSheet();
-  if (!routeDoc) return accessSheet("forbidden");
+  if (!routeDoc && initialRoute) return withPortal(renderPrefillSheet());
+  if (!routeDoc) return withPortal(accessSheet("forbidden"));
 
   const title = getRouteTitleSafe(routeModel);
 
-  return (
+  const content = (
     <div className="route-detail-backdrop" onClick={handleBackdropClick}>
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
@@ -883,9 +951,7 @@ export default function RouteDetailMobile({
               if (key === "stops") label = "Duraklar";
               else if (key === "gallery") label = "Galeri";
               else if (key === "report") label = "Rapor";
-              else if (key === "comments") {
-                label = commentsCount && commentsCount > 0 ? `Yorumlar (${commentsCount})` : "Yorumlar";
-              }
+              else if (key === "comments") label = commentsCount && commentsCount > 0 ? `Yorumlar (${commentsCount})` : "Yorumlar";
               return (
                 <button
                   key={key}
@@ -903,10 +969,10 @@ export default function RouteDetailMobile({
             {tab === "stops" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {(stops || []).map((s) => {
-                  const cache = mediaCacheRef.current[s.id] || {};
+                  const cache = mediaCacheRef.current.get(s.id) || {};
                   const media = cache.items || [];
                   const up = uploadState[s.id];
-                  const hadPermErr = cache.__error && cache.__error.includes("permission");
+                  const hadPermErr = cache.__error && String(cache.__error).includes("permission");
 
                   return (
                     <div key={s.id} style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
@@ -930,13 +996,7 @@ export default function RouteDetailMobile({
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           {stopAgg && stopAgg[s.id] && (
                             <div style={{ minWidth: 120 }}>
-                              <StarBars
-                                counts={stopAgg[s.id].counts}
-                                total={stopAgg[s.id].total}
-                                compact
-                                height={8}
-                                showNumbers={false}
-                              />
+                              <StarBars counts={stopAgg[s.id].counts} total={stopAgg[s.id].total} compact height={8} showNumbers={false} />
                             </div>
                           )}
 
@@ -1018,7 +1078,9 @@ export default function RouteDetailMobile({
                   );
                 })}
 
-                {(stops || []).length === 0 && <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Bu rotada durak yok.</div>}
+                {(stops || []).length === 0 && (
+                  <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Bu rotada durak yok.</div>
+                )}
               </div>
             )}
 
@@ -1034,7 +1096,14 @@ export default function RouteDetailMobile({
                         setLightboxIndex(idx);
                         setLightboxItems(galleryItems.map((x) => ({ url: x.url, type: x.type })));
                       }}
-                      style={{ width: "100%", aspectRatio: "1/1", background: "#f3f4f6", borderRadius: 8, overflow: "hidden", cursor: "pointer" }}
+                      style={{
+                        width: "100%",
+                        aspectRatio: "1/1",
+                        background: "#f3f4f6",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        cursor: "pointer",
+                      }}
                     >
                       {m.type === "video" ? (
                         <video src={m.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -1062,7 +1131,7 @@ export default function RouteDetailMobile({
                   <div style={{ border: "1px solid #eee", borderRadius: 10, padding: "10px 12px" }}>
                     <div style={{ fontSize: 12, opacity: 0.7 }}>Medya</div>
                     <div style={{ fontWeight: 800, fontSize: 16, marginTop: 2 }}>
-                      {Object.values(mediaCacheRef.current).reduce((acc, v) => acc + ((v?.items || []).length || 0), 0)}
+                      {Array.from(mediaCacheRef.current.values()).reduce((acc, v) => acc + ((v?.items || []).length || 0), 0)}
                     </div>
                   </div>
                 </div>
@@ -1084,7 +1153,16 @@ export default function RouteDetailMobile({
                   {topStops.length === 0 && <div style={{ fontSize: 13, opacity: 0.7 }}>Veri yok.</div>}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {topStops.map((it, i) => (
-                      <div key={it.stop.id} style={{ display: "flex", justifyContent: "space-between", border: "1px solid #f2f2f2", padding: "10px", borderRadius: 8 }}>
+                      <div
+                        key={it.stop.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          border: "1px solid #f2f2f2",
+                          padding: "10px",
+                          borderRadius: 8,
+                        }}
+                      >
                         <div style={{ fontWeight: 700 }}>
                           {i + 1}. {it.stop.title || `Durak ${it.stop.order || ""}`}
                         </div>
@@ -1096,7 +1174,9 @@ export default function RouteDetailMobile({
                   </div>
                 </div>
 
-                <div style={{ fontSize: 12, opacity: 0.6 }}>Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).</div>
+                <div style={{ fontSize: 12, opacity: 0.6 }}>
+                  Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).
+                </div>
               </div>
             )}
           </div>
@@ -1130,7 +1210,65 @@ export default function RouteDetailMobile({
       {lightboxItems && <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />}
     </div>
   );
+
+  return withPortal(content);
 }
 
-// ✅ Backward compatibility: eski import’lar kırılmasın
-export { formatTimeAgo, formatCount, formatDateTR } from "./routeDetailUtils";
+// ✅ Backward compatibility: eski import’lar kırılmasın (utils’te yoksa fallback)
+// Not: named re-export yerine güvenli export (build patlamasın)
+const _coerceDate = (v) => {
+  if (!v) return null;
+  try {
+    if (typeof v?.toDate === "function") return v.toDate();
+    if (typeof v?.seconds === "number") return new Date(v.seconds * 1000);
+    if (typeof v === "number") return new Date(v);
+    if (v instanceof Date) return v;
+    const d = new Date(v);
+    // eslint-disable-next-line no-restricted-globals
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+};
+
+export const formatTimeAgo =
+  routeDetailUtilsNS.formatTimeAgo ||
+  ((v) => {
+    const d = _coerceDate(v);
+    if (!d) return "";
+    const diff = Date.now() - d.getTime();
+    const s = Math.max(0, Math.floor(diff / 1000));
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    const day = Math.floor(h / 24);
+    if (s < 20) return "az önce";
+    if (m < 60) return `${m} dk`;
+    if (h < 24) return `${h} sa`;
+    if (day < 7) return `${day} g`;
+    const wk = Math.floor(day / 7);
+    if (wk < 5) return `${wk} hf`;
+    const mo = Math.floor(day / 30);
+    return `${Math.max(1, mo)} ay`;
+  });
+
+export const formatCount =
+  routeDetailUtilsNS.formatCount ||
+  ((n) => {
+    const x = Number(n) || 0;
+    if (x < 1000) return String(x);
+    if (x < 1_000_000) return `${(x / 1000).toFixed(x < 10_000 ? 1 : 0)}K`.replace(".0K", "K");
+    if (x < 1_000_000_000)
+      return `${(x / 1_000_000).toFixed(x < 10_000_000 ? 1 : 0)}M`.replace(".0M", "M");
+    return `${(x / 1_000_000_000).toFixed(1)}B`.replace(".0B", "B");
+  });
+
+export const formatDateTR =
+  routeDetailUtilsNS.formatDateTR ||
+  ((v) => {
+    const d = _coerceDate(v);
+    if (!d) return "";
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yy = d.getFullYear();
+    return `${dd}.${mm}.${yy}`;
+  });
