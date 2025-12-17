@@ -49,13 +49,7 @@ const MAP_ID = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
  * ✅ EMİR 2 — Harita fit mantığı (path+stops), tek nokta zoom fix, güçlü imza,
  * loading/error overlay + retry (hook’a dokunmadan remount)
  */
-function RouteDetailMapPreview({
-  routeId,
-  path = [],
-  stops = [],
-  stopsLoaded = false,
-  onRetry = () => {},
-}) {
+function RouteDetailMapPreview({ routeId, path = [], stops = [], stopsLoaded = false, onRetry = () => {} }) {
   const { gmapsStatus, mapDivRef, mapRef } = useGoogleMaps({ API_KEY, MAP_ID });
 
   const polylineRef = useRef(null);
@@ -305,9 +299,7 @@ function RouteDetailMapPreview({
               <div style={{ height: 10, borderRadius: 999, background: "#f3f4f6", width: "64%" }} />
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 12, opacity: 0.65 }}>
-              Bağlantın yavaşsa birkaç saniye sürebilir.
-            </div>
+            <div style={{ marginTop: 12, fontSize: 12, opacity: 0.65 }}>Bağlantın yavaşsa birkaç saniye sürebilir.</div>
           </div>
         </div>
       )}
@@ -316,9 +308,7 @@ function RouteDetailMapPreview({
         <div style={overlayWrap}>
           <div style={card}>
             <div style={{ fontWeight: 950, fontSize: 14, color: "#111" }}>Harita yüklenemedi</div>
-            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-              Bağlantını kontrol edip tekrar deneyebilirsin.
-            </div>
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>Bağlantını kontrol edip tekrar deneyebilirsin.</div>
 
             <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
               <button type="button" style={btn} onClick={onRetry}>
@@ -367,10 +357,7 @@ export default function RouteDetailMobile({
 
   // ✅ Portal hedefi (fixed + transform problemlerini kökten çözer)
   const portalTarget = typeof document !== "undefined" ? document.body : null;
-  const withPortal = useCallback(
-    (node) => (portalTarget ? createPortal(node, portalTarget) : node),
-    [portalTarget]
-  );
+  const withPortal = useCallback((node) => (portalTarget ? createPortal(node, portalTarget) : node), [portalTarget]);
 
   // ✅ Modal açıkken body scroll’u kilitle (arka sayfa “kaymasın”)
   useEffect(() => {
@@ -413,6 +400,24 @@ export default function RouteDetailMobile({
   const mediaCacheRef = useRef(new Map());
   const [mediaTick, setMediaTick] = useState(0);
 
+  // ✅ mediaTick rAF throttle (premium performans)
+  const mediaTickRafRef = useRef(0);
+  const bumpMediaTick = useCallback(() => {
+    if (mediaTickRafRef.current) return;
+    mediaTickRafRef.current = requestAnimationFrame(() => {
+      mediaTickRafRef.current = 0;
+      setMediaTick((x) => x + 1);
+    });
+  }, []);
+
+  // ✅ Gallery batching state/refs (EMİR 6)
+  const [galleryState, setGalleryState] = useState({ loading: false, done: false, errorCount: 0 });
+  const galleryInFlightRef = useRef(false);
+  const galleryJobIdRef = useRef(0);
+  const galleryCursorRef = useRef(0);
+  const gallerySentinelRef = useRef(null);
+  const routeBodyRef = useRef(null);
+
   const [lightboxItems, setLightboxItems] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
@@ -439,8 +444,41 @@ export default function RouteDetailMobile({
   const [lockedOwnerId, setLockedOwnerId] = useState(null);
   const [lockedOwnerDoc, setLockedOwnerDoc] = useState(null);
 
+  // === Medya tip normalizasyonu (EMİR 6/C) ===
+  const normalizeMediaType = useCallback((it) => {
+    try {
+      const t = String(it?.type || it?.mime || it?.contentType || "").toLowerCase();
+      const u = String(it?.url || "").toLowerCase();
+
+      if (t.includes("video")) return "video";
+      if (t.includes("image") || t.includes("photo") || t.includes("img")) return "image";
+
+      if (u.match(/\.(mp4|webm|mov|m4v|mkv)(\?|#|$)/i)) return "video";
+      return "image";
+    } catch {
+      return "image";
+    }
+  }, []);
+
+  const buildLightboxItems = useCallback(
+    (arr) => {
+      const out = [];
+      (arr || []).forEach((x) => {
+        const url = x?.url ? String(x.url) : "";
+        if (!url) return;
+        out.push({
+          url,
+          type: normalizeMediaType(x),
+          title: x?.title || x?.name || "",
+        });
+      });
+      return out;
+    },
+    [normalizeMediaType]
+  );
+
   // =========================
-  // ✅ EMİR 43 — routeId değişince TAM RESET
+  // ✅ EMİR 43 — routeId değişince TAM RESET (+ EMİR 6/A3 ref resetleri)
   // =========================
   useEffect(() => {
     // 1) temel veri/state
@@ -454,10 +492,9 @@ export default function RouteDetailMobile({
     setCommentsCount(null);
 
     // 3) rapor/galeri
-    setGalleryLoaded(false);
-    setReportLoaded(false);
     setRouteAgg(null);
     setStopAgg(null);
+    setGalleryState({ loading: false, done: false, errorCount: 0 });
 
     // 4) overlay/UI
     setShowShareSheet(false);
@@ -482,13 +519,23 @@ export default function RouteDetailMobile({
 
     // 7) media cache sıfırla
     mediaCacheRef.current = new Map();
-    setMediaTick((x) => x + 1);
+    bumpMediaTick();
 
     // 8) tab’i URL’den tekrar oku (ya da default “stops”)
     setTab(readTabFromUrl());
 
     // 9) map retry tick reset (yeni rota = temiz init)
     setMapsRetryTick(0);
+
+    // ✅ EMİR 6/A3: gallery refs reset
+    galleryJobIdRef.current += 1;
+    galleryCursorRef.current = 0;
+    galleryInFlightRef.current = false;
+
+    try {
+      if (mediaTickRafRef.current) cancelAnimationFrame(mediaTickRafRef.current);
+    } catch {}
+    mediaTickRafRef.current = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
 
@@ -675,9 +722,7 @@ export default function RouteDetailMobile({
             <div className="route-detail-body">
               <div className="route-detail-tabpanel">
                 <div style={{ fontSize: 14, padding: "6px 4px", fontWeight: 800 }}>{desc}</div>
-                {loginNote && (
-                  <div style={{ fontSize: 12, padding: "4px 4px 0", opacity: 0.75 }}>{loginNote}</div>
-                )}
+                {loginNote && <div style={{ fontSize: 12, padding: "4px 4px 0", opacity: 0.75 }}>{loginNote}</div>}
 
                 {userPreview && (
                   <div
@@ -704,11 +749,7 @@ export default function RouteDetailMobile({
 
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 900, fontSize: 13, color: "#111" }}>
-                        {userPreview.username ||
-                          userPreview.userName ||
-                          userPreview.handle ||
-                          userPreview.name ||
-                          "Profil"}
+                        {userPreview.username || userPreview.userName || userPreview.handle || userPreview.name || "Profil"}
                       </div>
                       <div style={{ fontSize: 12, opacity: 0.7 }}>
                         {ownerIdForProfile ? `ID: ${ownerIdForProfile}` : "Profil bilgisi bulunamadı"}
@@ -813,23 +854,44 @@ export default function RouteDetailMobile({
     };
   }, [routeId, reloadTick, permError]);
 
+  // ✅ EMİR 6/A2: listStopMediaInline throw-safe + cache flags (thumbs)
   const ensureStopThumbs = useCallback(
     async (stopId) => {
       if (!routeId || !stopId) return;
-      if (mediaCacheRef.current.get(stopId)?.__loadedThumbs) return;
 
-      const { items, error } = await listStopMediaInline({ routeId, stopId, limit: 4 });
+      const existing = mediaCacheRef.current.get(stopId) || {};
+      if (existing.__loadedThumbs || existing.__thumbsAttempted) return;
+
+      let items = [];
+      let error = null;
+
+      try {
+        const res = await listStopMediaInline({ routeId, stopId, limit: 4 });
+        items = res?.items || [];
+        error = res?.error || null;
+      } catch (e) {
+        error = String(e?.code || e?.message || e || "unknown");
+        items = [];
+      }
 
       const prev = mediaCacheRef.current.get(stopId) || {};
+      const nextItems = items && items.length ? items : prev.items || [];
+
       mediaCacheRef.current.set(stopId, {
         ...prev,
-        items,
-        __loadedThumbs: !error,
+        items: nextItems,
+        __loadedThumbs: true,
+        __thumbsAttempted: true,
         ...(error ? { __error: error } : { __error: null }),
       });
-      setMediaTick((x) => x + 1);
+
+      if (error && !prev.__error) {
+        setGalleryState((s) => ({ ...s, errorCount: (Number(s?.errorCount) || 0) + 1 }));
+      }
+
+      bumpMediaTick();
     },
-    [routeId]
+    [routeId, bumpMediaTick]
   );
 
   useEffect(() => {
@@ -846,7 +908,6 @@ export default function RouteDetailMobile({
     };
   }, [stops, ensureStopThumbs]);
 
-  const [galleryLoaded, setGalleryLoaded] = useState(false);
   const galleryItems = useMemo(() => {
     const arr = [];
     try {
@@ -856,17 +917,132 @@ export default function RouteDetailMobile({
       }
     } catch {}
     return arr.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-  }, [mediaTick, galleryLoaded]);
+  }, [mediaTick]);
 
-  const loadAllGallery = useCallback(async () => {
-    if (galleryLoaded) return;
-    for (const s of stops || []) {
-      const { items } = await listStopMediaInline({ routeId, stopId: s.id, limit: 20 });
-      mediaCacheRef.current.set(s.id, { items, __loadedThumbs: true, __error: null });
+  // ✅ EMİR 6/A1+A2: Gallery batch loader (inFlight try/finally + throw-safe)
+  const loadNextGalleryBatch = useCallback(async () => {
+    if (!routeId) return;
+    if (galleryInFlightRef.current) return;
+
+    const jobId = galleryJobIdRef.current;
+    galleryInFlightRef.current = true;
+
+    setGalleryState((s) => ({ ...s, loading: true }));
+
+    try {
+      const batchSize = 4;
+      const list = stops || [];
+      const start = Math.max(0, Number(galleryCursorRef.current) || 0);
+
+      const slice = list.slice(start, start + batchSize);
+      if (!slice.length) {
+        if (galleryJobIdRef.current === jobId) {
+          setGalleryState((s) => ({ ...s, loading: false, done: true }));
+        }
+        return;
+      }
+
+      let newErrors = 0;
+
+      await Promise.all(
+        slice.map(async (s) => {
+          const stopId = s?.id;
+          if (!stopId) return;
+
+          const prev = mediaCacheRef.current.get(stopId) || {};
+          if (prev.__loadedGalleryAttempted) return;
+
+          let items = null;
+          let error = null;
+
+          try {
+            const res = await listStopMediaInline({ routeId, stopId, limit: 50 });
+            items = res?.items || [];
+            error = res?.error || null;
+          } catch (e) {
+            items = null;
+            error = String(e?.code || e?.message || e || "unknown");
+          }
+
+          const before = mediaCacheRef.current.get(stopId) || {};
+          const nextItems = Array.isArray(items) && items.length ? items : before.items || [];
+
+          mediaCacheRef.current.set(stopId, {
+            ...before,
+            items: nextItems,
+            __loadedGalleryAttempted: true, // ✅ aynı stop’a sonsuz deneme olmasın
+            __loadedThumbs: true,
+            ...(error ? { __error: error } : { __error: null }),
+          });
+
+          if (error && !before.__error) newErrors += 1;
+        })
+      );
+
+      // job değiştiyse state yazma (ama finally inFlight bırakacak)
+      if (galleryJobIdRef.current !== jobId) return;
+
+      galleryCursorRef.current = start + slice.length;
+      const done = galleryCursorRef.current >= (stops || []).length;
+
+      setGalleryState((s) => ({
+        ...s,
+        loading: false,
+        done,
+        errorCount: (Number(s?.errorCount) || 0) + newErrors,
+      }));
+
+      bumpMediaTick();
+    } catch (e) {
+      if (galleryJobIdRef.current === jobId) {
+        setGalleryState((s) => ({
+          ...s,
+          loading: false, // ✅ UI “yükleniyor…”da kalmasın
+          errorCount: (Number(s?.errorCount) || 0) + 1,
+        }));
+      }
+    } finally {
+      // ✅ EMİR 6/A1: inFlight kesin bırak
+      galleryInFlightRef.current = false;
     }
-    setGalleryLoaded(true);
-    setMediaTick((x) => x + 1);
-  }, [galleryLoaded, routeId, stops]);
+  }, [routeId, stops, bumpMediaTick]);
+
+  // Gallery auto-load sentinel (scroll ile)
+  useEffect(() => {
+    if (tab !== "gallery") return;
+
+    // ilk batch
+    loadNextGalleryBatch();
+
+    const rootEl = routeBodyRef.current;
+    const sentinel = gallerySentinelRef.current;
+
+    if (!rootEl || !sentinel || typeof IntersectionObserver === "undefined") return;
+
+    let alive = true;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!alive) return;
+        const e = entries?.[0];
+        if (!e?.isIntersecting) return;
+        if (galleryInFlightRef.current) return;
+        if (galleryState?.done) return;
+        loadNextGalleryBatch();
+      },
+      { root: rootEl, threshold: 0.08 }
+    );
+
+    try {
+      io.observe(sentinel);
+    } catch {}
+
+    return () => {
+      alive = false;
+      try {
+        io.disconnect();
+      } catch {}
+    };
+  }, [tab, loadNextGalleryBatch, galleryState?.done]);
 
   const [reportLoaded, setReportLoaded] = useState(false);
   const loadReportAgg = useCallback(async () => {
@@ -899,8 +1075,7 @@ export default function RouteDetailMobile({
               routeId,
               stopId,
               file: f,
-              onProgress: (p) =>
-                setUploadState((s) => ({ ...s, [stopId]: { ...(s[stopId] || {}), p } })),
+              onProgress: (p) => setUploadState((s) => ({ ...s, [stopId]: { ...(s[stopId] || {}), p } })),
               signal: ac.signal,
             });
 
@@ -910,7 +1085,7 @@ export default function RouteDetailMobile({
               __loadedThumbs: true,
               __error: null,
             });
-            setMediaTick((x) => x + 1);
+            bumpMediaTick();
           } catch (e) {
             // eslint-disable-next-line no-console
             console.warn("upload hata:", e?.message || e);
@@ -925,7 +1100,7 @@ export default function RouteDetailMobile({
       };
       input.click();
     },
-    [routeId, routeDoc]
+    [routeId, routeDoc, bumpMediaTick]
   );
 
   const cancelUpload = useCallback(
@@ -1002,9 +1177,8 @@ export default function RouteDetailMobile({
   );
 
   useEffect(() => {
-    if (tab === "gallery") loadAllGallery();
     if (tab === "report") loadReportAgg();
-  }, [tab, loadAllGallery, loadReportAgg]);
+  }, [tab, loadReportAgg]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -1158,7 +1332,7 @@ export default function RouteDetailMobile({
           </div>
         </div>
 
-        <div className="route-detail-body">
+        <div className="route-detail-body" ref={routeBodyRef}>
           <div className="route-detail-map" style={{ position: "relative" }}>
             <RouteDetailMapPreview
               key={mapsRetryTick}
@@ -1269,7 +1443,7 @@ export default function RouteDetailMobile({
                             key={m.id}
                             onClick={() => {
                               setLightboxIndex(idx);
-                              setLightboxItems(media.map((x) => ({ url: x.url, type: x.type })));
+                              setLightboxItems(buildLightboxItems(media)); // ✅ type normalize
                             }}
                             style={{
                               width: 76,
@@ -1282,7 +1456,7 @@ export default function RouteDetailMobile({
                             }}
                             title={m.type}
                           >
-                            {m.type === "video" ? (
+                            {normalizeMediaType(m) === "video" ? (
                               <video src={m.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             ) : (
                               <img src={m.url} alt="media" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -1316,15 +1490,32 @@ export default function RouteDetailMobile({
                   );
                 })}
 
-                {(stops || []).length === 0 && (
-                  <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Bu rotada durak yok.</div>
-                )}
+                {(stops || []).length === 0 && <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Bu rotada durak yok.</div>}
               </div>
             )}
 
             {tab === "gallery" && (
               <div>
-                {!galleryLoaded && <div style={{ padding: "8px 4px", fontSize: 13, opacity: 0.75 }}>Galeri yükleniyor…</div>}
+                {galleryState.errorCount > 0 && (
+                  <div
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: "1px solid #ffe2e2",
+                      background: "#fff6f6",
+                      color: "#8b1a1a",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      marginBottom: 10,
+                    }}
+                  >
+                    Bazı medyalar yüklenemedi.
+                  </div>
+                )}
+
+                {galleryState.loading && galleryItems.length === 0 && (
+                  <div style={{ padding: "8px 4px", fontSize: 13, opacity: 0.75 }}>Galeri yükleniyor…</div>
+                )}
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                   {galleryItems.map((m, idx) => (
@@ -1332,7 +1523,7 @@ export default function RouteDetailMobile({
                       key={`${m.stopId}_${m.id}`}
                       onClick={() => {
                         setLightboxIndex(idx);
-                        setLightboxItems(galleryItems.map((x) => ({ url: x.url, type: x.type })));
+                        setLightboxItems(buildLightboxItems(galleryItems)); // ✅ type normalize
                       }}
                       style={{
                         width: "100%",
@@ -1343,7 +1534,7 @@ export default function RouteDetailMobile({
                         cursor: "pointer",
                       }}
                     >
-                      {m.type === "video" ? (
+                      {normalizeMediaType(m) === "video" ? (
                         <video src={m.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       ) : (
                         <img src={m.url} alt="media" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -1352,7 +1543,34 @@ export default function RouteDetailMobile({
                   ))}
                 </div>
 
-                {galleryItems.length === 0 && <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Gösterilecek medya yok.</div>}
+                {galleryItems.length === 0 && !galleryState.loading && (
+                  <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Gösterilecek medya yok.</div>
+                )}
+
+                {!galleryState.done && (
+                  <div style={{ padding: "12px 0", display: "flex", justifyContent: "center" }}>
+                    <button
+                      type="button"
+                      onClick={() => loadNextGalleryBatch()}
+                      disabled={galleryState.loading}
+                      style={{
+                        height: 38,
+                        padding: "0 14px",
+                        borderRadius: 999,
+                        border: "1px solid #e3e3e3",
+                        background: "#fff",
+                        fontWeight: 900,
+                        cursor: galleryState.loading ? "not-allowed" : "pointer",
+                        opacity: galleryState.loading ? 0.6 : 1,
+                      }}
+                    >
+                      {galleryState.loading ? "Yükleniyor…" : "Daha fazla yükle"}
+                    </button>
+                  </div>
+                )}
+
+                {/* sentinel: scroll ile otomatik batch */}
+                <div ref={gallerySentinelRef} style={{ height: 1 }} />
               </div>
             )}
 
@@ -1412,9 +1630,7 @@ export default function RouteDetailMobile({
                   </div>
                 </div>
 
-                <div style={{ fontSize: 12, opacity: 0.6 }}>
-                  Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).
-                </div>
+                <div style={{ fontSize: 12, opacity: 0.6 }}>Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).</div>
               </div>
             )}
           </div>
@@ -1429,11 +1645,7 @@ export default function RouteDetailMobile({
 
       {showShareSheet && (
         <div className="route-detail-share-overlay">
-          <ShareSheetMobile
-            route={buildShareRoutePayload(routeDoc || initialRoute, owner, routeId)}
-            stops={stops}
-            onClose={() => setShowShareSheet(false)}
-          />
+          <ShareSheetMobile route={buildShareRoutePayload(routeDoc || initialRoute, owner, routeId)} stops={stops} onClose={() => setShowShareSheet(false)} />
         </div>
       )}
 
@@ -1495,8 +1707,7 @@ export const formatCount =
     const x = Number(n) || 0;
     if (x < 1000) return String(x);
     if (x < 1_000_000) return `${(x / 1000).toFixed(x < 10_000 ? 1 : 0)}K`.replace(".0K", "K");
-    if (x < 1_000_000_000)
-      return `${(x / 1_000_000).toFixed(x < 10_000_000 ? 1 : 0)}M`.replace(".0M", "M");
+    if (x < 1_000_000_000) return `${(x / 1_000_000).toFixed(x < 10_000_000 ? 1 : 0)}M`.replace(".0M", "M");
     return `${(x / 1_000_000_000).toFixed(1)}B`.replace(".0B", "B");
   });
 
