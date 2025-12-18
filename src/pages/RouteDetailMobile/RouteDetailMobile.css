@@ -287,3 +287,34 @@
   justify-content: center;
   padding: 0;
 }
+
+/* ✅ EMİR 38 — Video badge + tile positioning */
+.route-detail-media-tile {
+  position: relative;
+}
+
+.route-detail-video-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-weight: 900;
+  font-size: 12px;
+  line-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+
+/* ✅ EMİR 38.1 — Video thumb dokunuşu tile'a gitsin (native play engeli) */
+.route-detail-media-tile video {
+  pointer-events: none;
+}

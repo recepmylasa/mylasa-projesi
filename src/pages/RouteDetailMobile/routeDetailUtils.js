@@ -17,9 +17,7 @@ export function fmtDur(ms) {
 }
 
 export function calcAvg(sum, count) {
-  return (Number(count) || 0) > 0
-    ? (Number(sum || 0) / Number(count)).toFixed(1)
-    : "—";
+  return (Number(count) || 0) > 0 ? (Number(sum || 0) / Number(count)).toFixed(1) : "—";
 }
 
 export function isFiniteNumber(value) {
@@ -39,6 +37,30 @@ export function getValidLatLng(lat, lng) {
   return { lat: la, lng: ln };
 }
 
+// ✅ Backward-compat: eski import’lar kırılmasın
+// - getValidLatLngSafe(lat,lng)
+// - getValidLatLngSafe({lat,lng})
+// - getValidLatLngSafe(google.maps.LatLng)  (lat(), lng())
+// - getValidLatLngSafe({latitude, longitude})
+export function getValidLatLngSafe(a, b) {
+  try {
+    if (a && typeof a === "object") {
+      // google.maps.LatLng
+      if (typeof a.lat === "function" && typeof a.lng === "function") {
+        return getValidLatLng(a.lat(), a.lng());
+      }
+      // GeoPoint benzeri
+      if ("latitude" in a && "longitude" in a) {
+        return getValidLatLng(a.latitude, a.longitude);
+      }
+      return getValidLatLng(a.lat, a.lng);
+    }
+    return getValidLatLng(a, b);
+  } catch {
+    return null;
+  }
+}
+
 export function buildStatsFromRoute(raw = {}) {
   let distanceMeters = null;
   if (isFiniteNumber(raw.totalDistanceM) && raw.totalDistanceM > 0) {
@@ -47,10 +69,7 @@ export function buildStatsFromRoute(raw = {}) {
     distanceMeters = raw.distanceMeters;
   } else if (isFiniteNumber(raw.distance) && raw.distance > 0) {
     distanceMeters = raw.distance;
-  } else if (
-    isFiniteNumber(raw.stats?.distanceMeters) &&
-    raw.stats.distanceMeters > 0
-  ) {
+  } else if (isFiniteNumber(raw.stats?.distanceMeters) && raw.stats.distanceMeters > 0) {
     distanceMeters = raw.stats.distanceMeters;
   }
 
@@ -63,10 +82,7 @@ export function buildStatsFromRoute(raw = {}) {
     durationSeconds = raw.duration;
   } else if (isFiniteNumber(raw.durationMinutes) && raw.durationMinutes > 0) {
     durationSeconds = Math.round(raw.durationMinutes * 60);
-  } else if (
-    isFiniteNumber(raw.stats?.durationSeconds) &&
-    raw.stats.durationSeconds > 0
-  ) {
+  } else if (isFiniteNumber(raw.stats?.durationSeconds) && raw.stats.durationSeconds > 0) {
     durationSeconds = raw.stats.durationSeconds;
   }
 
@@ -82,11 +98,7 @@ export function buildStatsFromRoute(raw = {}) {
   }
 
   let avgSpeedKmh = null;
-  if (
-    isFiniteNumber(distanceMeters) &&
-    isFiniteNumber(durationSeconds) &&
-    durationSeconds > 0
-  ) {
+  if (isFiniteNumber(distanceMeters) && isFiniteNumber(durationSeconds) && durationSeconds > 0) {
     const km = distanceMeters / 1000;
     const hours = durationSeconds / 3600;
     if (hours > 0) {
@@ -103,18 +115,11 @@ export function buildStatsFromRoute(raw = {}) {
 }
 
 export function getVisibilityKeyFromRoute(raw = {}) {
-  const source =
-    raw.visibility ?? raw.audience ?? raw.routeVisibility ?? raw.privacy ?? "";
+  const source = raw.visibility ?? raw.audience ?? raw.routeVisibility ?? raw.privacy ?? "";
   const v = source.toString().toLowerCase();
 
   if (!v || v === "public" || v === "everyone") return "public";
-  if (
-    v === "followers" ||
-    v === "followers_only" ||
-    v === "followers-only" ||
-    v === "friends" ||
-    v.includes("follower")
-  ) {
+  if (v === "followers" || v === "followers_only" || v === "followers-only" || v === "friends" || v.includes("follower")) {
     return "followers";
   }
   if (v === "private" || v === "only_me") return "private";
@@ -180,14 +185,12 @@ export function formatCount(value) {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "0";
   try {
-    // TR locale compact: 1.200 → "1,2 B", 1.000.000 → "1 Mn" (tarayıcıya göre boşluk değişebilir)
     return new Intl.NumberFormat("tr-TR", {
       notation: "compact",
       compactDisplay: "short",
       maximumFractionDigits: 1,
     }).format(n);
   } catch {
-    // Fallback (çok basit)
     if (n < 1000) return String(Math.round(n));
     if (n < 1_000_000) return `${Math.round((n / 1000) * 10) / 10} B`;
     if (n < 1_000_000_000) return `${Math.round((n / 1_000_000) * 10) / 10} Mn`;
@@ -273,24 +276,14 @@ export function getRouteRatingLabelSafe(model) {
     return `${avg} ★ (${cnt})`;
   }
   const avg =
-    (typeof m.ratingAvg === "number" &&
-      Number.isFinite(m.ratingAvg) &&
-      m.ratingAvg) ||
-    (typeof m.avgRating === "number" &&
-      Number.isFinite(m.avgRating) &&
-      m.avgRating) ||
-    (typeof m.raw?.ratingAvg === "number" &&
-      Number.isFinite(m.raw.ratingAvg) &&
-      m.raw.ratingAvg) ||
+    (typeof m.ratingAvg === "number" && Number.isFinite(m.ratingAvg) && m.ratingAvg) ||
+    (typeof m.avgRating === "number" && Number.isFinite(m.avgRating) && m.avgRating) ||
+    (typeof m.raw?.ratingAvg === "number" && Number.isFinite(m.raw.ratingAvg) && m.raw.ratingAvg) ||
     null;
 
   const cnt =
-    (typeof m.ratingCount === "number" &&
-      Number.isFinite(m.ratingCount) &&
-      m.ratingCount) ||
-    (typeof m.raw?.ratingCount === "number" &&
-      Number.isFinite(m.raw.ratingCount) &&
-      m.raw.ratingCount) ||
+    (typeof m.ratingCount === "number" && Number.isFinite(m.ratingCount) && m.ratingCount) ||
+    (typeof m.raw?.ratingCount === "number" && Number.isFinite(m.raw.ratingCount) && m.raw.ratingCount) ||
     null;
 
   if (typeof avg === "number") {
@@ -311,13 +304,8 @@ export function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
       ownerDoc.name ||
       r.ownerUsername ||
       r.ownerName;
-    r.ownerName =
-      ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
-    r.ownerAvatar =
-      ownerDoc.photoURL ||
-      ownerDoc.profilFoto ||
-      ownerDoc.avatar ||
-      r.ownerAvatar;
+    r.ownerName = ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
+    r.ownerAvatar = ownerDoc.photoURL || ownerDoc.profilFoto || ownerDoc.avatar || r.ownerAvatar;
   }
   return r;
 }
@@ -349,8 +337,6 @@ export function pickOwnerIdLoose(obj) {
   return s ? s : null;
 }
 
-// Permission-denied / 404 gibi durumlarda ownerId bulmak için “public meta” denemeleri.
-// Bulamazsa null döner; akış asla crash etmez.
 export async function resolveOwnerIdForLockedRoute(routeId) {
   const rid = String(routeId || "").trim();
   if (!rid) return null;
@@ -377,9 +363,7 @@ export async function resolveOwnerIdForLockedRoute(routeId) {
       const data = snap.data() || {};
       const ownerId = pickOwnerIdLoose(data);
       if (ownerId) return ownerId;
-    } catch {
-      // izin/404 vb. olabilir, sessiz geç
-    }
+    } catch {}
   }
   return null;
 }

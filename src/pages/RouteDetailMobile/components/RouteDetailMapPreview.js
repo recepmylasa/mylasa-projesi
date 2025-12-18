@@ -1,9 +1,27 @@
 // src/pages/RouteDetailMobile/components/RouteDetailMapPreview.js
 import React, { useEffect, useMemo, useRef } from "react";
-import { getValidLatLng } from "../routeDetailUtils";
+
+// ✅ Backward-safe import: getValidLatLngSafe yoksa bile build patlamasın
+import * as routeDetailUtils from "../routeDetailUtils";
+
+const getLL = (a, b) => {
+  try {
+    if (typeof routeDetailUtils.getValidLatLngSafe === "function") {
+      return routeDetailUtils.getValidLatLngSafe(a, b);
+    }
+    if (typeof routeDetailUtils.getValidLatLng === "function") {
+      // fallback
+      if (a && typeof a === "object") return routeDetailUtils.getValidLatLng(a.lat, a.lng);
+      return routeDetailUtils.getValidLatLng(a, b);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
 
 function key5(lat, lng) {
-  const ll = getValidLatLng(lat, lng);
+  const ll = getLL(lat, lng);
   if (!ll) return null;
   const la = Number(ll.lat);
   const ln = Number(ll.lng);
@@ -32,7 +50,7 @@ function buildPathSignature(path) {
     maxLng = -Infinity;
 
   for (const p of arr) {
-    const ll = getValidLatLng(p?.lat, p?.lng);
+    const ll = getLL(p?.lat, p?.lng);
     if (!ll) continue;
     const la = Number(ll.lat);
     const ln = Number(ll.lng);
@@ -65,7 +83,7 @@ function buildFitSignature(path, stops) {
     maxLng = -Infinity;
 
   const add = (lat, lng) => {
-    const ll = getValidLatLng(lat, lng);
+    const ll = getLL(lat, lng);
     if (!ll) return;
     const la = Number(ll.lat);
     const ln = Number(ll.lng);
@@ -97,11 +115,11 @@ function buildFitSignature(path, stops) {
 function collectAllPts(path, stops) {
   const out = [];
   (Array.isArray(path) ? path : []).forEach((p) => {
-    const ll = getValidLatLng(p?.lat, p?.lng);
+    const ll = getLL(p?.lat, p?.lng);
     if (ll) out.push(ll);
   });
   (Array.isArray(stops) ? stops : []).forEach((s) => {
-    const ll = getValidLatLng(s?.lat, s?.lng);
+    const ll = getLL(s?.lat, s?.lng);
     if (ll) out.push(ll);
   });
   return out;
@@ -221,7 +239,7 @@ export default function RouteDetailMapPreview({
 
     const pts = [];
     (Array.isArray(path) ? path : []).forEach((p) => {
-      const ll = getValidLatLng(p?.lat, p?.lng);
+      const ll = getLL(p?.lat, p?.lng);
       if (!ll) return;
       pts.push(new window.google.maps.LatLng(ll.lat, ll.lng));
     });
@@ -263,7 +281,7 @@ export default function RouteDetailMapPreview({
     stopMarkersRef.current = [];
 
     (Array.isArray(stops) ? stops : []).forEach((s) => {
-      const ll = getValidLatLng(s?.lat, s?.lng);
+      const ll = getLL(s?.lat, s?.lng);
       if (!ll) return;
       try {
         const mk = new window.google.maps.Marker({

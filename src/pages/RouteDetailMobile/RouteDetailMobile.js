@@ -742,6 +742,8 @@ export default function RouteDetailMobile({
                         src={userPreview.photoURL || userPreview.profilFoto || userPreview.avatar}
                         alt=""
                         style={{ width: 34, height: 34, borderRadius: 999, objectFit: "cover" }}
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div style={{ width: 34, height: 34, borderRadius: 999, background: "#eee" }} />
@@ -1438,31 +1440,55 @@ export default function RouteDetailMobile({
                         onTouchStart={() => ensureStopThumbs(s.id)}
                         style={{ display: "flex", gap: 6, padding: "8px 10px", overflowX: "auto" }}
                       >
-                        {media.slice(0, 4).map((m, idx) => (
-                          <div
-                            key={m.id}
-                            onClick={() => {
-                              setLightboxIndex(idx);
-                              setLightboxItems(buildLightboxItems(media)); // ✅ type normalize
-                            }}
-                            style={{
-                              width: 76,
-                              height: 76,
-                              borderRadius: 8,
-                              overflow: "hidden",
-                              background: "#f3f4f6",
-                              flex: "0 0 auto",
-                              cursor: "pointer",
-                            }}
-                            title={m.type}
-                          >
-                            {normalizeMediaType(m) === "video" ? (
-                              <video src={m.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                            ) : (
-                              <img src={m.url} alt="media" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                            )}
-                          </div>
-                        ))}
+                        {media.slice(0, 4).map((m, idx) => {
+                          const isVideo = normalizeMediaType(m) === "video";
+                          return (
+                            <div
+                              key={m.id}
+                              className="route-detail-media-tile"
+                              onClick={() => {
+                                setLightboxIndex(idx);
+                                setLightboxItems(buildLightboxItems(media)); // ✅ type normalize
+                              }}
+                              style={{
+                                width: 76,
+                                height: 76,
+                                borderRadius: 8,
+                                overflow: "hidden",
+                                background: "#f3f4f6",
+                                flex: "0 0 auto",
+                                cursor: "pointer",
+                              }}
+                              title={m.type}
+                            >
+                              {isVideo && (
+                                <div className="route-detail-video-badge" aria-hidden="true">
+                                  ▶︎
+                                </div>
+                              )}
+
+                              {isVideo ? (
+                                <video
+                                  src={m.url}
+                                  muted
+                                  playsInline
+                                  preload="metadata"
+                                  disablePictureInPicture
+                                  controlsList="nodownload noplaybackrate"
+                                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                />
+                              ) : (
+                                <img
+                                  src={m.url}
+                                  alt="media"
+                                  loading="lazy"
+                                  decoding="async"
+                                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
 
                         {media.length === 0 && (
                           <div style={{ fontSize: 12, opacity: 0.7 }}>{hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}</div>
@@ -1518,29 +1544,53 @@ export default function RouteDetailMobile({
                 )}
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-                  {galleryItems.map((m, idx) => (
-                    <div
-                      key={`${m.stopId}_${m.id}`}
-                      onClick={() => {
-                        setLightboxIndex(idx);
-                        setLightboxItems(buildLightboxItems(galleryItems)); // ✅ type normalize
-                      }}
-                      style={{
-                        width: "100%",
-                        aspectRatio: "1/1",
-                        background: "#f3f4f6",
-                        borderRadius: 8,
-                        overflow: "hidden",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {normalizeMediaType(m) === "video" ? (
-                        <video src={m.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      ) : (
-                        <img src={m.url} alt="media" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      )}
-                    </div>
-                  ))}
+                  {galleryItems.map((m, idx) => {
+                    const isVideo = normalizeMediaType(m) === "video";
+                    return (
+                      <div
+                        key={`${m.stopId}_${m.id}`}
+                        className="route-detail-media-tile"
+                        onClick={() => {
+                          setLightboxIndex(idx);
+                          setLightboxItems(buildLightboxItems(galleryItems)); // ✅ type normalize
+                        }}
+                        style={{
+                          width: "100%",
+                          aspectRatio: "1/1",
+                          background: "#f3f4f6",
+                          borderRadius: 8,
+                          overflow: "hidden",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {isVideo && (
+                          <div className="route-detail-video-badge" aria-hidden="true">
+                            ▶︎
+                          </div>
+                        )}
+
+                        {isVideo ? (
+                          <video
+                            src={m.url}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            disablePictureInPicture
+                            controlsList="nodownload noplaybackrate"
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <img
+                            src={m.url}
+                            alt="media"
+                            loading="lazy"
+                            decoding="async"
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {galleryItems.length === 0 && !galleryState.loading && (
@@ -1645,7 +1695,11 @@ export default function RouteDetailMobile({
 
       {showShareSheet && (
         <div className="route-detail-share-overlay">
-          <ShareSheetMobile route={buildShareRoutePayload(routeDoc || initialRoute, owner, routeId)} stops={stops} onClose={() => setShowShareSheet(false)} />
+          <ShareSheetMobile
+            route={buildShareRoutePayload(routeDoc || initialRoute, owner, routeId)}
+            stops={stops}
+            onClose={() => setShowShareSheet(false)}
+          />
         </div>
       )}
 
