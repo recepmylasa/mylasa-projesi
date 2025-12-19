@@ -5,16 +5,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, query, orderBy, limit, startAfter, getDocs } from "firebase/firestore";
-import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage";
 import { db } from "../firebase";
-import {
-  buildRouteCardModel,
-  getOwnerIdFromRaw,
-  getVisibilityKey,
-  pickCover,
-  isLikelyStorageReference,
-  isRenderableHttpsUrl,
-} from "../routes/routeCardModel";
+import { buildRouteCardModel, getOwnerIdFromRaw, getVisibilityKey } from "../routes/routeCardModel";
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -50,15 +42,11 @@ function pickFirst(obj, paths) {
 function normalizeStopTitle(s) {
   if (!s) return "";
   if (typeof s === "string") return s;
-
-  // RouteDetail'e olabildiğince yakın + geriye dönük tolerans
   const candidates = [
     "title",
     "name",
     "label",
-    "mainText",
     "place.mainText",
-    "place.description",
     "place.name",
     "place.title",
     "place.formattedAddress",
@@ -70,13 +58,42 @@ function normalizeStopTitle(s) {
   return typeof v === "string" ? v : "";
 }
 
+// ✅ patch: lat/lng yakalama alanlarını genişlet (GeoPoint / position / coordinates)
 function extractStopLatLng(s) {
   if (!s || typeof s !== "object") return { lat: null, lng: null };
-  const lat = pickFirst(s, ["lat", "latitude", "location.lat", "position.lat"]) ?? null;
+
+  const lat =
+    pickFirst(s, [
+      "lat",
+      "latitude",
+      "location.lat",
+      "location.latitude",
+      "position.lat",
+      "position.latitude",
+      "coords.lat",
+      "coords.latitude",
+      "coordinates.lat",
+      "coordinates.latitude",
+    ]) ?? null;
+
   const lng =
-    pickFirst(s, ["lng", "lon", "longitude", "location.lng", "position.lng"]) ?? null;
+    pickFirst(s, [
+      "lng",
+      "lon",
+      "longitude",
+      "location.lng",
+      "location.longitude",
+      "position.lng",
+      "position.longitude",
+      "coords.lng",
+      "coords.longitude",
+      "coordinates.lng",
+      "coordinates.longitude",
+    ]) ?? null;
+
   const nlat = typeof lat === "number" ? lat : Number(lat);
   const nlng = typeof lng === "number" ? lng : Number(lng);
+
   return {
     lat: Number.isFinite(nlat) ? nlat : null,
     lng: Number.isFinite(nlng) ? nlng : null,
@@ -99,15 +116,13 @@ function extractStopMediaUrl(s) {
     "url",
     "previewUrl",
     "previewURL",
-    "path",
-    "uri",
   ]);
   if (isNonEmptyString(direct)) return String(direct).trim();
 
   const arr = pickFirst(s, ["media", "medias", "gallery", "items", "photos"]) || null;
   if (Array.isArray(arr) && arr.length) {
     for (const it of arr) {
-      const u = pickFirst(it, ["url", "mediaUrl", "imageUrl", "thumbUrl", "path", "uri"]);
+      const u = pickFirst(it, ["url", "mediaUrl", "imageUrl", "thumbUrl"]);
       if (isNonEmptyString(u)) return String(u).trim();
     }
   }
@@ -142,17 +157,24 @@ function normalizeStopsPreviewValue(v) {
         if (isNonEmptyString(mediaUrl)) out.mediaUrl = mediaUrl;
         if (s.id) out.id = s.id;
         if (s.order !== undefined) out.order = s.order;
+        if (s.idx !== undefined && out.order === undefined) out.order = s.idx;
         return Object.keys(out).length ? out : null;
       }
       return null;
     })
     .filter(Boolean);
 
-  // grid için sadece ilk + son
-  if (cleaned.length > 2) {
-    return [cleaned[0], cleaned[cleaned.length - 1]];
-  }
-  return cleaned;
+  // order varsa sırala
+  const sorted = cleaned.slice().sort((a, b) => {
+    const ao = typeof a.order === "number" ? a.order : Number(a.order);
+    const bo = typeof b.order === "number" ? b.order : Number(b.order);
+    const na = Number.isFinite(ao) ? ao : 0;
+    const nb = Number.isFinite(bo) ? bo : 0;
+    return na - nb;
+  });
+
+  if (sorted.length > 2) return [sorted[0], sorted[sorted.length - 1]];
+  return sorted;
 }
 
 function extractPreviewFromRouteDoc(raw) {
@@ -170,8 +192,6 @@ function extractPreviewFromRouteDoc(raw) {
     "preview.stops",
     "preview.stopsPreview",
     "preview.items",
-    // DİKKAT: routes/{id} dokümanında "stops" varsa bile çok farklı olabilir;
-    // yine de tolerans
     "stops",
   ]);
 
@@ -180,6 +200,8 @@ function extractPreviewFromRouteDoc(raw) {
   const coverUrlVal = pickFirst(raw, [
     "coverUrl",
     "coverURL",
+    "coverPhotoUrl",
+    "coverImageUrl",
     "previewUrl",
     "previewURL",
     "thumbnailUrl",
@@ -212,88 +234,21 @@ function needsHydratePreview(route) {
   if (route.__previewHydrated) return false;
 
   const sp = route.stopsPreview;
-  const hasStopsPreview = Array.isArray(sp) && sp.length >= 2; // Start➜End için 2 şart
+  const hasStopsPreview = Array.isArray(sp) && sp.length >= 1;
 
-  // Cover: pickCover sonucu render edilebilir https değilse (gs://, path, tokenless storage vb.) hydrate/resolver gerekir
-  const pc = pickCover(route);
-  const candidateUrl = pc?.url || "";
-  const hasRenderableCover = isRenderableHttpsUrl(candidateUrl);
+  const cover =
+    route.coverUrl ||
+    route.previewUrl ||
+    route.thumbnailUrl ||
+    route.thumbUrl ||
+    route.imageUrl ||
+    route.photoUrl ||
+    route.mediaUrl ||
+    "";
 
-  return !hasStopsPreview || !hasRenderableCover;
-}
+  const hasCover = isNonEmptyString(cover);
 
-function pickCoverCandidateUrl(route, fallbackStopsPreview) {
-  const r = route || {};
-  const candidates = [
-    r.coverHttps,
-    r.coverUrl,
-    r.previewUrl,
-    r.thumbnailUrl,
-    r.mediaUrl,
-    r.thumbUrl,
-    r.imageUrl,
-    r.photoUrl,
-    r.raw?.coverUrl,
-    r.raw?.previewUrl,
-    r.raw?.thumbnailUrl,
-    r.raw?.mediaUrl,
-    r.raw?.thumbUrl,
-    r.raw?.imageUrl,
-    r.raw?.photoUrl,
-  ]
-    .map((x) => (typeof x === "string" ? x.trim() : ""))
-    .filter((x) => !!x);
-
-  if (candidates.length) return candidates[0];
-
-  const sp = Array.isArray(fallbackStopsPreview) ? fallbackStopsPreview : [];
-  for (const s of sp) {
-    const u = typeof s?.mediaUrl === "string" ? s.mediaUrl.trim() : "";
-    if (u) return u;
-  }
-  return "";
-}
-
-async function resolveMediaToHttps(urlOrPath, cacheRef) {
-  const input = typeof urlOrPath === "string" ? urlOrPath.trim() : "";
-  if (!input) return "";
-
-  // ✅ render edilebilir https ise direkt kullan
-  if (isRenderableHttpsUrl(input)) return input;
-
-  // ✅ storage referansı değilse resolver denemek anlamsız (grid placeholder kalsın)
-  if (!isLikelyStorageReference(input)) return "";
-
-  // ✅ cache (aynı input için 1 kere)
-  const cached = cacheRef.current.get(input);
-  if (cached) {
-    try {
-      const r = await cached;
-      return typeof r === "string" ? r : "";
-    } catch {
-      return "";
-    }
-  }
-
-  const p = (async () => {
-    try {
-      const st = getStorage();
-      const dl = await getDownloadURL(storageRef(st, input));
-      if (typeof dl === "string" && dl.startsWith("https://")) return dl;
-      return "";
-    } catch {
-      return "";
-    }
-  })();
-
-  cacheRef.current.set(input, p);
-
-  try {
-    const res = await p;
-    return typeof res === "string" ? res : "";
-  } catch {
-    return "";
-  }
+  return !hasStopsPreview || !hasCover;
 }
 
 export default function useUserRoutes(ownerId, options = {}) {
@@ -309,12 +264,9 @@ export default function useUserRoutes(ownerId, options = {}) {
   const isMountedRef = useRef(true);
   const requestIdRef = useRef(0);
 
-  // HYDRATE cache + job guard (routeId bazlı: tek sefer)
+  // HYDRATE cache + job guard
   const hydrateCacheRef = useRef(new Map()); // routeId -> { status: "inflight"|"done" }
   const hydrateJobIdRef = useRef(0);
-
-  // resolver cache (urlOrPath bazlı)
-  const mediaResolveCacheRef = useRef(new Map()); // key(string) -> Promise<string>
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -323,10 +275,9 @@ export default function useUserRoutes(ownerId, options = {}) {
     };
   }, []);
 
-  // owner değişince cache sıfırla
+  // owner değişince hydrate cache sıfırla
   useEffect(() => {
     hydrateCacheRef.current = new Map();
-    mediaResolveCacheRef.current = new Map();
     hydrateJobIdRef.current += 1;
   }, [ownerId]);
 
@@ -354,7 +305,6 @@ export default function useUserRoutes(ownerId, options = {}) {
         setRoutes([]);
 
         hydrateCacheRef.current = new Map();
-        mediaResolveCacheRef.current = new Map();
         hydrateJobIdRef.current += 1;
       } else {
         setLoadingMore(true);
@@ -422,26 +372,16 @@ export default function useUserRoutes(ownerId, options = {}) {
               const patched = {
                 ...model,
 
-                stopsPreview:
-                  Array.isArray(model?.stopsPreview) && model.stopsPreview.length ? model.stopsPreview : stopsPreview,
+                stopsPreview: Array.isArray(model?.stopsPreview) && model.stopsPreview.length ? model.stopsPreview : stopsPreview,
 
                 coverUrl: isNonEmptyString(model?.coverUrl) ? model.coverUrl : coverUrl,
                 thumbnailUrl: isNonEmptyString(model?.thumbnailUrl) ? model.thumbnailUrl : thumbnailUrl,
 
-                previewUrl: isNonEmptyString(model?.previewUrl)
-                  ? model.previewUrl
-                  : (isNonEmptyString(coverUrl) ? coverUrl : model?.previewUrl) || "",
-                thumbUrl: isNonEmptyString(model?.thumbUrl)
-                  ? model.thumbUrl
-                  : (isNonEmptyString(thumbnailUrl) ? thumbnailUrl : model?.thumbUrl) || "",
-                imageUrl: isNonEmptyString(model?.imageUrl)
-                  ? model.imageUrl
-                  : (isNonEmptyString(coverUrl) ? coverUrl : model?.imageUrl) || "",
-                mediaUrl: isNonEmptyString(model?.mediaUrl)
-                  ? model.mediaUrl
-                  : (isNonEmptyString(coverUrl) ? coverUrl : model?.mediaUrl) || "",
+                previewUrl: isNonEmptyString(model?.previewUrl) ? model.previewUrl : (isNonEmptyString(coverUrl) ? coverUrl : model?.previewUrl) || "",
+                thumbUrl: isNonEmptyString(model?.thumbUrl) ? model.thumbUrl : (isNonEmptyString(thumbnailUrl) ? thumbnailUrl : model?.thumbUrl) || "",
+                imageUrl: isNonEmptyString(model?.imageUrl) ? model.imageUrl : (isNonEmptyString(coverUrl) ? coverUrl : model?.imageUrl) || "",
+                mediaUrl: isNonEmptyString(model?.mediaUrl) ? model.mediaUrl : (isNonEmptyString(coverUrl) ? coverUrl : model?.mediaUrl) || "",
 
-                // raw'ı garanti altına al
                 raw: model?.raw && typeof model.raw === "object" ? model.raw : raw,
               };
 
@@ -453,7 +393,6 @@ export default function useUserRoutes(ownerId, options = {}) {
 
           localCursor = nextCursor;
 
-          // reset modunda: hiç rota çıkmadıysa ama daha var → 1-2 sayfa daha tarayalım
           if (mode === "reset") {
             if (collected.length > 0) break;
             if (!localHasMore || !localCursor) break;
@@ -461,7 +400,6 @@ export default function useUserRoutes(ownerId, options = {}) {
             continue;
           }
 
-          // more modunda tek sayfa yeter
           break;
         }
 
@@ -487,113 +425,89 @@ export default function useUserRoutes(ownerId, options = {}) {
     [ownerId, pageSize, isSelf, isFollowing, viewerId]
   );
 
-  // ✅ EMİR: stopsPreview + cover resolver (tek fonksiyonda; max 3 concurrent runner bunu çağırır)
-  const hydrateRoutePreviewAndCover = useCallback(async (route, jobId) => {
-    if (!route || !db) return null;
+  // ✅ EMİR 10 / Lazy HYDRATE: sadece start+end stop (2 query) + cover için ilk görseli dene
+  const hydrateOneRoutePreview = useCallback(async (routeId, jobId) => {
+    if (!routeId || !db) return null;
     if (!isMountedRef.current) return null;
     if (hydrateJobIdRef.current !== jobId) return null;
 
-    const routeId = route?.id ? String(route.id) : "";
-    if (!routeId) return null;
-
-    const cached = hydrateCacheRef.current.get(routeId);
+    const rid = String(routeId);
+    const cached = hydrateCacheRef.current.get(rid);
     if (cached?.status === "inflight" || cached?.status === "done") return null;
 
-    hydrateCacheRef.current.set(routeId, { status: "inflight" });
+    hydrateCacheRef.current.set(rid, { status: "inflight" });
+
+    const stopsCol = collection(db, "routes", rid, "stops");
+
+    const fetchOne = async (field, dir) => {
+      try {
+        const snap = await getDocs(query(stopsCol, orderBy(field, dir), limit(1)));
+        return snap.docs?.[0] || null;
+      } catch {
+        return null;
+      }
+    };
 
     try {
-      let stopsPreview =
-        Array.isArray(route?.stopsPreview) && route.stopsPreview.length ? route.stopsPreview : [];
+      let firstDoc = await fetchOne("order", "asc");
+      let lastDoc = await fetchOne("order", "desc");
 
-      // 1) stopsPreview eksikse routes/{id}/stops hydrate
-      if (stopsPreview.length < 2) {
-        const stopsCol = collection(db, "routes", routeId, "stops");
-
-        let stopDocs = [];
-        try {
-          const s1 = await getDocs(query(stopsCol, orderBy("order", "asc"), limit(30)));
-          stopDocs = s1.docs || [];
-        } catch {
-          try {
-            const s2 = await getDocs(query(stopsCol, orderBy("idx", "asc"), limit(30)));
-            stopDocs = s2.docs || [];
-          } catch {
-            const s3 = await getDocs(query(stopsCol, limit(30)));
-            stopDocs = s3.docs || [];
-          }
-        }
-
-        if (!isMountedRef.current) return null;
-        if (hydrateJobIdRef.current !== jobId) return null;
-
-        const stopsData = (stopDocs || []).map((sd) => ({ id: sd.id, ...(sd.data() || {}) })).slice();
-
-        stopsData.sort((a, b) => {
-          const ao =
-            (typeof a.order === "number" ? a.order : Number(a.order)) ??
-            (typeof a.idx === "number" ? a.idx : Number(a.idx)) ??
-            0;
-          const bo =
-            (typeof b.order === "number" ? b.order : Number(b.order)) ??
-            (typeof b.idx === "number" ? b.idx : Number(b.idx)) ??
-            0;
-          const na = Number.isFinite(ao) ? ao : 0;
-          const nb = Number.isFinite(bo) ? bo : 0;
-          return na - nb;
-        });
-
-        const previewStops = stopsData
-          .map((s) => {
-            const title = normalizeStopTitle(s);
-            const { lat, lng } = extractStopLatLng(s);
-            const mediaUrl = extractStopMediaUrl(s);
-            const out = { id: s.id };
-            if (isNonEmptyString(title)) out.title = title;
-            if (lat !== null) out.lat = lat;
-            if (lng !== null) out.lng = lng;
-            if (isNonEmptyString(mediaUrl)) out.mediaUrl = mediaUrl;
-            if (s.order !== undefined) out.order = s.order;
-            if (s.idx !== undefined && out.order === undefined) out.order = s.idx;
-            return Object.keys(out).length > 1 ? out : null;
-          })
-          .filter(Boolean);
-
-        let sp = previewStops;
-        if (sp.length > 2) sp = [sp[0], sp[sp.length - 1]];
-        stopsPreview = sp;
+      if (!firstDoc || !lastDoc) {
+        const f2 = await fetchOne("idx", "asc");
+        const l2 = await fetchOne("idx", "desc");
+        firstDoc = firstDoc || f2;
+        lastDoc = lastDoc || l2;
       }
 
-      // 2) cover: pickCover(route) -> url render edilebilir https değilse resolver ile downloadURL
-      const picked = pickCover(route);
-      let candidate = typeof picked?.url === "string" ? picked.url.trim() : "";
-
-      // Candidate yoksa stopsPreview içinden dene
-      if (!candidate) {
-        candidate = pickCoverCandidateUrl(route, stopsPreview);
+      // hala yoksa: küçük fallback
+      if (!firstDoc && !lastDoc) {
+        const snap = await getDocs(query(stopsCol, limit(2)));
+        const docs = snap.docs || [];
+        firstDoc = docs[0] || null;
+        lastDoc = docs.length > 1 ? docs[docs.length - 1] : docs[0] || null;
       }
 
-      let coverHttps = typeof route?.coverHttps === "string" ? route.coverHttps.trim() : "";
-      if (!isRenderableHttpsUrl(coverHttps)) coverHttps = "";
+      if (!isMountedRef.current) return null;
+      if (hydrateJobIdRef.current !== jobId) return null;
 
-      if (!coverHttps) {
-        // render edilebilir değilse -> resolve (gs:// / path / tokenless storage)
-        if (candidate && !isRenderableHttpsUrl(candidate) && isLikelyStorageReference(candidate)) {
-          const resolved = await resolveMediaToHttps(candidate, mediaResolveCacheRef);
-          if (resolved && isRenderableHttpsUrl(resolved)) coverHttps = resolved;
-        } else if (candidate && isRenderableHttpsUrl(candidate)) {
-          coverHttps = candidate;
-        }
-      }
-
-      hydrateCacheRef.current.set(routeId, { status: "done" });
-
-      return {
-        routeId,
-        stopsPreview,
-        coverHttps,
+      const makeStop = (sd) => {
+        if (!sd) return null;
+        const s = { id: sd.id, ...(sd.data() || {}) };
+        const title = normalizeStopTitle(s);
+        const { lat, lng } = extractStopLatLng(s);
+        const mediaUrl = extractStopMediaUrl(s);
+        const out = { id: s.id };
+        if (isNonEmptyString(title)) out.title = title;
+        if (lat !== null) out.lat = lat;
+        if (lng !== null) out.lng = lng;
+        if (isNonEmptyString(mediaUrl)) out.mediaUrl = mediaUrl;
+        if (s.order !== undefined) out.order = s.order;
+        if (s.idx !== undefined && out.order === undefined) out.order = s.idx;
+        return Object.keys(out).length > 1 ? out : null;
       };
+
+      const firstStop = makeStop(firstDoc);
+      const lastStop = makeStop(lastDoc);
+
+      let stopsPreview = [];
+      if (firstStop) stopsPreview.push(firstStop);
+      if (lastStop && (!firstStop || String(lastStop.id) !== String(firstStop.id))) stopsPreview.push(lastStop);
+
+      // cover: önce first stop media, yoksa last stop media
+      let coverUrl = "";
+      if (isNonEmptyString(firstStop?.mediaUrl)) coverUrl = String(firstStop.mediaUrl).trim();
+      else if (isNonEmptyString(lastStop?.mediaUrl)) coverUrl = String(lastStop.mediaUrl).trim();
+
+      const result = {
+        stopsPreview,
+        coverUrl,
+        thumbnailUrl: coverUrl,
+      };
+
+      hydrateCacheRef.current.set(rid, { status: "done" });
+      return result;
     } catch {
-      hydrateCacheRef.current.set(routeId, { status: "done" });
+      hydrateCacheRef.current.set(rid, { status: "done" });
       return null;
     }
   }, []);
@@ -610,7 +524,7 @@ export default function useUserRoutes(ownerId, options = {}) {
     loadPage("reset");
   }, [ownerId, isSelf, isFollowing, loadPage]);
 
-  // ✅ Lazy hydrate runner (max 3 concurrent) — tek sefer/route + cover resolver
+  // ✅ Lazy hydrate runner (max 3 concurrent)
   useEffect(() => {
     if (!routes || routes.length === 0) return;
     const jobId = hydrateJobIdRef.current;
@@ -638,45 +552,39 @@ export default function useUserRoutes(ownerId, options = {}) {
 
         active += 1;
 
-        hydrateRoutePreviewAndCover(r, jobId)
+        hydrateOneRoutePreview(rid, jobId)
           .then((patch) => {
             if (!patch) return;
             if (cancelled) return;
             if (!isMountedRef.current) return;
             if (hydrateJobIdRef.current !== jobId) return;
 
-            const { routeId, stopsPreview, coverHttps } = patch;
-
             setRoutes((prev) => {
               const next = (prev || []).map((x) => {
-                if (!x || String(x.id) !== routeId) return x;
+                if (!x || String(x.id) !== rid) return x;
+
+                const existingCover = x.coverUrl || x.previewUrl || x.thumbnailUrl || x.thumbUrl || x.imageUrl || x.mediaUrl || "";
+
+                const nextCover = isNonEmptyString(existingCover) ? existingCover : isNonEmptyString(patch.coverUrl) ? patch.coverUrl : "";
 
                 const nextStopsPreview =
-                  Array.isArray(x.stopsPreview) && x.stopsPreview.length >= 2
-                    ? x.stopsPreview
-                    : Array.isArray(stopsPreview)
-                    ? stopsPreview
-                    : [];
-
-                const nextCoverHttps =
-                  isNonEmptyString(x.coverHttps) && isRenderableHttpsUrl(x.coverHttps)
-                    ? x.coverHttps
-                    : isNonEmptyString(coverHttps) && isRenderableHttpsUrl(coverHttps)
-                    ? coverHttps
-                    : "";
+                  Array.isArray(x.stopsPreview) && x.stopsPreview.length ? x.stopsPreview : Array.isArray(patch.stopsPreview) ? patch.stopsPreview : [];
 
                 const changed =
-                  (Array.isArray(nextStopsPreview) && nextStopsPreview.length >= 2 && (!Array.isArray(x.stopsPreview) || x.stopsPreview.length < 2)) ||
-                  (!!nextCoverHttps && !isRenderableHttpsUrl(x.coverHttps));
+                  ((!Array.isArray(x.stopsPreview) || x.stopsPreview.length === 0) && nextStopsPreview.length > 0) ||
+                  (!isNonEmptyString(existingCover) && isNonEmptyString(nextCover));
 
-                if (!changed) {
-                  return { ...x, __previewHydrated: true };
-                }
+                if (!changed) return { ...x, __previewHydrated: true };
 
                 return {
                   ...x,
                   stopsPreview: nextStopsPreview,
-                  coverHttps: nextCoverHttps || x.coverHttps || "",
+                  coverUrl: isNonEmptyString(x.coverUrl) ? x.coverUrl : nextCover,
+                  previewUrl: isNonEmptyString(x.previewUrl) ? x.previewUrl : nextCover,
+                  thumbnailUrl: isNonEmptyString(x.thumbnailUrl) ? x.thumbnailUrl : nextCover,
+                  thumbUrl: isNonEmptyString(x.thumbUrl) ? x.thumbUrl : nextCover,
+                  imageUrl: isNonEmptyString(x.imageUrl) ? x.imageUrl : nextCover,
+                  mediaUrl: isNonEmptyString(x.mediaUrl) ? x.mediaUrl : nextCover,
                   __previewHydrated: true,
                 };
               });
@@ -695,7 +603,7 @@ export default function useUserRoutes(ownerId, options = {}) {
     return () => {
       cancelled = true;
     };
-  }, [routes, hydrateRoutePreviewAndCover]);
+  }, [routes, hydrateOneRoutePreview]);
 
   const reload = useCallback(() => {
     loadPage("reset");
