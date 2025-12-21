@@ -105,8 +105,7 @@ function RouteCardMobileInner({
   return (
     <div
       className={
-        "route-card-mobile" +
-        (selected ? " route-card-mobile--selected" : "")
+        "route-card-mobile" + (selected ? " route-card-mobile--selected" : "")
       }
       role="button"
       tabIndex={0}
@@ -170,7 +169,7 @@ function RouteCardMobileInner({
         )}
       </div>
 
-      {(locText || topTags.length) ? (
+      {locText || topTags.length ? (
         <div
           style={{
             display: "flex",
@@ -244,8 +243,10 @@ function areEqual(prevProps, nextProps) {
     }
   }
 
+  // ✅ FIX: n.route.tags değil; nr.tags
   const pTags = Array.isArray(pr.tags) ? pr.tags : [];
-  const nTags = Array.isArray(n.route?.tags) ? n.route.tags : [];
+  const nTags = Array.isArray(nr.tags) ? nr.tags : [];
+
   if (pTags.length !== nTags.length) return false;
   for (let i = 0; i < pTags.length; i++) {
     if (pTags[i] !== nTags[i]) return false;

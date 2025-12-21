@@ -436,3 +436,369 @@ exports.openBlindBox = onCall({ region: REGION }, async (req) => {
 
   return { ok:true, drop: result };
 });
+
+// ================== 5) ROUTES SUMMARY (cover + stopsPreview + stopsMeta) ✅ ==================
+// Amaç: UI'ya bırakmadan route doc'unu "tile-ready" yapmak.
+
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+function toFiniteNumber(x) {
+  const n = typeof x === "number" ? x : Number(x);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickString(...vals) {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
+function inferOwnerId(route) {
+  if (!route || typeof route !== "object") return "";
+  return pickString(
+    route.ownerId,
+    route.userId,
+    route.authorId,
+    route.uid,
+    route.createdBy,
+    route.owner,
+    route?.raw?.ownerId,
+    route?.raw?.userId,
+    route?.raw?.authorId,
+    route?.raw?.uid
+  );
+}
+
+function pickStopTitle(s) {
+  if (!s || typeof s !== "object") return "";
+  const raw = s.raw || s.data || null;
+  const v = pickString(
+    s.title, s.name, s.label, s.placeName, s.addressName, s.locationName,
+    s?.place?.mainText, s?.place?.name, s?.place?.title, s?.place?.formattedAddress, s?.place?.formatted,
+    s?.poi?.name, s?.poi?.title,
+    raw?.title, raw?.name, raw?.label, raw?.placeName, raw?.addressName,
+    raw?.place?.mainText, raw?.place?.name, raw?.poi?.name
+  );
+  return v;
+}
+
+function pickStopLatLng(s) {
+  if (!s || typeof s !== "object") return { lat: null, lng: null };
+
+  const raw = s.raw || s.data || null;
+
+  const lat = toFiniteNumber(
+    s.lat ?? s.latitude ??
+    raw?.lat ?? raw?.latitude ??
+    s?.location?.lat ?? s?.location?.latitude ??
+    s?.position?.lat ?? s?.position?.latitude ??
+    s?.coordinates?.lat ?? s?.coordinates?.latitude ??
+    s?.coords?.lat ?? s?.coords?.latitude ??
+    raw?.location?.lat ?? raw?.location?.latitude ??
+    raw?.position?.lat ?? raw?.position?.latitude ??
+    raw?.coordinates?.lat ?? raw?.coordinates?.latitude ??
+    raw?.coords?.lat ?? raw?.coords?.latitude
+  );
+
+  const lng = toFiniteNumber(
+    s.lng ?? s.lon ?? s.longitude ??
+    raw?.lng ?? raw?.lon ?? raw?.longitude ??
+    s?.location?.lng ?? s?.location?.longitude ??
+    s?.position?.lng ?? s?.position?.longitude ??
+    s?.coordinates?.lng ?? s?.coordinates?.longitude ??
+    s?.coords?.lng ?? s?.coords?.longitude ??
+    raw?.location?.lng ?? raw?.location?.longitude ??
+    raw?.position?.lng ?? raw?.position?.longitude ??
+    raw?.coordinates?.lng ?? raw?.coordinates?.longitude ??
+    raw?.coords?.lng ?? raw?.coords?.longitude
+  );
+
+  return { lat: lat != null ? lat : null, lng: lng != null ? lng : null };
+}
+
+function pickStopMediaUrl(s) {
+  if (!s || typeof s !== "object") return "";
+  const raw = s.raw || s.data || null;
+
+  const direct = pickString(
+    s.mediaUrl, s.mediaURL, s.imageUrl, s.imageURL, s.photoUrl, s.photoURL,
+    s.thumbUrl, s.thumbnailUrl, s.coverUrl, s.coverURL, s.url, s.previewUrl, s.previewURL,
+    raw?.mediaUrl, raw?.imageUrl, raw?.photoUrl, raw?.thumbUrl, raw?.thumbnailUrl, raw?.coverUrl, raw?.previewUrl
+  );
+  if (direct) return direct;
+
+  // arrays
+  const arr = Array.isArray(s.media) ? s.media
+    : Array.isArray(s.medias) ? s.medias
+    : Array.isArray(s.gallery) ? s.gallery
+    : Array.isArray(s.items) ? s.items
+    : Array.isArray(s.photos) ? s.photos
+    : null;
+
+  if (Array.isArray(arr)) {
+    for (const it of arr) {
+      if (!it) continue;
+      if (typeof it === "string" && it.trim()) return it.trim();
+      if (typeof it === "object") {
+        const u = pickString(it.url, it.mediaUrl, it.imageUrl, it.photoUrl, it.thumbUrl, it.thumbnailUrl, it.previewUrl);
+        if (u) return u;
+      }
+    }
+  }
+
+  return "";
+}
+
+function makeStopPreview(docSnap) {
+  if (!docSnap) return null;
+  const data = docSnap.data() || {};
+  const title = pickStopTitle(data);
+  const { lat, lng } = pickStopLatLng(data);
+  const mediaUrl = pickStopMediaUrl(data);
+
+  const out = { id: docSnap.id };
+  if (isNonEmptyString(title)) out.title = title;
+  if (lat != null) out.lat = lat;
+  if (lng != null) out.lng = lng;
+  if (isNonEmptyString(mediaUrl)) out.mediaUrl = mediaUrl;
+
+  const ord = toFiniteNumber(data.order ?? data.idx);
+  if (ord != null) out.order = ord;
+
+  return Object.keys(out).length > 1 ? out : null;
+}
+
+async function fetchEdgeStopDoc(stopsCol, field, dir) {
+  try {
+    const snap = await stopsCol.orderBy(field, dir).limit(1).get();
+    return snap.docs?.[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+async function countStops(stopsCol) {
+  try {
+    // Firestore count aggregation
+    const agg = await stopsCol.count().get();
+    const c = agg?.data()?.count;
+    const n = toFiniteNumber(c);
+    return n != null ? Math.round(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function extractTotalDistanceM(route) {
+  if (!route || typeof route !== "object") return null;
+  const s = route.stats || {};
+  const m =
+    s.distanceM ??
+    s.distanceMeters ??
+    s.totalDistanceM ??
+    route.totalDistanceM ??
+    route.distanceM ??
+    route.distanceMeters ??
+    route.distance ??
+    null;
+
+  const mm = toFiniteNumber(m);
+  return mm != null && mm > 0 ? mm : null;
+}
+
+async function recomputeRouteSummary(routeId, opts = {}) {
+  const { forceCover = false } = opts;
+
+  const rid = String(routeId || "");
+  if (!rid) return { ok: false, reason: "no_routeId" };
+
+  const routeRef = db.collection("routes").doc(rid);
+  const routeSnap = await routeRef.get();
+  if (!routeSnap.exists) return { ok: false, reason: "route_not_found" };
+
+  const route = routeSnap.data() || {};
+  const stopsCol = routeRef.collection("stops");
+
+  const stopLen = await countStops(stopsCol);
+
+  let firstDoc = await fetchEdgeStopDoc(stopsCol, "order", "asc");
+  let lastDoc = await fetchEdgeStopDoc(stopsCol, "order", "desc");
+
+  if (!firstDoc || !lastDoc) {
+    const f2 = await fetchEdgeStopDoc(stopsCol, "idx", "asc");
+    const l2 = await fetchEdgeStopDoc(stopsCol, "idx", "desc");
+    firstDoc = firstDoc || f2;
+    lastDoc = lastDoc || l2;
+  }
+
+  if (!firstDoc && !lastDoc) {
+    try {
+      const snap = await stopsCol.limit(2).get();
+      const docs = snap.docs || [];
+      firstDoc = docs[0] || null;
+      lastDoc = docs.length > 1 ? docs[docs.length - 1] : docs[0] || null;
+    } catch {
+      // ignore
+    }
+  }
+
+  const firstStop = makeStopPreview(firstDoc);
+  const lastStop = makeStopPreview(lastDoc);
+
+  const stopsPreview = [];
+  if (firstStop) stopsPreview.push(firstStop);
+  if (lastStop && (!firstStop || String(lastStop.id) !== String(firstStop.id))) stopsPreview.push(lastStop);
+
+  const hasStops = (stopLen > 0) || (stopsPreview.length > 0);
+  const stopsMeta = {
+    has: !!hasStops,
+    length: stopLen > 0 ? stopLen : stopsPreview.length,
+  };
+
+  const startName = firstStop?.title ? String(firstStop.title).trim() : "";
+  const endName = lastStop?.title ? String(lastStop.title).trim() : "";
+
+  const existingCover = pickString(route.coverUrl, route.coverPhotoUrl, route.coverImageUrl, route.previewUrl, route.thumbnailUrl);
+  const existingThumb = pickString(route.thumbnailUrl, route.thumbUrl, route.previewUrl);
+
+  let coverUrl = existingCover;
+  let thumbnailUrl = existingThumb || existingCover;
+
+  if (forceCover || !isNonEmptyString(existingCover)) {
+    const candidate = pickString(firstStop?.mediaUrl, lastStop?.mediaUrl);
+    if (candidate) {
+      coverUrl = candidate;
+      thumbnailUrl = thumbnailUrl || candidate;
+    } else {
+      coverUrl = ""; // bilinçli boş => UI placeholder
+      thumbnailUrl = thumbnailUrl || "";
+    }
+  }
+
+  const totalDistanceM = extractTotalDistanceM(route);
+
+  const ownerId = isNonEmptyString(route.ownerId) ? String(route.ownerId).trim() : inferOwnerId(route);
+
+  const patch = {
+    stopsPreview: Array.isArray(stopsPreview) ? stopsPreview : [],
+    stopsMeta,
+    startName,
+    endName,
+    hasMedia: isNonEmptyString(coverUrl) ? true : false,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (isNonEmptyString(ownerId) && !isNonEmptyString(route.ownerId)) patch.ownerId = ownerId;
+
+  if (isNonEmptyString(coverUrl)) patch.coverUrl = coverUrl;
+  if (isNonEmptyString(thumbnailUrl)) patch.thumbnailUrl = thumbnailUrl;
+
+  // totalDistanceM: yalnızca 0/boş ise set etmeye çalış
+  const currentDist = toFiniteNumber(route.totalDistanceM);
+  if ((currentDist == null || currentDist <= 0) && totalDistanceM != null) {
+    patch.totalDistanceM = totalDistanceM;
+  }
+
+  await routeRef.set(patch, { merge: true });
+
+  return {
+    ok: true,
+    routeId: rid,
+    stopsMeta,
+    coverSet: isNonEmptyString(patch.coverUrl),
+    thumbSet: isNonEmptyString(patch.thumbnailUrl),
+    ownerIdSet: !!patch.ownerId,
+  };
+}
+
+// Trigger 1: Stop yazılınca route summary güncelle
+exports.onRouteStopWrite = onDocumentWritten(
+  { region: REGION, document: "routes/{routeId}/stops/{stopId}" },
+  async (event) => {
+    const { routeId } = event.params || {};
+    if (!routeId) return;
+
+    try {
+      await recomputeRouteSummary(routeId, { forceCover: false });
+    } catch (e) {
+      console.error("onRouteStopWrite error:", routeId, e);
+    }
+  }
+);
+
+// Trigger 2 (opsiyonel): stop media alt koleksiyonu varsa stop.mediaUrl bind et ve summary güncelle
+exports.onRouteStopMediaWrite = onDocumentWritten(
+  { region: REGION, document: "routes/{routeId}/stops/{stopId}/media/{mediaId}" },
+  async (event) => {
+    const { routeId, stopId } = event.params || {};
+    if (!routeId || !stopId) return;
+
+    const after = event.data?.after;
+    const media = after?.exists ? after.data() : null;
+    if (!media) return;
+
+    const mediaUrl = pickString(
+      media.url, media.mediaUrl, media.imageUrl, media.photoUrl, media.downloadURL, media.downloadUrl,
+      media.thumbUrl, media.thumbnailUrl, media.previewUrl, media.posterUrl, media.path
+    );
+    if (!isNonEmptyString(mediaUrl)) return;
+
+    const stopRef = db.collection("routes").doc(String(routeId)).collection("stops").doc(String(stopId));
+
+    try {
+      const stopSnap = await stopRef.get();
+      const stopData = stopSnap.exists ? (stopSnap.data() || {}) : {};
+      if (!isNonEmptyString(stopData.mediaUrl)) {
+        await stopRef.set(
+          { mediaUrl: mediaUrl.trim(), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+          { merge: true }
+        );
+      }
+    } catch (e) {
+      console.error("onRouteStopMediaWrite stop set error:", routeId, stopId, e);
+    }
+
+    try {
+      await recomputeRouteSummary(routeId, { forceCover: false });
+    } catch (e) {
+      console.error("onRouteStopMediaWrite summary error:", routeId, e);
+    }
+  }
+);
+
+// Callable: mevcut route'lara 1 kere backfill
+exports.backfillRoutesSummary = onCall(
+  { region: REGION, timeoutSeconds: 540 },
+  async (req) => {
+    if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
+
+    const ownerId = isNonEmptyString(req.data?.ownerId) ? String(req.data.ownerId).trim() : "";
+    const lim = toFiniteNumber(req.data?.limit) != null ? Math.max(1, Math.min(500, Math.round(Number(req.data.limit)))) : 200;
+    const forceCover = !!req.data?.forceCover;
+
+    let q = db.collection("routes").limit(lim);
+    if (ownerId) q = db.collection("routes").where("ownerId", "==", ownerId).limit(lim);
+
+    const snap = await q.get();
+    const docs = snap.docs || [];
+
+    let ok = 0;
+    let fail = 0;
+
+    for (const d of docs) {
+      try {
+        const res = await recomputeRouteSummary(d.id, { forceCover });
+        if (res?.ok) ok += 1;
+        else fail += 1;
+      } catch (e) {
+        fail += 1;
+        console.error("backfillRoutesSummary item error:", d.id, e);
+      }
+    }
+
+    return { ok: true, scanned: docs.length, updated: ok, failed: fail, ownerId: ownerId || null, limit: lim, forceCover };
+  }
+);

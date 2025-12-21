@@ -1,8 +1,7 @@
 // src/ProfileRoutesMobile.js
 // Profil "Rotalarım" sekmesi – profil sahibine ait rotaları premium grid olarak listeler (read-only).
-// EMİR: Kapak foto + otomatik rota adı KESİN çözüm
-// - Kapak 3 seviye: (A) user cover -> (B) first stop / route media -> (C) placeholder (asla beyaz yok)
-// - <img src> ASLA gs:// / storage path / relative path olmaz; her zaman https:// veya data:
+// Kapak 3 seviye: (A) user cover -> (B) first stop / route media -> (C) placeholder (asla beyaz yok)
+// - <img src> ASLA gs:// / storage path / relative path olmaz; her zaman http(s):// veya data:image:
 // - Kanıt logu: RouteTileProof (10 satır)
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -33,10 +32,23 @@ function isNonEmptyString(v) {
   return typeof v === "string" && v.trim().length > 0;
 }
 
-function isHttpsOrDataUrl(v) {
+function stripQueryAndHash(v) {
+  const s = (v || "").toString().trim();
+  if (!s) return "";
+  return s.split(/[?#]/)[0];
+}
+
+function isKnownAppLogoUrl(v) {
+  const base = stripQueryAndHash(v).toLowerCase();
+  if (!base) return false;
+  const file = base.split("/").pop();
+  return file === "mylasa-logo.png" || file === "mylasa-logo.svg";
+}
+
+function isHttpHttpsOrDataUrl(v) {
   const s = (v || "").toString().trim();
   if (!s) return false;
-  return /^https:\/\//i.test(s) || /^data:image\//i.test(s);
+  return /^https?:\/\//i.test(s) || /^data:image\//i.test(s);
 }
 
 function isGsUrl(v) {
@@ -48,11 +60,13 @@ function looksLikeRelativeStoragePath(v) {
   const s0 = v.trim();
   const s = s0.split(/[?#]/)[0]; // küçük sağlamlık
 
-  if (isHttpsOrDataUrl(s)) return false;
+  if (isHttpHttpsOrDataUrl(s)) return false;
   if (s.startsWith("gs://")) return true;
 
+  // ✅ "/foo.png" public asset olabilir → storage sanma
+  if (s.startsWith("/")) return false;
+
   // relative path hissi
-  if (s.startsWith("/")) return true;
   if (s.includes("\\\\")) return true;
   if (s.includes("..")) return true;
   if (s.includes("/")) return true;
@@ -106,10 +120,24 @@ async function resolveToHttpsUrl(input) {
   // data:image ise direkt kabul
   if (/^data:image\//i.test(raw0)) return raw0;
 
-  // https ise:
+  // ✅ "/mylasa-logo.png" gibi public asset → same-origin absolute URL
+  if (raw0.startsWith("/")) {
+    // bazı projelerde yanlışlıkla "/posts/.." gibi storage path yazılabiliyor.
+    // Heuristik: eğer "mylasa-logo" ise kesin public; diğerlerinde default public davran.
+    try {
+      if (typeof window !== "undefined" && window.location && window.location.origin) {
+        return `${window.location.origin}${raw0}`;
+      }
+    } catch {
+      // no-op
+    }
+    return raw0;
+  }
+
+  // http(s) ise:
   // - Firebase Storage download URL ise mümkünse refresh (token/rules)
   // - değilse aynen kullan
-  if (/^https:\/\//i.test(raw0)) {
+  if (/^https?:\/\//i.test(raw0)) {
     const gsFromHttp = parseFirebaseStorageHttpUrlToGs(raw0);
     if (!gsFromHttp) return raw0;
 
@@ -117,7 +145,7 @@ async function resolveToHttpsUrl(input) {
       const storage = getStorage();
       const r = storageRef(storage, gsFromHttp);
       const https = await getDownloadURL(r);
-      return typeof https === "string" && /^https:\/\//i.test(https) ? https : raw0;
+      return typeof https === "string" && /^https?:\/\//i.test(https) ? https : raw0;
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
       // eslint-disable-next-line no-console
@@ -135,7 +163,7 @@ async function resolveToHttpsUrl(input) {
       const storage = getStorage();
       const r = storageRef(storage, path); // path hem gs:// hem relative kabul
       const https = await getDownloadURL(r);
-      return typeof https === "string" && /^https:\/\//i.test(https) ? https : "";
+      return typeof https === "string" && /^https?:\/\//i.test(https) ? https : "";
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
       // eslint-disable-next-line no-console
@@ -175,7 +203,7 @@ function useResolvedMediaUrl(input) {
         try {
           const url = await __inflight.get(k);
           if (cancelled) return;
-          const ok = isHttpsOrDataUrl(url);
+          const ok = isHttpHttpsOrDataUrl(url);
           const rec = { ok, url: ok ? url : "", errorCode: ok ? "" : "resolve_failed" };
           __resolvedUrlCache.set(k, rec);
           setState({ input: k, status: ok ? "ok" : "fail", ...rec });
@@ -198,7 +226,7 @@ function useResolvedMediaUrl(input) {
         __inflight.delete(k);
         if (cancelled) return;
 
-        const ok = isHttpsOrDataUrl(url);
+        const ok = isHttpHttpsOrDataUrl(url);
         const rec = { ok, url: ok ? url : "", errorCode: ok ? "" : "resolve_failed" };
         __resolvedUrlCache.set(k, rec);
 
@@ -694,7 +722,7 @@ function extractMedia(route) {
   return out;
 }
 
-// ✅ EMİR: Kapak 3 seviye + sourceField (StaticMap YOK)
+// ✅ Kapak 3 seviye + sourceField (StaticMap YOK) + "mylasa-logo.png" placeholder sayılır
 function pickCoverCandidate(route) {
   if (!route) return { kind: "placeholder", url: "", hasVideo: false, sourceField: "placeholder" };
 
@@ -720,6 +748,7 @@ function pickCoverCandidate(route) {
   for (const [field, val] of coverFields) {
     if (isNonEmptyString(val)) {
       const url = String(val).trim();
+      if (isKnownAppLogoUrl(url)) continue; // ✅ placeholder kabul etme
       const hasVideo = isVideoUrl(url);
       return { kind: hasVideo ? "video" : "image", url, hasVideo, sourceField: field };
     }
@@ -729,12 +758,14 @@ function pickCoverCandidate(route) {
   const media = extractMedia(route);
   const hasVideo = media.some((m) => m.type === "video");
 
-  const firstImage = media.find((m) => m.type === "image" && m.url);
+  const firstImage = media.find((m) => m.type === "image" && m.url && !isKnownAppLogoUrl(m.url));
   if (firstImage) return { kind: "image", url: firstImage.url, hasVideo, sourceField: "media:firstImage" };
 
   const firstVideo = media.find((m) => m.type === "video" && (m.thumb || m.rawUrl || m.url));
   if (firstVideo) {
-    if (firstVideo.thumb) return { kind: "image", url: firstVideo.thumb, hasVideo: true, sourceField: "media:videoThumb" };
+    if (firstVideo.thumb && !isKnownAppLogoUrl(firstVideo.thumb)) {
+      return { kind: "image", url: firstVideo.thumb, hasVideo: true, sourceField: "media:videoThumb" };
+    }
     return { kind: "video", url: firstVideo.rawUrl || firstVideo.url, hasVideo: true, sourceField: "media:videoUrl" };
   }
 
@@ -929,7 +960,7 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
     // ok ise img load/error zaten raporlayacak
   }, [rawInput, resolved?.status, onLoadEvent]);
 
-  const shouldRenderImg = resolved?.ok && isHttpsOrDataUrl(resolved.url) && !imgFailed;
+  const shouldRenderImg = resolved?.ok && isHttpHttpsOrDataUrl(resolved.url) && !imgFailed;
 
   const placeholderStyle = {
     position: "absolute",

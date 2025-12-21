@@ -1,10 +1,10 @@
 // src/hooks/useUserRoutes.js
 // Profil “Rotalarım” sekmesi için rota listesi hook’u
-// EMİR 2 + EMİR 3: RouteCardMobile için standardize model (buildRouteCardModel).
-// EMİR 10: Grid’e PREVIEW veri bind edilecek (stopsPreview/cover/thumbnail). Gerekirse HYDRATE (lazy fetch).
+// RouteCardMobile için standardize model (buildRouteCardModel).
+// Grid’e PREVIEW veri bind edilecek (stopsPreview/cover/thumbnail). Gerekirse HYDRATE (lazy fetch).
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, query, orderBy, limit, startAfter, getDocs } from "firebase/firestore";
+import { collection, query, orderBy, limit, startAfter, getDocs, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { buildRouteCardModel, getOwnerIdFromRaw, getVisibilityKey } from "../routes/routeCardModel";
 
@@ -13,6 +13,25 @@ const DEFAULT_PAGE_SIZE = 20;
 // ---------- helpers (preview binding + hydrate) ----------
 function isNonEmptyString(v) {
   return typeof v === "string" && v.trim().length > 0;
+}
+
+function stripQueryAndHash(v) {
+  const s = (v || "").toString().trim();
+  if (!s) return "";
+  return s.split(/[?#]/)[0];
+}
+
+function isKnownAppLogoUrl(v) {
+  const base = stripQueryAndHash(v).toLowerCase();
+  if (!base) return false;
+  const file = base.split("/").pop();
+  return file === "mylasa-logo.png" || file === "mylasa-logo.svg";
+}
+
+function normalizeCoverUrl(v) {
+  if (!isNonEmptyString(v)) return "";
+  const s = String(v).trim();
+  return isKnownAppLogoUrl(s) ? "" : s;
 }
 
 function getByPath(obj, path) {
@@ -213,7 +232,7 @@ function extractPreviewFromRouteDoc(raw) {
     "preview.thumbnailUrl",
     "preview.url",
   ]);
-  const coverUrl = isNonEmptyString(coverUrlVal) ? String(coverUrlVal).trim() : "";
+  const coverUrl = normalizeCoverUrl(coverUrlVal);
 
   const thumbVal = pickFirst(raw, [
     "thumbnailUrl",
@@ -224,7 +243,7 @@ function extractPreviewFromRouteDoc(raw) {
     "previewUrl",
     "coverUrl",
   ]);
-  const thumbnailUrl = isNonEmptyString(thumbVal) ? String(thumbVal).trim() : "";
+  const thumbnailUrl = normalizeCoverUrl(thumbVal);
 
   return { stopsPreview, coverUrl, thumbnailUrl };
 }
@@ -236,7 +255,7 @@ function needsHydratePreview(route) {
   const sp = route.stopsPreview;
   const hasStopsPreview = Array.isArray(sp) && sp.length >= 1;
 
-  const cover =
+  const coverRaw =
     route.coverUrl ||
     route.previewUrl ||
     route.thumbnailUrl ||
@@ -246,6 +265,8 @@ function needsHydratePreview(route) {
     route.mediaUrl ||
     "";
 
+  // ✅ "mylasa-logo.png" placeholder sayılır → hydrate'i engellemez
+  const cover = normalizeCoverUrl(coverRaw);
   const hasCover = isNonEmptyString(cover);
 
   return !hasStopsPreview || !hasCover;
@@ -268,6 +289,9 @@ export default function useUserRoutes(ownerId, options = {}) {
   const hydrateCacheRef = useRef(new Map()); // routeId -> { status: "inflight"|"done" }
   const hydrateJobIdRef = useRef(0);
 
+  // ✅ query mode: optimized(ownerId+status) vs legacy
+  const queryModeRef = useRef("unknown"); // "unknown" | "optimized" | "legacy"
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -275,11 +299,55 @@ export default function useUserRoutes(ownerId, options = {}) {
     };
   }, []);
 
-  // owner değişince hydrate cache sıfırla
+  // owner değişince hydrate cache + query mode sıfırla
   useEffect(() => {
     hydrateCacheRef.current = new Map();
     hydrateJobIdRef.current += 1;
+    queryModeRef.current = "unknown";
   }, [ownerId]);
+
+  const runQueryPage = useCallback(
+    async ({ ownerKey, localCursor, modeToUse }) => {
+      const colRef = collection(db, "routes");
+
+      const mkOptimized = () => {
+        const constraints = [
+          where("ownerId", "==", ownerKey),
+          where("status", "==", "finished"),
+          orderBy("createdAt", "desc"),
+        ];
+        if (localCursor) constraints.push(startAfter(localCursor));
+        constraints.push(limit(pageSize + 1));
+        return query(colRef, ...constraints);
+      };
+
+      const mkLegacy = () => {
+        const constraints = [orderBy("createdAt", "desc")];
+        if (localCursor) constraints.push(startAfter(localCursor));
+        constraints.push(limit(pageSize + 1));
+        return query(colRef, ...constraints);
+      };
+
+      // 1) forced legacy
+      if (modeToUse === "legacy") {
+        const snap = await getDocs(mkLegacy());
+        return { snap, used: "legacy" };
+      }
+
+      // 2) try optimized
+      try {
+        const snap = await getDocs(mkOptimized());
+        return { snap, used: "optimized" };
+      } catch (e) {
+        // index yok / field yok / permission vb. => legacy fallback
+        // eslint-disable-next-line no-console
+        console.warn("[useUserRoutes] optimized query failed → legacy fallback", e?.code || e);
+        const snap = await getDocs(mkLegacy());
+        return { snap, used: "legacy" };
+      }
+    },
+    [pageSize]
+  );
 
   const loadPage = useCallback(
     async (mode = "reset") => {
@@ -306,6 +374,8 @@ export default function useUserRoutes(ownerId, options = {}) {
 
         hydrateCacheRef.current = new Map();
         hydrateJobIdRef.current += 1;
+
+        queryModeRef.current = "unknown";
       } else {
         setLoadingMore(true);
       }
@@ -314,25 +384,32 @@ export default function useUserRoutes(ownerId, options = {}) {
       const maxAutoPages = mode === "reset" ? 3 : 1;
 
       try {
-        const colRef = collection(db, "routes");
-
         let localCursor = mode === "more" ? cursorRef.current : null;
         let collected = [];
         let localHasMore = false;
         let loops = 0;
 
         while (loops < maxAutoPages) {
-          const constraints = [orderBy("createdAt", "desc")];
-          if (localCursor) constraints.push(startAfter(localCursor));
-          constraints.push(limit(pageSize + 1));
+          const currentMode =
+            mode === "reset"
+              ? (queryModeRef.current === "unknown" ? "optimized" : queryModeRef.current)
+              : (queryModeRef.current === "unknown" ? "legacy" : queryModeRef.current);
 
-          const q = query(colRef, ...constraints);
-          const snap = await getDocs(q);
+          const { snap, used } = await runQueryPage({ ownerKey, localCursor, modeToUse: currentMode });
 
           if (!isMountedRef.current || reqId !== requestIdRef.current) return;
 
           const docs = snap.docs || [];
           const pageDocs = docs.slice(0, pageSize);
+
+          // reset modunda optimized 0 dönerse: eski şema olabilir → legacy dene
+          if (mode === "reset" && queryModeRef.current === "unknown" && used === "optimized" && docs.length === 0) {
+            const legacyRes = await runQueryPage({ ownerKey, localCursor: null, modeToUse: "legacy" });
+            const legacyDocs = legacyRes.snap.docs || [];
+            if (legacyDocs.length > 0) queryModeRef.current = "legacy";
+          } else if (mode === "reset" && queryModeRef.current === "unknown") {
+            queryModeRef.current = used;
+          }
 
           // ✅ cursor asla "extra doc" olmaz → atlama bug’ı yok
           const nextCursor = pageDocs.length ? pageDocs[pageDocs.length - 1] : null;
@@ -369,18 +446,32 @@ export default function useUserRoutes(ownerId, options = {}) {
 
               const { stopsPreview, coverUrl, thumbnailUrl } = extractPreviewFromRouteDoc(raw);
 
+              // ✅ placeholder cover'ları yok say
+              const modelCover = normalizeCoverUrl(model?.coverUrl);
+              const modelPreview = normalizeCoverUrl(model?.previewUrl);
+              const modelThumb = normalizeCoverUrl(model?.thumbnailUrl);
+              const modelThumb2 = normalizeCoverUrl(model?.thumbUrl);
+              const modelImage = normalizeCoverUrl(model?.imageUrl);
+              const modelMedia = normalizeCoverUrl(model?.mediaUrl);
+
+              const docCover = normalizeCoverUrl(coverUrl);
+              const docThumb = normalizeCoverUrl(thumbnailUrl);
+
+              const finalCover = modelCover || modelPreview || modelImage || modelMedia || docCover || "";
+              const finalThumb = modelThumb || modelThumb2 || docThumb || finalCover || "";
+
               const patched = {
                 ...model,
 
                 stopsPreview: Array.isArray(model?.stopsPreview) && model.stopsPreview.length ? model.stopsPreview : stopsPreview,
 
-                coverUrl: isNonEmptyString(model?.coverUrl) ? model.coverUrl : coverUrl,
-                thumbnailUrl: isNonEmptyString(model?.thumbnailUrl) ? model.thumbnailUrl : thumbnailUrl,
+                coverUrl: finalCover,
+                thumbnailUrl: finalThumb,
 
-                previewUrl: isNonEmptyString(model?.previewUrl) ? model.previewUrl : (isNonEmptyString(coverUrl) ? coverUrl : model?.previewUrl) || "",
-                thumbUrl: isNonEmptyString(model?.thumbUrl) ? model.thumbUrl : (isNonEmptyString(thumbnailUrl) ? thumbnailUrl : model?.thumbUrl) || "",
-                imageUrl: isNonEmptyString(model?.imageUrl) ? model.imageUrl : (isNonEmptyString(coverUrl) ? coverUrl : model?.imageUrl) || "",
-                mediaUrl: isNonEmptyString(model?.mediaUrl) ? model.mediaUrl : (isNonEmptyString(coverUrl) ? coverUrl : model?.mediaUrl) || "",
+                previewUrl: modelPreview || finalCover || "",
+                thumbUrl: modelThumb2 || finalThumb || "",
+                imageUrl: modelImage || finalCover || "",
+                mediaUrl: modelMedia || finalCover || "",
 
                 raw: model?.raw && typeof model.raw === "object" ? model.raw : raw,
               };
@@ -422,10 +513,10 @@ export default function useUserRoutes(ownerId, options = {}) {
         setLoadingMore(false);
       }
     },
-    [ownerId, pageSize, isSelf, isFollowing, viewerId]
+    [ownerId, pageSize, isSelf, isFollowing, viewerId, runQueryPage]
   );
 
-  // ✅ EMİR 10 / Lazy HYDRATE: sadece start+end stop (2 query) + cover için ilk görseli dene
+  // ✅ Lazy HYDRATE: sadece start+end stop (2 query) + cover için ilk görseli dene
   const hydrateOneRoutePreview = useCallback(async (routeId, jobId) => {
     if (!routeId || !db) return null;
     if (!isMountedRef.current) return null;
@@ -563,28 +654,31 @@ export default function useUserRoutes(ownerId, options = {}) {
               const next = (prev || []).map((x) => {
                 if (!x || String(x.id) !== rid) return x;
 
-                const existingCover = x.coverUrl || x.previewUrl || x.thumbnailUrl || x.thumbUrl || x.imageUrl || x.mediaUrl || "";
+                const existingCoverRaw = x.coverUrl || x.previewUrl || x.thumbnailUrl || x.thumbUrl || x.imageUrl || x.mediaUrl || "";
+                const existingCover = normalizeCoverUrl(existingCoverRaw);
 
-                const nextCover = isNonEmptyString(existingCover) ? existingCover : isNonEmptyString(patch.coverUrl) ? patch.coverUrl : "";
+                const patchCover = normalizeCoverUrl(patch.coverUrl);
+
+                const nextCover = isNonEmptyString(existingCover) ? existingCoverRaw : isNonEmptyString(patchCover) ? patch.coverUrl : "";
 
                 const nextStopsPreview =
                   Array.isArray(x.stopsPreview) && x.stopsPreview.length ? x.stopsPreview : Array.isArray(patch.stopsPreview) ? patch.stopsPreview : [];
 
                 const changed =
                   ((!Array.isArray(x.stopsPreview) || x.stopsPreview.length === 0) && nextStopsPreview.length > 0) ||
-                  (!isNonEmptyString(existingCover) && isNonEmptyString(nextCover));
+                  (!isNonEmptyString(existingCover) && isNonEmptyString(patchCover));
 
                 if (!changed) return { ...x, __previewHydrated: true };
 
                 return {
                   ...x,
                   stopsPreview: nextStopsPreview,
-                  coverUrl: isNonEmptyString(x.coverUrl) ? x.coverUrl : nextCover,
-                  previewUrl: isNonEmptyString(x.previewUrl) ? x.previewUrl : nextCover,
-                  thumbnailUrl: isNonEmptyString(x.thumbnailUrl) ? x.thumbnailUrl : nextCover,
-                  thumbUrl: isNonEmptyString(x.thumbUrl) ? x.thumbUrl : nextCover,
-                  imageUrl: isNonEmptyString(x.imageUrl) ? x.imageUrl : nextCover,
-                  mediaUrl: isNonEmptyString(x.mediaUrl) ? x.mediaUrl : nextCover,
+                  coverUrl: isNonEmptyString(normalizeCoverUrl(x.coverUrl)) ? x.coverUrl : nextCover,
+                  previewUrl: isNonEmptyString(normalizeCoverUrl(x.previewUrl)) ? x.previewUrl : nextCover,
+                  thumbnailUrl: isNonEmptyString(normalizeCoverUrl(x.thumbnailUrl)) ? x.thumbnailUrl : nextCover,
+                  thumbUrl: isNonEmptyString(normalizeCoverUrl(x.thumbUrl)) ? x.thumbUrl : nextCover,
+                  imageUrl: isNonEmptyString(normalizeCoverUrl(x.imageUrl)) ? x.imageUrl : nextCover,
+                  mediaUrl: isNonEmptyString(normalizeCoverUrl(x.mediaUrl)) ? x.mediaUrl : nextCover,
                   __previewHydrated: true,
                 };
               });

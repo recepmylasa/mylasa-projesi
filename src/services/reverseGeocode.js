@@ -3,8 +3,8 @@
 // Ek olarak getCityCountry & formatCityCountry export eder (Adım 7 ihtiyacı).
 
 let _geocoder = null;
-let _disabled = false;           // Bu oturumda kill-switch
-let _inflight = null;            // Aynı noktaya paralel istekleri engelle
+let _disabled = false; // Bu oturumda kill-switch
+let _inflight = null; // Aynı noktaya paralel istekleri engelle
 let _inflightKey = null;
 
 const PERSIST_KEY = "revgeo_disabled_v1"; // Yeniden yüklemede de kapalı başlatmak için
@@ -24,12 +24,15 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     /Geocoding Service: This API key is not authorized/i.test(msg) ||
     /REQUEST_DENIED|OVER_DAILY_LIMIT|API_KEY_INVALID/i.test(msg);
 
-  const _warn = console.warn, _error = console.error;
+  const _warn = console.warn;
+  const _error = console.error;
+
   console.warn = (...args) => {
     const first = args?.[0] ? String(args[0]) : "";
     if (swallow(first)) return;
     _warn(...args);
   };
+
   console.error = (...args) => {
     const first = args?.[0] ? String(args[0]) : "";
     if (swallow(first)) return;
@@ -38,12 +41,47 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
 }
 
 /* --------------------------------- Cache --------------------------------- */
-const _cache = new Map(); // key -> { v, t }
+const _cache = new Map(); // key -> { v, t, meta }
 const TTL_MS = 30 * 60 * 1000; // 30 dk
 
 function _key(lat, lng) {
   // 5 ondalık ~1m — cache çarpışmasını azaltır
   return `${lat.toFixed(5)},${lng.toFixed(5)}`;
+}
+
+function _now() {
+  return Date.now();
+}
+
+function _isFiniteNum(x) {
+  return typeof x === "number" && Number.isFinite(x);
+}
+
+function _toNum(x) {
+  const n = typeof x === "number" ? x : Number(x);
+  return Number.isFinite(n) ? n : null;
+}
+
+function _disablePermanently() {
+  _disabled = true;
+  try {
+    localStorage.setItem(PERSIST_KEY, "1");
+  } catch {}
+}
+
+function _ensureGeocoder() {
+  if (_disabled) return null;
+  if (_geocoder) return _geocoder;
+
+  const g = typeof window !== "undefined" ? window.google : null;
+  if (!g || !g.maps || !g.maps.Geocoder) return null;
+
+  try {
+    _geocoder = new g.maps.Geocoder();
+    return _geocoder;
+  } catch {
+    return null;
+  }
 }
 
 function _pickShort(results) {
@@ -61,13 +99,17 @@ function _pickShort(results) {
   let comps = null;
   for (const t of prefer) {
     const r = results.find((x) => Array.isArray(x.types) && x.types.includes(t));
-    if (r) { comps = r.address_components; break; }
+    if (r) {
+      comps = r.address_components;
+      break;
+    }
   }
   if (!comps) comps = results[0]?.address_components;
   if (!comps) return "";
 
   const get = (type) =>
-    (comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.short_name) || "";
+    (comps.find((c) => Array.isArray(c.types) && c.types.includes(type))
+      ?.short_name) || "";
 
   const part1 =
     get("neighborhood") ||
@@ -85,103 +127,239 @@ function _pickShort(results) {
   return [part1, part2].filter(Boolean).join(", ");
 }
 
-/* ---------------------------- Ana yardımcı fonksiyon ---------------------------- */
-/**
- * lat,lng -> kısa adres stringi
- * Yetki/limit hatasında bu oturumda reverse geocode tamamen kapanır, "" döner.
- * Konsol gürültüsü bastırılır. Cache/TTL mevcut.
- */
-export async function reverseGeocode(lat, lng) {
-  try {
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "";
-    if (_disabled) return "";
+export function getCityCountry(results) {
+  if (!Array.isArray(results) || results.length === 0) {
+    return { city: "", country: "", countryCode: "" };
+  }
 
-    // Google Maps JS yüklenmediyse sessizce boş dön
-    const G = window.google?.maps;
-    if (!G?.Geocoder) return "";
+  const comps =
+    results.find((x) => Array.isArray(x.address_components) && x.address_components.length)?.address_components ||
+    results[0]?.address_components ||
+    [];
 
-    const k = _key(lat, lng);
+  const getLong = (type) =>
+    (comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.long_name) || "";
 
-    // Cache
-    const c = _cache.get(k);
-    const now = Date.now();
-    if (c && now - c.t < TTL_MS) return c.v;
+  const getShort = (type) =>
+    (comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.short_name) || "";
 
-    // Aynı key için paralel istek varsa bekle
-    if (_inflight && _inflightKey === k) {
-      return (await _inflight) || "";
+  const city =
+    getLong("locality") ||
+    getLong("administrative_area_level_2") ||
+    getLong("administrative_area_level_1") ||
+    "";
+
+  const country = getLong("country") || "";
+  const countryCode = getShort("country") || "";
+
+  return { city, country, countryCode };
+}
+
+export function formatCityCountry(arg1, arg2) {
+  // formatCityCountry({city,country}) veya formatCityCountry(city, country)
+  let city = "";
+  let country = "";
+
+  if (arg1 && typeof arg1 === "object") {
+    city = (arg1.city || "").toString().trim();
+    country = (arg1.country || "").toString().trim();
+  } else {
+    city = (arg1 || "").toString().trim();
+    country = (arg2 || "").toString().trim();
+  }
+
+  if (city && country) return `${city}, ${country}`;
+  return city || country || "";
+}
+
+function _isFatalStatus(status) {
+  const s = String(status || "").toUpperCase();
+  return (
+    s === "REQUEST_DENIED" ||
+    s === "INVALID_REQUEST" ||
+    s === "OVER_DAILY_LIMIT" ||
+    s === "API_KEY_INVALID"
+  );
+}
+
+function _geocodePromise(geocoder, location, signal) {
+  return new Promise((resolve, reject) => {
+    if (!geocoder) return reject(new Error("geocoder_missing"));
+    if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
+
+    let done = false;
+
+    const onAbort = () => {
+      if (done) return;
+      done = true;
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+
+    if (signal) {
+      try {
+        signal.addEventListener("abort", onAbort, { once: true });
+      } catch {}
     }
 
-    if (!_geocoder) _geocoder = new G.Geocoder();
+    try {
+      geocoder.geocode({ location }, (results, status) => {
+        if (done) return;
+        done = true;
 
-    _inflightKey = k;
-    _inflight = _geocoder.geocode({ location: { lat, lng } })
-      .then((resp) => resp)
-      .catch(() => null);
+        if (signal) {
+          try {
+            signal.removeEventListener("abort", onAbort);
+          } catch {}
+        }
 
-    const resp = await _inflight;
-    _inflight = null;
-    _inflightKey = null;
+        const st = String(status || "").toUpperCase();
+        if (st === "OK") return resolve({ results: results || [], status: st });
 
-    const status = resp?.status || "ERROR";
-    const results = resp?.results || [];
+        // fatal => kalıcı kapat
+        if (_isFatalStatus(st)) {
+          _disablePermanently();
+        }
 
-    // Yetki/limit hatası → kalıcı kapatma
-    if (status !== "OK") {
-      if (
-        status === "REQUEST_DENIED" ||
-        status === "OVER_DAILY_LIMIT" ||
-        status === "API_KEY_INVALID" ||
-        status === "UNKNOWN_ERROR"
-      ) {
-        _disabled = true;
-        try { localStorage.setItem(PERSIST_KEY, "1"); } catch {}
+        return resolve({ results: results || [], status: st });
+      });
+    } catch (e) {
+      if (signal) {
+        try {
+          signal.removeEventListener("abort", onAbort);
+        } catch {}
       }
+      reject(e);
+    }
+  });
+}
+
+function _parseArgs(a, b, c) {
+  // reverseGeocodeShort({lat,lng, signal}) veya reverseGeocodeShort(lat,lng,{signal})
+  if (a && typeof a === "object") {
+    const lat = _toNum(a.lat ?? a.latitude);
+    const lng = _toNum(a.lng ?? a.lon ?? a.longitude);
+    const signal = a.signal || b?.signal || null;
+    return { lat, lng, signal };
+  }
+  const lat = _toNum(a);
+  const lng = _toNum(b);
+  const signal = c?.signal || null;
+  return { lat, lng, signal };
+}
+
+/**
+ * reverseGeocodeShort(...) -> string (kısa adres)
+ * - cache + inflight dedupe
+ * - fatal hatada kalıcı disable
+ */
+export async function reverseGeocodeShort(a, b, c) {
+  const { lat, lng, signal } = _parseArgs(a, b, c);
+
+  if (!_isFiniteNum(lat) || !_isFiniteNum(lng)) return "";
+  if (_disabled) return "";
+
+  const geocoder = _ensureGeocoder();
+  if (!geocoder) return "";
+
+  const k = _key(lat, lng);
+  const cached = _cache.get(k);
+  const now = _now();
+
+  if (cached && now - cached.t < TTL_MS) {
+    return cached.v || "";
+  }
+
+  // inflight dedupe: aynı key aynı anda 1 istek
+  if (_inflight && _inflightKey === k) {
+    try {
+      const val = await _inflight;
+      return val || "";
+    } catch {
       return "";
     }
+  }
 
-    const short = _pickShort(results);
-    _cache.set(k, { v: short, t: now });
+  _inflightKey = k;
 
-    // Cache çok büyürse yarısını temizle
-    if (_cache.size > 512) {
-      const half = Math.floor(_cache.size / 2);
-      let i = 0;
-      for (const key of _cache.keys()) { _cache.delete(key); if (++i >= half) break; }
+  _inflight = (async () => {
+    try {
+      const { results, status } = await _geocodePromise(
+        geocoder,
+        { lat, lng },
+        signal
+      );
+
+      if (status !== "OK") {
+        // OK değilse bile cache’e boş yazma: kısa süre sonra tekrar deneyebilsin.
+        return "";
+      }
+
+      const short = _pickShort(results);
+      const meta = getCityCountry(results);
+
+      _cache.set(k, { v: short || "", t: _now(), meta });
+
+      return short || "";
+    } catch (e) {
+      return "";
+    } finally {
+      _inflight = null;
+      _inflightKey = null;
     }
+  })();
 
-    return short || "";
+  try {
+    const val = await _inflight;
+    return val || "";
   } catch {
     return "";
   }
 }
 
-/* ------------------- Ek: şehir/ülke çıkarımı + format ------------------- */
-export async function getCityCountry(lat, lng) {
+/**
+ * reverseGeocode(...) -> { short, city, country, countryCode, status }
+ * (Bazı yerlerde şehir/ülke lazımsa diye)
+ */
+export async function reverseGeocode(a, b, c) {
+  const { lat, lng, signal } = _parseArgs(a, b, c);
+
+  if (!_isFiniteNum(lat) || !_isFiniteNum(lng)) {
+    return { short: "", city: "", country: "", countryCode: "", status: "INVALID" };
+  }
+  if (_disabled) {
+    return { short: "", city: "", country: "", countryCode: "", status: "DISABLED" };
+  }
+
+  const geocoder = _ensureGeocoder();
+  if (!geocoder) {
+    return { short: "", city: "", country: "", countryCode: "", status: "NO_GEOCODER" };
+  }
+
+  const k = _key(lat, lng);
+  const cached = _cache.get(k);
+  const now = _now();
+
+  if (cached && now - cached.t < TTL_MS) {
+    const meta = cached.meta || { city: "", country: "", countryCode: "" };
+    return { short: cached.v || "", ...meta, status: "CACHED" };
+  }
+
   try {
-    const G = window.google?.maps;
-    if (!G?.Geocoder || _disabled) {
-      return { city: "", admin1: "", country: "", countryCode: "" };
+    const { results, status } = await _geocodePromise(geocoder, { lat, lng }, signal);
+
+    if (status !== "OK") {
+      return { short: "", city: "", country: "", countryCode: "", status };
     }
-    if (!_geocoder) _geocoder = new G.Geocoder();
-    const resp = await _geocoder.geocode({ location: { lat, lng } }).catch(() => null);
-    const comps = (resp?.results?.[0]?.address_components) || [];
-    const find = (type) => comps.find(c => Array.isArray(c.types) && c.types.includes(type));
-    const city =
-      find("locality")?.long_name ||
-      find("sublocality")?.long_name ||
-      find("administrative_area_level_2")?.long_name ||
-      "";
-    const admin1 = find("administrative_area_level_1")?.long_name || "";
-    const country = find("country")?.long_name || "";
-    const countryCode = find("country")?.short_name || "";
-    return { city, admin1, country, countryCode };
+
+    const short = _pickShort(results);
+    const meta = getCityCountry(results);
+
+    _cache.set(k, { v: short || "", t: _now(), meta });
+
+    return { short: short || "", ...meta, status: "OK" };
   } catch {
-    return { city: "", admin1: "", country: "", countryCode: "" };
+    return { short: "", city: "", country: "", countryCode: "", status: "ERROR" };
   }
 }
 
-export function formatCityCountry(areas) {
-  if (!areas) return "";
-  return [areas.city, areas.country].filter(Boolean).join(", ");
-}
+export default reverseGeocodeShort;
