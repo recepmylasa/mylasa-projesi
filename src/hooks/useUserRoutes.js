@@ -119,8 +119,11 @@ function extractStopLatLng(s) {
   };
 }
 
+// ✅ patch: stop içindeki medya url alanlarını genişlet (downloadUrl vb.)
 function extractStopMediaUrl(s) {
   if (!s) return "";
+
+  // direkt alanlar
   const direct = pickFirst(s, [
     "mediaUrl",
     "mediaURL",
@@ -132,19 +135,81 @@ function extractStopMediaUrl(s) {
     "thumbnailUrl",
     "coverUrl",
     "coverURL",
-    "url",
     "previewUrl",
     "previewURL",
+    "downloadUrl",
+    "downloadURL",
+    "signedUrl",
+    "publicUrl",
+    "fileUrl",
+    "uri",
+    "path",
+    "fullPath",
+    "storagePath",
+    "gsUrl",
+    "gsURL",
+    "url",
+    "src",
   ]);
   if (isNonEmptyString(direct)) return String(direct).trim();
 
-  const arr = pickFirst(s, ["media", "medias", "gallery", "items", "photos"]) || null;
+  // dizi paketleri
+  const arr = pickFirst(s, [
+    "media",
+    "medias",
+    "gallery",
+    "items",
+    "photos",
+    "images",
+    "imageUrls",
+    "photoUrls",
+    "mediaItems",
+    "attachments",
+    "files",
+  ]) || null;
+
   if (Array.isArray(arr) && arr.length) {
     for (const it of arr) {
-      const u = pickFirst(it, ["url", "mediaUrl", "imageUrl", "thumbUrl"]);
+      if (!it) continue;
+      if (typeof it === "string" && it.trim()) return it.trim();
+
+      const u = pickFirst(it, [
+        "url",
+        "src",
+        "mediaUrl",
+        "imageUrl",
+        "photoUrl",
+        "thumbUrl",
+        "thumbnailUrl",
+        "previewUrl",
+        "downloadUrl",
+        "downloadURL",
+        "signedUrl",
+        "publicUrl",
+        "fileUrl",
+        "uri",
+        "path",
+        "fullPath",
+        "storagePath",
+        "gsUrl",
+      ]);
+
       if (isNonEmptyString(u)) return String(u).trim();
+
+      // bazı şemalarda nested olabilir
+      const nested = pickFirst(it, [
+        "file.url",
+        "file.downloadUrl",
+        "file.downloadURL",
+        "file.path",
+        "asset.url",
+        "asset.downloadUrl",
+        "asset.downloadURL",
+      ]);
+      if (isNonEmptyString(nested)) return String(nested).trim();
     }
   }
+
   return "";
 }
 
@@ -228,11 +293,13 @@ function extractPreviewFromRouteDoc(raw) {
     "imageUrl",
     "photoUrl",
     "mediaUrl",
+    "downloadUrl",
+    "downloadURL",
     "preview.coverUrl",
     "preview.thumbnailUrl",
     "preview.url",
   ]);
-  const coverUrl = normalizeCoverUrl(coverUrlVal);
+  let coverUrl = normalizeCoverUrl(coverUrlVal);
 
   const thumbVal = pickFirst(raw, [
     "thumbnailUrl",
@@ -242,8 +309,19 @@ function extractPreviewFromRouteDoc(raw) {
     "preview.thumbUrl",
     "previewUrl",
     "coverUrl",
+    "downloadUrl",
+    "downloadURL",
   ]);
-  const thumbnailUrl = normalizeCoverUrl(thumbVal);
+  let thumbnailUrl = normalizeCoverUrl(thumbVal);
+
+  // ✅ doc cover boşsa: stopsPreview içinden ilk mediaUrl’ü cover yap
+  if (!isNonEmptyString(coverUrl)) {
+    const spMedia = Array.isArray(stopsPreview) ? stopsPreview.find((x) => isNonEmptyString(x?.mediaUrl))?.mediaUrl : "";
+    coverUrl = normalizeCoverUrl(spMedia);
+  }
+  if (!isNonEmptyString(thumbnailUrl)) {
+    thumbnailUrl = coverUrl || "";
+  }
 
   return { stopsPreview, coverUrl, thumbnailUrl };
 }
@@ -270,6 +348,34 @@ function needsHydratePreview(route) {
   const hasCover = isNonEmptyString(cover);
 
   return !hasStopsPreview || !hasCover;
+}
+
+// ✅ Create-index linkini GİZLEME: detaylı log helper
+function logFirestoreQueryError(tag, err) {
+  const code = err?.code ? String(err.code) : "unknown";
+  const message = err?.message ? String(err.message) : "";
+  const stack = err?.stack ? String(err.stack) : "";
+
+  // eslint-disable-next-line no-console
+  console.groupCollapsed(`${tag} (${code})`);
+  // eslint-disable-next-line no-console
+  console.error(err); // 🔥 Firestore'un "Create index" linki çoğu zaman burada görünür
+  // eslint-disable-next-line no-console
+  console.log("err.code:", code);
+  // eslint-disable-next-line no-console
+  console.log("err.message:", message); // 🔥 link burada da çıkar
+  if (stack) {
+    // eslint-disable-next-line no-console
+    console.log("err.stack:", stack);
+  }
+  // eslint-disable-next-line no-console
+  console.groupEnd();
+
+  // Mesajı tek satırda da bas (kopyalama kolay olsun)
+  if (message) {
+    // eslint-disable-next-line no-console
+    console.warn(`${tag} message:`, message);
+  }
 }
 
 export default function useUserRoutes(ownerId, options = {}) {
@@ -339,11 +445,17 @@ export default function useUserRoutes(ownerId, options = {}) {
         const snap = await getDocs(mkOptimized());
         return { snap, used: "optimized" };
       } catch (e) {
-        // index yok / field yok / permission vb. => legacy fallback
-        // eslint-disable-next-line no-console
-        console.warn("[useUserRoutes] optimized query failed → legacy fallback", e?.code || e);
-        const snap = await getDocs(mkLegacy());
-        return { snap, used: "legacy" };
+        // ✅ index yok / permission vb. => linki saklama, tam logla
+        logFirestoreQueryError("[useUserRoutes] optimized query failed", e);
+
+        // legacy fallback ayrı try/catch (nadiren legacy de patlarsa onu da linkli gör)
+        try {
+          const snap = await getDocs(mkLegacy());
+          return { snap, used: "legacy" };
+        } catch (e2) {
+          logFirestoreQueryError("[useUserRoutes] legacy fallback failed", e2);
+          throw e2;
+        }
       }
     },
     [pageSize]
@@ -457,7 +569,11 @@ export default function useUserRoutes(ownerId, options = {}) {
               const docCover = normalizeCoverUrl(coverUrl);
               const docThumb = normalizeCoverUrl(thumbnailUrl);
 
-              const finalCover = modelCover || modelPreview || modelImage || modelMedia || docCover || "";
+              // ✅ son çare: stopsPreview içindeki mediaUrl
+              const spMedia = Array.isArray(stopsPreview) ? stopsPreview.find((x) => isNonEmptyString(x?.mediaUrl))?.mediaUrl : "";
+              const spCover = normalizeCoverUrl(spMedia);
+
+              const finalCover = modelCover || modelPreview || modelImage || modelMedia || docCover || spCover || "";
               const finalThumb = modelThumb || modelThumb2 || docThumb || finalCover || "";
 
               const patched = {

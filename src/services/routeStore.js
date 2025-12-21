@@ -11,12 +11,15 @@ import {
   arrayUnion,
   setDoc,
   getDocs,
+  getDoc,
   query,
   orderBy,
   limit as qlimit,
 } from "firebase/firestore";
 
 const PLACEHOLDER_COVER = "/mylasa-logo.png";
+
+/* -------------------- helpers -------------------- */
 
 function normalizeVisibility(v) {
   return v === "followers" ? "followers" : v === "private" ? "private" : "public";
@@ -31,25 +34,210 @@ function safeNum(v, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function safeNumNullable(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function stripQueryAndHash(v) {
+  const s = safeStr(v);
+  if (!s) return "";
+  return s.split(/[?#]/)[0];
+}
+
+function isPlaceholderCover(v) {
+  const base = stripQueryAndHash(v).toLowerCase();
+  if (!base) return false;
+  const file = base.split("/").pop();
+  return file === "mylasa-logo.png" || file === "mylasa-logo.svg";
+}
+
+function normalizeCoverUrl(v) {
+  const s = safeStr(v);
+  if (!s) return "";
+  return isPlaceholderCover(s) ? "" : s;
+}
+
+function pickFirstString(obj, keys) {
+  for (const k of keys) {
+    const v = obj?.[k];
+    const s = safeStr(v);
+    if (s) return s;
+  }
+  return "";
+}
+
+function pickNestedString(obj, paths) {
+  for (const p of paths) {
+    const parts = String(p).split(".");
+    let cur = obj;
+    let ok = true;
+    for (const part of parts) {
+      if (!cur || typeof cur !== "object") {
+        ok = false;
+        break;
+      }
+      cur = cur[part];
+    }
+    if (!ok) continue;
+    const s = safeStr(cur);
+    if (s) return s;
+  }
+  return "";
+}
+
+function extractFirstUrlFromArray(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return "";
+  for (const it of arr) {
+    if (!it) continue;
+    if (typeof it === "string") {
+      const s = safeStr(it);
+      if (s) return s;
+      continue;
+    }
+    if (typeof it === "object") {
+      const direct = pickFirstString(it, [
+        "url",
+        "src",
+        "mediaUrl",
+        "imageUrl",
+        "photoUrl",
+        "downloadUrl",
+        "downloadURL",
+        "publicUrl",
+        "fileUrl",
+        "thumbnailUrl",
+        "thumbUrl",
+        "previewUrl",
+      ]);
+      if (direct) return direct;
+
+      const nested = pickNestedString(it, [
+        "file.url",
+        "file.downloadUrl",
+        "file.downloadURL",
+        "asset.url",
+        "asset.downloadUrl",
+        "asset.downloadURL",
+      ]);
+      if (nested) return nested;
+    }
+  }
+  return "";
+}
+
+function extractStopMediaUrl(stop) {
+  if (!stop || typeof stop !== "object") return "";
+
+  // 1) direkt alanlar
+  const direct = pickFirstString(stop, [
+    "mediaUrl",
+    "mediaURL",
+    "downloadUrl",
+    "downloadURL",
+    "url",
+    "src",
+    "imageUrl",
+    "imageURL",
+    "photoUrl",
+    "photoURL",
+    "publicUrl",
+    "fileUrl",
+    "signedUrl",
+    "previewUrl",
+    "previewURL",
+    "gsUrl",
+    "gsURL",
+    "uri",
+    "path",
+    "fullPath",
+    "storagePath",
+  ]);
+  if (direct) return direct;
+
+  // 2) nested alanlar
+  const nested = pickNestedString(stop, [
+    "file.url",
+    "file.downloadUrl",
+    "file.downloadURL",
+    "asset.url",
+    "asset.downloadUrl",
+    "asset.downloadURL",
+    "media.url",
+    "media.downloadUrl",
+    "media.downloadURL",
+  ]);
+  if (nested) return nested;
+
+  // 3) array paketleri
+  const arr =
+    stop.media ||
+    stop.medias ||
+    stop.gallery ||
+    stop.items ||
+    stop.photos ||
+    stop.images ||
+    stop.attachments ||
+    stop.files ||
+    null;
+
+  const fromArr = extractFirstUrlFromArray(arr);
+  if (fromArr) return fromArr;
+
+  return "";
+}
+
+function extractStopThumbUrl(stop) {
+  if (!stop || typeof stop !== "object") return "";
+
+  const direct = pickFirstString(stop, [
+    "thumbnailUrl",
+    "thumbUrl",
+    "thumbURL",
+    "previewThumbUrl",
+    "previewThumbnailUrl",
+    "previewUrl",
+    "downloadThumbnailUrl",
+    "downloadThumbUrl",
+  ]);
+  if (direct) return direct;
+
+  const nested = pickNestedString(stop, [
+    "thumbnail.url",
+    "thumb.url",
+    "file.thumbUrl",
+    "file.thumbnailUrl",
+    "asset.thumbUrl",
+    "asset.thumbnailUrl",
+  ]);
+  if (nested) return nested;
+
+  // thumb bulunamazsa media’ya düş
+  return extractStopMediaUrl(stop);
+}
+
 function normalizeStopForPreview(s) {
   const id = safeStr(s?.id);
   const order = safeNum(s?.order ?? s?.idx, 0);
   const title = safeStr(s?.title || s?.name || "");
-  const lat = safeNum(s?.lat, 0);
-  const lng = safeNum(s?.lng, 0);
 
-  const mediaUrl = safeStr(s?.mediaUrl || "");
-  const thumbnailUrl = safeStr(s?.thumbnailUrl || "");
+  const lat = safeNumNullable(s?.lat);
+  const lng = safeNumNullable(s?.lng);
 
-  return {
+  const mediaUrl = safeStr(extractStopMediaUrl(s));
+  const thumbnailUrl = safeStr(extractStopThumbUrl(s));
+
+  const out = {
     id,
     order,
     title,
-    lat,
-    lng,
+    ...(lat !== null ? { lat } : {}),
+    ...(lng !== null ? { lng } : {}),
     ...(mediaUrl ? { mediaUrl } : {}),
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
   };
+
+  return out;
 }
 
 /**
@@ -57,7 +245,7 @@ function normalizeStopForPreview(s) {
  * - stopsPreview: array (1–2 eleman: ilk + son)
  * - stopsMeta: {has, length}
  * - startName/endName
- * - coverUrl/thumbnailUrl (boş kalmaz; medya yoksa placeholder)
+ * - coverUrl/thumbnailUrl (medya varsa placeholder kalmaz)
  */
 export async function recomputeRouteSummary(routeId) {
   if (!routeId) return;
@@ -66,7 +254,21 @@ export async function recomputeRouteSummary(routeId) {
   const stopsCol = collection(db, "routes", routeId, "stops");
 
   try {
-    // 1) stops sayısı + ilk/son
+    // Mevcut route cover’ı placeholder değilse koru
+    let existingCover = "";
+    let existingThumb = "";
+    try {
+      const rSnap = await getDoc(routeRef);
+      if (rSnap.exists()) {
+        const raw = rSnap.data() || {};
+        existingCover = normalizeCoverUrl(raw.coverUrl || raw.previewUrl || raw.imageUrl || raw.mediaUrl || "");
+        existingThumb = normalizeCoverUrl(raw.thumbnailUrl || raw.thumbUrl || "");
+      }
+    } catch {
+      // sessiz
+    }
+
+    // 1) ilk/son stop (order)
     const firstQ = query(stopsCol, orderBy("order", "asc"), qlimit(1));
     const lastQ = query(stopsCol, orderBy("order", "desc"), qlimit(1));
 
@@ -75,14 +277,20 @@ export async function recomputeRouteSummary(routeId) {
     const firstStop = firstSnap.docs[0] ? { id: firstSnap.docs[0].id, ...firstSnap.docs[0].data() } : null;
     const lastStop = lastSnap.docs[0] ? { id: lastSnap.docs[0].id, ...lastSnap.docs[0].data() } : null;
 
-    // length için küçük bir “count” yaklaşımı (MVP): tüm stops’u çekmeden,
-    // order alanı düzgünse lastStop.order ile de tahmin edilebilir; ama güvenli olsun:
-    // (stop sayısı az/orta bekleniyor)
-    const allSnap = await getDocs(query(stopsCol, qlimit(250)));
-    const length = allSnap.size || 0;
+    // 2) stop count / length (MVP): order/idx’den çıkar, olmazsa küçük fallback
+    const lastOrderGuess = safeNum(lastStop?.order ?? lastStop?.idx, 0);
+    const firstOrderGuess = safeNum(firstStop?.order ?? firstStop?.idx, 0);
+    let length = Math.max(lastOrderGuess, firstOrderGuess, 0);
+
+    if (!length) {
+      // çok nadir: order yoksa minik fallback
+      const allSnap = await getDocs(query(stopsCol, qlimit(250)));
+      length = allSnap.size || 0;
+    }
 
     const stopsMeta = { has: length > 0, length };
 
+    // 3) preview (ilk + son)
     const p1 = firstStop ? normalizeStopForPreview(firstStop) : null;
     const p2 =
       lastStop && (!firstStop || String(lastStop.id) !== String(firstStop.id))
@@ -93,26 +301,36 @@ export async function recomputeRouteSummary(routeId) {
     if (p1) stopsPreview.push(p1);
     if (p2) stopsPreview.push(p2);
 
-    const startName = safeStr(firstStop?.title || firstStop?.name || "");
-    const endName = safeStr(lastStop?.title || lastStop?.name || "");
+    const startName = safeStr(firstStop?.title || firstStop?.name || "") || safeStr(p1?.title);
+    const endName = safeStr(lastStop?.title || lastStop?.name || "") || safeStr(p2?.title || p1?.title);
 
-    const firstMedia = safeStr(firstStop?.mediaUrl || "");
-    const lastMedia = safeStr(lastStop?.mediaUrl || "");
+    // 4) cover/thumbnail üretimi
+    // cover için: first media -> last media
+    const firstMedia = firstStop ? safeStr(extractStopMediaUrl(firstStop)) : "";
+    const lastMedia = lastStop ? safeStr(extractStopMediaUrl(lastStop)) : "";
 
-    const firstThumb = safeStr(firstStop?.thumbnailUrl || "");
-    const lastThumb = safeStr(lastStop?.thumbnailUrl || "");
+    const firstThumb = firstStop ? safeStr(extractStopThumbUrl(firstStop)) : "";
+    const lastThumb = lastStop ? safeStr(extractStopThumbUrl(lastStop)) : "";
 
-    const coverUrl = firstMedia || lastMedia || PLACEHOLDER_COVER;
-    const thumbnailUrl = firstThumb || firstMedia || lastThumb || lastMedia || coverUrl;
+    const computedCover = normalizeCoverUrl(firstMedia || lastMedia) || (stopsMeta.has ? "" : "");
+    const computedThumb = normalizeCoverUrl(firstThumb || firstMedia || lastThumb || lastMedia) || computedCover || "";
+
+    // cover var mı?
+    const hasMedia = Boolean(computedCover || computedThumb);
+
+    // ✅ yazılacak cover: mevcut (placeholder değilse) > computed > placeholder
+    const coverUrl = existingCover || computedCover || PLACEHOLDER_COVER;
+    const thumbnailUrl = existingThumb || computedThumb || coverUrl;
 
     await updateDoc(routeRef, {
       stopsMeta,
       stopsPreview, // ✅ array
-      startName: startName || (stopsMeta.has ? safeStr(p1?.title) : ""),
-      endName: endName || (stopsMeta.has ? safeStr(p2?.title || p1?.title) : ""),
+      startName: startName || "",
+      endName: endName || "",
       coverUrl,
       thumbnailUrl,
-      hasMedia: Boolean(firstMedia || lastMedia),
+      hasMedia,
+      summaryUpdatedAt: serverTimestamp(),
     });
   } catch (e) {
     // sessiz tolerans
@@ -142,7 +360,7 @@ export async function createRoute({ ownerId, title = "", visibility = "public" }
     durationMs: 0,
     bounds: null,
 
-    // ✅ Route-level cover standardı (başlangıçta bile alanlar var)
+    // ✅ Route-level cover standardı
     coverUrl: PLACEHOLDER_COVER,
     thumbnailUrl: PLACEHOLDER_COVER,
     stopsPreview: [], // ✅ array
@@ -184,6 +402,30 @@ export async function addStop(routeId, stop) {
 
     const order = safeNum(stop.order ?? stop.idx, 0) || 1;
 
+    // ✅ media normalize: downloadUrl/url/photoUrl vb. gelirse mediaUrl’e düşür
+    const mediaUrl = safeStr(
+      stop.mediaUrl ||
+        stop.downloadUrl ||
+        stop.downloadURL ||
+        stop.url ||
+        stop.src ||
+        stop.photoUrl ||
+        stop.photoURL ||
+        stop.imageUrl ||
+        stop.imageURL ||
+        ""
+    );
+
+    const thumbnailUrl = safeStr(
+      stop.thumbnailUrl ||
+        stop.thumbUrl ||
+        stop.thumbURL ||
+        stop.previewUrl ||
+        stop.previewURL ||
+        mediaUrl ||
+        ""
+    );
+
     const ref = await addDoc(stopsCol, {
       order,
       idx: order, // ✅ legacy uyum
@@ -195,9 +437,13 @@ export async function addStop(routeId, stop) {
       note: safeStr(stop.note),
       createdAt: serverTimestamp(),
 
-      // ✅ cover üretimi için hazır alanlar (upload sonrası doldurulur)
-      mediaUrl: safeStr(stop.mediaUrl || ""),
-      thumbnailUrl: safeStr(stop.thumbnailUrl || ""),
+      // ✅ cover üretimi için standart alanlar
+      mediaUrl,
+      thumbnailUrl,
+
+      // ✅ gelen şemayı bozmamak için (varsa) orijinal alanları da sakla
+      ...(safeStr(stop.downloadUrl) ? { downloadUrl: safeStr(stop.downloadUrl) } : {}),
+      ...(safeStr(stop.downloadURL) ? { downloadURL: safeStr(stop.downloadURL) } : {}),
     });
 
     return ref.id;
@@ -207,7 +453,10 @@ export async function addStop(routeId, stop) {
   }
 }
 
-/** Rotayı sonlandırır; özet değerleri yazar + route summary’yi garanti doldurur */
+/**
+ * Rotayı sonlandırır; özet değerleri yazar + route summary’yi garanti doldurur
+ * (medya alanları farklı isimle gelmiş olsa bile artık yakalar)
+ */
 export async function finishRoute(routeId, stats) {
   try {
     if (!routeId || !stats) return;
