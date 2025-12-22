@@ -165,7 +165,6 @@ export function formatDateTimeTR(dt) {
 
 /**
  * EMİR 36 — Formatter’lar buraya taşındı
- * Not: RouteDetailMobile.js içinden kaldırılacak; orada gerekiyorsa re-export yapılacak.
  */
 export function formatDateTR(dt) {
   const d = toDateSafe(dt);

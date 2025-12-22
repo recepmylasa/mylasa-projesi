@@ -31,7 +31,7 @@ import {
   getOwnerHintFromUrl,
   getRouteRatingLabelSafe,
   getRouteTitleSafe,
-  getValidLatLng,
+  getValidLatLngSafe, // ✅ daha dayanıklı
   getVisibilityKeyFromRoute,
   resolveOwnerIdForLockedRoute,
 } from "./routeDetailUtils";
@@ -107,7 +107,7 @@ function RouteDetailMapPreview({ routeId, path = [], stops = [], stopsLoaded = f
 
       const pts = [];
       (path || []).forEach((p) => {
-        const ll = getValidLatLng(p?.lat, p?.lng);
+        const ll = getValidLatLngSafe(p?.lat, p?.lng);
         if (!ll) return;
         pts.push(new window.google.maps.LatLng(ll.lat, ll.lng));
       });
@@ -122,7 +122,7 @@ function RouteDetailMapPreview({ routeId, path = [], stops = [], stopsLoaded = f
       stopMarkersRef.current = [];
 
       (stops || []).forEach((s) => {
-        const ll = getValidLatLng(s?.lat, s?.lng);
+        const ll = getValidLatLngSafe(s?.lat, s?.lng);
         if (!ll) return;
         try {
           const mk = new window.google.maps.Marker({
@@ -140,13 +140,13 @@ function RouteDetailMapPreview({ routeId, path = [], stops = [], stopsLoaded = f
   const buildFitSignature = useCallback(() => {
     const pathPts = [];
     (path || []).forEach((p) => {
-      const ll = getValidLatLng(p?.lat, p?.lng);
+      const ll = getValidLatLngSafe(p?.lat, p?.lng);
       if (ll) pathPts.push(ll);
     });
 
     const stopPts = [];
     (stops || []).forEach((s) => {
-      const ll = getValidLatLng(s?.lat, s?.lng);
+      const ll = getValidLatLngSafe(s?.lat, s?.lng);
       if (ll) stopPts.push(ll);
     });
 
@@ -314,15 +314,7 @@ function RouteDetailMapPreview({ routeId, path = [], stops = [], stopsLoaded = f
               <button type="button" style={btn} onClick={onRetry}>
                 Tekrar dene
               </button>
-              <button
-                type="button"
-                style={subtleBtn}
-                onClick={() => {
-                  try {
-                    // küçük bir “yumuşak” fallback: aynı component içinde bir şey yapmadan da tıklama hissi
-                  } catch {}
-                }}
-              >
+              <button type="button" style={subtleBtn} onClick={() => {}}>
                 Tamam
               </button>
             </div>
@@ -396,11 +388,11 @@ export default function RouteDetailMobile({
   const [permCheckTick, setPermCheckTick] = useState(0);
   const [reloadTick, setReloadTick] = useState(0);
 
-  // ✅ Map-based cache (EMİR 42 uyumlu) + EMİR 43 reset’te temizlenecek
+  // ✅ Map-based cache + reset’te temizlenecek
   const mediaCacheRef = useRef(new Map());
   const [mediaTick, setMediaTick] = useState(0);
 
-  // ✅ mediaTick rAF throttle (premium performans)
+  // ✅ mediaTick rAF throttle
   const mediaTickRafRef = useRef(0);
   const bumpMediaTick = useCallback(() => {
     if (mediaTickRafRef.current) return;
@@ -410,7 +402,7 @@ export default function RouteDetailMobile({
     });
   }, []);
 
-  // ✅ Gallery batching state/refs (EMİR 6)
+  // ✅ Gallery batching state/refs
   const [galleryState, setGalleryState] = useState({ loading: false, done: false, errorCount: 0 });
   const galleryInFlightRef = useRef(false);
   const galleryJobIdRef = useRef(0);
@@ -427,7 +419,7 @@ export default function RouteDetailMobile({
   const [stopAgg, setStopAgg] = useState(null);
   const [uploadState, setUploadState] = useState({});
 
-  // ✅ EMİR 2 — retry: map’i remount et (hook’a dokunmadan)
+  // ✅ EMİR 2 — retry: map’i remount et
   const [mapsRetryTick, setMapsRetryTick] = useState(0);
   const retryMap = useCallback(() => setMapsRetryTick((x) => x + 1), []);
 
@@ -444,7 +436,7 @@ export default function RouteDetailMobile({
   const [lockedOwnerId, setLockedOwnerId] = useState(null);
   const [lockedOwnerDoc, setLockedOwnerDoc] = useState(null);
 
-  // === Medya tip normalizasyonu (EMİR 6/C) ===
+  // === Medya tip normalizasyonu ===
   const normalizeMediaType = useCallback((it) => {
     try {
       const t = String(it?.type || it?.mime || it?.contentType || "").toLowerCase();
@@ -478,34 +470,28 @@ export default function RouteDetailMobile({
   );
 
   // =========================
-  // ✅ EMİR 43 — routeId değişince TAM RESET (+ EMİR 6/A3 ref resetleri)
+  // ✅ routeId değişince TAM RESET
   // =========================
   useEffect(() => {
-    // 1) temel veri/state
     setRouteDoc(null);
     setStops([]);
     setStopsLoaded(false);
     setOwner(null);
 
-    // 2) izin + sayaçlar
     setPermError(null);
     setCommentsCount(null);
 
-    // 3) rapor/galeri
     setRouteAgg(null);
     setStopAgg(null);
     setGalleryState({ loading: false, done: false, errorCount: 0 });
 
-    // 4) overlay/UI
     setShowShareSheet(false);
     setLightboxItems(null);
     setLightboxIndex(0);
 
-    // 5) locked owner
     setLockedOwnerId(null);
     setLockedOwnerDoc(null);
 
-    // 6) upload’ları abort et + state sıfırla
     setUploadState((prev) => {
       try {
         Object.values(prev || {}).forEach((v) => {
@@ -517,17 +503,13 @@ export default function RouteDetailMobile({
       return {};
     });
 
-    // 7) media cache sıfırla
     mediaCacheRef.current = new Map();
     bumpMediaTick();
 
-    // 8) tab’i URL’den tekrar oku (ya da default “stops”)
     setTab(readTabFromUrl());
 
-    // 9) map retry tick reset (yeni rota = temiz init)
     setMapsRetryTick(0);
 
-    // ✅ EMİR 6/A3: gallery refs reset
     galleryJobIdRef.current += 1;
     galleryCursorRef.current = 0;
     galleryInFlightRef.current = false;
@@ -579,7 +561,7 @@ export default function RouteDetailMobile({
     setReloadTick((x) => x + 1);
   }, []);
 
-  // Locked (forbidden/private/not-found) durumunda ownerId resolve et (owner param yoksa)
+  // Locked (forbidden/private/not-found) durumunda ownerId resolve et
   useEffect(() => {
     if (!routeId) return;
     if (!(permError === "forbidden" || permError === "private" || permError === "not-found")) return;
@@ -629,7 +611,7 @@ export default function RouteDetailMobile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId, permError, ownerHint]);
 
-  // Route okunabiliyorsa ama visibility “private” ise UI’da da kilitle (tek standart)
+  // Route okunabiliyorsa ama visibility “private” ise UI’da da kilitle
   useEffect(() => {
     if (!routeId) return;
     if (!routeModel) return;
@@ -822,7 +804,7 @@ export default function RouteDetailMobile({
     };
   }, [routeId, reloadTick, permError]);
 
-  // Route + Stops watchers (forbidden/private/not-found iken subscribe etme)
+  // Route + Stops watchers
   useEffect(() => {
     if (!routeId) return;
     if (permError === "forbidden" || permError === "private" || permError === "not-found") return;
@@ -856,7 +838,7 @@ export default function RouteDetailMobile({
     };
   }, [routeId, reloadTick, permError]);
 
-  // ✅ EMİR 6/A2: listStopMediaInline throw-safe + cache flags (thumbs)
+  // ✅ listStopMediaInline throw-safe + cache flags (thumbs)
   const ensureStopThumbs = useCallback(
     async (stopId) => {
       if (!routeId || !stopId) return;
@@ -921,7 +903,7 @@ export default function RouteDetailMobile({
     return arr.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
   }, [mediaTick]);
 
-  // ✅ EMİR 6/A1+A2: Gallery batch loader (inFlight try/finally + throw-safe)
+  // ✅ Gallery batch loader
   const loadNextGalleryBatch = useCallback(async () => {
     if (!routeId) return;
     if (galleryInFlightRef.current) return;
@@ -972,7 +954,7 @@ export default function RouteDetailMobile({
           mediaCacheRef.current.set(stopId, {
             ...before,
             items: nextItems,
-            __loadedGalleryAttempted: true, // ✅ aynı stop’a sonsuz deneme olmasın
+            __loadedGalleryAttempted: true,
             __loadedThumbs: true,
             ...(error ? { __error: error } : { __error: null }),
           });
@@ -981,7 +963,6 @@ export default function RouteDetailMobile({
         })
       );
 
-      // job değiştiyse state yazma (ama finally inFlight bırakacak)
       if (galleryJobIdRef.current !== jobId) return;
 
       galleryCursorRef.current = start + slice.length;
@@ -999,21 +980,19 @@ export default function RouteDetailMobile({
       if (galleryJobIdRef.current === jobId) {
         setGalleryState((s) => ({
           ...s,
-          loading: false, // ✅ UI “yükleniyor…”da kalmasın
+          loading: false,
           errorCount: (Number(s?.errorCount) || 0) + 1,
         }));
       }
     } finally {
-      // ✅ EMİR 6/A1: inFlight kesin bırak
       galleryInFlightRef.current = false;
     }
   }, [routeId, stops, bumpMediaTick]);
 
-  // Gallery auto-load sentinel (scroll ile)
+  // Gallery auto-load sentinel
   useEffect(() => {
     if (tab !== "gallery") return;
 
-    // ilk batch
     loadNextGalleryBatch();
 
     const rootEl = routeBodyRef.current;
@@ -1448,7 +1427,7 @@ export default function RouteDetailMobile({
                               className="route-detail-media-tile"
                               onClick={() => {
                                 setLightboxIndex(idx);
-                                setLightboxItems(buildLightboxItems(media)); // ✅ type normalize
+                                setLightboxItems(buildLightboxItems(media));
                               }}
                               style={{
                                 width: 76,
@@ -1552,7 +1531,7 @@ export default function RouteDetailMobile({
                         className="route-detail-media-tile"
                         onClick={() => {
                           setLightboxIndex(idx);
-                          setLightboxItems(buildLightboxItems(galleryItems)); // ✅ type normalize
+                          setLightboxItems(buildLightboxItems(galleryItems));
                         }}
                         style={{
                           width: "100%",
@@ -1619,7 +1598,6 @@ export default function RouteDetailMobile({
                   </div>
                 )}
 
-                {/* sentinel: scroll ile otomatik batch */}
                 <div ref={gallerySentinelRef} style={{ height: 1 }} />
               </div>
             )}
@@ -1695,11 +1673,7 @@ export default function RouteDetailMobile({
 
       {showShareSheet && (
         <div className="route-detail-share-overlay">
-          <ShareSheetMobile
-            route={buildShareRoutePayload(routeDoc || initialRoute, owner, routeId)}
-            stops={stops}
-            onClose={() => setShowShareSheet(false)}
-          />
+          <ShareSheetMobile route={buildShareRoutePayload(routeDoc || initialRoute, owner, routeId)} stops={stops} onClose={() => setShowShareSheet(false)} />
         </div>
       )}
 
@@ -1718,8 +1692,7 @@ export default function RouteDetailMobile({
   return withPortal(content);
 }
 
-// ✅ Backward compatibility: eski import’lar kırılmasın (utils’te yoksa fallback)
-// Not: named re-export yerine güvenli export (build patlamasın)
+// ✅ Backward compatibility: eski import’lar kırılmasın
 const _coerceDate = (v) => {
   if (!v) return null;
   try {

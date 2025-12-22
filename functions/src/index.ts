@@ -23,6 +23,9 @@ const isFinished = (x: any) => (x?.status || "").toString() === "finished";
 
 function asPoint(p: any): { lat: number; lng: number } | null {
   if (!p) return null;
+  try {
+    if (p instanceof Date) return null;
+  } catch {}
   if (Array.isArray(p) && p.length >= 2) {
     const [lat, lng] = p;
     if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
@@ -50,10 +53,16 @@ function sample3FromPath(path: any[]): Array<{ lat: number; lng: number }> {
 
 function centroidOfStops(stops: any[]): { lat: number; lng: number } | null {
   if (!Array.isArray(stops) || stops.length === 0) return null;
-  let sx = 0, sy = 0, n = 0;
+  let sx = 0,
+    sy = 0,
+    n = 0;
   for (const s of stops) {
     const p = asPoint((s as any)?.location || s);
-    if (p) { sx += p.lat; sy += p.lng; n++; }
+    if (p) {
+      sx += p.lat;
+      sy += p.lng;
+      n++;
+    }
   }
   if (!n) return null;
   return { lat: sx / n, lng: sy / n };
@@ -61,11 +70,16 @@ function centroidOfStops(stops: any[]): { lat: number; lng: number } | null {
 
 function majority<T extends string | undefined>(vals: T[]): T | undefined {
   const c = new Map<string, number>();
-  for (const v of vals) { if (v) c.set(v, (c.get(v) || 0) + 1); }
+  for (const v of vals) {
+    if (v) c.set(v, (c.get(v) || 0) + 1);
+  }
   let best: string | undefined;
   let bestN = 0;
   for (const [k, n] of c) {
-    if (n > bestN) { best = k; bestN = n; }
+    if (n > bestN) {
+      best = k;
+      bestN = n;
+    }
   }
   return best as T | undefined;
 }
@@ -139,7 +153,9 @@ export const backfillAreasCallable = functions
     }
 
     const pageSize = Math.min(Number(data?.pageSize || 40), 100);
-    let scanned = 0, updated = 0, errors = 0;
+    let scanned = 0,
+      updated = 0,
+      errors = 0;
     let last: FirebaseFirestore.QueryDocumentSnapshot | undefined;
 
     for (let page = 0; page < 5; page++) {
@@ -264,3 +280,11 @@ export { processUploadedVideo } from "./video_v2";
 export { onRatingWrite, recomputeUserReputation } from "./content_reputation_v2";
 export { backfillContentStubs } from "./backfill_content_stubs_v2";
 export { seedSeriesS1, incrementStars, openBlindBox } from "./labubu_v2";
+
+/* === YENİ: Route cover standard + triggers + backfill === */
+export {
+  onRouteStopCreate,
+  onRouteStopMediaCreate,
+  onRouteWriteEnsureCoverDefault,
+  backfillRouteCoversCallable,
+} from "./route_cover";

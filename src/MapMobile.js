@@ -46,7 +46,7 @@ import PlaceDetailModalMobile from "./PlaceDetailModalMobile";
 import { LocateIcon } from "./icons";
 import { subscribeFriendLocations } from "./services/locationStream";
 import { createClusterer } from "./services/clusterer";
-import { reverseGeocode } from "./services/reverseGeocode";
+import { reverseGeocodeShort } from "./services/reverseGeocode"; // ✅ string döndürür
 
 // === ROTA: yeni servisler ===
 import { routeRecorder } from "./services/routeRecorder";
@@ -494,12 +494,7 @@ export default function MapMobile({
           svc.getDetails(
             {
               placeId: e.placeId,
-              fields: [
-                "place_id",
-                "name",
-                "geometry",
-                "formatted_address",
-              ],
+              fields: ["place_id", "name", "geometry", "formatted_address"],
               sessionToken: sessionTokenRef.current,
             },
             (place, status) => {
@@ -563,8 +558,7 @@ export default function MapMobile({
       if (overlay === PANEL_NONE) return;
       const t = e.target;
       const insideSearch =
-        (searchPanelRef.current &&
-          searchPanelRef.current.contains(t)) ||
+        (searchPanelRef.current && searchPanelRef.current.contains(t)) ||
         (searchBtnRef.current && searchBtnRef.current.contains(t));
       const insideLayers =
         (layersMenuRef.current && layersMenuRef.current.contains(t)) ||
@@ -711,8 +705,7 @@ export default function MapMobile({
     const start = () => {
       handler = (e) => {
         let h = null;
-        if (typeof e.webkitCompassHeading === "number")
-          h = e.webkitCompassHeading;
+        if (typeof e.webkitCompassHeading === "number") h = e.webkitCompassHeading;
         else if (typeof e.alpha === "number") h = 360 - e.alpha;
         if (h != null && !Number.isNaN(h))
           setHeadingDeg(((h % 360) + 360) % 360);
@@ -736,8 +729,7 @@ export default function MapMobile({
       start();
     }
     return () => {
-      if (handler)
-        window.removeEventListener("deviceorientation", handler, true);
+      if (handler) window.removeEventListener("deviceorientation", handler, true);
     };
   }, []);
 
@@ -842,9 +834,7 @@ export default function MapMobile({
             } catch {}
 
             // Firestore'a artımlı yazım (async, beklemeden)
-            routeStore
-              .appendPath(activeRouteIdRef.current, newChunk)
-              .catch(() => {});
+            routeStore.appendPath(activeRouteIdRef.current, newChunk).catch(() => {});
             lastSyncedIndexRef.current = path.length;
           }
         } catch {}
@@ -855,11 +845,7 @@ export default function MapMobile({
     const onErr = () => setUserLocation(null);
 
     navigator.geolocation.getCurrentPosition(onPos, onErr, geoOptions);
-    const watchId = navigator.geolocation.watchPosition(
-      onPos,
-      onErr,
-      geoOptions
-    );
+    const watchId = navigator.geolocation.watchPosition(onPos, onErr, geoOptions);
     return () => {
       try {
         navigator.geolocation.clearWatch(watchId);
@@ -913,12 +899,9 @@ export default function MapMobile({
     if (nameSpan) nameSpan.textContent = "Ben";
 
     if (fill) {
-      const level =
-        batteryLevel == null ? 1 : Math.max(0, Math.min(1, batteryLevel));
+      const level = batteryLevel == null ? 1 : Math.max(0, Math.min(1, batteryLevel));
       fill.style.width =
-        batteryLevel == null
-          ? "100%"
-          : `${Math.max(3, Math.round(level * 100))}%`;
+        batteryLevel == null ? "100%" : `${Math.max(3, Math.round(level * 100))}%`;
       fill.style.opacity = batteryLevel == null ? "0.55" : "1";
       fill.style.background =
         batteryLevel == null
@@ -931,9 +914,7 @@ export default function MapMobile({
     }
     if (pct) {
       pct.textContent =
-        batteryLevel == null
-          ? "—"
-          : `${Math.round((batteryLevel || 0) * 100)}%`;
+        batteryLevel == null ? "—" : `${Math.round((batteryLevel || 0) * 100)}%`;
     }
     if (cone) {
       cone.style.display = headingDeg == null ? "none" : "block";
@@ -974,13 +955,7 @@ export default function MapMobile({
       );
     }, 300);
     return () => clearTimeout(h);
-  }, [
-    searchText,
-    overlay,
-    gmapsStatus,
-    autocompleteServiceRef,
-    sessionTokenRef,
-  ]);
+  }, [searchText, overlay, gmapsStatus, autocompleteServiceRef, sessionTokenRef]);
 
   const handleSelectPrediction = useCallback(
     (pred) => {
@@ -991,12 +966,7 @@ export default function MapMobile({
       svc.getDetails(
         {
           placeId: pred.place_id,
-          fields: [
-            "place_id",
-            "name",
-            "geometry",
-            "formatted_address",
-          ],
+          fields: ["place_id", "name", "geometry", "formatted_address"],
           sessionToken: token,
         },
         (place, status) => {
@@ -1055,7 +1025,7 @@ export default function MapMobile({
           setPlaceShortAddr("");
           return;
         }
-        const short = await reverseGeocode(lat, lng);
+        const short = await reverseGeocodeShort(lat, lng); // ✅ string
         if (!cancelled) setPlaceShortAddr(short || "");
       } catch {
         if (!cancelled) setPlaceShortAddr("");
@@ -1083,11 +1053,8 @@ export default function MapMobile({
           if (d < SELF_ADDR_DISTANCE_THRESHOLD_M) return; // çok yakında, çağırmaya gerek yok
         }
         lastAddrLocRef.current = userLocation;
-        const short = await reverseGeocode(
-          userLocation.lat,
-          userLocation.lng
-        );
-        if (!cancelled && short) setSelfShortAddr(short);
+        const short = await reverseGeocodeShort(userLocation.lat, userLocation.lng); // ✅ string
+        if (!cancelled) setSelfShortAddr(short || "");
       } catch {
         if (!cancelled) setSelfShortAddr("");
       }
@@ -1108,8 +1075,7 @@ export default function MapMobile({
     );
   }, [selectedPlace, userLocation]);
 
-  const inRange =
-    selectedDist != null && selectedDist <= CHECKIN_RADIUS_M;
+  const inRange = selectedDist != null && selectedDist <= CHECKIN_RADIUS_M;
 
   // Seçili yer kapanınca place detail modalını da kapat
   useEffect(() => {
@@ -1137,27 +1103,16 @@ export default function MapMobile({
 
       // İlk nokta mevcutsa hemen kaydet
       if (userLocation) {
-        routeRecorder.onPoint(
-          userLocation.lat,
-          userLocation.lng,
-          Date.now()
-        );
+        routeRecorder.onPoint(userLocation.lat, userLocation.lng, Date.now());
         const p = routeRecorder.getPath();
         if (p.length) {
           try {
             const arr = polylineRef.current?.getPath?.();
             if (arr && window.google?.maps) {
-              arr.push(
-                new window.google.maps.LatLng(
-                  userLocation.lat,
-                  userLocation.lng
-                )
-              );
+              arr.push(new window.google.maps.LatLng(userLocation.lat, userLocation.lng));
             }
           } catch {}
-          routeStore
-            .appendPath(routeId, p)
-            .catch(() => {});
+          routeStore.appendPath(routeId, p).catch(() => {});
           lastSyncedIndexRef.current = p.length;
         }
       }
@@ -1169,12 +1124,7 @@ export default function MapMobile({
   }, [routeStatus, userLocation, createPolyline, clearPolyline]);
 
   const handleAddStop = useCallback(async () => {
-    if (
-      routeStatus !== "recording" ||
-      !activeRouteIdRef.current ||
-      !userLocation
-    )
-      return;
+    if (routeStatus !== "recording" || !activeRouteIdRef.current || !userLocation) return;
     const defaultTitle = `Durak ${Date.now() % 10000}`;
     const title = window.prompt("Durak başlığı", defaultTitle);
     if (title == null) return; // iptal
@@ -1199,12 +1149,10 @@ export default function MapMobile({
       const full = routeRecorder.getPath();
       const start = lastSyncedIndexRef.current || 0;
       const remain = full.slice(start);
-      if (remain.length)
-        await routeStore.appendPath(activeRouteIdRef.current, remain);
+      if (remain.length) await routeStore.appendPath(activeRouteIdRef.current, remain);
 
       const stats = routeRecorder.finish(); // recorder sıfırlanır
-      if (stats)
-        await routeStore.finishRoute(activeRouteIdRef.current, stats);
+      if (stats) await routeStore.finishRoute(activeRouteIdRef.current, stats);
     } catch {}
     finally {
       activeRouteIdRef.current = null;
@@ -1564,8 +1512,7 @@ export default function MapMobile({
                 color: "#fff",
                 border: "none",
                 fontWeight: 700,
-                cursor:
-                  routeStatus === "finishing" ? "not-allowed" : "pointer",
+                cursor: routeStatus === "finishing" ? "not-allowed" : "pointer",
                 opacity: routeStatus === "finishing" ? 0.65 : 1,
               }}
               title="Durak Ekle"
@@ -1579,13 +1526,11 @@ export default function MapMobile({
                 height: 40,
                 padding: "0 12px",
                 borderRadius: 20,
-                background:
-                  routeStatus === "finishing" ? "#ef4444AA" : "#ef4444",
+                background: routeStatus === "finishing" ? "#ef4444AA" : "#ef4444",
                 color: "#fff",
                 border: "none",
                 fontWeight: 800,
-                cursor:
-                  routeStatus === "finishing" ? "not-allowed" : "pointer",
+                cursor: routeStatus === "finishing" ? "not-allowed" : "pointer",
               }}
               title="Bitir"
             >
@@ -1596,13 +1541,9 @@ export default function MapMobile({
       </div>
 
       {/* Modallar */}
-      {isAvatarModalOpen && (
-        <AvatarModal onClose={() => setIsAvatarModalOpen(false)} />
-      )}
+      {isAvatarModalOpen && <AvatarModal onClose={() => setIsAvatarModalOpen(false)} />}
       {overlay === PANEL_SETTINGS && (
-        <MapSettingsModal
-          onClose={() => dispatchPanels({ type: "CLOSE_ALL" })}
-        />
+        <MapSettingsModal onClose={() => dispatchPanels({ type: "CLOSE_ALL" })} />
       )}
 
       {/* Check-in modalı */}
@@ -1620,8 +1561,7 @@ export default function MapMobile({
           placeId={selectedPlace.id || selectedPlace.place_id}
           placeName={selectedPlace.name}
           coords={
-            typeof selectedPlace.lat === "number" &&
-            typeof selectedPlace.lng === "number"
+            typeof selectedPlace.lat === "number" && typeof selectedPlace.lng === "number"
               ? { lat: selectedPlace.lat, lng: selectedPlace.lng }
               : null
           }

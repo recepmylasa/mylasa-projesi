@@ -1,7 +1,7 @@
 // src/pages/RouteDetailMobile/components/RouteDetailMapPreview.js
 import React, { useEffect, useMemo, useRef } from "react";
 
-// ✅ Backward-safe import: getValidLatLngSafe yoksa bile build patlamasın
+// ✅ Backward-safe import: named export yoksa bile build patlamasın
 import * as routeDetailUtils from "../routeDetailUtils";
 
 const getLL = (a, b) => {
@@ -297,7 +297,7 @@ export default function RouteDetailMapPreview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gmapsStatus, mapRef, stopsSig, stops]);
 
-  // Fit: sadece fitSig değişince (sıradan bağımsız) — false zıplama yok
+  // Fit: sadece fitSig değişince — false zıplama yok
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
     if (!mapRef?.current) return;
