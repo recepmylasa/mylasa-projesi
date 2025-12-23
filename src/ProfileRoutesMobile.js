@@ -122,8 +122,6 @@ async function resolveToHttpsUrl(input) {
 
   // ✅ "/mylasa-logo.png" gibi public asset → same-origin absolute URL
   if (raw0.startsWith("/")) {
-    // bazı projelerde yanlışlıkla "/posts/.." gibi storage path yazılabiliyor.
-    // Heuristik: eğer "mylasa-logo" ise kesin public; diğerlerinde default public davran.
     try {
       if (typeof window !== "undefined" && window.location && window.location.origin) {
         return `${window.location.origin}${raw0}`;
@@ -184,7 +182,7 @@ function useResolvedMediaUrl(input) {
   });
 
   useEffect(() => {
-    const k = (input || "").toString().trim();
+    const k = key; // ✅ input referansı yok → exhaustive-deps uyarısı bitti
     if (!k) {
       setState({ input: "", status: "empty", url: "", ok: false, errorCode: "" });
       return;
@@ -449,45 +447,6 @@ function inferStopCount(route) {
 
   const stops = getStopsArray(route);
   return stops.length;
-}
-
-function getLatLngFromStop(stop) {
-  if (!stop) return null;
-
-  const s = stop;
-  const raw = s.raw || s.data || null;
-
-  const lat = toFiniteNumber(s.lat ?? s.latitude ?? raw?.lat ?? raw?.latitude);
-  const lng = toFiniteNumber(s.lng ?? s.longitude ?? raw?.lng ?? raw?.longitude);
-  if (lat != null && lng != null) return { lat, lng };
-
-  // ✅ position/coordinates eklendi
-  const loc =
-    s.location ||
-    s.position ||
-    s.coordinates ||
-    s.latLng ||
-    s.geo ||
-    s.geopoint ||
-    s.point ||
-    s.coords ||
-    raw?.location ||
-    raw?.position ||
-    raw?.coordinates ||
-    raw?.latLng ||
-    raw?.geo ||
-    raw?.geopoint ||
-    raw?.point ||
-    raw?.coords ||
-    null;
-
-  if (loc) {
-    const lat2 = toFiniteNumber(loc.lat ?? loc.latitude);
-    const lng2 = toFiniteNumber(loc.lng ?? loc.longitude);
-    if (lat2 != null && lng2 != null) return { lat: lat2, lng: lng2 };
-  }
-
-  return null;
 }
 
 function isVideoUrl(url) {

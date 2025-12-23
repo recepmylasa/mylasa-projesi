@@ -154,19 +154,20 @@ function extractStopMediaUrl(s) {
   if (isNonEmptyString(direct)) return String(direct).trim();
 
   // dizi paketleri
-  const arr = pickFirst(s, [
-    "media",
-    "medias",
-    "gallery",
-    "items",
-    "photos",
-    "images",
-    "imageUrls",
-    "photoUrls",
-    "mediaItems",
-    "attachments",
-    "files",
-  ]) || null;
+  const arr =
+    pickFirst(s, [
+      "media",
+      "medias",
+      "gallery",
+      "items",
+      "photos",
+      "images",
+      "imageUrls",
+      "photoUrls",
+      "mediaItems",
+      "attachments",
+      "files",
+    ]) || null;
 
   if (Array.isArray(arr) && arr.length) {
     for (const it of arr) {
@@ -504,8 +505,12 @@ export default function useUserRoutes(ownerId, options = {}) {
         while (loops < maxAutoPages) {
           const currentMode =
             mode === "reset"
-              ? (queryModeRef.current === "unknown" ? "optimized" : queryModeRef.current)
-              : (queryModeRef.current === "unknown" ? "legacy" : queryModeRef.current);
+              ? queryModeRef.current === "unknown"
+                ? "optimized"
+                : queryModeRef.current
+              : queryModeRef.current === "unknown"
+              ? "legacy"
+              : queryModeRef.current;
 
           const { snap, used } = await runQueryPage({ ownerKey, localCursor, modeToUse: currentMode });
 
@@ -731,7 +736,7 @@ export default function useUserRoutes(ownerId, options = {}) {
     loadPage("reset");
   }, [ownerId, isSelf, isFollowing, loadPage]);
 
-  // ✅ Lazy hydrate runner (max 3 concurrent)
+  // ✅ Lazy hydrate runner (max 3 concurrent) — no-loop-func uyarısı yok (handler'lar loop dışı)
   useEffect(() => {
     if (!routes || routes.length === 0) return;
     const jobId = hydrateJobIdRef.current;
@@ -744,10 +749,52 @@ export default function useUserRoutes(ownerId, options = {}) {
     let active = 0;
     const maxConc = 3;
 
-    const pump = async () => {
-      if (cancelled) return;
-      if (!isMountedRef.current) return;
-      if (hydrateJobIdRef.current !== jobId) return;
+    function canRun() {
+      if (cancelled) return false;
+      if (!isMountedRef.current) return false;
+      if (hydrateJobIdRef.current !== jobId) return false;
+      return true;
+    }
+
+    function applyPatchToRoute(rid, patch) {
+      setRoutes((prev) => {
+        const next = (prev || []).map((x) => {
+          if (!x || String(x.id) !== rid) return x;
+
+          const existingCoverRaw = x.coverUrl || x.previewUrl || x.thumbnailUrl || x.thumbUrl || x.imageUrl || x.mediaUrl || "";
+          const existingCover = normalizeCoverUrl(existingCoverRaw);
+
+          const patchCover = normalizeCoverUrl(patch.coverUrl);
+
+          const nextCover = isNonEmptyString(existingCover) ? existingCoverRaw : isNonEmptyString(patchCover) ? patch.coverUrl : "";
+
+          const nextStopsPreview =
+            Array.isArray(x.stopsPreview) && x.stopsPreview.length ? x.stopsPreview : Array.isArray(patch.stopsPreview) ? patch.stopsPreview : [];
+
+          const changed =
+            ((!Array.isArray(x.stopsPreview) || x.stopsPreview.length === 0) && nextStopsPreview.length > 0) ||
+            (!isNonEmptyString(existingCover) && isNonEmptyString(patchCover));
+
+          if (!changed) return { ...x, __previewHydrated: true };
+
+          return {
+            ...x,
+            stopsPreview: nextStopsPreview,
+            coverUrl: isNonEmptyString(normalizeCoverUrl(x.coverUrl)) ? x.coverUrl : nextCover,
+            previewUrl: isNonEmptyString(normalizeCoverUrl(x.previewUrl)) ? x.previewUrl : nextCover,
+            thumbnailUrl: isNonEmptyString(normalizeCoverUrl(x.thumbnailUrl)) ? x.thumbnailUrl : nextCover,
+            thumbUrl: isNonEmptyString(normalizeCoverUrl(x.thumbUrl)) ? x.thumbUrl : nextCover,
+            imageUrl: isNonEmptyString(normalizeCoverUrl(x.imageUrl)) ? x.imageUrl : nextCover,
+            mediaUrl: isNonEmptyString(normalizeCoverUrl(x.mediaUrl)) ? x.mediaUrl : nextCover,
+            __previewHydrated: true,
+          };
+        });
+        return next;
+      });
+    }
+
+    function pump() {
+      if (!canRun()) return;
 
       while (active < maxConc && idx < targets.length) {
         const r = targets[idx++];
@@ -757,56 +804,27 @@ export default function useUserRoutes(ownerId, options = {}) {
         const cached = hydrateCacheRef.current.get(rid);
         if (cached?.status === "inflight" || cached?.status === "done") continue;
 
-        active += 1;
-
-        hydrateOneRoutePreview(rid, jobId)
-          .then((patch) => {
-            if (!patch) return;
-            if (cancelled) return;
-            if (!isMountedRef.current) return;
-            if (hydrateJobIdRef.current !== jobId) return;
-
-            setRoutes((prev) => {
-              const next = (prev || []).map((x) => {
-                if (!x || String(x.id) !== rid) return x;
-
-                const existingCoverRaw = x.coverUrl || x.previewUrl || x.thumbnailUrl || x.thumbUrl || x.imageUrl || x.mediaUrl || "";
-                const existingCover = normalizeCoverUrl(existingCoverRaw);
-
-                const patchCover = normalizeCoverUrl(patch.coverUrl);
-
-                const nextCover = isNonEmptyString(existingCover) ? existingCoverRaw : isNonEmptyString(patchCover) ? patch.coverUrl : "";
-
-                const nextStopsPreview =
-                  Array.isArray(x.stopsPreview) && x.stopsPreview.length ? x.stopsPreview : Array.isArray(patch.stopsPreview) ? patch.stopsPreview : [];
-
-                const changed =
-                  ((!Array.isArray(x.stopsPreview) || x.stopsPreview.length === 0) && nextStopsPreview.length > 0) ||
-                  (!isNonEmptyString(existingCover) && isNonEmptyString(patchCover));
-
-                if (!changed) return { ...x, __previewHydrated: true };
-
-                return {
-                  ...x,
-                  stopsPreview: nextStopsPreview,
-                  coverUrl: isNonEmptyString(normalizeCoverUrl(x.coverUrl)) ? x.coverUrl : nextCover,
-                  previewUrl: isNonEmptyString(normalizeCoverUrl(x.previewUrl)) ? x.previewUrl : nextCover,
-                  thumbnailUrl: isNonEmptyString(normalizeCoverUrl(x.thumbnailUrl)) ? x.thumbnailUrl : nextCover,
-                  thumbUrl: isNonEmptyString(normalizeCoverUrl(x.thumbUrl)) ? x.thumbUrl : nextCover,
-                  imageUrl: isNonEmptyString(normalizeCoverUrl(x.imageUrl)) ? x.imageUrl : nextCover,
-                  mediaUrl: isNonEmptyString(normalizeCoverUrl(x.mediaUrl)) ? x.mediaUrl : nextCover,
-                  __previewHydrated: true,
-                };
-              });
-              return next;
-            });
-          })
-          .finally(() => {
-            active -= 1;
-            pump();
-          });
+        startTask(rid);
       }
-    };
+    }
+
+    function startTask(rid) {
+      active += 1;
+
+      hydrateOneRoutePreview(rid, jobId)
+        .then((patch) => {
+          if (!patch) return;
+          if (!canRun()) return;
+          applyPatchToRoute(rid, patch);
+        })
+        .catch(() => {
+          // no-op
+        })
+        .finally(() => {
+          active -= 1;
+          if (canRun()) pump();
+        });
+    }
 
     pump();
 
