@@ -15,6 +15,8 @@ import {
   query,
   orderBy,
   limit as qlimit,
+  writeBatch,
+  increment,
 } from "firebase/firestore";
 
 const PLACEHOLDER_COVER = "/mylasa-logo.png";
@@ -261,7 +263,9 @@ export async function recomputeRouteSummary(routeId) {
       const rSnap = await getDoc(routeRef);
       if (rSnap.exists()) {
         const raw = rSnap.data() || {};
-        existingCover = normalizeCoverUrl(raw.coverUrl || raw.previewUrl || raw.imageUrl || raw.mediaUrl || "");
+        existingCover = normalizeCoverUrl(
+          raw.coverUrl || raw.previewUrl || raw.imageUrl || raw.mediaUrl || ""
+        );
         existingThumb = normalizeCoverUrl(raw.thumbnailUrl || raw.thumbUrl || "");
       }
     } catch {
@@ -272,10 +276,17 @@ export async function recomputeRouteSummary(routeId) {
     const firstQ = query(stopsCol, orderBy("order", "asc"), qlimit(1));
     const lastQ = query(stopsCol, orderBy("order", "desc"), qlimit(1));
 
-    const [firstSnap, lastSnap] = await Promise.all([getDocs(firstQ), getDocs(lastQ)]);
+    const [firstSnap, lastSnap] = await Promise.all([
+      getDocs(firstQ),
+      getDocs(lastQ),
+    ]);
 
-    const firstStop = firstSnap.docs[0] ? { id: firstSnap.docs[0].id, ...firstSnap.docs[0].data() } : null;
-    const lastStop = lastSnap.docs[0] ? { id: lastSnap.docs[0].id, ...lastSnap.docs[0].data() } : null;
+    const firstStop = firstSnap.docs[0]
+      ? { id: firstSnap.docs[0].id, ...firstSnap.docs[0].data() }
+      : null;
+    const lastStop = lastSnap.docs[0]
+      ? { id: lastSnap.docs[0].id, ...lastSnap.docs[0].data() }
+      : null;
 
     // 2) stop count / length (MVP): order/idx’den çıkar, olmazsa küçük fallback
     const lastOrderGuess = safeNum(lastStop?.order ?? lastStop?.idx, 0);
@@ -301,8 +312,11 @@ export async function recomputeRouteSummary(routeId) {
     if (p1) stopsPreview.push(p1);
     if (p2) stopsPreview.push(p2);
 
-    const startName = safeStr(firstStop?.title || firstStop?.name || "") || safeStr(p1?.title);
-    const endName = safeStr(lastStop?.title || lastStop?.name || "") || safeStr(p2?.title || p1?.title);
+    const startName =
+      safeStr(firstStop?.title || firstStop?.name || "") || safeStr(p1?.title);
+    const endName =
+      safeStr(lastStop?.title || lastStop?.name || "") ||
+      safeStr(p2?.title || p1?.title);
 
     // 4) cover/thumbnail üretimi
     // cover için: first media -> last media
@@ -312,8 +326,12 @@ export async function recomputeRouteSummary(routeId) {
     const firstThumb = firstStop ? safeStr(extractStopThumbUrl(firstStop)) : "";
     const lastThumb = lastStop ? safeStr(extractStopThumbUrl(lastStop)) : "";
 
-    const computedCover = normalizeCoverUrl(firstMedia || lastMedia) || (stopsMeta.has ? "" : "");
-    const computedThumb = normalizeCoverUrl(firstThumb || firstMedia || lastThumb || lastMedia) || computedCover || "";
+    const computedCover =
+      normalizeCoverUrl(firstMedia || lastMedia) || (stopsMeta.has ? "" : "");
+    const computedThumb =
+      normalizeCoverUrl(firstThumb || firstMedia || lastThumb || lastMedia) ||
+      computedCover ||
+      "";
 
     // cover var mı?
     const hasMedia = Boolean(computedCover || computedThumb);
@@ -384,23 +402,33 @@ export async function appendPath(routeId, pathChunk) {
     const CHUNK = 30;
     for (let i = 0; i < pathChunk.length; i += CHUNK) {
       const slice = pathChunk.slice(i, i + CHUNK);
-      await updateDoc(routeRef, { path: arrayUnion(...slice) }).catch(async () => {
-        await setDoc(routeRef, { path: arrayUnion(...slice) }, { merge: true });
-      });
+      await updateDoc(routeRef, { path: arrayUnion(...slice) }).catch(
+        async () => {
+          await setDoc(routeRef, { path: arrayUnion(...slice) }, { merge: true });
+        }
+      );
     }
   } catch (e) {
     // console.warn("appendPath error:", e);
   }
 }
 
-/** Alt koleksiyona durak ekler */
+/** Alt koleksiyona durak ekler (ADIM 2: atomik + route meta update) */
 export async function addStop(routeId, stop) {
   try {
     if (!routeId || !stop) return null;
 
-    const stopsCol = collection(db, "routes", routeId, "stops");
+    const routeRef = doc(db, "routes", routeId);
 
     const order = safeNum(stop.order ?? stop.idx, 0) || 1;
+    const t = safeNum(stop.t, Date.now());
+    const stopId = `stop_${order}_${t}`;
+
+    const lat = safeNumNullable(stop.lat);
+    const lng = safeNumNullable(stop.lng);
+    if (lat == null || lng == null) return null;
+
+    const stopsDoc = doc(db, "routes", routeId, "stops", stopId);
 
     // ✅ media normalize: downloadUrl/url/photoUrl vb. gelirse mediaUrl’e düşür
     const mediaUrl = safeStr(
@@ -426,18 +454,25 @@ export async function addStop(routeId, stop) {
         ""
     );
 
-    const ref = await addDoc(stopsCol, {
+    const title = safeStr(stop.title || stop.name || "");
+    const name = safeStr(stop.name || stop.title || "");
+
+    const batch = writeBatch(db);
+
+    // 1) /routes/{routeId}/stops/{stopId} set
+    batch.set(stopsDoc, {
       order,
       idx: order, // ✅ legacy uyum
-      lat: safeNum(stop.lat, 0),
-      lng: safeNum(stop.lng, 0),
-      t: safeNum(stop.t, Date.now()),
-      title: safeStr(stop.title || stop.name || ""),
-      name: safeStr(stop.name || stop.title || ""), // ✅ farklı ekranlar farklı isim kullanıyor olabilir
+      lat,
+      lng,
+      loc: { lat, lng }, // ✅ ADIM 2 spec
+      t,
+      title,
+      name,
       note: safeStr(stop.note),
       createdAt: serverTimestamp(),
 
-      // ✅ cover üretimi için standart alanlar
+      // ✅ cover üretimi için standart alanlar (bu adımda medya yok; boş kalır)
       mediaUrl,
       thumbnailUrl,
 
@@ -446,9 +481,26 @@ export async function addStop(routeId, stop) {
       ...(safeStr(stop.downloadURL) ? { downloadURL: safeStr(stop.downloadURL) } : {}),
     });
 
-    return ref.id;
+    // 2) /routes/{routeId} update (atomik)
+    batch.update(routeRef, {
+      stopsCount: increment(1),
+      lastStopAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+
+      // meta (en risksiz: last*)
+      stopsMetaLastTitle: title,
+      stopsMetaLastLoc: { lat, lng },
+      stopsMetaLastOrder: order,
+      stopsMetaLastClientT: t,
+    });
+
+    await batch.commit();
+    return stopId;
   } catch (e) {
-    // console.warn("addStop error:", e);
+    // ADIM 2: permission-denied net log
+    if (String(e?.code || "").toLowerCase() === "permission-denied") {
+      console.error(`addStop permission-denied routes/${routeId}/stops`);
+    }
     return null;
   }
 }

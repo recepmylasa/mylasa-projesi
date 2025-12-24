@@ -12,12 +12,12 @@ import { buildGpx, downloadGpx } from "../../services/gpx";
 
 import StarRatingV2 from "../../components/StarRatingV2/StarRatingV2";
 import CommentsPanel from "../../components/CommentsPanel/CommentsPanel";
-import { useGoogleMaps } from "../../hooks/useGoogleMaps";
 import ShareSheetMobile from "../../components/ShareSheetMobile";
 import { watchCommentsCount } from "../../commentsClient";
 
 import Lightbox from "./components/Lightbox";
 import StarBars from "./components/StarBars";
+import RouteDetailMapPreviewShell from "./components/RouteDetailMapPreviewShell";
 
 import {
   buildShareRoutePayload,
@@ -31,7 +31,6 @@ import {
   getOwnerHintFromUrl,
   getRouteRatingLabelSafe,
   getRouteTitleSafe,
-  getValidLatLngSafe, // ✅ daha dayanıklı
   getVisibilityKeyFromRoute,
   resolveOwnerIdForLockedRoute,
 } from "./routeDetailUtils";
@@ -41,289 +40,6 @@ import * as routeDetailUtilsNS from "./routeDetailUtils";
 
 import { getRouteStarsAgg, getStopsStarsAgg } from "./routeDetailAgg";
 import { listStopMediaInline, uploadStopMediaInline } from "./routeDetailMedia";
-
-const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
-const MAP_ID = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
-
-/**
- * ✅ EMİR 2 — Harita fit mantığı (path+stops), tek nokta zoom fix, güçlü imza,
- * loading/error overlay + retry (hook’a dokunmadan remount)
- */
-function RouteDetailMapPreview({ routeId, path = [], stops = [], stopsLoaded = false, onRetry = () => {} }) {
-  const { gmapsStatus, mapDivRef, mapRef } = useGoogleMaps({ API_KEY, MAP_ID });
-
-  const polylineRef = useRef(null);
-  const stopMarkersRef = useRef([]);
-  const lastFitSigRef = useRef(null);
-  const rafRef = useRef(0);
-
-  const clearMapArtifacts = useCallback(() => {
-    try {
-      stopMarkersRef.current.forEach((m) => {
-        try {
-          m.setMap(null);
-        } catch {}
-      });
-    } catch {}
-    stopMarkersRef.current = [];
-
-    try {
-      if (polylineRef.current) {
-        try {
-          polylineRef.current.setMap(null);
-        } catch {}
-      }
-    } catch {}
-    polylineRef.current = null;
-
-    try {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    } catch {}
-    rafRef.current = 0;
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearMapArtifacts();
-    };
-  }, [clearMapArtifacts]);
-
-  // ✅ Polyline + stop markers güncelle (kamera fit burada yok)
-  useEffect(() => {
-    if (gmapsStatus !== "ready" || !mapRef.current) return;
-    const map = mapRef.current;
-
-    try {
-      if (!polylineRef.current) {
-        polylineRef.current = new window.google.maps.Polyline({
-          map,
-          clickable: false,
-          geodesic: true,
-          strokeColor: "#1a73e8",
-          strokeOpacity: 0.95,
-          strokeWeight: 4,
-        });
-      }
-
-      const pts = [];
-      (path || []).forEach((p) => {
-        const ll = getValidLatLngSafe(p?.lat, p?.lng);
-        if (!ll) return;
-        pts.push(new window.google.maps.LatLng(ll.lat, ll.lng));
-      });
-      polylineRef.current.setPath(pts);
-
-      // markers
-      stopMarkersRef.current.forEach((m) => {
-        try {
-          m.setMap(null);
-        } catch {}
-      });
-      stopMarkersRef.current = [];
-
-      (stops || []).forEach((s) => {
-        const ll = getValidLatLngSafe(s?.lat, s?.lng);
-        if (!ll) return;
-        try {
-          const mk = new window.google.maps.Marker({
-            position: { lat: ll.lat, lng: ll.lng },
-            map,
-            title: s.title || `Durak ${s.order || ""}`,
-          });
-          stopMarkersRef.current.push(mk);
-        } catch {}
-      });
-    } catch {}
-  }, [gmapsStatus, mapRef, path, stops]);
-
-  // ✅ Fit imzası (routeId | pathLen | stopsLen | bbox | sample)
-  const buildFitSignature = useCallback(() => {
-    const pathPts = [];
-    (path || []).forEach((p) => {
-      const ll = getValidLatLngSafe(p?.lat, p?.lng);
-      if (ll) pathPts.push(ll);
-    });
-
-    const stopPts = [];
-    (stops || []).forEach((s) => {
-      const ll = getValidLatLngSafe(s?.lat, s?.lng);
-      if (ll) stopPts.push(ll);
-    });
-
-    const all = [...pathPts, ...stopPts];
-
-    // uniq (stabil)
-    const seen = new Set();
-    const uniq = [];
-    all.forEach((ll) => {
-      const k = `${Number(ll.lat).toFixed(6)},${Number(ll.lng).toFixed(6)}`;
-      if (seen.has(k)) return;
-      seen.add(k);
-      uniq.push(ll);
-    });
-
-    if (!uniq.length) {
-      return { uniq, sig: `${routeId || ""}|p${pathPts.length}|s${stopPts.length}|empty` };
-    }
-
-    let minLat = uniq[0].lat,
-      minLng = uniq[0].lng,
-      maxLat = uniq[0].lat,
-      maxLng = uniq[0].lng;
-
-    uniq.forEach((ll) => {
-      minLat = Math.min(minLat, ll.lat);
-      minLng = Math.min(minLng, ll.lng);
-      maxLat = Math.max(maxLat, ll.lat);
-      maxLng = Math.max(maxLng, ll.lng);
-    });
-
-    const mid = uniq[Math.floor(uniq.length / 2)];
-    const bboxStr = `${minLat.toFixed(5)},${minLng.toFixed(5)},${maxLat.toFixed(5)},${maxLng.toFixed(5)}`;
-    const midStr = mid ? `${Number(mid.lat).toFixed(5)},${Number(mid.lng).toFixed(5)}` : "0,0";
-
-    const sig = `${routeId || ""}|p${pathPts.length}|s${stopPts.length}|bb${bboxStr}|m${midStr}`;
-    return { uniq, sig };
-  }, [routeId, path, stops]);
-
-  // ✅ Kamera fit: SADECE routeId+imza değişince (tab/rating/comments etkisiz)
-  useEffect(() => {
-    if (gmapsStatus !== "ready" || !mapRef.current) return;
-    if (!routeId) return;
-
-    // ✅ stops snapshot gelmeden ilk fit atma (path-only -> sonra stops gelince zıplamasın)
-    if (!stopsLoaded) return;
-
-    const map = mapRef.current;
-    const { uniq, sig } = buildFitSignature();
-
-    if (!uniq.length) return;
-    if (lastFitSigRef.current === sig) return;
-    lastFitSigRef.current = sig;
-
-    try {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    } catch {}
-    rafRef.current = requestAnimationFrame(() => {
-      try {
-        if (!mapRef.current) return;
-        if (uniq.length === 1) {
-          map.setCenter({ lat: uniq[0].lat, lng: uniq[0].lng });
-          map.setZoom(15); // ✅ tek nokta fix (direkt)
-          return;
-        }
-
-        const b = new window.google.maps.LatLngBounds();
-        uniq.forEach((ll) => b.extend(new window.google.maps.LatLng(ll.lat, ll.lng)));
-
-        try {
-          map.fitBounds(b, 40);
-        } catch {
-          map.fitBounds(b);
-        }
-      } catch {}
-    });
-  }, [gmapsStatus, mapRef, routeId, stopsLoaded, buildFitSignature]);
-
-  const overlayWrap = {
-    position: "absolute",
-    inset: 0,
-    zIndex: 3,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 14,
-    background: "linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.92))",
-    backdropFilter: "blur(2px)",
-  };
-
-  const card = {
-    width: "min(340px, 92%)",
-    borderRadius: 16,
-    border: "1px solid #eee",
-    background: "#fff",
-    boxShadow: "0 10px 28px rgba(0,0,0,.10)",
-    padding: 14,
-  };
-
-  const btn = {
-    borderRadius: 12,
-    border: "1px solid #111",
-    background: "#111",
-    color: "#fff",
-    padding: "10px 12px",
-    fontWeight: 900,
-    cursor: "pointer",
-    width: "100%",
-  };
-
-  const subtleBtn = {
-    borderRadius: 12,
-    border: "1px solid #ddd",
-    background: "#fff",
-    color: "#111",
-    padding: "10px 12px",
-    fontWeight: 900,
-    cursor: "pointer",
-    width: "100%",
-  };
-
-  const showLoading = gmapsStatus !== "ready" && gmapsStatus !== "error";
-
-  return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <style>{`@keyframes mylasaSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-
-      <div ref={mapDivRef} className="route-detail-map-inner" />
-
-      {showLoading && (
-        <div style={overlayWrap}>
-          <div style={card}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div
-                style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 999,
-                  border: "2px solid #e5e7eb",
-                  borderTopColor: "#111",
-                  animation: "mylasaSpin .9s linear infinite",
-                }}
-              />
-              <div style={{ fontWeight: 900, fontSize: 14, color: "#111" }}>Harita yükleniyor…</div>
-            </div>
-
-            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-              <div style={{ height: 10, borderRadius: 999, background: "#f3f4f6" }} />
-              <div style={{ height: 10, borderRadius: 999, background: "#f3f4f6", width: "78%" }} />
-              <div style={{ height: 10, borderRadius: 999, background: "#f3f4f6", width: "64%" }} />
-            </div>
-
-            <div style={{ marginTop: 12, fontSize: 12, opacity: 0.65 }}>Bağlantın yavaşsa birkaç saniye sürebilir.</div>
-          </div>
-        </div>
-      )}
-
-      {gmapsStatus === "error" && (
-        <div style={overlayWrap}>
-          <div style={card}>
-            <div style={{ fontWeight: 950, fontSize: 14, color: "#111" }}>Harita yüklenemedi</div>
-            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>Bağlantını kontrol edip tekrar deneyebilirsin.</div>
-
-            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-              <button type="button" style={btn} onClick={onRetry}>
-                Tekrar dene
-              </button>
-              <button type="button" style={subtleBtn} onClick={() => {}}>
-                Tamam
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function RouteDetailMobile({
   routeId,
@@ -1315,7 +1031,7 @@ export default function RouteDetailMobile({
 
         <div className="route-detail-body" ref={routeBodyRef}>
           <div className="route-detail-map" style={{ position: "relative" }}>
-            <RouteDetailMapPreview
+            <RouteDetailMapPreviewShell
               key={mapsRetryTick}
               routeId={routeId}
               path={routeDoc?.path || []}
@@ -1337,8 +1053,7 @@ export default function RouteDetailMobile({
               if (key === "stops") label = "Duraklar";
               else if (key === "gallery") label = "Galeri";
               else if (key === "report") label = "Rapor";
-              else if (key === "comments")
-                label = commentsCount && commentsCount > 0 ? `Yorumlar (${commentsCount})` : "Yorumlar";
+              else if (key === "comments") label = commentsCount && commentsCount > 0 ? `Yorumlar (${commentsCount})` : "Yorumlar";
               return (
                 <button
                   key={key}
@@ -1383,13 +1098,7 @@ export default function RouteDetailMobile({
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           {stopAgg && stopAgg[s.id] && (
                             <div style={{ minWidth: 120 }}>
-                              <StarBars
-                                counts={stopAgg[s.id].counts}
-                                total={stopAgg[s.id].total}
-                                compact
-                                height={8}
-                                showNumbers={false}
-                              />
+                              <StarBars counts={stopAgg[s.id].counts} total={stopAgg[s.id].total} compact height={8} showNumbers={false} />
                             </div>
                           )}
 
@@ -1469,9 +1178,7 @@ export default function RouteDetailMobile({
                           );
                         })}
 
-                        {media.length === 0 && (
-                          <div style={{ fontSize: 12, opacity: 0.7 }}>{hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}</div>
-                        )}
+                        {media.length === 0 && <div style={{ fontSize: 12, opacity: 0.7 }}>{hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}</div>}
                       </div>
 
                       {up && (
@@ -1518,9 +1225,7 @@ export default function RouteDetailMobile({
                   </div>
                 )}
 
-                {galleryState.loading && galleryItems.length === 0 && (
-                  <div style={{ padding: "8px 4px", fontSize: 13, opacity: 0.75 }}>Galeri yükleniyor…</div>
-                )}
+                {galleryState.loading && galleryItems.length === 0 && <div style={{ padding: "8px 4px", fontSize: 13, opacity: 0.75 }}>Galeri yükleniyor…</div>}
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                   {galleryItems.map((m, idx) => {
@@ -1572,9 +1277,7 @@ export default function RouteDetailMobile({
                   })}
                 </div>
 
-                {galleryItems.length === 0 && !galleryState.loading && (
-                  <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Gösterilecek medya yok.</div>
-                )}
+                {galleryItems.length === 0 && !galleryState.loading && <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Gösterilecek medya yok.</div>}
 
                 {!galleryState.done && (
                   <div style={{ padding: "12px 0", display: "flex", justifyContent: "center" }}>
@@ -1658,7 +1361,9 @@ export default function RouteDetailMobile({
                   </div>
                 </div>
 
-                <div style={{ fontSize: 12, opacity: 0.6 }}>Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).</div>
+                <div style={{ fontSize: 12, opacity: 0.6 }}>
+                  Not: Dağılımlar client’ta hesaplanır; çok büyük veride sınırlı gösterim yapılır (≈).
+                </div>
               </div>
             )}
           </div>

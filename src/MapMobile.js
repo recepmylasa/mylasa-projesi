@@ -52,6 +52,9 @@ import { reverseGeocodeShort } from "./services/reverseGeocode"; // ✅ string d
 import { routeRecorder } from "./services/routeRecorder";
 import * as routeStore from "./services/routeStore";
 
+// ✅ ADIM 1: Stop composer sheet (prompt yerine)
+import StopComposerSheetMobile from "./components/StopComposerSheetMobile";
+
 // ---- Sabitler
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 const MAP_ID = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
@@ -103,6 +106,10 @@ export default function MapMobile({
   const [firstFixDone, setFirstFixDone] = useState(false);
   const [userMovedMap, setUserMovedMap] = useState(false);
   const [fabBottom, setFabBottom] = useState(MIN_FAB_BOTTOM);
+
+  // ✅ ADIM 1: Stop composer sheet state
+  const [isStopComposerOpen, setIsStopComposerOpen] = useState(false);
+  const stopDraftLocRef = useRef(null);
 
   // Kısa adres durumları
   const [selfShortAddr, setSelfShortAddr] = useState(""); // Ben
@@ -179,6 +186,10 @@ export default function MapMobile({
   const friendMarkersRef = useRef(new Map());
   const stopFriendsRef = useRef(null);
 
+  // ✅ ADIM 3: Stop marker havuzu (cluster'a dahil DEĞİL)
+  /** @type {React.MutableRefObject<Map<string, any>>} */
+  const stopMarkersRef = useRef(new Map());
+
   // --- Cluster controller
   const clusterCtrlRef = useRef(null);
 
@@ -207,6 +218,35 @@ export default function MapMobile({
     img.style.height = "100%";
     img.style.objectFit = "cover";
     wrap.appendChild(img);
+    return wrap;
+  }, []);
+
+  // ✅ ADIM 3: Stop marker HTML içeriği (AdvancedMarker) — numaralı badge
+  const createStopEl = useCallback((order, title) => {
+    const wrap = document.createElement("div");
+    wrap.style.width = "32px";
+    wrap.style.height = "32px";
+    wrap.style.borderRadius = "999px";
+    wrap.style.background = "#fff";
+    wrap.style.border = "1.5px solid #111";
+    wrap.style.boxShadow = "0 6px 14px rgba(0,0,0,.22)";
+    wrap.style.display = "flex";
+    wrap.style.alignItems = "center";
+    wrap.style.justifyContent = "center";
+    wrap.style.transform = "translateY(-2px)";
+    wrap.style.userSelect = "none";
+    wrap.style.pointerEvents = "auto";
+    wrap.title = title || "";
+
+    const label = document.createElement("div");
+    label.textContent = String(order || "");
+    label.style.color = "#111";
+    label.style.fontWeight = "800";
+    label.style.fontSize = "13px";
+    label.style.lineHeight = "1";
+    label.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    wrap.appendChild(label);
+
     return wrap;
   }, []);
 
@@ -277,7 +317,11 @@ export default function MapMobile({
     if (!m) return;
     try {
       m.setMap?.(null);
-    } catch {}
+    } catch {
+      try {
+        m.map = null;
+      } catch {}
+    }
     friendMarkersRef.current.delete(uid);
   }, []);
 
@@ -285,10 +329,136 @@ export default function MapMobile({
     friendMarkersRef.current.forEach((m) => {
       try {
         m.setMap?.(null);
-      } catch {}
+      } catch {
+        try {
+          m.map = null;
+        } catch {}
+      }
     });
     friendMarkersRef.current.clear();
   }, []);
+
+  // ✅ ADIM 3: Stop marker oluştur/güncelle
+  const upsertStopMarker = useCallback(
+    (stopId, pos, { order, title } = {}) => {
+      if (!stopId) return null;
+      if (!mapRef.current || !window.google?.maps) return null;
+
+      const map = mapRef.current;
+      const ord = Number.isFinite(Number(order)) ? Number(order) : 0;
+      const safeTitle =
+        typeof title === "string" && title.trim()
+          ? title.trim()
+          : ord
+          ? `Durak ${ord}`
+          : "Durak";
+
+      const existing = stopMarkersRef.current.get(stopId);
+      const canAdvanced =
+        !!advancedAllowedRef.current &&
+        !!window.google?.maps?.marker?.AdvancedMarkerElement;
+
+      if (existing) {
+        // konum
+        try {
+          existing.setPosition?.(pos);
+        } catch {
+          try {
+            existing.position = pos;
+          } catch {}
+        }
+        // title
+        try {
+          existing.setTitle?.(safeTitle);
+        } catch {
+          try {
+            existing.title = safeTitle;
+          } catch {}
+        }
+        // content (advanced)
+        if (canAdvanced) {
+          try {
+            existing.content = createStopEl(ord, safeTitle);
+          } catch {}
+        } else {
+          // klasik marker label güncelle
+          try {
+            existing.setLabel?.(String(ord || ""));
+          } catch {}
+        }
+        return existing;
+      }
+
+      let marker = null;
+      try {
+        if (canAdvanced) {
+          const el = createStopEl(ord, safeTitle);
+          marker = new window.google.maps.marker.AdvancedMarkerElement({
+            position: pos,
+            map,
+            content: el,
+            title: safeTitle,
+            zIndex: 12,
+          });
+        } else {
+          marker = new window.google.maps.Marker({
+            position: pos,
+            map,
+            title: safeTitle,
+            label: String(ord || ""),
+            zIndex: 12,
+          });
+        }
+      } catch {
+        // Son çare: default marker
+        try {
+          marker = new window.google.maps.Marker({
+            position: pos,
+            map,
+            title: safeTitle,
+            label: String(ord || ""),
+            zIndex: 12,
+          });
+        } catch {}
+      }
+
+      if (marker) stopMarkersRef.current.set(stopId, marker);
+      return marker;
+    },
+    [mapRef, advancedAllowedRef, createStopEl]
+  );
+
+  // ✅ ADIM 3: Stop marker temizliği
+  const clearAllStopMarkers = useCallback(() => {
+    stopMarkersRef.current.forEach((m) => {
+      try {
+        m.setMap?.(null);
+      } catch {
+        try {
+          m.map = null;
+        } catch {}
+      }
+    });
+    stopMarkersRef.current.clear();
+  }, []);
+
+  // ✅ ADIM 3: route idle olunca stop pinleri kalmasın
+  useEffect(() => {
+    if (routeStatus === "idle") {
+      try {
+        clearAllStopMarkers();
+      } catch {}
+    }
+  }, [routeStatus, clearAllStopMarkers]);
+
+  // ✅ ADIM 3: unmount temizliği
+  useEffect(() => {
+    return () => {
+      try {
+        clearAllStopMarkers();
+      } catch {}
+    };
+  }, [clearAllStopMarkers]);
 
   // Cluster kur / yok et (map hazır olduğunda)
   useEffect(() => {
@@ -337,7 +507,11 @@ export default function MapMobile({
       friendMarkers.forEach((mk) => {
         try {
           mk.setMap?.(null);
-        } catch {}
+        } catch {
+          try {
+            mk.map = null;
+          } catch {}
+        }
       });
       ctrl.setMarkers(friendMarkers);
     } else {
@@ -346,7 +520,11 @@ export default function MapMobile({
       friendMarkers.forEach((mk) => {
         try {
           mk.setMap?.(map);
-        } catch {}
+        } catch {
+          try {
+            mk.map = map;
+          } catch {}
+        }
       });
     }
   }, [mapRef]);
@@ -1120,26 +1298,71 @@ export default function MapMobile({
       setRouteStatus("idle");
       activeRouteIdRef.current = null;
       clearPolyline();
+      try {
+        clearAllStopMarkers();
+      } catch {}
     }
-  }, [routeStatus, userLocation, createPolyline, clearPolyline]);
+  }, [routeStatus, userLocation, createPolyline, clearPolyline, clearAllStopMarkers]);
 
-  const handleAddStop = useCallback(async () => {
-    if (routeStatus !== "recording" || !activeRouteIdRef.current || !userLocation) return;
-    const defaultTitle = `Durak ${Date.now() % 10000}`;
-    const title = window.prompt("Durak başlığı", defaultTitle);
-    if (title == null) return; // iptal
-    const note = window.prompt("Not (opsiyonel)", "") || "";
-    try {
-      const stop = routeRecorder.addStop({
-        title,
-        note,
-        lat: userLocation.lat,
-        lng: userLocation.lng,
-        t: Date.now(),
-      });
-      if (stop) await routeStore.addStop(activeRouteIdRef.current, stop);
-    } catch {}
+  // ✅ ADIM 1: "Durak Ekle" artık prompt değil → sheet aç
+  const handleAddStop = useCallback(() => {
+    if (
+      routeStatus !== "recording" ||
+      !activeRouteIdRef.current ||
+      !userLocation ||
+      routeStatus === "finishing"
+    )
+      return;
+
+    // Lokasyonu "açıldığı an" sabitle (UX daha deterministik)
+    stopDraftLocRef.current = { ...userLocation };
+    setIsStopComposerOpen(true);
   }, [routeStatus, userLocation]);
+
+  // ✅ ADIM 1 + ✅ ADIM 3: Sheet submit → stop objesi oluştur, UI'da marker bas, sonra yazmayı dene
+  const handleSubmitStop = useCallback(
+    async ({ title, note }) => {
+      if (routeStatus !== "recording" || !activeRouteIdRef.current) return;
+
+      const loc = stopDraftLocRef.current || userLocation;
+      if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) return;
+
+      const safeTitle = String(title || "").trim();
+      const safeNote = String(note || "");
+
+      try {
+        const stop = routeRecorder.addStop({
+          title: safeTitle,
+          note: safeNote,
+          lat: loc.lat,
+          lng: loc.lng,
+          t: Date.now(),
+        });
+
+        if (stop) {
+          // ✅ ADIM 3: Firestore başarılı/başarısız olsa bile kullanıcı hemen görsün
+          const stopIdGuess = `stop_${stop.order}_${stop.t}`;
+          try {
+            upsertStopMarker(
+              stopIdGuess,
+              { lat: stop.lat, lng: stop.lng },
+              { order: stop.order, title: stop.title }
+            );
+          } catch {}
+
+          // Kalıcı yazım (ADIM 2)
+          try {
+            await routeStore.addStop(activeRouteIdRef.current, stop);
+          } catch {}
+        }
+      } catch {}
+      finally {
+        // Sheet kapanınca draft temizle
+        stopDraftLocRef.current = null;
+      }
+    },
+    [routeStatus, userLocation, upsertStopMarker]
+  );
 
   const handleFinishRoute = useCallback(async () => {
     if (routeStatus !== "recording" || !activeRouteIdRef.current) return;
@@ -1158,9 +1381,12 @@ export default function MapMobile({
       activeRouteIdRef.current = null;
       lastSyncedIndexRef.current = 0;
       clearPolyline();
+      try {
+        clearAllStopMarkers(); // ✅ ADIM 3: bitince stop pinleri de temizle
+      } catch {}
       setRouteStatus("idle");
     }
-  }, [routeStatus, clearPolyline]);
+  }, [routeStatus, clearPolyline, clearAllStopMarkers]);
 
   return (
     <div style={containerStyle}>
@@ -1539,6 +1765,16 @@ export default function MapMobile({
           </>
         )}
       </div>
+
+      {/* ✅ ADIM 1: Stop Composer Sheet */}
+      <StopComposerSheetMobile
+        open={isStopComposerOpen}
+        onClose={() => {
+          setIsStopComposerOpen(false);
+          stopDraftLocRef.current = null;
+        }}
+        onSubmit={handleSubmitStop}
+      />
 
       {/* Modallar */}
       {isAvatarModalOpen && <AvatarModal onClose={() => setIsAvatarModalOpen(false)} />}
