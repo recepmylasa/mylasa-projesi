@@ -1,26 +1,127 @@
 // src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js
-import React from "react";
+import React, { useMemo } from "react";
 import { useGoogleMaps } from "../../../hooks/useGoogleMaps";
 import RouteDetailMapPreview from "./RouteDetailMapPreview";
 
-const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
-const MAP_ID = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
-
 export default function RouteDetailMapPreviewShell({
   routeId,
-  path,
-  stops,
-  stopsLoaded,
-  onRetry,
+  path = [],
+  stops = [],
+  stopsLoaded = false,
+  onRetry = () => {},
 }) {
-  const { gmapsStatus, mapDivRef, mapRef } = useGoogleMaps({ API_KEY, MAP_ID });
+  const API_KEY =
+    process.env.REACT_APP_GOOGLE_MAPS_API_KEY ||
+    process.env.REACT_APP_GMAPS_API_KEY ||
+    process.env.REACT_APP_MAPS_API_KEY ||
+    "";
 
-  const isReady = gmapsStatus === "ready";
-  const isError = gmapsStatus === "error";
+  const MAP_ID =
+    process.env.REACT_APP_GMAPS_MAP_ID ||
+    process.env.REACT_APP_GOOGLE_MAPS_MAP_ID ||
+    process.env.REACT_APP_MAP_ID ||
+    "";
+
+  const mapsOpts = useMemo(() => ({ API_KEY, MAP_ID }), [API_KEY, MAP_ID]);
+
+  const gmaps = useGoogleMaps(mapsOpts) || {};
+
+  // Hook farklı isimlerle dönebiliyorsa “tek kaynak” için normalize ediyoruz:
+  const gmapsStatus =
+    gmaps.gmapsStatus ||
+    gmaps.status ||
+    (gmaps.isLoaded ? "ready" : gmaps.error ? "error" : "loading");
+
+  const mapDivRef = gmaps.mapDivRef || gmaps.containerRef || gmaps.divRef || null;
+  const mapRef = gmaps.mapRef || gmaps.map || null;
+
+  const isReady = gmapsStatus === "ready" || gmapsStatus === "loaded";
+  const isError =
+    gmapsStatus === "error" ||
+    gmapsStatus === "failed" ||
+    gmapsStatus === "blocked" ||
+    gmapsStatus === "missing_key";
+
   const isLoading = !isReady && !isError;
+
+  const overlayBase = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 14,
+    borderRadius: 14,
+    background: "rgba(255,255,255,0.86)",
+    backdropFilter: "blur(6px)",
+    WebkitBackdropFilter: "blur(6px)",
+    zIndex: 5,
+  };
+
+  const card = {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 14,
+    border: "1px solid rgba(0,0,0,0.08)",
+    background: "#fff",
+    boxShadow: "0 10px 26px rgba(0,0,0,0.10)",
+    padding: 14,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  };
+
+  const title = { fontWeight: 900, fontSize: 14, color: "#111" };
+  const desc = { fontSize: 12, color: "rgba(0,0,0,0.72)", lineHeight: 1.35 };
+
+  const btnRow = { display: "flex", gap: 10, flexWrap: "wrap" };
+
+  const retryBtn = {
+    height: 38,
+    padding: "0 14px",
+    borderRadius: 999,
+    border: "1px solid #111",
+    background: "#111",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: "pointer",
+    flex: "1 1 140px",
+  };
+
+  const ghostBtn = {
+    height: 38,
+    padding: "0 14px",
+    borderRadius: 999,
+    border: "1px solid rgba(0,0,0,0.12)",
+    background: "#fff",
+    color: "#111",
+    fontWeight: 900,
+    cursor: "pointer",
+    flex: "1 1 140px",
+  };
+
+  const spinner = {
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    border: "2px solid rgba(0,0,0,0.12)",
+    borderTopColor: "rgba(0,0,0,0.65)",
+    animation: "rdmpspin 0.9s linear infinite",
+    flex: "0 0 auto",
+  };
+
+  const messageForError = () => {
+    if (!API_KEY) return "Google Maps API anahtarı bulunamadı.";
+    const errText = String(gmaps?.error?.message || gmaps?.error || "").toLowerCase();
+    if (errText.includes("billing")) return "Harita yüklenemedi (billing / proje ayarı).";
+    if (errText.includes("apikey") || errText.includes("api key")) return "Harita yüklenemedi (API anahtarı).";
+    if (errText.includes("quota")) return "Harita yüklenemedi (quota limiti).";
+    return "Harita yüklenemedi.";
+  };
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      {/* Harita/preview içeriği (tek source of truth) */}
       <RouteDetailMapPreview
         routeId={routeId}
         gmapsStatus={gmapsStatus}
@@ -31,94 +132,77 @@ export default function RouteDetailMapPreviewShell({
         stopsLoaded={stopsLoaded}
       />
 
-      {/* Overlay UX (Adım 4 mantığı: loading + error + retry) */}
-      {(isLoading || isError) && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 5,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 14,
-            background: "rgba(255,255,255,0.92)",
-            backdropFilter: "blur(2px)",
-          }}
-        >
-          <div
-            style={{
-              width: "min(360px, 92%)",
-              borderRadius: 16,
-              border: "1px solid #eee",
-              background: "#fff",
-              boxShadow: "0 10px 28px rgba(0,0,0,.10)",
-              padding: 14,
-            }}
-          >
-            {isLoading && (
-              <>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 999,
-                      border: "2px solid #e5e7eb",
-                      borderTopColor: "#111",
-                      animation: "mylasaSpin .9s linear infinite",
-                    }}
-                    aria-hidden="true"
-                  />
-                  <div style={{ fontWeight: 900, fontSize: 14, color: "#111" }}>
-                    Harita yükleniyor…
-                  </div>
-                </div>
+      {/* Loading overlay */}
+      {isLoading && (
+        <div style={overlayBase} aria-live="polite" aria-busy="true">
+          <style>{`
+            @keyframes rdmpspin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          `}</style>
+          <div style={card}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={spinner} />
+              <div>
+                <div style={title}>Harita yükleniyor…</div>
+                <div style={desc}>Bağlantı yavaşsa biraz sürebilir.</div>
+              </div>
+            </div>
+            <div style={btnRow}>
+              <button
+                type="button"
+                style={ghostBtn}
+                onClick={() => {
+                  try {
+                    onRetry();
+                  } catch {}
+                }}
+              >
+                Yenile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-                <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                  <div style={{ height: 10, borderRadius: 999, background: "#f3f4f6" }} />
-                  <div style={{ height: 10, borderRadius: 999, background: "#f3f4f6", width: "78%" }} />
-                  <div style={{ height: 10, borderRadius: 999, background: "#f3f4f6", width: "64%" }} />
-                </div>
+      {/* Error overlay */}
+      {isError && (
+        <div style={overlayBase} role="alert">
+          <div style={card}>
+            <div>
+              <div style={title}>Harita açılamadı</div>
+              <div style={desc}>{messageForError()}</div>
+            </div>
 
-                <div style={{ marginTop: 12, fontSize: 12, opacity: 0.65 }}>
-                  Bağlantın yavaşsa birkaç saniye sürebilir.
-                </div>
+            <div style={btnRow}>
+              <button
+                type="button"
+                style={retryBtn}
+                onClick={() => {
+                  try {
+                    onRetry();
+                  } catch {}
+                }}
+              >
+                Tekrar dene
+              </button>
 
-                <style>{`@keyframes mylasaSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-              </>
-            )}
+              <button
+                type="button"
+                style={ghostBtn}
+                onClick={() => {
+                  try {
+                    onRetry();
+                  } catch {}
+                }}
+                title="Remount tetikler"
+              >
+                Yenile
+              </button>
+            </div>
 
-            {isError && (
-              <>
-                <div style={{ fontWeight: 950, fontSize: 14, color: "#111" }}>
-                  Harita yüklenemedi
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                  Bağlantını kontrol edip tekrar deneyebilirsin.
-                </div>
-
-                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (typeof onRetry === "function") onRetry();
-                    }}
-                    style={{
-                      borderRadius: 12,
-                      border: "1px solid #111",
-                      background: "#111",
-                      color: "#fff",
-                      padding: "10px 12px",
-                      fontWeight: 900,
-                      cursor: "pointer",
-                      width: "100%",
-                    }}
-                  >
-                    Tekrar dene
-                  </button>
-                </div>
-              </>
+            {process.env.NODE_ENV !== "production" && gmaps?.error && (
+              <div style={{ fontSize: 11, opacity: 0.7, wordBreak: "break-word" }}>
+                {String(gmaps?.error?.message || gmaps?.error)}
+              </div>
             )}
           </div>
         </div>

@@ -2,6 +2,68 @@
 import { db } from "../../firebase";
 import { doc, getDoc } from "firebase/firestore";
 
+export const DEFAULT_ROUTE_COVER_URL = "/route-default-cover.jpg";
+
+export function resolveRouteCoverUrl(route = {}) {
+  try {
+    const r = route || {};
+    const direct = r?.cover?.url ? String(r.cover.url) : "";
+    if (direct) return direct;
+
+    const legacy =
+      r.coverUrl ||
+      r.coverPhotoUrl ||
+      r.coverImageUrl ||
+      r.previewUrl ||
+      r.thumbnailUrl ||
+      "";
+
+    if (legacy) return String(legacy);
+    return DEFAULT_ROUTE_COVER_URL;
+  } catch {
+    return DEFAULT_ROUTE_COVER_URL;
+  }
+}
+
+export function normalizeRouteCover(route = {}) {
+  try {
+    const r = route || {};
+    const rawKind = r?.cover?.kind;
+    const kind =
+      rawKind === "picked" || rawKind === "auto" || rawKind === "default"
+        ? rawKind
+        : null;
+
+    const url = r?.cover?.url ? String(r.cover.url) : "";
+    const stopId = r?.cover?.stopId ? String(r.cover.stopId) : null;
+    const mediaId = r?.cover?.mediaId ? String(r.cover.mediaId) : null;
+
+    if (kind) {
+      const out = {
+        kind,
+        url: url || resolveRouteCoverUrl(r),
+      };
+      if (stopId) out.stopId = stopId;
+      if (mediaId) out.mediaId = mediaId;
+      if (r?.cover?.updatedAt) out.updatedAt = r.cover.updatedAt;
+      return out;
+    }
+
+    const legacy =
+      r.coverUrl ||
+      r.coverPhotoUrl ||
+      r.coverImageUrl ||
+      r.previewUrl ||
+      r.thumbnailUrl ||
+      null;
+
+    if (legacy) return { kind: "picked", url: String(legacy) };
+    return { kind: "default", url: DEFAULT_ROUTE_COVER_URL };
+  } catch {
+    return { kind: "default", url: DEFAULT_ROUTE_COVER_URL };
+  }
+}
+
 export function fmtKm(m) {
   const km = (Number(m) || 0) / 1000;
   if (km < 1) return `${km.toFixed(2)} km`;
@@ -37,19 +99,12 @@ export function getValidLatLng(lat, lng) {
   return { lat: la, lng: ln };
 }
 
-// ✅ Backward-compat: eski import’lar kırılmasın
-// - getValidLatLngSafe(lat,lng)
-// - getValidLatLngSafe({lat,lng})
-// - getValidLatLngSafe(google.maps.LatLng)  (lat(), lng())
-// - getValidLatLngSafe({latitude, longitude})
 export function getValidLatLngSafe(a, b) {
   try {
     if (a && typeof a === "object") {
-      // google.maps.LatLng
       if (typeof a.lat === "function" && typeof a.lng === "function") {
         return getValidLatLng(a.lat(), a.lng());
       }
-      // GeoPoint benzeri
       if ("latitude" in a && "longitude" in a) {
         return getValidLatLng(a.latitude, a.longitude);
       }
@@ -163,9 +218,6 @@ export function formatDateTimeTR(dt) {
   }
 }
 
-/**
- * EMİR 36 — Formatter’lar buraya taşındı
- */
 export function formatDateTR(dt) {
   const d = toDateSafe(dt);
   if (!d) return "";
@@ -295,6 +347,7 @@ export function getRouteRatingLabelSafe(model) {
 
 export function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
   const r = { ...(routeDoc || {}), id: routeId };
+
   if (ownerDoc) {
     r.ownerUsername =
       ownerDoc.username ||
@@ -306,6 +359,18 @@ export function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
     r.ownerName = ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
     r.ownerAvatar = ownerDoc.photoURL || ownerDoc.profilFoto || ownerDoc.avatar || r.ownerAvatar;
   }
+
+  // ✅ Kapak tek kaynağa normalize (ShareSheet / diğer legacy okuyucular kırılmasın)
+  const coverUrl = resolveRouteCoverUrl(r);
+  const coverObj = normalizeRouteCover(r);
+  r.cover = { ...(coverObj || {}), url: coverUrl };
+
+  if (!r.coverUrl) r.coverUrl = coverUrl;
+  if (!r.coverPhotoUrl) r.coverPhotoUrl = coverUrl;
+  if (!r.coverImageUrl) r.coverImageUrl = coverUrl;
+  if (!r.previewUrl) r.previewUrl = coverUrl;
+  if (!r.thumbnailUrl) r.thumbnailUrl = coverUrl;
+
   return r;
 }
 

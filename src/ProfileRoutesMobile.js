@@ -1,14 +1,23 @@
 // src/ProfileRoutesMobile.js
 // Profil "Rotalarım" sekmesi – profil sahibine ait rotaları premium grid olarak listeler (read-only).
-// Kapak 3 seviye: (A) user cover -> (B) first stop / route media -> (C) placeholder (asla beyaz yok)
+// Kapak (EMİR uyumlu):
+// 1) route.cover.url (tek doğru kaynak)
+// 2) legacy: coverUrl/coverPhotoUrl/coverImageUrl/previewUrl/thumbnailUrl...
+// 3) default: /route-default-cover.jpg
 // - <img src> ASLA gs:// / storage path / relative path olmaz; her zaman http(s):// veya data:image:
-// - Kanıt logu: RouteTileProof (10 satır)
+// - Kanıt logu: RouteTileProof (DEV only + tek sefer)
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./ProfileRoutesMobile.css";
 import useUserRoutes from "./hooks/useUserRoutes";
 
 import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage";
+
+const __DEV__ = process.env.NODE_ENV !== "production";
+const DEFAULT_ROUTE_COVER_URL = "/route-default-cover.jpg";
+
+// StrictMode / remount spamını kesmek için (DEV only) modül seviyesinde tek sefer log
+const __devProofLoggedRouteIds = new Set();
 
 function toDate(dt) {
   if (!dt) return null;
@@ -120,7 +129,7 @@ async function resolveToHttpsUrl(input) {
   // data:image ise direkt kabul
   if (/^data:image\//i.test(raw0)) return raw0;
 
-  // ✅ "/mylasa-logo.png" gibi public asset → same-origin absolute URL
+  // ✅ "/route-default-cover.jpg" gibi public asset → same-origin absolute URL
   if (raw0.startsWith("/")) {
     try {
       if (typeof window !== "undefined" && window.location && window.location.origin) {
@@ -182,7 +191,7 @@ function useResolvedMediaUrl(input) {
   });
 
   useEffect(() => {
-    const k = key; // ✅ input referansı yok → exhaustive-deps uyarısı bitti
+    const k = key;
     if (!k) {
       setState({ input: "", status: "empty", url: "", ok: false, errorCode: "" });
       return;
@@ -454,282 +463,51 @@ function isVideoUrl(url) {
   return u.includes(".mp4") || u.includes(".webm") || u.includes(".mov") || u.includes(".m4v") || u.includes("video/");
 }
 
-function normalizeMediaItem(item) {
-  if (!item) return null;
+function resolveLegacyCoverUrl(route) {
+  if (!route) return "";
 
-  if (typeof item === "string") {
-    const url = item.trim();
-    if (!url) return null;
-    const type = isVideoUrl(url) ? "video" : "image";
-    return { type, url, thumb: null, rawUrl: url };
-  }
+  const cand =
+    route.coverUrl ||
+    route.coverPhotoUrl ||
+    route.coverImageUrl ||
+    route.previewUrl ||
+    route.thumbnailUrl ||
+    route.thumbUrl ||
+    route.imageUrl ||
+    route.photoUrl ||
+    route.mediaUrl ||
+    route?.raw?.coverUrl ||
+    route?.raw?.coverPhotoUrl ||
+    route?.raw?.coverImageUrl ||
+    route?.raw?.previewUrl ||
+    route?.raw?.thumbnailUrl ||
+    route?.raw?.mediaUrl ||
+    "";
 
-  const url =
-    item.url ||
-    item.src ||
-    item.mediaUrl ||
-    item.downloadURL ||
-    item.downloadUrl ||
-    item.imageUrl ||
-    item.photoUrl ||
-    item.videoUrl ||
-    item.fileUrl ||
-    item.path ||
-    item.uri;
-
-  const thumb =
-    item.thumbnail ||
-    item.thumb ||
-    item.poster ||
-    item.preview ||
-    item.previewUrl ||
-    item.thumbnailUrl ||
-    item.posterUrl;
-
-  const typeRaw = (item.type || item.mediaType || item.kind || item.mime || "").toString().toLowerCase();
-
-  const urlStr = typeof url === "string" ? url.trim() : "";
-  const thumbStr = typeof thumb === "string" ? thumb.trim() : "";
-
-  if (!urlStr && !thumbStr) return null;
-
-  const isVid =
-    typeRaw.includes("video") ||
-    typeRaw.includes("mp4") ||
-    typeRaw.includes("webm") ||
-    (urlStr ? isVideoUrl(urlStr) : false);
-
-  return {
-    type: isVid ? "video" : "image",
-    url: urlStr || thumbStr,
-    thumb: thumbStr || null,
-    rawUrl: urlStr || null,
-  };
+  return isNonEmptyString(cand) ? String(cand).trim() : "";
 }
 
-function collectMediaFromValue(value, out) {
-  if (!value) return;
-
-  if (Array.isArray(value)) {
-    for (const it of value) {
-      const m = normalizeMediaItem(it);
-      if (m) out.push(m);
-    }
-    return;
-  }
-
-  if (typeof value === "string") {
-    const m = normalizeMediaItem(value);
-    if (m) out.push(m);
-    return;
-  }
-
-  if (typeof value === "object") {
-    const packs = [
-      value.images,
-      value.imageUrls,
-      value.photos,
-      value.photoUrls,
-      value.videos,
-      value.videoUrls,
-      value.mediaUrls,
-      value.urls,
-      value.items,
-      value.mediaItems,
-      value.gallery,
-    ].filter(Boolean);
-
-    if (packs.length) {
-      for (const p of packs) collectMediaFromValue(p, out);
-      return;
-    }
-
-    const singles = [
-      value.imageUrl,
-      value.photoUrl,
-      value.videoUrl,
-      value.url,
-      value.src,
-      value.thumbnailUrl,
-      value.thumbnail,
-      value.poster,
-      value.posterUrl,
-      value.previewUrl,
-      value.mediaUrl,
-    ].filter(Boolean);
-
-    for (const s of singles) collectMediaFromValue(s, out);
-  }
-}
-
-function extractMedia(route) {
-  const out = [];
-  if (!route) return out;
-
-  const r = route;
-  const raw = route.raw || route.data || route.doc || null;
-  const data = route.data || route.raw?.data || route.doc?.data || null;
-
-  collectMediaFromValue(r.media, out);
-  collectMediaFromValue(r.mediaItems, out);
-  collectMediaFromValue(r.gallery, out);
-  collectMediaFromValue(r.mediaPreview, out);
-  collectMediaFromValue(r.images, out);
-  collectMediaFromValue(r.imageUrls, out);
-  collectMediaFromValue(r.photos, out);
-  collectMediaFromValue(r.photoUrls, out);
-  collectMediaFromValue(r.videos, out);
-  collectMediaFromValue(r.videoUrls, out);
-  collectMediaFromValue(r.mediaUrls, out);
-
-  collectMediaFromValue(raw?.media, out);
-  collectMediaFromValue(raw?.mediaItems, out);
-  collectMediaFromValue(raw?.gallery, out);
-  collectMediaFromValue(raw?.mediaPreview, out);
-  collectMediaFromValue(raw?.images, out);
-  collectMediaFromValue(raw?.imageUrls, out);
-  collectMediaFromValue(raw?.photos, out);
-  collectMediaFromValue(raw?.photoUrls, out);
-  collectMediaFromValue(raw?.videos, out);
-  collectMediaFromValue(raw?.videoUrls, out);
-  collectMediaFromValue(raw?.mediaUrls, out);
-
-  collectMediaFromValue(data?.media, out);
-  collectMediaFromValue(data?.mediaItems, out);
-  collectMediaFromValue(data?.gallery, out);
-  collectMediaFromValue(data?.mediaPreview, out);
-  collectMediaFromValue(data?.images, out);
-  collectMediaFromValue(data?.imageUrls, out);
-  collectMediaFromValue(data?.photos, out);
-  collectMediaFromValue(data?.photoUrls, out);
-  collectMediaFromValue(data?.videos, out);
-  collectMediaFromValue(data?.videoUrls, out);
-  collectMediaFromValue(data?.mediaUrls, out);
-
-  const lateCandidates = [
-    r.coverUrl,
-    r.coverPhotoUrl,
-    r.coverImageUrl,
-    r.coverURL,
-    r.thumbnailUrl,
-    r.thumbUrl,
-    r.previewUrl,
-    r.posterUrl,
-    r.mediaUrl,
-    raw?.coverUrl,
-    raw?.coverPhotoUrl,
-    raw?.coverImageUrl,
-    raw?.thumbnailUrl,
-    data?.coverUrl,
-    data?.coverPhotoUrl,
-    data?.coverImageUrl,
-    data?.thumbnailUrl,
-  ].filter(Boolean);
-
-  for (const it of lateCandidates) collectMediaFromValue(it, out);
-
-  const stops = getStopsArray(route);
-  for (const st of stops) {
-    if (!st) continue;
-
-    collectMediaFromValue(st.media, out);
-    collectMediaFromValue(st.mediaUrl, out);
-
-    const sraw = st.raw || st.data || null;
-    if (sraw) {
-      collectMediaFromValue(sraw.media, out);
-      collectMediaFromValue(sraw.mediaUrl, out);
-      if (sraw.data) {
-        collectMediaFromValue(sraw.data.media, out);
-        collectMediaFromValue(sraw.data.mediaUrl, out);
-      }
-    }
-
-    collectMediaFromValue(st.medias, out);
-    collectMediaFromValue(st.mediaItems, out);
-    collectMediaFromValue(st.gallery, out);
-    collectMediaFromValue(st.items, out);
-    collectMediaFromValue(st.photos, out);
-    collectMediaFromValue(st.photoUrls, out);
-    collectMediaFromValue(st.imageUrl, out);
-    collectMediaFromValue(st.photoUrl, out);
-    collectMediaFromValue(st.thumbnailUrl, out);
-    collectMediaFromValue(st.poster, out);
-    collectMediaFromValue(st.videoUrl, out);
-
-    collectMediaFromValue(st.images, out);
-    collectMediaFromValue(st.imageUrls, out);
-    collectMediaFromValue(st.videos, out);
-    collectMediaFromValue(st.videoUrls, out);
-    collectMediaFromValue(st.mediaUrls, out);
-
-    if (sraw) {
-      collectMediaFromValue(sraw.medias, out);
-      collectMediaFromValue(sraw.mediaItems, out);
-      collectMediaFromValue(sraw.gallery, out);
-      collectMediaFromValue(sraw.items, out);
-      collectMediaFromValue(sraw.photos, out);
-      collectMediaFromValue(sraw.photoUrls, out);
-      collectMediaFromValue(sraw.images, out);
-      collectMediaFromValue(sraw.imageUrls, out);
-      collectMediaFromValue(sraw.videos, out);
-      collectMediaFromValue(sraw.videoUrls, out);
-      collectMediaFromValue(sraw.mediaUrls, out);
-    }
-  }
-
-  return out;
-}
-
-// ✅ Kapak 3 seviye + sourceField (StaticMap YOK) + "mylasa-logo.png" placeholder sayılır
+// ✅ Kapak (EMİR): cover.url → legacy → default
 function pickCoverCandidate(route) {
-  if (!route) return { kind: "placeholder", url: "", hasVideo: false, sourceField: "placeholder" };
+  if (!route) return { kind: "default", url: DEFAULT_ROUTE_COVER_URL, hasVideo: false, sourceField: "default" };
 
-  // (A) User cover alanları
-  const coverFields = [
-    ["coverUrl", route.coverUrl],
-    ["coverPhotoUrl", route.coverPhotoUrl],
-    ["coverImageUrl", route.coverImageUrl],
-    ["previewUrl", route.previewUrl],
-    ["thumbnailUrl", route.thumbnailUrl],
-    ["thumbUrl", route.thumbUrl],
-    ["imageUrl", route.imageUrl],
-    ["photoUrl", route.photoUrl],
-    ["mediaUrl", route.mediaUrl],
-    ["raw.coverUrl", route?.raw?.coverUrl],
-    ["raw.coverPhotoUrl", route?.raw?.coverPhotoUrl],
-    ["raw.coverImageUrl", route?.raw?.coverImageUrl],
-    ["raw.previewUrl", route?.raw?.previewUrl],
-    ["raw.thumbnailUrl", route?.raw?.thumbnailUrl],
-    ["raw.mediaUrl", route?.raw?.mediaUrl],
-  ];
-
-  for (const [field, val] of coverFields) {
-    if (isNonEmptyString(val)) {
-      const url = String(val).trim();
-      if (isKnownAppLogoUrl(url)) continue; // ✅ placeholder kabul etme
-      const hasVideo = isVideoUrl(url);
-      return { kind: hasVideo ? "video" : "image", url, hasVideo, sourceField: field };
-    }
+  // (A0) Yeni standart: route.cover.url
+  const coverObj = route?.cover;
+  const coverUrl = isNonEmptyString(coverObj?.url) ? String(coverObj.url).trim() : "";
+  if (coverUrl && !isKnownAppLogoUrl(coverUrl)) {
+    const hasVideo = isVideoUrl(coverUrl);
+    return { kind: hasVideo ? "video" : "image", url: coverUrl, hasVideo, sourceField: "cover.url" };
   }
 
-  // (B) stop/route media (first image > video thumb)
-  const media = extractMedia(route);
-  const hasVideo = media.some((m) => m.type === "video");
-
-  const firstImage = media.find((m) => m.type === "image" && m.url && !isKnownAppLogoUrl(m.url));
-  if (firstImage) return { kind: "image", url: firstImage.url, hasVideo, sourceField: "media:firstImage" };
-
-  const firstVideo = media.find((m) => m.type === "video" && (m.thumb || m.rawUrl || m.url));
-  if (firstVideo) {
-    if (firstVideo.thumb && !isKnownAppLogoUrl(firstVideo.thumb)) {
-      return { kind: "image", url: firstVideo.thumb, hasVideo: true, sourceField: "media:videoThumb" };
-    }
-    return { kind: "video", url: firstVideo.rawUrl || firstVideo.url, hasVideo: true, sourceField: "media:videoUrl" };
+  // (A1) Legacy alanlar (geriye uyum)
+  const legacy = resolveLegacyCoverUrl(route);
+  if (legacy && !isKnownAppLogoUrl(legacy)) {
+    const hasVideo = isVideoUrl(legacy);
+    return { kind: hasVideo ? "video" : "image", url: legacy, hasVideo, sourceField: "legacy" };
   }
 
-  // (C) placeholder
-  return { kind: "placeholder", url: "", hasVideo: false, sourceField: "placeholder" };
+  // (C) Default
+  return { kind: "default", url: DEFAULT_ROUTE_COVER_URL, hasVideo: false, sourceField: "default" };
 }
 
 function buildRoutePrefill(route) {
@@ -799,6 +577,11 @@ function buildRoutePrefill(route) {
   };
 
   if (Array.isArray(route?.stopsPreview)) prefill.stopsPreview = route.stopsPreview;
+
+  // ✅ cover standart objeyi taşı (RouteDetail ilk render “pırıl pırıl” olsun)
+  if (route?.cover && typeof route.cover === "object") prefill.cover = route.cover;
+
+  // legacy alanlar (geriye uyum / eski okuyucular)
   if (typeof route?.coverUrl === "string") prefill.coverUrl = route.coverUrl;
   if (typeof route?.thumbnailUrl === "string") prefill.thumbnailUrl = route.thumbnailUrl;
 
@@ -816,12 +599,18 @@ function buildCoverFieldsSnapshot(route) {
   const raw = route?.raw;
   const pick = (v) => (isNonEmptyString(v) ? String(v).trim() : "");
   return {
+    cover_kind: pick(route?.cover?.kind),
+    cover_url: pick(route?.cover?.url),
+    cover_stopId: pick(route?.cover?.stopId),
+    cover_mediaId: pick(route?.cover?.mediaId),
+
     coverUrl: pick(route?.coverUrl),
     coverPhotoUrl: pick(route?.coverPhotoUrl),
     coverImageUrl: pick(route?.coverImageUrl),
     previewUrl: pick(route?.previewUrl),
     thumbnailUrl: pick(route?.thumbnailUrl),
     mediaUrl: pick(route?.mediaUrl),
+
     raw_coverUrl: pick(raw?.coverUrl),
     raw_previewUrl: pick(raw?.previewUrl),
     raw_thumbnailUrl: pick(raw?.thumbnailUrl),
@@ -830,6 +619,7 @@ function buildCoverFieldsSnapshot(route) {
 }
 
 function printRouteTileProof({ route, rawTitle, smartTitleProof, coverCandidate, imgSrc, imgLoadEvent }) {
+  if (!__DEV__) return;
   if (!route) return;
 
   const sp = route?.stopsPreview;
@@ -859,7 +649,7 @@ function printRouteTileProof({ route, rawTitle, smartTitleProof, coverCandidate,
   console.log("4) route.raw plain object mi?", { rawPlain, hasRaw: !!raw, rawStopsPreviewLen: rawSpLen });
   // 5
   // eslint-disable-next-line no-console
-  console.log("5) cover alanları (route + raw):", covers);
+  console.log("5) cover alanları (cover + legacy + raw):", covers);
   // 6
   // eslint-disable-next-line no-console
   console.log("6) pickCoverCandidate(route):", { kind: coverCandidate?.kind, url: coverCandidate?.url, sourceField: coverCandidate?.sourceField });
@@ -1015,15 +805,19 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
   }, [routes]);
 
   useEffect(() => {
+    if (!__DEV__) return;
     if (!proofTarget) return;
-    if (proofPrintedRef.current) return;
 
     const rid = proofTarget?.id ? String(proofTarget.id) : "";
     if (!rid) return;
 
+    // ✅ Dev proof: route bazlı tek sefer
+    if (__devProofLoggedRouteIds.has(rid)) return;
+
+    // local ref ilk routeId
     if (!proofRouteIdRef.current) proofRouteIdRef.current = rid;
 
-    // ✅ event gelmeden de basmayalım; ama resolve_fail/no_input gelince de basılacak
+    // event gelmeden basmayalım; ama resolve_fail/no_input gelince de basılacak
     if (!proofImgLoadEvent && !proofImgSrc) return;
 
     const rawTitle =
@@ -1045,6 +839,7 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
       imgLoadEvent: proofImgLoadEvent,
     });
 
+    __devProofLoggedRouteIds.add(rid);
     proofPrintedRef.current = true;
   }, [proofTarget, proofImgSrc, proofImgLoadEvent]);
 

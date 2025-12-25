@@ -209,6 +209,82 @@
   color: #777;
 }
 
+/* ✅ Kapak bölümü */
+.route-detail-cover-row {
+  margin-top: 10px;
+  border: 1px solid #eee;
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.route-detail-cover-thumb {
+  width: 74px;
+  height: 74px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f3f4f6;
+  border: 1px solid #eee;
+  flex: 0 0 auto;
+}
+
+.route-detail-cover-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.route-detail-cover-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.route-detail-cover-title {
+  font-weight: 900;
+  font-size: 13px;
+  color: #111;
+}
+
+.route-detail-cover-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #777;
+  font-weight: 800;
+}
+
+.route-detail-cover-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.route-detail-cover-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #e3e3e3;
+  background: #fff;
+  font-weight: 900;
+  font-size: 12px;
+  color: #111;
+  cursor: pointer;
+}
+
+.route-detail-cover-btn:active {
+  transform: scale(0.98);
+}
+
+.route-detail-cover-btn--danger {
+  border-color: #f0caca;
+  background: #fff6f6;
+  color: #a31919;
+}
+
 .route-detail-rate-row {
   display: flex;
   align-items: center;
@@ -286,6 +362,119 @@
   align-items: flex-end;
   justify-content: center;
   padding: 0;
+}
+
+/* ✅ Cover picker overlay */
+.route-detail-cover-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6800;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+.route-detail-cover-picker-sheet {
+  width: 100%;
+  max-width: 720px;
+  background: #fff;
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  max-height: calc(100vh - 44px);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@supports (height: 100dvh) {
+  .route-detail-cover-picker-sheet {
+    max-height: calc(100dvh - 44px);
+  }
+}
+
+.route-detail-cover-picker-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-detail-cover-picker-title {
+  font-weight: 900;
+  color: #111;
+  font-size: 14px;
+}
+
+.route-detail-cover-picker-close {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid #e3e3e3;
+  background: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.route-detail-cover-picker-close:active {
+  transform: scale(0.98);
+}
+
+.route-detail-cover-picker-loading {
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #666;
+}
+
+.route-detail-cover-picker-error {
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #ffe2e2;
+  background: #fff6f6;
+  color: #8b1a1a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.route-detail-cover-grid {
+  padding: 12px 14px 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.route-detail-cover-grid-item {
+  border: none;
+  padding: 0;
+  background: #f3f4f6;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  aspect-ratio: 1 / 1;
+}
+
+.route-detail-cover-grid-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.route-detail-cover-grid-item:active {
+  transform: scale(0.99);
+}
+
+.route-detail-cover-picker-empty {
+  grid-column: 1 / -1;
+  padding: 12px 4px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #777;
 }
 
 /* ✅ EMİR 38 — Video badge + tile positioning */
