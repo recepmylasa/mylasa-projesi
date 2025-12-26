@@ -862,7 +862,7 @@ export default function RouteDetailMobile({
     if (!auth.currentUser || !routeDoc) return;
     if (auth.currentUser.uid !== routeDoc.ownerId) return;
 
-    const kindNow = (coverLocal?.kind || routeDoc?.cover?.kind || null);
+    const kindNow = coverLocal?.kind || routeDoc?.cover?.kind || null;
     if (kindNow === "picked") return; // kullanıcı seçtiyse dokunma
 
     autoCoverPendingRef.current = true;
@@ -907,6 +907,19 @@ export default function RouteDetailMobile({
     })();
   }, [routeDoc, coverLocal, computeAutoCoverCandidate, setRouteCover]);
 
+  // ✅ EMİR: Route açılınca (owner) kapak seçilmemişse auto-cover’u DB’ye yaz
+  useEffect(() => {
+    if (!routeDoc) return;
+    if (!auth.currentUser) return;
+    if (auth.currentUser.uid !== routeDoc.ownerId) return;
+    if (!stopsLoaded) return;
+
+    const kindNow = coverLocal?.kind || routeDoc?.cover?.kind || null;
+    if (kindNow === "picked") return;
+
+    requestAutoCoverSync();
+  }, [routeDoc, stopsLoaded, requestAutoCoverSync, coverLocal?.kind]);
+
   const openCoverPicker = useCallback(async () => {
     if (!auth.currentUser || !routeDoc) return;
     if (auth.currentUser.uid !== routeDoc.ownerId) return;
@@ -929,7 +942,6 @@ export default function RouteDetailMobile({
           .filter((m) => normalizeMediaType(m) === "image" && m?.url)
           .map((m) => ({ ...m, stopId: sid, mediaId: m?.id || null }));
 
-        // durak içi “ilk foto” mantığıyla (en eski önce) listede düzgün dursun
         images.sort((a, b) => {
           const am = toMillisSafe(a?.createdAt);
           const bm = toMillisSafe(b?.createdAt);
@@ -949,6 +961,11 @@ export default function RouteDetailMobile({
       setCoverPickerState({ loading: false, items: [], error: String(e?.message || e || "unknown") });
     }
   }, [routeDoc, stops, getStopMediaForCover, normalizeMediaType, toMillisSafe]);
+
+  const closeCoverPicker = useCallback(() => {
+    coverPickerJobRef.current += 1; // ✅ in-flight iptal
+    setCoverPickerOpen(false);
+  }, []);
 
   const pickCover = useCallback(
     async (it) => {
@@ -973,10 +990,10 @@ export default function RouteDetailMobile({
           ...(it.mediaId ? { mediaId: String(it.mediaId) } : {}),
         });
 
-        setCoverPickerOpen(false);
+        closeCoverPicker();
       } catch {}
     },
-    [routeDoc, setRouteCover]
+    [routeDoc, setRouteCover, closeCoverPicker]
   );
 
   const clearCover = useCallback(async () => {
@@ -1023,7 +1040,7 @@ export default function RouteDetailMobile({
             });
             bumpMediaTick();
 
-            // ✅ EMİR — Kapak seçilmediyse: “ilk durak ilk foto” auto cover’a yaz
+            // ✅ Kapak seçilmediyse: “ilk durak ilk foto” auto cover’a yaz
             if (normalizeMediaType(res) === "image") {
               requestAutoCoverSync();
             }
@@ -1130,7 +1147,7 @@ export default function RouteDetailMobile({
           return;
         }
         if (coverPickerOpen) {
-          setCoverPickerOpen(false);
+          closeCoverPicker();
           return;
         }
         onClose();
@@ -1138,7 +1155,7 @@ export default function RouteDetailMobile({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose, lightboxItems, coverPickerOpen]);
+  }, [onClose, lightboxItems, coverPickerOpen, closeCoverPicker]);
 
   const isOwner = auth.currentUser && routeDoc && auth.currentUser.uid === routeDoc.ownerId;
 
@@ -1239,10 +1256,45 @@ export default function RouteDetailMobile({
 
   const title = getRouteTitleSafe(routeModel);
 
-  // ✅ FIX: Hook (useMemo) koşullu çalışıyordu. Burayı hook’suz yaptık.
-  // (routeDoc yokken early return → sonraki render’da useMemo devreye giriyordu)
-  const coverResolved = coverLocal?.url ? coverLocal.url : resolveRouteCoverUrl(routeModel || {});
-  const coverKindResolved = coverLocal?.kind ? coverLocal.kind : normalizeRouteCover(routeModel || {}).kind || "default";
+  // ✅ Kapak resolve (hook yok, render safe)
+  const coverResolvedBase = coverLocal?.url ? coverLocal.url : resolveRouteCoverUrl(routeModel || {});
+  const coverKindResolvedBase = coverLocal?.kind ? coverLocal.kind : normalizeRouteCover(routeModel || {}).kind || "default";
+
+  // ✅ UI fallback: Kapak yoksa -> “ilk durak ilk foto” (cache’ten) göster
+  let coverFallbackFromStops = null;
+  try {
+    const firstStop = (stops || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0))[0];
+    const sid = firstStop?.id;
+    if (sid) {
+      const items = mediaCacheRef.current.get(sid)?.items || [];
+      const imgs = (items || []).filter((m) => normalizeMediaType(m) === "image" && m?.url);
+      if (imgs.length) {
+        const sorted = imgs
+          .slice()
+          .sort((a, b) => {
+            const am = toMillisSafe(a?.createdAt);
+            const bm = toMillisSafe(b?.createdAt);
+            if (am == null && bm == null) return 0;
+            if (am == null) return 1;
+            if (bm == null) return -1;
+            return am - bm;
+          });
+        coverFallbackFromStops = sorted[0]?.url ? String(sorted[0].url) : null;
+      }
+    }
+  } catch {}
+
+  let coverResolved = coverResolvedBase || DEFAULT_ROUTE_COVER_URL;
+  let coverKindUi = coverKindResolvedBase;
+
+  if (
+    coverKindResolvedBase === "default" &&
+    (coverResolvedBase === DEFAULT_ROUTE_COVER_URL || !coverResolvedBase) &&
+    coverFallbackFromStops
+  ) {
+    coverResolved = coverFallbackFromStops;
+    coverKindUi = "auto";
+  }
 
   const content = (
     <div className="route-detail-backdrop" onClick={handleBackdropClick}>
@@ -1295,20 +1347,15 @@ export default function RouteDetailMobile({
           </div>
           <div className="route-detail-map-note">Harita önizlemesi bir sonraki adımda geliştirilecek.</div>
 
-          {/* ✅ EMİR — Kapak fotoğrafı (herkes görür, owner yönetir) */}
+          {/* ✅ Kapak fotoğrafı (herkes görür, owner yönetir) */}
           <div className="route-detail-cover-row">
             <div className="route-detail-cover-thumb">
-              <img
-                src={coverResolved || DEFAULT_ROUTE_COVER_URL}
-                alt="Kapak"
-                loading="lazy"
-                decoding="async"
-              />
+              <img src={coverResolved || DEFAULT_ROUTE_COVER_URL} alt="Kapak" loading="lazy" decoding="async" />
             </div>
             <div className="route-detail-cover-meta">
               <div className="route-detail-cover-title">Kapak fotoğrafı</div>
               <div className="route-detail-cover-sub">
-                {coverKindResolved === "picked" ? "Seçildi" : coverKindResolved === "auto" ? "Otomatik" : "Varsayılan"}
+                {coverKindUi === "picked" ? "Seçildi" : coverKindUi === "auto" ? "Otomatik" : "Varsayılan"}
               </div>
 
               {isOwner && (
@@ -1316,7 +1363,7 @@ export default function RouteDetailMobile({
                   <button type="button" className="route-detail-cover-btn" onClick={openCoverPicker}>
                     Kapak seç
                   </button>
-                  {coverKindResolved !== "default" && (
+                  {coverKindResolvedBase !== "default" && (
                     <button type="button" className="route-detail-cover-btn route-detail-cover-btn--danger" onClick={clearCover}>
                       Kaldır
                     </button>
@@ -1660,26 +1707,31 @@ export default function RouteDetailMobile({
 
       {showShareSheet && (
         <div className="route-detail-share-overlay">
-          <ShareSheetMobile route={buildShareRoutePayload(routeDoc || initialRoute, owner, routeId)} stops={stops} onClose={() => setShowShareSheet(false)} />
+          <ShareSheetMobile
+            route={buildShareRoutePayload(
+              {
+                ...(routeDoc || initialRoute || {}),
+                cover: { kind: coverKindUi, url: coverResolved },
+              },
+              owner,
+              routeId
+            )}
+            stops={stops}
+            onClose={() => setShowShareSheet(false)}
+          />
         </div>
       )}
 
       {/* ✅ Cover Picker Overlay */}
       {coverPickerOpen && (
-        <div
-          className="route-detail-cover-picker-overlay"
-          onClick={() => setCoverPickerOpen(false)}
-        >
-          <div
-            className="route-detail-cover-picker-sheet"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="route-detail-cover-picker-overlay" onClick={closeCoverPicker}>
+          <div className="route-detail-cover-picker-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="route-detail-cover-picker-head">
               <div className="route-detail-cover-picker-title">Kapak seç</div>
               <button
                 type="button"
                 className="route-detail-cover-picker-close"
-                onClick={() => setCoverPickerOpen(false)}
+                onClick={closeCoverPicker}
                 aria-label="Kapat"
                 title="Kapat"
               >
@@ -1693,9 +1745,7 @@ export default function RouteDetailMobile({
               </div>
             )}
 
-            {coverPickerState.loading && (
-              <div className="route-detail-cover-picker-loading">Yükleniyor…</div>
-            )}
+            {coverPickerState.loading && <div className="route-detail-cover-picker-loading">Yükleniyor…</div>}
 
             {!coverPickerState.loading && (
               <div className="route-detail-cover-grid">
@@ -1712,9 +1762,7 @@ export default function RouteDetailMobile({
                 ))}
 
                 {(coverPickerState.items || []).length === 0 && (
-                  <div className="route-detail-cover-picker-empty">
-                    Bu rotada kapak için seçilebilir foto yok.
-                  </div>
+                  <div className="route-detail-cover-picker-empty">Bu rotada kapak için seçilebilir foto yok.</div>
                 )}
               </div>
             )}

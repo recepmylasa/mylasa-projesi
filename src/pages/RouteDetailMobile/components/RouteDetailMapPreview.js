@@ -10,7 +10,6 @@ const getLL = (a, b) => {
       return routeDetailUtils.getValidLatLngSafe(a, b);
     }
     if (typeof routeDetailUtils.getValidLatLng === "function") {
-      // fallback
       if (a && typeof a === "object") return routeDetailUtils.getValidLatLng(a.lat, a.lng);
       return routeDetailUtils.getValidLatLng(a, b);
     }
@@ -128,7 +127,7 @@ function collectAllPts(path, stops) {
 export default function RouteDetailMapPreview({
   routeId,
   gmapsStatus,
-  mapDivRef,
+  mapDivRef, // (shell veriyor olabilir; burada şart değil)
   mapRef,
   path,
   stops,
@@ -175,7 +174,6 @@ export default function RouteDetailMapPreview({
     polylineRef.current = null;
   };
 
-  // route değişince tam temizlik
   useEffect(() => {
     lastStopsSigRef.current = null;
     lastPathSigRef.current = null;
@@ -185,15 +183,12 @@ export default function RouteDetailMapPreview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
 
-  // unmount cleanup
   useEffect(() => {
-    return () => {
-      clearArtifacts();
-    };
+    return () => clearArtifacts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Polyline: sadece pathSig değişince setPath
+  // ✅ Polyline çiz
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
     if (!mapRef?.current) return;
@@ -209,67 +204,56 @@ export default function RouteDetailMapPreview({
       clearArtifacts();
     }
 
-    // path yoksa polyline temizle (varsa)
-    if (!pathSig) {
+    if (lastPathSigRef.current === pathSig) return;
+    lastPathSigRef.current = pathSig;
+
+    const pts = (Array.isArray(path) ? path : [])
+      .map((p) => getLL(p?.lat, p?.lng))
+      .filter(Boolean)
+      .map((ll) => ({ lat: Number(ll.lat), lng: Number(ll.lng) }))
+      .filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng));
+
+    if (!pts.length) {
       if (polylineRef.current) {
         try {
           polylineRef.current.setPath([]);
         } catch {}
       }
-      lastPathSigRef.current = pathSig;
       return;
     }
 
-    if (pathSig === lastPathSigRef.current && polylineRef.current) return;
+    const gm = window.google.maps;
 
     if (!polylineRef.current) {
-      polylineRef.current = new window.google.maps.Polyline({
-        map,
-        clickable: false,
+      polylineRef.current = new gm.Polyline({
+        path: pts,
         geodesic: true,
-        strokeColor: "#1a73e8",
+        strokeColor: "#111",
         strokeOpacity: 0.95,
         strokeWeight: 4,
+        clickable: false,
       });
-    } else {
       try {
         polylineRef.current.setMap(map);
       } catch {}
+    } else {
+      try {
+        polylineRef.current.setPath(pts);
+      } catch {}
     }
-
-    const pts = [];
-    (Array.isArray(path) ? path : []).forEach((p) => {
-      const ll = getLL(p?.lat, p?.lng);
-      if (!ll) return;
-      pts.push(new window.google.maps.LatLng(ll.lat, ll.lng));
-    });
-
-    try {
-      polylineRef.current.setPath(pts);
-    } catch {}
-
-    lastPathSigRef.current = pathSig;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gmapsStatus, mapRef, pathSig, path]);
 
-  // Markers: sadece stopsSig değişince yeniden yarat
+  // ✅ Stop marker’ları
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
     if (!mapRef?.current) return;
     if (!(window.google && window.google.maps)) return;
 
     const map = mapRef.current;
+    if (!stopsLoaded) return;
 
-    if (lastMapInstanceRef.current !== map) {
-      lastMapInstanceRef.current = map;
-      lastStopsSigRef.current = null;
-      lastPathSigRef.current = null;
-      lastFitSigRef.current = null;
-      clearArtifacts();
-    }
-
-    const hasMarkers = (stopMarkersRef.current || []).length > 0;
-    if (stopsSig === lastStopsSigRef.current && hasMarkers) return;
+    if (lastStopsSigRef.current === stopsSig) return;
+    lastStopsSigRef.current = stopsSig;
 
     try {
       stopMarkersRef.current.forEach((m) => {
@@ -280,71 +264,80 @@ export default function RouteDetailMapPreview({
     } catch {}
     stopMarkersRef.current = [];
 
-    (Array.isArray(stops) ? stops : []).forEach((s) => {
+    const gm = window.google.maps;
+
+    const arr = Array.isArray(stops) ? stops : [];
+    const ordered = arr.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    ordered.forEach((s, idx) => {
       const ll = getLL(s?.lat, s?.lng);
       if (!ll) return;
+      const la = Number(ll.lat);
+      const ln = Number(ll.lng);
+      if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
+
+      const labelText = String(s?.order || idx + 1);
+
       try {
-        const mk = new window.google.maps.Marker({
-          position: { lat: ll.lat, lng: ll.lng },
+        const marker = new gm.Marker({
+          position: { lat: la, lng: ln },
           map,
-          title: s.title || `Durak ${s.order || ""}`,
+          label: {
+            text: labelText,
+            color: "#111",
+            fontSize: "12px",
+            fontWeight: "900",
+          },
+          icon: {
+            path: gm.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: "#fff",
+            fillOpacity: 1,
+            strokeColor: "#111",
+            strokeOpacity: 1,
+            strokeWeight: 2,
+          },
+          clickable: false,
         });
-        stopMarkersRef.current.push(mk);
+        stopMarkersRef.current.push(marker);
       } catch {}
     });
+  }, [gmapsStatus, mapRef, stopsSig, stops, stopsLoaded]);
 
-    lastStopsSigRef.current = stopsSig;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gmapsStatus, mapRef, stopsSig, stops]);
-
-  // Fit: sadece fitSig değişince — false zıplama yok
+  // ✅ Fit bounds
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
     if (!mapRef?.current) return;
     if (!(window.google && window.google.maps)) return;
 
-    // ✅ stops snapshot gelmeden ilk fit atma
-    if (!stopsLoaded) return;
+    if (lastFitSigRef.current === fitSig) return;
+    lastFitSigRef.current = fitSig;
 
     const map = mapRef.current;
+    const gm = window.google.maps;
 
-    if (lastMapInstanceRef.current !== map) {
-      lastMapInstanceRef.current = map;
-      lastStopsSigRef.current = null;
-      lastPathSigRef.current = null;
-      lastFitSigRef.current = null;
-      clearArtifacts();
-    }
+    const pts = collectAllPts(path, stops)
+      .map((x) => ({ lat: Number(x.lat), lng: Number(x.lng) }))
+      .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
 
-    if (!fitSig) return;
-    if (fitSig === lastFitSigRef.current) return;
-
-    const all = collectAllPts(path, stops);
-    if (!all.length) return;
-
-    if (all.length === 1) {
-      try {
-        map.setCenter(all[0]);
-        map.setZoom(15);
-      } catch {}
-      lastFitSigRef.current = fitSig;
-      return;
-    }
-
-    const b = new window.google.maps.LatLngBounds();
-    all.forEach((pt) => b.extend(pt));
+    if (!pts.length) return;
 
     cancelRaf();
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = 0;
       try {
-        map.fitBounds(b, 40);
+        if (pts.length === 1) {
+          map.setCenter(pts[0]);
+          map.setZoom(15);
+          return;
+        }
+
+        const bounds = new gm.LatLngBounds();
+        pts.forEach((p) => bounds.extend(p));
+        map.fitBounds(bounds, { top: 24, bottom: 24, left: 24, right: 24 });
       } catch {}
     });
+  }, [gmapsStatus, mapRef, fitSig, path, stops]);
 
-    lastFitSigRef.current = fitSig;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gmapsStatus, mapRef, fitSig, stopsLoaded, path, stops]);
-
-  return <div ref={mapDivRef} className="route-detail-map-inner" />;
+  return null;
 }

@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.openBlindBox = exports.incrementStars = exports.seedSeriesS1 = exports.backfillContentStubs = exports.recomputeUserReputation = exports.onRatingWrite = exports.processUploadedVideo = exports.exportShareAggCsv = exports.purgeOldShareEvents = exports.aggregateShareMetricsDaily = exports.logShareEvent = exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
+exports.backfillRouteCoversCallable = exports.onRouteWriteEnsureCoverDefault = exports.onRouteStopMediaCreate = exports.onRouteStopCreate = exports.openBlindBox = exports.incrementStars = exports.seedSeriesS1 = exports.backfillContentStubs = exports.recomputeUserReputation = exports.onRatingWrite = exports.processUploadedVideo = exports.exportShareAggCsv = exports.purgeOldShareEvents = exports.aggregateShareMetricsDaily = exports.logShareEvent = exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
 // Node 20 / TS (firebase-functions v4 - v1 API)
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
@@ -47,6 +47,11 @@ const isFinished = (x) => (x?.status || "").toString() === "finished";
 function asPoint(p) {
     if (!p)
         return null;
+    try {
+        if (p instanceof Date)
+            return null;
+    }
+    catch { }
     if (Array.isArray(p) && p.length >= 2) {
         const [lat, lng] = p;
         if (Number.isFinite(lat) && Number.isFinite(lng))
@@ -296,3 +301,9 @@ var labubu_v2_1 = require("./labubu_v2");
 Object.defineProperty(exports, "seedSeriesS1", { enumerable: true, get: function () { return labubu_v2_1.seedSeriesS1; } });
 Object.defineProperty(exports, "incrementStars", { enumerable: true, get: function () { return labubu_v2_1.incrementStars; } });
 Object.defineProperty(exports, "openBlindBox", { enumerable: true, get: function () { return labubu_v2_1.openBlindBox; } });
+/* === YENİ: Route cover standard + triggers + backfill === */
+var route_cover_1 = require("./route_cover");
+Object.defineProperty(exports, "onRouteStopCreate", { enumerable: true, get: function () { return route_cover_1.onRouteStopCreate; } });
+Object.defineProperty(exports, "onRouteStopMediaCreate", { enumerable: true, get: function () { return route_cover_1.onRouteStopMediaCreate; } });
+Object.defineProperty(exports, "onRouteWriteEnsureCoverDefault", { enumerable: true, get: function () { return route_cover_1.onRouteWriteEnsureCoverDefault; } });
+Object.defineProperty(exports, "backfillRouteCoversCallable", { enumerable: true, get: function () { return route_cover_1.backfillRouteCoversCallable; } });

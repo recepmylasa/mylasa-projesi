@@ -360,7 +360,6 @@ export function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
     r.ownerAvatar = ownerDoc.photoURL || ownerDoc.profilFoto || ownerDoc.avatar || r.ownerAvatar;
   }
 
-  // ✅ Kapak tek kaynağa normalize (ShareSheet / diğer legacy okuyucular kırılmasın)
   const coverUrl = resolveRouteCoverUrl(r);
   const coverObj = normalizeRouteCover(r);
   r.cover = { ...(coverObj || {}), url: coverUrl };

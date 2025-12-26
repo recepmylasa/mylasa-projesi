@@ -1,8 +1,19 @@
 // src/routes/routeCardModel.js
 // RouteCardMobile için tek, otoriter view model builder.
 // Explore (useRoutesData) + Profil (useUserRoutes) aynı standardı kullanır.
+//
+// EMİR-1 (cover sistemi v1):
+// - Canonical read: route.cover.url
+// - Legacy read-only: coverUrl/previewUrl/thumbnailUrl...
+// - Video url kapak OLAMAZ (poster/image varsa o olur)
+// - Placeholder kararı UI tarafında verilir (bu helper url:"" dönebilir)
+//
+// EMİR-1.2:
+// - buildRouteCardModel çıktısında route.cover alanı her zaman normalize edilmiş olsun (view-model).
 
 import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage";
+
+const DEFAULT_ROUTE_COVER_URL = "/route-default-cover.jpg";
 
 function getVisibilitySource(raw = {}) {
   return raw.visibility ?? raw.audience ?? raw.routeVisibility ?? raw.privacy ?? "";
@@ -36,7 +47,6 @@ export function getOwnerIdFromRaw(raw, fallbackOwnerId) {
 export function buildRouteStats(raw = {}) {
   let distanceM = raw.totalDistanceM ?? raw.distanceMeters ?? raw.distance_m ?? raw.distance ?? raw.total_distance_m ?? 0;
 
-  // Sadece distanceKm varsa buradan türet
   if ((!distanceM || !Number.isFinite(Number(distanceM))) && typeof raw.distanceKm === "number" && !Number.isNaN(raw.distanceKm)) {
     distanceM = Number(raw.distanceKm) * 1000;
   }
@@ -48,7 +58,6 @@ export function buildRouteStats(raw = {}) {
     raw.duration ??
     0;
 
-  // Dakika cinsinden duration varsa
   if ((!durationMs || !Number.isFinite(Number(durationMs))) && typeof raw.durationMin === "number" && !Number.isNaN(raw.durationMin)) {
     durationMs = Number(raw.durationMin) * 60000;
   }
@@ -132,59 +141,8 @@ function buildDistanceToViewer(raw = {}) {
   return null;
 }
 
-/**
- * Canonical RouteCardMobile modeli.
- */
-export function buildRouteCardModel({ id, raw, ownerIdFallback = null, viewerId = null } = {}) {
-  const safeRaw = raw || {};
-
-  const finalId = id ?? safeRaw.id ?? safeRaw.routeId ?? safeRaw._id ?? null;
-
-  const ownerId = getOwnerIdFromRaw(safeRaw, ownerIdFallback);
-  const stats = buildRouteStats(safeRaw);
-  const areas = buildAreas(safeRaw);
-  const tags = buildTags(safeRaw);
-  const { ratingAvg, ratingCount } = buildRating(safeRaw);
-  const visibilityKey = getVisibilityKey(safeRaw);
-
-  const createdAt = safeRaw.createdAt ?? safeRaw.startedAt ?? safeRaw.startTime ?? safeRaw.finishedAt ?? null;
-  const finishedAt = safeRaw.finishedAt ?? safeRaw.endTime ?? null;
-
-  const deletedAt = safeRaw.deletedAt || (safeRaw.deleted === true || safeRaw.isDeleted ? safeRaw.deletedAt || null : null);
-
-  const distanceToViewerM = buildDistanceToViewer(safeRaw);
-
-  const title = safeRaw.title || safeRaw.name || safeRaw.routeName || "";
-
-  const model = {
-    id: finalId,
-    ownerId,
-    title,
-    visibility: getVisibilitySource(safeRaw) || visibilityKey || "public",
-    createdAt,
-    finishedAt,
-    deletedAt,
-    totalDistanceM: stats.distanceM,
-    durationMs: stats.durationMs,
-    distanceKm: stats.distanceKm,
-    ratingAvg,
-    ratingCount,
-    areas,
-    tags,
-    __distanceM: distanceToViewerM,
-    stats,
-    raw: safeRaw,
-    viewerId,
-  };
-
-  return {
-    ...safeRaw,
-    ...model,
-  };
-}
-
 // ------------------------
-// Cover selection + resolver (Profil Grid)
+// Cover resolver helpers (shared)
 // ------------------------
 
 function isNonEmptyString(v) {
@@ -210,8 +168,12 @@ function looksLikeStoragePath(u) {
   const s = (u || "").toString().trim();
   if (!s) return false;
   if (isHttpUrl(s) || looksLikeGsUrl(s) || isDataImageUrl(s)) return false;
-  // "routes/..", "uploads/..", "cards/.." vb.
   return /^[a-zA-Z0-9_\-./]+$/.test(s) && s.includes("/");
+}
+
+function isVideoUrl(url) {
+  const u = (url || "").toString().toLowerCase();
+  return u.includes(".mp4") || u.includes(".webm") || u.includes(".mov") || u.includes(".m4v") || u.includes("video/");
 }
 
 /**
@@ -223,7 +185,6 @@ export function isRenderableMediaSrc(u) {
   if (!s) return false;
   if (isDataImageUrl(s)) return true;
   if (!isHttpUrl(s)) return false;
-  // kullanıcı "https direct" istedi — burada https zorunlu tutalım
   return s.toLowerCase().startsWith("https://");
 }
 
@@ -263,10 +224,8 @@ export function resolveMediaToHttps(urlOrPath) {
   const raw = (urlOrPath || "").toString().trim();
   if (!raw) return Promise.resolve(null);
 
-  // Direct acceptable
   if (isRenderableMediaSrc(raw) || isDataImageUrl(raw)) return Promise.resolve(raw);
 
-  // gs:// or storage path -> try getDownloadURL
   const canResolve = looksLikeGsUrl(raw) || looksLikeStoragePath(raw);
   if (!canResolve) return Promise.resolve(null);
 
@@ -294,269 +253,25 @@ export function resolveMediaToHttps(urlOrPath) {
   return p;
 }
 
-function isVideoUrl(url) {
-  const u = (url || "").toString().toLowerCase();
-  return u.includes(".mp4") || u.includes(".webm") || u.includes(".mov") || u.includes(".m4v") || u.includes("video/");
-}
-
-function normalizeMediaItem(item) {
-  if (!item) return null;
-
-  if (typeof item === "string") {
-    const url = item.trim();
-    if (!url) return null;
-    const type = isVideoUrl(url) ? "video" : "image";
-    return { type, url, thumb: null, rawUrl: url };
-  }
-
-  const url =
-    item.url ||
-    item.src ||
-    item.mediaUrl ||
-    item.downloadURL ||
-    item.downloadUrl ||
-    item.imageUrl ||
-    item.photoUrl ||
-    item.videoUrl ||
-    item.fileUrl ||
-    item.path ||
-    item.uri;
-
-  const thumb = item.thumbnail || item.thumb || item.poster || item.preview || item.previewUrl || item.thumbnailUrl || item.posterUrl;
-
-  const typeRaw = (item.type || item.mediaType || item.kind || item.mime || "").toString().toLowerCase();
-
-  const urlStr = typeof url === "string" ? url.trim() : "";
-  const thumbStr = typeof thumb === "string" ? thumb.trim() : "";
-
-  if (!urlStr && !thumbStr) return null;
-
-  const isVid = typeRaw.includes("video") || typeRaw.includes("mp4") || typeRaw.includes("webm") || (urlStr ? isVideoUrl(urlStr) : false);
-
-  return {
-    type: isVid ? "video" : "image",
-    url: urlStr || thumbStr,
-    thumb: thumbStr || null,
-    rawUrl: urlStr || null,
-  };
-}
-
-function collectMediaFromValue(value, out) {
-  if (!value) return;
-
-  if (Array.isArray(value)) {
-    for (const it of value) {
-      const m = normalizeMediaItem(it);
-      if (m) out.push(m);
-    }
-    return;
-  }
-
-  if (typeof value === "string") {
-    const m = normalizeMediaItem(value);
-    if (m) out.push(m);
-    return;
-  }
-
-  if (typeof value === "object") {
-    const packs = [
-      value.images,
-      value.imageUrls,
-      value.photos,
-      value.photoUrls,
-      value.videos,
-      value.videoUrls,
-      value.mediaUrls,
-      value.urls,
-      value.items,
-      value.mediaItems,
-      value.gallery,
-    ].filter(Boolean);
-
-    if (packs.length) {
-      for (const p of packs) collectMediaFromValue(p, out);
-      return;
-    }
-
-    const singles = [
-      value.imageUrl,
-      value.photoUrl,
-      value.videoUrl,
-      value.url,
-      value.src,
-      value.thumbnailUrl,
-      value.thumbnail,
-      value.poster,
-      value.posterUrl,
-      value.previewUrl,
-      value.mediaUrl,
-      value.coverUrl,
-    ].filter(Boolean);
-
-    for (const s of singles) collectMediaFromValue(s, out);
-  }
-}
-
-function extractMedia(route) {
-  const out = [];
-  if (!route) return out;
-
-  const r = route;
-  const raw = route.raw || route.data || route.doc || null;
-  const data = route.data || route.raw?.data || route.doc?.data || null;
-
-  collectMediaFromValue(r.media, out);
-  collectMediaFromValue(r.mediaItems, out);
-  collectMediaFromValue(r.gallery, out);
-  collectMediaFromValue(r.mediaPreview, out);
-  collectMediaFromValue(r.images, out);
-  collectMediaFromValue(r.imageUrls, out);
-  collectMediaFromValue(r.photos, out);
-  collectMediaFromValue(r.photoUrls, out);
-  collectMediaFromValue(r.videos, out);
-  collectMediaFromValue(r.videoUrls, out);
-  collectMediaFromValue(r.mediaUrls, out);
-
-  collectMediaFromValue(raw?.media, out);
-  collectMediaFromValue(raw?.mediaItems, out);
-  collectMediaFromValue(raw?.gallery, out);
-  collectMediaFromValue(raw?.mediaPreview, out);
-  collectMediaFromValue(raw?.images, out);
-  collectMediaFromValue(raw?.imageUrls, out);
-  collectMediaFromValue(raw?.photos, out);
-  collectMediaFromValue(raw?.photoUrls, out);
-  collectMediaFromValue(raw?.videos, out);
-  collectMediaFromValue(raw?.videoUrls, out);
-  collectMediaFromValue(raw?.mediaUrls, out);
-
-  collectMediaFromValue(data?.media, out);
-  collectMediaFromValue(data?.mediaItems, out);
-  collectMediaFromValue(data?.gallery, out);
-  collectMediaFromValue(data?.mediaPreview, out);
-  collectMediaFromValue(data?.images, out);
-  collectMediaFromValue(data?.imageUrls, out);
-  collectMediaFromValue(data?.photos, out);
-  collectMediaFromValue(data?.photoUrls, out);
-  collectMediaFromValue(data?.videos, out);
-  collectMediaFromValue(data?.videoUrls, out);
-  collectMediaFromValue(data?.mediaUrls, out);
-
-  const lateCandidates = [
-    r.coverUrl,
-    r.coverPhotoUrl,
-    r.coverImageUrl,
-    r.previewUrl,
-    r.thumbnailUrl,
-    r.thumbUrl,
-    r.imageUrl,
-    r.photoUrl,
-    r.mediaUrl,
-    raw?.coverUrl,
-    raw?.coverPhotoUrl,
-    raw?.coverImageUrl,
-    raw?.previewUrl,
-    raw?.thumbnailUrl,
-    raw?.mediaUrl,
-    data?.coverUrl,
-    data?.previewUrl,
-    data?.thumbnailUrl,
-    data?.mediaUrl,
-  ].filter(Boolean);
-
-  for (const it of lateCandidates) collectMediaFromValue(it, out);
-
-  const stops = Array.isArray(route?.stopsPreview) ? route.stopsPreview : Array.isArray(route?.stops) ? route.stops : [];
-  for (const st of stops) {
-    if (!st) continue;
-    collectMediaFromValue(st.media, out);
-    collectMediaFromValue(st.mediaUrl, out);
-    collectMediaFromValue(st.imageUrl, out);
-    collectMediaFromValue(st.photoUrl, out);
-    collectMediaFromValue(st.thumbUrl, out);
-    collectMediaFromValue(st.thumbnailUrl, out);
-  }
-
-  return out;
-}
-
-function toFiniteNumber(x) {
-  const n = typeof x === "number" ? x : Number(x);
-  return Number.isFinite(n) ? n : null;
-}
-
-function getLatLngFromStopLoose(stop) {
-  if (!stop) return null;
-
-  const s = stop;
-  const raw = s.raw || s.data || null;
-
-  // direct fields (expanded)
-  const lat = toFiniteNumber(s.lat ?? s.latitude ?? raw?.lat ?? raw?.latitude);
-  const lng = toFiniteNumber(s.lng ?? s.lon ?? s.longitude ?? raw?.lng ?? raw?.lon ?? raw?.longitude);
-
-  if (lat != null && lng != null) return { lat, lng };
-
-  const loc =
-    s.location ||
-    s.position ||
-    s.coordinates ||
-    s.latLng ||
-    s.geo ||
-    s.geopoint ||
-    s.point ||
-    s.coords ||
-    raw?.location ||
-    raw?.position ||
-    raw?.coordinates ||
-    raw?.latLng ||
-    raw?.geo ||
-    raw?.geopoint ||
-    raw?.point ||
-    raw?.coords ||
-    null;
-
-  if (loc) {
-    const lat2 = toFiniteNumber(loc.lat ?? loc.latitude);
-    const lng2 = toFiniteNumber(loc.lng ?? loc.lon ?? loc.longitude);
-    if (lat2 != null && lng2 != null) return { lat: lat2, lng: lng2 };
-  }
-
-  return null;
-}
-
-function buildStaticMapUrl({ start, end }) {
-  const key = (process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "").trim();
-  if (!key || !start || !end) return "";
-
-  const size = "640x640";
-  const scale = "2";
-  const maptype = "roadmap";
-
-  const m1 = `color:0x111111|label:S|${start.lat},${start.lng}`;
-  const m2 = `color:0x111111|label:E|${end.lat},${end.lng}`;
-
-  const params = [
-    `size=${encodeURIComponent(size)}`,
-    `scale=${encodeURIComponent(scale)}`,
-    `maptype=${encodeURIComponent(maptype)}`,
-    `markers=${encodeURIComponent(m1)}`,
-    `markers=${encodeURIComponent(m2)}`,
-    `key=${encodeURIComponent(key)}`,
-  ];
-
-  return `https://maps.googleapis.com/maps/api/staticmap?${params.join("&")}`;
-}
-
 /**
  * pickCoverCandidate(route) -> { kind, url, sourceField, hasVideo }
+ * EMİR-1 uyumlu: cover.url → legacy → stopMedia(image/poster) → placeholder(empty)
  * Not: url storage path/gs:// olabilir. UI, resolveMediaToHttps ile https'e çevirmeli.
  */
 export function pickCoverCandidate(route) {
   const r = route || {};
   const raw = r.raw || r.data || r.doc || null;
 
-  // (A) user cover fields (highest)
-  const coverFields = [
+  // (A) canonical cover.url
+  const coverUrl = isNonEmptyString(r?.cover?.url) ? String(r.cover.url).trim() : "";
+  if (coverUrl && !isVideoUrl(coverUrl)) {
+    const sf = isNonEmptyString(r?.cover?.sourceField) ? String(r.cover.sourceField) : "cover.url";
+    const hv = !!r?.cover?.fromVideoPoster || !!r?.cover?.hasVideoPoster;
+    return { kind: "image", url: coverUrl, sourceField: sf, hasVideo: hv };
+  }
+
+  // (B) legacy read-only
+  const legacyFields = [
     ["coverUrl", r.coverUrl],
     ["coverPhotoUrl", r.coverPhotoUrl],
     ["coverImageUrl", r.coverImageUrl],
@@ -571,32 +286,130 @@ export function pickCoverCandidate(route) {
     ["raw.mediaUrl", raw?.mediaUrl],
   ];
 
-  for (const [k, v] of coverFields) {
-    if (isNonEmptyString(v)) return { kind: "image", url: String(v).trim(), sourceField: k, hasVideo: false };
-  }
-
-  // (B) first stop / route media
-  const media = extractMedia(r);
-  const hasVideo = media.some((m) => m.type === "video");
-
-  const firstImage = media.find((m) => m.type === "image" && isNonEmptyString(m.url));
-  if (firstImage) return { kind: "image", url: String(firstImage.url).trim(), sourceField: "media:firstImage", hasVideo };
-
-  const firstVideo = media.find((m) => m.type === "video" && (isNonEmptyString(m.thumb) || isNonEmptyString(m.rawUrl) || isNonEmptyString(m.url)));
-  if (firstVideo) {
-    if (isNonEmptyString(firstVideo.thumb)) {
-      return { kind: "image", url: String(firstVideo.thumb).trim(), sourceField: "media:firstVideoThumb", hasVideo: true };
+  for (const [k, v] of legacyFields) {
+    if (isNonEmptyString(v)) {
+      const u = String(v).trim();
+      if (!u || isVideoUrl(u)) continue;
+      return { kind: "image", url: u, sourceField: k, hasVideo: false };
     }
-    return { kind: "video", url: String(firstVideo.rawUrl || firstVideo.url).trim(), sourceField: "media:firstVideo", hasVideo: true };
   }
 
-  // (C) static map fallback (if we have coords)
+  // (C) stop media (image) / video poster
   const stops = Array.isArray(r?.stopsPreview) ? r.stopsPreview : Array.isArray(r?.stops) ? r.stops : [];
-  const start = stops.map(getLatLngFromStopLoose).find(Boolean) || null;
-  const end = [...stops].reverse().map(getLatLngFromStopLoose).find(Boolean) || null;
+  for (const st of stops) {
+    if (!st) continue;
 
-  const staticUrl = buildStaticMapUrl({ start, end });
-  if (staticUrl) return { kind: "image", url: staticUrl, sourceField: "staticMap", hasVideo: false };
+    const poster = isNonEmptyString(st.posterUrl) ? String(st.posterUrl).trim() : isNonEmptyString(st.poster) ? String(st.poster).trim() : "";
+    const mu = isNonEmptyString(st.mediaUrl) ? String(st.mediaUrl).trim() : isNonEmptyString(st.imageUrl) ? String(st.imageUrl).trim() : "";
 
+    const videoHint = isVideoUrl(st.videoUrl) || isVideoUrl(st.mediaUrl) || ((st.type || st.mediaType || st.kind || st.mime || "").toString().toLowerCase().includes("video"));
+
+    if (poster && !isVideoUrl(poster) && videoHint) return { kind: "image", url: poster, sourceField: "stopMedia.poster", hasVideo: true };
+    if (mu && !isVideoUrl(mu)) return { kind: "image", url: mu, sourceField: "stopMedia.image", hasVideo: false };
+  }
+
+  // (D) placeholder (UI decides global asset)
   return { kind: "placeholder", url: "", sourceField: "placeholder", hasVideo: false };
+}
+
+// -------- EMİR-1.2 canonical cover builder (view-model) --------
+function normalizeCandidate(u) {
+  if (!isNonEmptyString(u)) return "";
+  const s = String(u).trim();
+  if (!s) return "";
+  if (isVideoUrl(s)) return "";
+  return s;
+}
+
+function ensureCanonicalCover(rawObj) {
+  const r = rawObj || {};
+
+  const rawCover = r?.cover && typeof r.cover === "object" ? r.cover : null;
+  const manual = normalizeCandidate(rawCover?.url);
+  if (manual) {
+    return {
+      ...(rawCover || {}),
+      url: manual,
+      kind: "image",
+      source: rawCover?.source === "auto" ? "auto" : "manual",
+      sourceField: rawCover?.sourceField || "cover.url",
+      fromVideoPoster: false,
+    };
+  }
+
+  const legacy = pickCoverCandidate({ ...r, cover: null });
+  if (legacy?.kind === "image" && normalizeCandidate(legacy.url)) {
+    return {
+      url: String(legacy.url).trim(),
+      kind: "image",
+      source: "auto",
+      sourceField: legacy.sourceField || "legacy",
+      fromVideoPoster: !!legacy.hasVideo,
+    };
+  }
+
+  // stop media was already attempted inside pickCoverCandidate; if still none, default
+  return {
+    url: DEFAULT_ROUTE_COVER_URL,
+    kind: "image",
+    source: "auto",
+    sourceField: "default",
+    fromVideoPoster: false,
+  };
+}
+
+/**
+ * Canonical RouteCardMobile modeli.
+ */
+export function buildRouteCardModel({ id, raw, ownerIdFallback = null, viewerId = null } = {}) {
+  const safeRaw = raw || {};
+
+  const finalId = id ?? safeRaw.id ?? safeRaw.routeId ?? safeRaw._id ?? null;
+
+  const ownerId = getOwnerIdFromRaw(safeRaw, ownerIdFallback);
+  const stats = buildRouteStats(safeRaw);
+  const areas = buildAreas(safeRaw);
+  const tags = buildTags(safeRaw);
+  const { ratingAvg, ratingCount } = buildRating(safeRaw);
+  const visibilityKey = getVisibilityKey(safeRaw);
+
+  const createdAt = safeRaw.createdAt ?? safeRaw.startedAt ?? safeRaw.startTime ?? safeRaw.finishedAt ?? null;
+  const finishedAt = safeRaw.finishedAt ?? safeRaw.endTime ?? null;
+
+  const deletedAt = safeRaw.deletedAt || (safeRaw.deleted === true || safeRaw.isDeleted ? safeRaw.deletedAt || null : null);
+
+  const distanceToViewerM = buildDistanceToViewer(safeRaw);
+
+  const title = safeRaw.title || safeRaw.name || safeRaw.routeName || "";
+
+  const canonicalCover = ensureCanonicalCover(safeRaw);
+
+  const model = {
+    id: finalId,
+    ownerId,
+    title,
+    visibility: getVisibilitySource(safeRaw) || visibilityKey || "public",
+    createdAt,
+    finishedAt,
+    deletedAt,
+    totalDistanceM: stats.distanceM,
+    durationMs: stats.durationMs,
+    distanceKm: stats.distanceKm,
+    ratingAvg,
+    ratingCount,
+    areas,
+    tags,
+    __distanceM: distanceToViewerM,
+    stats,
+    raw: safeRaw,
+    viewerId,
+
+    // ✅ EMİR-1.2: tek kaynak
+    cover: canonicalCover,
+  };
+
+  return {
+    ...safeRaw,
+    ...model,
+  };
 }
