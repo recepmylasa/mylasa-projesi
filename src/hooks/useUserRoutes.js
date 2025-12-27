@@ -7,18 +7,25 @@
 // - stopsPreview içinden "coverUrl" türetip modele yazma YOK (sadece gösterimde kullanılacak).
 // - Yani coverUrl/thumbnailUrl yalnızca doc/model legacy alanlardan gelirse doldurulur.
 // - Fallback (ilk durak görseli) UI tarafında pickCoverCandidate ile yapılır.
-//
-// EMİR-1.2 (tek kaynak / UI):
-// - Model her rotada route.cover.url üretsin (manual varsa onu, yoksa legacy/stopMedia/default).
-// - DB'ye yazım YOK (sadece view-model).
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, query, orderBy, limit, startAfter, getDocs, where } from "firebase/firestore";
+import {
+  collection,
+  query,
+  orderBy,
+  limit,
+  startAfter,
+  getDocs,
+  where,
+} from "firebase/firestore";
 import { db } from "../firebase";
-import { buildRouteCardModel, getOwnerIdFromRaw, getVisibilityKey } from "../routes/routeCardModel";
+import {
+  buildRouteCardModel,
+  getOwnerIdFromRaw,
+  getVisibilityKey,
+} from "../routes/routeCardModel";
 
 const DEFAULT_PAGE_SIZE = 20;
-const DEFAULT_ROUTE_COVER_URL = "/route-default-cover.jpg";
 
 // ---------- helpers (preview binding + hydrate) ----------
 function isNonEmptyString(v) {
@@ -46,7 +53,13 @@ function normalizeCoverUrl(v) {
 
 function isVideoUrl(url) {
   const u = (url || "").toString().toLowerCase();
-  return u.includes(".mp4") || u.includes(".webm") || u.includes(".mov") || u.includes(".m4v") || u.includes("video/");
+  return (
+    u.includes(".mp4") ||
+    u.includes(".webm") ||
+    u.includes(".mov") ||
+    u.includes(".m4v") ||
+    u.includes("video/")
+  );
 }
 
 function getByPath(obj, path) {
@@ -76,7 +89,18 @@ function pickFirst(obj, paths) {
 function normalizeStopTitle(s) {
   if (!s) return "";
   if (typeof s === "string") return s;
-  const candidates = ["title", "name", "label", "place.mainText", "place.name", "place.title", "place.formattedAddress", "place.formatted", "poi.name", "poi.title"];
+  const candidates = [
+    "title",
+    "name",
+    "label",
+    "place.mainText",
+    "place.name",
+    "place.title",
+    "place.formattedAddress",
+    "place.formatted",
+    "poi.name",
+    "poi.title",
+  ];
   const v = pickFirst(s, candidates);
   return typeof v === "string" ? v : "";
 }
@@ -86,10 +110,33 @@ function extractStopLatLng(s) {
   if (!s || typeof s !== "object") return { lat: null, lng: null };
 
   const lat =
-    pickFirst(s, ["lat", "latitude", "location.lat", "location.latitude", "position.lat", "position.latitude", "coords.lat", "coords.latitude", "coordinates.lat", "coordinates.latitude"]) ?? null;
+    pickFirst(s, [
+      "lat",
+      "latitude",
+      "location.lat",
+      "location.latitude",
+      "position.lat",
+      "position.latitude",
+      "coords.lat",
+      "coords.latitude",
+      "coordinates.lat",
+      "coordinates.latitude",
+    ]) ?? null;
 
   const lng =
-    pickFirst(s, ["lng", "lon", "longitude", "location.lng", "location.longitude", "position.lng", "position.longitude", "coords.lng", "coords.longitude", "coordinates.lng", "coordinates.longitude"]) ?? null;
+    pickFirst(s, [
+      "lng",
+      "lon",
+      "longitude",
+      "location.lng",
+      "location.longitude",
+      "position.lng",
+      "position.longitude",
+      "coords.lng",
+      "coords.longitude",
+      "coordinates.lng",
+      "coordinates.longitude",
+    ]) ?? null;
 
   const nlat = typeof lat === "number" ? lat : Number(lat);
   const nlng = typeof lng === "number" ? lng : Number(lng);
@@ -100,25 +147,34 @@ function extractStopLatLng(s) {
   };
 }
 
-// ✅ patch: stop içindeki medya url alanlarını genişlet (downloadUrl vb.)
+function isGoodImageCandidate(u) {
+  if (!isNonEmptyString(u)) return false;
+  const s = String(u).trim();
+  if (!s) return false;
+  if (isKnownAppLogoUrl(s)) return false;
+  if (isVideoUrl(s)) return false;
+  return true;
+}
+
+// ✅ FIX: stop içindeki medya url alanlarını “image/poster önce” + “video ise poster’a düş” şeklinde seç
 function extractStopMediaUrl(s) {
   if (!s) return "";
 
-  const direct = pickFirst(s, [
-    "mediaUrl",
-    "mediaURL",
+  // 1) Önce image/poster/thumbnail gibi alanlar
+  const imageFirstKeys = [
     "imageUrl",
     "imageURL",
     "photoUrl",
     "photoURL",
-    "thumbUrl",
     "thumbnailUrl",
-    "coverUrl",
-    "coverURL",
+    "thumbUrl",
+    "thumbURL",
     "previewUrl",
     "previewURL",
     "posterUrl",
     "poster",
+    "coverUrl",
+    "coverURL",
     "downloadUrl",
     "downloadURL",
     "signedUrl",
@@ -132,43 +188,137 @@ function extractStopMediaUrl(s) {
     "gsURL",
     "url",
     "src",
-  ]);
-  if (isNonEmptyString(direct)) return String(direct).trim();
+  ];
 
+  for (const k of imageFirstKeys) {
+    const v = k.includes(".") ? getByPath(s, k) : s?.[k];
+    if (!isNonEmptyString(v)) continue;
+    const u = String(v).trim();
+    if (isGoodImageCandidate(u)) return u;
+  }
+
+  // 2) Sonra “genel medya” alanları (ama video ise kabul etme)
+  const mediaKeys = ["mediaUrl", "mediaURL"];
+  for (const k of mediaKeys) {
+    const v = k.includes(".") ? getByPath(s, k) : s?.[k];
+    if (!isNonEmptyString(v)) continue;
+    const u = String(v).trim();
+    if (isGoodImageCandidate(u)) return u;
+
+    // video çıktıysa poster araması (bazı verilerde mediaUrl video, poster ayrı)
+    if (isVideoUrl(u)) {
+      const posterTry = pickFirst(s, [
+        "posterUrl",
+        "poster",
+        "thumbnailUrl",
+        "thumbUrl",
+        "previewUrl",
+        "imageUrl",
+        "photoUrl",
+        "downloadUrl",
+        "downloadURL",
+      ]);
+      if (isNonEmptyString(posterTry) && isGoodImageCandidate(posterTry)) {
+        return String(posterTry).trim();
+      }
+    }
+  }
+
+  // 3) Array/packs
   const arr =
-    pickFirst(s, ["media", "medias", "gallery", "items", "photos", "images", "imageUrls", "photoUrls", "mediaItems", "attachments", "files"]) || null;
+    pickFirst(s, [
+      "media",
+      "medias",
+      "gallery",
+      "items",
+      "photos",
+      "images",
+      "imageUrls",
+      "photoUrls",
+      "mediaItems",
+      "attachments",
+      "files",
+    ]) || null;
 
   if (Array.isArray(arr) && arr.length) {
     for (const it of arr) {
       if (!it) continue;
-      if (typeof it === "string" && it.trim()) return it.trim();
 
-      const u = pickFirst(it, [
-        "url",
-        "src",
-        "mediaUrl",
-        "imageUrl",
-        "photoUrl",
-        "thumbUrl",
-        "thumbnailUrl",
-        "previewUrl",
-        "posterUrl",
-        "poster",
-        "downloadUrl",
-        "downloadURL",
-        "signedUrl",
-        "publicUrl",
-        "fileUrl",
-        "uri",
-        "path",
-        "fullPath",
-        "storagePath",
-        "gsUrl",
-      ]);
-      if (isNonEmptyString(u)) return String(u).trim();
+      // string item
+      if (typeof it === "string") {
+        const u = it.trim();
+        if (isGoodImageCandidate(u)) return u;
+        continue;
+      }
 
-      const nested = pickFirst(it, ["file.url", "file.downloadUrl", "file.downloadURL", "file.path", "asset.url", "asset.downloadUrl", "asset.downloadURL"]);
-      if (isNonEmptyString(nested)) return String(nested).trim();
+      if (typeof it === "object") {
+        const typeRaw = (it.type || it.mediaType || it.kind || it.mime || "")
+          .toString()
+          .toLowerCase();
+
+        const url =
+          (isNonEmptyString(it.url) ? it.url : "") ||
+          (isNonEmptyString(it.src) ? it.src : "") ||
+          (isNonEmptyString(it.imageUrl) ? it.imageUrl : "") ||
+          (isNonEmptyString(it.photoUrl) ? it.photoUrl : "") ||
+          (isNonEmptyString(it.mediaUrl) ? it.mediaUrl : "") ||
+          (isNonEmptyString(it.fileUrl) ? it.fileUrl : "") ||
+          (isNonEmptyString(it.videoUrl) ? it.videoUrl : "") ||
+          (isNonEmptyString(it.uri) ? it.uri : "") ||
+          (isNonEmptyString(it.path) ? it.path : "");
+
+        const poster =
+          (isNonEmptyString(it.posterUrl) ? it.posterUrl : "") ||
+          (isNonEmptyString(it.poster) ? it.poster : "") ||
+          (isNonEmptyString(it.thumbnailUrl) ? it.thumbnailUrl : "") ||
+          (isNonEmptyString(it.thumbUrl) ? it.thumbUrl : "") ||
+          (isNonEmptyString(it.previewUrl) ? it.previewUrl : "");
+
+        const urlStr = isNonEmptyString(url) ? String(url).trim() : "";
+        const posterStr = isNonEmptyString(poster) ? String(poster).trim() : "";
+
+        const isVid =
+          typeRaw.includes("video") ||
+          typeRaw.includes("mp4") ||
+          typeRaw.includes("webm") ||
+          (urlStr ? isVideoUrl(urlStr) : false);
+
+        if (isVid) {
+          // ✅ video varsa poster’ı kullan
+          if (isGoodImageCandidate(posterStr)) return posterStr;
+
+          const nestedPoster = pickFirst(it, [
+            "file.url",
+            "file.downloadUrl",
+            "file.downloadURL",
+            "asset.url",
+            "asset.downloadUrl",
+            "asset.downloadURL",
+          ]);
+          if (isNonEmptyString(nestedPoster) && isGoodImageCandidate(nestedPoster)) {
+            return String(nestedPoster).trim();
+          }
+
+          continue;
+        }
+
+        // image (url > poster)
+        if (isGoodImageCandidate(urlStr)) return urlStr;
+        if (isGoodImageCandidate(posterStr)) return posterStr;
+
+        const nested = pickFirst(it, [
+          "file.url",
+          "file.downloadUrl",
+          "file.downloadURL",
+          "file.path",
+          "asset.url",
+          "asset.downloadUrl",
+          "asset.downloadURL",
+        ]);
+        if (isNonEmptyString(nested) && isGoodImageCandidate(nested)) {
+          return String(nested).trim();
+        }
+      }
     }
   }
 
@@ -195,7 +345,10 @@ function normalizeStopsPreviewValue(v) {
       if (typeof s === "object") {
         const title = normalizeStopTitle(s);
         const { lat, lng } = extractStopLatLng(s);
+
+        // ✅ burada artık “image/poster öncelikli, video değil” garantisi var
         const mediaUrl = extractStopMediaUrl(s);
+
         const out = {};
         if (isNonEmptyString(title)) out.title = title;
         if (lat !== null) out.lat = lat;
@@ -264,7 +417,17 @@ function extractPreviewFromRouteDoc(raw) {
   let coverUrl = normalizeCoverUrl(coverUrlVal);
   if (coverUrl && isVideoUrl(coverUrl)) coverUrl = ""; // ✅ video cover yasak
 
-  const thumbVal = pickFirst(raw, ["thumbnailUrl", "thumbUrl", "thumbURL", "preview.thumbnailUrl", "preview.thumbUrl", "previewUrl", "coverUrl", "downloadUrl", "downloadURL"]);
+  const thumbVal = pickFirst(raw, [
+    "thumbnailUrl",
+    "thumbUrl",
+    "thumbURL",
+    "preview.thumbnailUrl",
+    "preview.thumbUrl",
+    "previewUrl",
+    "coverUrl",
+    "downloadUrl",
+    "downloadURL",
+  ]);
   let thumbnailUrl = normalizeCoverUrl(thumbVal);
   if (thumbnailUrl && isVideoUrl(thumbnailUrl)) thumbnailUrl = "";
 
@@ -276,163 +439,6 @@ function extractPreviewFromRouteDoc(raw) {
   return { stopsPreview, coverUrl, thumbnailUrl };
 }
 
-// -------- cover canonicalizer (EMİR-1.2) --------
-function normalizeCandidate(u) {
-  const s = normalizeCoverUrl(u);
-  if (!s) return "";
-  if (isVideoUrl(s)) return "";
-  return s;
-}
-
-function pickStopCoverCandidateFromStops(stops) {
-  const arr = Array.isArray(stops) ? stops : [];
-  for (const st of arr) {
-    if (!st) continue;
-
-    const stopId = isNonEmptyString(st?.id) ? String(st.id) : isNonEmptyString(st?.stopId) ? String(st.stopId) : "";
-
-    // video hint
-    const videoHint =
-      isVideoUrl(st?.videoUrl) ||
-      isVideoUrl(st?.mediaUrl) ||
-      isVideoUrl(st?.url) ||
-      isVideoUrl(st?.src) ||
-      ((st?.type || st?.mediaType || st?.kind || st?.mime || "").toString().toLowerCase().includes("video"));
-
-    // poster candidates (prefer if videoHint)
-    const poster = normalizeCandidate(
-      st?.posterUrl || st?.poster || st?.thumbnailUrl || st?.thumbUrl || st?.previewUrl || st?.previewURL || ""
-    );
-    if (poster && videoHint) {
-      return { url: poster, stopId, fromVideoPoster: true, sourceField: "stopMedia.poster" };
-    }
-
-    // image candidates
-    const img = normalizeCandidate(
-      st?.imageUrl ||
-        st?.photoUrl ||
-        st?.thumbnailUrl ||
-        st?.thumbUrl ||
-        st?.previewUrl ||
-        st?.coverUrl ||
-        st?.mediaUrl ||
-        st?.downloadUrl ||
-        st?.downloadURL ||
-        st?.publicUrl ||
-        st?.signedUrl ||
-        st?.fileUrl ||
-        st?.uri ||
-        st?.path ||
-        st?.fullPath ||
-        st?.storagePath ||
-        st?.gsUrl ||
-        st?.url ||
-        st?.src ||
-        ""
-    );
-    if (img) {
-      return { url: img, stopId, fromVideoPoster: false, sourceField: "stopMedia.image" };
-    }
-
-    // arrays (media/gallery/etc)
-    const packs = [st.media, st.medias, st.gallery, st.items, st.photos, st.images, st.attachments, st.files, st.mediaItems].filter(Boolean);
-    for (const p of packs) {
-      const list = Array.isArray(p) ? p : null;
-      if (!list || !list.length) continue;
-
-      for (const it of list) {
-        if (!it) continue;
-        if (typeof it === "string") {
-          const u = normalizeCandidate(it);
-          if (u) return { url: u, stopId, fromVideoPoster: false, sourceField: "stopMedia.image" };
-          continue;
-        }
-        if (typeof it === "object") {
-          const typeRaw = (it.type || it.mediaType || it.kind || it.mime || "").toString().toLowerCase();
-          const isVid = typeRaw.includes("video") || isVideoUrl(it.url) || isVideoUrl(it.videoUrl);
-
-          const poster2 = normalizeCandidate(it.posterUrl || it.poster || it.thumbnailUrl || it.thumbUrl || it.previewUrl || "");
-          if (isVid && poster2) return { url: poster2, stopId, fromVideoPoster: true, sourceField: "stopMedia.poster" };
-
-          const u2 = normalizeCandidate(it.url || it.src || it.mediaUrl || it.imageUrl || it.photoUrl || it.downloadUrl || it.publicUrl || it.path || it.uri || "");
-          if (!isVid && u2) return { url: u2, stopId, fromVideoPoster: false, sourceField: "stopMedia.image" };
-        }
-      }
-    }
-  }
-  return { url: "", stopId: "", fromVideoPoster: false, sourceField: "" };
-}
-
-function buildCanonicalCoverForUi(routeLike, raw) {
-  const r = routeLike || {};
-  const rawCover = r?.cover && typeof r.cover === "object" ? r.cover : raw?.cover && typeof raw.cover === "object" ? raw.cover : null;
-
-  const manual = normalizeCandidate(rawCover?.url);
-  if (manual) {
-    return {
-      ...(rawCover || {}),
-      url: manual,
-      kind: "image",
-      source: rawCover?.source === "auto" ? "auto" : "manual",
-      sourceField: rawCover?.sourceField || "cover.url",
-      fromVideoPoster: false,
-    };
-  }
-
-  const legacyList = [
-    r.coverUrl,
-    r.coverPhotoUrl,
-    r.coverImageUrl,
-    r.previewUrl,
-    r.previewURL,
-    r.thumbnailUrl,
-    r.thumbUrl,
-    r.imageUrl,
-    r.photoUrl,
-    r.mediaUrl,
-    raw?.coverUrl,
-    raw?.coverPhotoUrl,
-    raw?.coverImageUrl,
-    raw?.previewUrl,
-    raw?.thumbnailUrl,
-    raw?.mediaUrl,
-  ];
-
-  for (const v of legacyList) {
-    const u = normalizeCandidate(v);
-    if (u) {
-      return {
-        url: u,
-        kind: "image",
-        source: "auto",
-        sourceField: "legacy",
-        fromVideoPoster: false,
-      };
-    }
-  }
-
-  const stops = Array.isArray(r?.stopsPreview) ? r.stopsPreview : Array.isArray(raw?.stopsPreview) ? raw.stopsPreview : Array.isArray(r?.stops) ? r.stops : Array.isArray(raw?.stops) ? raw.stops : [];
-  const stopPick = pickStopCoverCandidateFromStops(stops);
-  if (stopPick?.url) {
-    return {
-      url: stopPick.url,
-      kind: "image",
-      source: "auto",
-      sourceField: stopPick.sourceField || "stopMedia",
-      fromVideoPoster: !!stopPick.fromVideoPoster,
-      stopId: stopPick.stopId || "",
-    };
-  }
-
-  return {
-    url: DEFAULT_ROUTE_COVER_URL,
-    kind: "image",
-    source: "auto",
-    sourceField: "default",
-    fromVideoPoster: false,
-  };
-}
-
 function needsHydratePreview(route) {
   if (!route) return false;
   if (route.__previewHydrated) return false;
@@ -441,17 +447,21 @@ function needsHydratePreview(route) {
   const hasStopsPreview = Array.isArray(sp) && sp.length >= 1;
 
   const coverFromCanonical = normalizeCoverUrl(route?.cover?.url);
-  const isPlaceholderCover = coverFromCanonical === DEFAULT_ROUTE_COVER_URL || stripQueryAndHash(coverFromCanonical).endsWith("/route-default-cover.jpg");
-
   const coverLegacyRaw =
-    route.coverUrl || route.previewUrl || route.thumbnailUrl || route.thumbUrl || route.imageUrl || route.photoUrl || route.mediaUrl || "";
+    route.coverUrl ||
+    route.previewUrl ||
+    route.thumbnailUrl ||
+    route.thumbUrl ||
+    route.imageUrl ||
+    route.photoUrl ||
+    route.mediaUrl ||
+    "";
 
   const coverLegacy = normalizeCoverUrl(coverLegacyRaw);
-  const isPlaceholderLegacy = coverLegacy === DEFAULT_ROUTE_COVER_URL || stripQueryAndHash(coverLegacy).endsWith("/route-default-cover.jpg");
 
-  const hasCover = (!!coverFromCanonical && !isPlaceholderCover) || (!!coverLegacy && !isPlaceholderLegacy);
+  const hasCover =
+    isNonEmptyString(coverFromCanonical) || isNonEmptyString(coverLegacy);
 
-  // ✅ cover placeholder ise hydrate’e izin ver (stop'larda gerçek medya olabilir)
   return !hasStopsPreview || !hasCover;
 }
 
@@ -483,7 +493,12 @@ function logFirestoreQueryError(tag, err) {
 }
 
 export default function useUserRoutes(ownerId, options = {}) {
-  const { pageSize = DEFAULT_PAGE_SIZE, isSelf = false, isFollowing = false, viewerId = null } = options;
+  const {
+    pageSize = DEFAULT_PAGE_SIZE,
+    isSelf = false,
+    isFollowing = false,
+    viewerId = null,
+  } = options;
 
   const [routes, setRoutes] = useState([]);
   const [initialLoading, setInitialLoading] = useState(false);
@@ -521,7 +536,11 @@ export default function useUserRoutes(ownerId, options = {}) {
       const colRef = collection(db, "routes");
 
       const mkOptimized = () => {
-        const constraints = [where("ownerId", "==", ownerKey), where("status", "==", "finished"), orderBy("createdAt", "desc")];
+        const constraints = [
+          where("ownerId", "==", ownerKey),
+          where("status", "==", "finished"),
+          orderBy("createdAt", "desc"),
+        ];
         if (localCursor) constraints.push(startAfter(localCursor));
         constraints.push(limit(pageSize + 1));
         return query(colRef, ...constraints);
@@ -607,22 +626,37 @@ export default function useUserRoutes(ownerId, options = {}) {
               ? "legacy"
               : queryModeRef.current;
 
-          const { snap, used } = await runQueryPage({ ownerKey, localCursor, modeToUse: currentMode });
+          const { snap, used } = await runQueryPage({
+            ownerKey,
+            localCursor,
+            modeToUse: currentMode,
+          });
 
           if (!isMountedRef.current || reqId !== requestIdRef.current) return;
 
           const docs = snap.docs || [];
           const pageDocs = docs.slice(0, pageSize);
 
-          if (mode === "reset" && queryModeRef.current === "unknown" && used === "optimized" && docs.length === 0) {
-            const legacyRes = await runQueryPage({ ownerKey, localCursor: null, modeToUse: "legacy" });
+          if (
+            mode === "reset" &&
+            queryModeRef.current === "unknown" &&
+            used === "optimized" &&
+            docs.length === 0
+          ) {
+            const legacyRes = await runQueryPage({
+              ownerKey,
+              localCursor: null,
+              modeToUse: "legacy",
+            });
             const legacyDocs = legacyRes.snap.docs || [];
             if (legacyDocs.length > 0) queryModeRef.current = "legacy";
           } else if (mode === "reset" && queryModeRef.current === "unknown") {
             queryModeRef.current = used;
           }
 
-          const nextCursor = pageDocs.length ? pageDocs[pageDocs.length - 1] : null;
+          const nextCursor = pageDocs.length
+            ? pageDocs[pageDocs.length - 1]
+            : null;
           localHasMore = docs.length > pageSize;
 
           const mapped = pageDocs
@@ -633,7 +667,11 @@ export default function useUserRoutes(ownerId, options = {}) {
               const docOwnerKey = docOwnerId ? String(docOwnerId) : "";
               if (!docOwnerKey || docOwnerKey !== ownerKey) return null;
 
-              const deleted = raw.deleted === true || !!raw.deletedAt || !!raw.isDeleted || !!raw.archivedAt;
+              const deleted =
+                raw.deleted === true ||
+                !!raw.deletedAt ||
+                !!raw.isDeleted ||
+                !!raw.archivedAt;
               if (deleted) return null;
 
               const status = (raw.status || "").toString().toLowerCase();
@@ -654,7 +692,8 @@ export default function useUserRoutes(ownerId, options = {}) {
                 viewerId,
               });
 
-              const { stopsPreview, coverUrl, thumbnailUrl } = extractPreviewFromRouteDoc(raw);
+              const { stopsPreview, coverUrl, thumbnailUrl } =
+                extractPreviewFromRouteDoc(raw);
 
               // ✅ placeholder cover'ları yok say
               const modelCover = normalizeCoverUrl(model?.coverUrl);
@@ -668,16 +707,23 @@ export default function useUserRoutes(ownerId, options = {}) {
               const docThumb = normalizeCoverUrl(thumbnailUrl);
 
               // ✅ EMİR-1: stopsPreview media’dan coverUrl türetme YOK
-              const finalCoverRaw = modelCover || modelPreview || modelImage || modelMedia || docCover || "";
-              const finalCover = finalCoverRaw && !isVideoUrl(finalCoverRaw) ? finalCoverRaw : "";
+              const finalCoverRaw =
+                modelCover || modelPreview || modelImage || modelMedia || docCover || "";
+              const finalCover =
+                finalCoverRaw && !isVideoUrl(finalCoverRaw) ? finalCoverRaw : "";
 
-              const finalThumbRaw = modelThumb || modelThumb2 || docThumb || finalCover || "";
-              const finalThumb = finalThumbRaw && !isVideoUrl(finalThumbRaw) ? finalThumbRaw : "";
+              const finalThumbRaw =
+                modelThumb || modelThumb2 || docThumb || finalCover || "";
+              const finalThumb =
+                finalThumbRaw && !isVideoUrl(finalThumbRaw) ? finalThumbRaw : "";
 
               const patched = {
                 ...model,
 
-                stopsPreview: Array.isArray(model?.stopsPreview) && model.stopsPreview.length ? model.stopsPreview : stopsPreview,
+                stopsPreview:
+                  Array.isArray(model?.stopsPreview) && model.stopsPreview.length
+                    ? model.stopsPreview
+                    : stopsPreview,
 
                 // legacy compat (doc/model varsa doldur)
                 coverUrl: finalCover,
@@ -690,10 +736,6 @@ export default function useUserRoutes(ownerId, options = {}) {
 
                 raw: model?.raw && typeof model.raw === "object" ? model.raw : raw,
               };
-
-              // ✅ EMİR-1.2: canonical cover her zaman dolu olsun (view-model)
-              const cover = buildCanonicalCoverForUi(patched, raw);
-              patched.cover = cover;
 
               return patched;
             })
@@ -715,7 +757,9 @@ export default function useUserRoutes(ownerId, options = {}) {
 
         if (!isMountedRef.current || reqId !== requestIdRef.current) return;
 
-        setRoutes((prev) => (mode === "reset" ? collected : prev.concat(collected)));
+        setRoutes((prev) =>
+          mode === "reset" ? collected : prev.concat(collected)
+        );
         cursorRef.current = localCursor;
         setHasMore(!!(localHasMore && localCursor));
       } catch (err) {
@@ -782,11 +826,12 @@ export default function useUserRoutes(ownerId, options = {}) {
       const makeStop = (sd) => {
         if (!sd) return null;
         const s = { id: sd.id, ...(sd.data() || {}) };
+
         const title = normalizeStopTitle(s);
         const { lat, lng } = extractStopLatLng(s);
 
-        const mediaUrlRaw = extractStopMediaUrl(s);
-        const mediaUrl = isNonEmptyString(mediaUrlRaw) ? String(mediaUrlRaw).trim() : "";
+        // ✅ artık poster/image öncelikli + video değil
+        const mediaUrl = extractStopMediaUrl(s);
 
         const out = { id: s.id };
         if (isNonEmptyString(title)) out.title = title;
@@ -795,6 +840,7 @@ export default function useUserRoutes(ownerId, options = {}) {
         if (isNonEmptyString(mediaUrl)) out.mediaUrl = mediaUrl;
         if (s.order !== undefined) out.order = s.order;
         if (s.idx !== undefined && out.order === undefined) out.order = s.idx;
+
         return Object.keys(out).length > 1 ? out : null;
       };
 
@@ -803,11 +849,13 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       let stopsPreview = [];
       if (firstStop) stopsPreview.push(firstStop);
-      if (lastStop && (!firstStop || String(lastStop.id) !== String(firstStop.id))) stopsPreview.push(lastStop);
+      if (lastStop && (!firstStop || String(lastStop.id) !== String(firstStop.id))) {
+        stopsPreview.push(lastStop);
+      }
 
       const result = {
         stopsPreview,
-        // ✅ EMİR-1: hydrate coverUrl yazma yok; canonical cover re-evaluate edilecek
+        // ✅ EMİR-1: hydrate coverUrl yazma yok; UI stopMedia fallback kullanacak
         coverUrl: "",
         thumbnailUrl: "",
       };
@@ -858,20 +906,23 @@ export default function useUserRoutes(ownerId, options = {}) {
           if (!x || String(x.id) !== rid) return x;
 
           const nextStopsPreview =
-            Array.isArray(x.stopsPreview) && x.stopsPreview.length ? x.stopsPreview : Array.isArray(patch.stopsPreview) ? patch.stopsPreview : [];
+            Array.isArray(x.stopsPreview) && x.stopsPreview.length
+              ? x.stopsPreview
+              : Array.isArray(patch.stopsPreview)
+              ? patch.stopsPreview
+              : [];
 
-          const changed = ((!Array.isArray(x.stopsPreview) || x.stopsPreview.length === 0) && nextStopsPreview.length > 0);
+          const changed =
+            (!Array.isArray(x.stopsPreview) || x.stopsPreview.length === 0) &&
+            nextStopsPreview.length > 0;
 
-          const nextObj = {
+          if (!changed) return { ...x, __previewHydrated: true };
+
+          return {
             ...x,
             stopsPreview: nextStopsPreview,
             __previewHydrated: true,
           };
-
-          // ✅ stopsPreview geldiyse cover tekrar değerlendir (placeholder’dan kurtar)
-          nextObj.cover = buildCanonicalCoverForUi(nextObj, nextObj.raw || null);
-
-          return changed ? nextObj : nextObj;
         });
         return next;
       });

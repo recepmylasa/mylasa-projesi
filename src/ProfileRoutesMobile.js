@@ -1,10 +1,12 @@
 // src/ProfileRoutesMobile.js
 // Profil "Rotalarım" sekmesi – profil sahibine ait rotaları premium grid olarak listeler (read-only).
-// Kapak (EMİR-1 uyumlu):
+// Kapak (EMİR-1 + EMİR-2 uyumlu):
 // A) route.cover.url (tek doğru kaynak)
 // B) legacy: coverUrl/coverPhotoUrl/coverImageUrl/previewUrl/thumbnailUrl...
 // C) fallback: ilk durağın ilk uygun görseli (image) / video varsa poster (image)
-// D) default: /route-default-cover.jpg
+// D) default: /route-default-cover.jpg (PUBLIC_URL base-path uyumlu)
+//
+// EMİR-2: resolve OK olsa bile <img> 403/404/CORS ile patlarsa otomatik default cover'a düş.
 // - <img src> ASLA gs:// / storage path / relative path olmaz; her zaman http(s):// veya data:image:
 // - Kanıt logu: RouteTileProof (DEV only + route bazlı tek sefer)
 
@@ -15,7 +17,7 @@ import useUserRoutes from "./hooks/useUserRoutes";
 import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage";
 
 const __DEV__ = process.env.NODE_ENV !== "production";
-const DEFAULT_ROUTE_COVER_URL = "/route-default-cover.jpg";
+const DEFAULT_ROUTE_COVER_URL = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
 
 // StrictMode / remount spamını kesmek için (DEV only) modül seviyesinde tek sefer log
 const __devProofLoggedRouteIds = new Set();
@@ -118,6 +120,25 @@ function parseFirebaseStorageHttpUrlToGs(urlStr) {
   }
 }
 
+function toSameOriginAbsoluteUrl(v) {
+  const s = (v || "").toString().trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s) || /^data:image\//i.test(s)) return s;
+
+  if (s.startsWith("/")) {
+    try {
+      if (typeof window !== "undefined" && window.location && window.location.origin) {
+        return `${window.location.origin}${s}`;
+      }
+    } catch {
+      // no-op
+    }
+    return s;
+  }
+
+  return s;
+}
+
 // --------- Storage URL resolver (cache + proof logs) ---------
 const __resolvedUrlCache = new Map(); // key -> { ok:boolean, url:string, errorCode?:string }
 const __inflight = new Map(); // key -> Promise
@@ -129,7 +150,7 @@ async function resolveToHttpsUrl(input) {
   // data:image ise direkt kabul
   if (/^data:image\//i.test(raw0)) return raw0;
 
-  // ✅ "/route-default-cover.jpg" gibi public asset → same-origin absolute URL
+  // ✅ "/route-default-cover.jpg" ya da "/app/route-default-cover.jpg" gibi public asset → same-origin absolute URL
   if (raw0.startsWith("/")) {
     try {
       if (typeof window !== "undefined" && window.location && window.location.origin) {
@@ -806,22 +827,16 @@ function printRouteTileProof({ route, rawTitle, smartTitleProof, coverCandidate,
 
   // eslint-disable-next-line no-console
   console.groupCollapsed("RouteTileProof");
-  // 1
   // eslint-disable-next-line no-console
   console.log("1) route.id:", route?.id);
-  // 2
   // eslint-disable-next-line no-console
   console.log("2) route.title/name:", { title: route?.title, name: route?.name, rawTitle });
-  // 3
   // eslint-disable-next-line no-console
   console.log("3) route.stopsPreview:", { has: spLen > 0, length: spLen, first: spFirst });
-  // 4
   // eslint-disable-next-line no-console
   console.log("4) route.raw plain object mi?", { rawPlain, hasRaw: !!raw, rawStopsPreviewLen: rawSpLen });
-  // 5
   // eslint-disable-next-line no-console
   console.log("5) cover alanları (cover + legacy + raw):", covers);
-  // 6
   // eslint-disable-next-line no-console
   console.log("6) pickCoverCandidate(route):", {
     kind: coverCandidate?.kind,
@@ -829,16 +844,12 @@ function printRouteTileProof({ route, rawTitle, smartTitleProof, coverCandidate,
     sourceField: coverCandidate?.sourceField,
     stopId: coverCandidate?.stopId || "",
   });
-  // 7
   // eslint-disable-next-line no-console
   console.log("7) imgSrc (<img src>):", imgSrc || "");
-  // 8
   // eslint-disable-next-line no-console
-  console.log("8) img load sonucu (event):", imgLoadEvent || "pending", "→ imgSrc’yi yeni sekmede aç ve görsel geliyor mu kontrol et.");
-  // 9
+  console.log("8) img olay:", imgLoadEvent || "pending", "→ DevTools > Network’te hem kapak hem default request’i doğrula.");
   // eslint-disable-next-line no-console
   console.log("9) Network tab kanıtı:", "DevTools > Network > Img request → status (200/403/404) burada doğrula.");
-  // 10
   // eslint-disable-next-line no-console
   console.log("10) Başlık start/end kaynağı:", {
     smartTitle: smartTitleProof?.smartTitle,
@@ -855,37 +866,44 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
   const rawInput = coverCandidate?.url || "";
   const resolved = useResolvedMediaUrl(rawInput);
 
-  const [imgOk, setImgOk] = useState(false);
-  const [imgFailed, setImgFailed] = useState(false);
+  const fallbackAbs = useMemo(() => toSameOriginAbsoluteUrl(DEFAULT_ROUTE_COVER_URL), []);
+  const [imgSrc, setImgSrc] = useState("");
 
+  const [imgOk, setImgOk] = useState(false);
+  const [imgFinalFailed, setImgFinalFailed] = useState(false);
+
+  const didFallbackRef = useRef(false);
   const reportedRef = useRef(false);
 
   useEffect(() => {
     setImgOk(false);
-    setImgFailed(false);
+    setImgFinalFailed(false);
+    didFallbackRef.current = false;
     reportedRef.current = false;
+    setImgSrc("");
   }, [rawInput, resolved?.url]);
 
-  // ✅ resolve fail olduğunda proof için event üret (img hiç render edilmese bile)
   useEffect(() => {
-    if (reportedRef.current) return;
-
+    // primary yoksa direkt default
     if (!rawInput) {
-      reportedRef.current = true;
-      onLoadEvent?.("no_input", "");
+      didFallbackRef.current = true;
+      setImgSrc(fallbackAbs);
       return;
     }
 
+    if (resolved?.status === "ok" && resolved?.ok && isHttpHttpsOrDataUrl(resolved.url)) {
+      setImgSrc(resolved.url);
+      return;
+    }
+
+    // resolve fail → default dene (EMİR-2: gradient'te kalma)
     if (resolved?.status === "fail") {
-      reportedRef.current = true;
-      onLoadEvent?.("resolve_fail", "");
-      return;
+      didFallbackRef.current = true;
+      setImgSrc(fallbackAbs);
     }
+  }, [rawInput, resolved?.status, resolved?.ok, resolved?.url, fallbackAbs]);
 
-    // ok ise img load/error zaten raporlayacak
-  }, [rawInput, resolved?.status, onLoadEvent]);
-
-  const shouldRenderImg = resolved?.ok && isHttpHttpsOrDataUrl(resolved.url) && !imgFailed;
+  const shouldRenderImg = isHttpHttpsOrDataUrl(imgSrc) && !imgFinalFailed;
 
   const placeholderStyle = {
     position: "absolute",
@@ -909,7 +927,7 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
 
       {shouldRenderImg ? (
         <img
-          src={resolved.url}
+          src={imgSrc}
           alt=""
           loading="lazy"
           decoding="async"
@@ -926,13 +944,27 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
           onLoad={() => {
             setImgOk(true);
             reportedRef.current = true;
-            onLoadEvent?.("load", resolved.url);
+            onLoadEvent?.(didFallbackRef.current ? "fallback_load" : "load", imgSrc);
           }}
           onError={() => {
-            setImgFailed(true);
+            // 1) primary patladı → default'a düş (tek sefer)
+            if (!didFallbackRef.current) {
+              didFallbackRef.current = true;
+              setImgOk(false);
+              setImgFinalFailed(false);
+              setImgSrc(fallbackAbs);
+              return;
+            }
+
+            // 2) default da patladı → total fail
             setImgOk(false);
-            reportedRef.current = true;
-            onLoadEvent?.("error", resolved.url);
+            setImgFinalFailed(true);
+            if (!reportedRef.current) {
+              reportedRef.current = true;
+              onLoadEvent?.("error_all", imgSrc);
+            } else {
+              onLoadEvent?.("error_all", imgSrc);
+            }
           }}
         />
       ) : null}
@@ -949,7 +981,7 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
   });
 
   const proofRouteIdRef = useRef("");
-  const [proofImgLoadEvent, setProofImgLoadEvent] = useState(""); // load | error | resolve_fail | no_input
+  const [proofImgLoadEvent, setProofImgLoadEvent] = useState(""); // load | fallback_load | error_all
   const [proofImgSrc, setProofImgSrc] = useState("");
 
   const handleClick = useCallback((route) => {
@@ -988,10 +1020,9 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
     // ✅ Dev proof: route bazlı tek sefer
     if (__devProofLoggedRouteIds.has(rid)) return;
 
-    // local ref ilk routeId
     if (!proofRouteIdRef.current) proofRouteIdRef.current = rid;
 
-    // event gelmeden basmayalım; ama resolve_fail/no_input gelince de basılacak
+    // event gelmeden basmayalım
     if (!proofImgLoadEvent && !proofImgSrc) return;
 
     const rawTitle =

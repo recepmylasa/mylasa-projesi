@@ -144,6 +144,97 @@ export default function RouteDetailMobile({
   const [mapsRetryTick, setMapsRetryTick] = useState(0);
   const retryMap = useCallback(() => setMapsRetryTick((x) => x + 1), []);
 
+  // ✅ DEFAULT cover (base-path uyumlu)
+  const DEFAULT_ROUTE_COVER_URL_PUBLIC = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
+
+  // ✅ Dev Proof log (load / fallback_load / error_all)
+  const imgProofCountRef = useRef(0);
+  const logImgProof = useCallback(
+    (evt, meta) => {
+      if (process.env.NODE_ENV === "production") return;
+      try {
+        const c = Number(imgProofCountRef.current || 0);
+        if (c >= 80) return;
+        imgProofCountRef.current = c + 1;
+        // eslint-disable-next-line no-console
+        console.log(`[RouteDetailImgProof] ${evt}`, { routeId, ...meta });
+      } catch {}
+    },
+    [routeId]
+  );
+
+  const isDefaultCoverUrl = useCallback(
+    (u) => {
+      try {
+        const s = String(u || "");
+        if (!s) return false;
+        if (s === DEFAULT_ROUTE_COVER_URL_PUBLIC) return true;
+        if (s === DEFAULT_ROUTE_COVER_URL) return true;
+        // absolute same-origin vb.
+        if (s.endsWith("/route-default-cover.jpg")) return true;
+        return false;
+      } catch {
+        return false;
+      }
+    },
+    [DEFAULT_ROUTE_COVER_URL_PUBLIC]
+  );
+
+  const handleImgLoadProof = useCallback(
+    (e, meta) => {
+      try {
+        const img = e?.currentTarget;
+        const src = img?.currentSrc || img?.src || "";
+        logImgProof("load", { ...meta, src });
+      } catch {
+        logImgProof("load", { ...meta, src: "" });
+      }
+    },
+    [logImgProof]
+  );
+
+  const handleImgErrorToDefault = useCallback(
+    (e, meta) => {
+      const img = e?.currentTarget;
+      if (!img) return;
+
+      const attempted = img?.dataset?.fallbackAttempted === "1";
+      const rawAttr = (() => {
+        try {
+          return img.getAttribute("src") || "";
+        } catch {
+          return "";
+        }
+      })();
+      const cur = String(rawAttr || img?.currentSrc || img?.src || "");
+      const curIsDefault = isDefaultCoverUrl(cur);
+
+      // 1) İlk hata: default değilse -> default'a düş
+      if (!attempted && !curIsDefault) {
+        try {
+          img.dataset.fallbackAttempted = "1";
+        } catch {}
+        logImgProof("fallback_load", {
+          ...meta,
+          from: cur,
+          to: DEFAULT_ROUTE_COVER_URL_PUBLIC,
+        });
+
+        try {
+          img.src = DEFAULT_ROUTE_COVER_URL_PUBLIC;
+        } catch {}
+        return;
+      }
+
+      // 2) Default da patladı (veya zaten default’tu) -> error_all
+      try {
+        img.dataset.fallbackAttempted = "1";
+      } catch {}
+      logImgProof("error_all", { ...meta, src: cur || DEFAULT_ROUTE_COVER_URL_PUBLIC });
+    },
+    [DEFAULT_ROUTE_COVER_URL_PUBLIC, isDefaultCoverUrl, logImgProof]
+  );
+
   const routeModel = routeDoc || initialRoute;
 
   const ownerHint = useMemo(() => {
@@ -1003,11 +1094,11 @@ export default function RouteDetailMobile({
     try {
       await setRouteCover({
         kind: "default",
-        url: DEFAULT_ROUTE_COVER_URL,
+        url: DEFAULT_ROUTE_COVER_URL_PUBLIC,
       });
-      setCoverLocal({ kind: "default", url: DEFAULT_ROUTE_COVER_URL });
+      setCoverLocal({ kind: "default", url: DEFAULT_ROUTE_COVER_URL_PUBLIC });
     } catch {}
-  }, [routeDoc, setRouteCover]);
+  }, [routeDoc, setRouteCover, DEFAULT_ROUTE_COVER_URL_PUBLIC]);
 
   const onPickMedia = useCallback(
     async (stopId) => {
@@ -1284,14 +1375,10 @@ export default function RouteDetailMobile({
     }
   } catch {}
 
-  let coverResolved = coverResolvedBase || DEFAULT_ROUTE_COVER_URL;
+  let coverResolved = coverResolvedBase || DEFAULT_ROUTE_COVER_URL_PUBLIC || DEFAULT_ROUTE_COVER_URL;
   let coverKindUi = coverKindResolvedBase;
 
-  if (
-    coverKindResolvedBase === "default" &&
-    (coverResolvedBase === DEFAULT_ROUTE_COVER_URL || !coverResolvedBase) &&
-    coverFallbackFromStops
-  ) {
+  if (coverKindResolvedBase === "default" && (isDefaultCoverUrl(coverResolvedBase) || !coverResolvedBase) && coverFallbackFromStops) {
     coverResolved = coverFallbackFromStops;
     coverKindUi = "auto";
   }
@@ -1350,7 +1437,14 @@ export default function RouteDetailMobile({
           {/* ✅ Kapak fotoğrafı (herkes görür, owner yönetir) */}
           <div className="route-detail-cover-row">
             <div className="route-detail-cover-thumb">
-              <img src={coverResolved || DEFAULT_ROUTE_COVER_URL} alt="Kapak" loading="lazy" decoding="async" />
+              <img
+                src={coverResolved || DEFAULT_ROUTE_COVER_URL_PUBLIC || DEFAULT_ROUTE_COVER_URL}
+                alt="Kapak"
+                loading="lazy"
+                decoding="async"
+                onLoad={(e) => handleImgLoadProof(e, { scope: "cover_thumb" })}
+                onError={(e) => handleImgErrorToDefault(e, { scope: "cover_thumb" })}
+              />
             </div>
             <div className="route-detail-cover-meta">
               <div className="route-detail-cover-title">Kapak fotoğrafı</div>
@@ -1502,6 +1596,13 @@ export default function RouteDetailMobile({
                                   alt="media"
                                   loading="lazy"
                                   decoding="async"
+                                  onError={(e) =>
+                                    handleImgErrorToDefault(e, {
+                                      scope: "stop_media",
+                                      stopId: s.id,
+                                      mediaId: m?.id || null,
+                                    })
+                                  }
                                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                                 />
                               )}
@@ -1600,6 +1701,13 @@ export default function RouteDetailMobile({
                             alt="media"
                             loading="lazy"
                             decoding="async"
+                            onError={(e) =>
+                              handleImgErrorToDefault(e, {
+                                scope: "gallery_media",
+                                stopId: m.stopId,
+                                mediaId: m?.id || null,
+                              })
+                            }
                             style={{ width: "100%", height: "100%", objectFit: "cover" }}
                           />
                         )}
@@ -1757,7 +1865,26 @@ export default function RouteDetailMobile({
                     onClick={() => pickCover(it)}
                     title="Kapak olarak seç"
                   >
-                    <img src={it.url} alt="" loading="lazy" decoding="async" />
+                    <img
+                      src={it.url}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      onLoad={(e) =>
+                        handleImgLoadProof(e, {
+                          scope: "cover_picker",
+                          stopId: it.stopId,
+                          mediaId: it.mediaId || it.id || null,
+                        })
+                      }
+                      onError={(e) =>
+                        handleImgErrorToDefault(e, {
+                          scope: "cover_picker",
+                          stopId: it.stopId,
+                          mediaId: it.mediaId || it.id || null,
+                        })
+                      }
+                    />
                   </button>
                 ))}
 
