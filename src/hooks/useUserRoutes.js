@@ -25,6 +25,12 @@ import {
   getVisibilityKey,
 } from "../routes/routeCardModel";
 
+// ✅ EMİR-6: optimistic cover event dinle + list patch
+import {
+  onRouteCoverUpdated,
+  applyRouteCoverPatchToList,
+} from "../utils/routeCoverEvents";
+
 const DEFAULT_PAGE_SIZE = 20;
 
 // ---------- helpers (preview binding + hydrate) ----------
@@ -295,7 +301,10 @@ function extractStopMediaUrl(s) {
             "asset.downloadUrl",
             "asset.downloadURL",
           ]);
-          if (isNonEmptyString(nestedPoster) && isGoodImageCandidate(nestedPoster)) {
+          if (
+            isNonEmptyString(nestedPoster) &&
+            isGoodImageCandidate(nestedPoster)
+          ) {
             return String(nestedPoster).trim();
           }
 
@@ -459,8 +468,7 @@ function needsHydratePreview(route) {
 
   const coverLegacy = normalizeCoverUrl(coverLegacyRaw);
 
-  const hasCover =
-    isNonEmptyString(coverFromCanonical) || isNonEmptyString(coverLegacy);
+  const hasCover = isNonEmptyString(coverFromCanonical) || isNonEmptyString(coverLegacy);
 
   return !hasStopsPreview || !hasCover;
 }
@@ -521,6 +529,22 @@ export default function useUserRoutes(ownerId, options = {}) {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+    };
+  }, []);
+
+  // ✅ EMİR-6: event listener (mount/unmount) — UI hızlandırma (snapshot/refresh gerçek doğruluk)
+  useEffect(() => {
+    const unsub = onRouteCoverUpdated((payload) => {
+      if (!payload?.routeId || !payload?.cover) return;
+
+      // Perf: helper değişiklik yoksa aynı array ref döndürür
+      setRoutes((prev) => applyRouteCoverPatchToList(prev, payload));
+    });
+
+    return () => {
+      try {
+        unsub && unsub();
+      } catch {}
     };
   }, []);
 

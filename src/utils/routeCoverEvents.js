@@ -9,7 +9,12 @@ const EVENT_NAME = "route-cover-updated";
 function getRouteIdLoose(route) {
   try {
     if (!route) return null;
-    return (route.id && String(route.id)) || (route.routeId && String(route.routeId)) || (route._id && String(route._id)) || null;
+    return (
+      (route.id && String(route.id)) ||
+      (route.routeId && String(route.routeId)) ||
+      (route._id && String(route._id)) ||
+      null
+    );
   } catch {
     return null;
   }
@@ -17,7 +22,10 @@ function getRouteIdLoose(route) {
 
 function normalizeCoverLoose(cover) {
   const kindRaw = cover?.kind ? String(cover.kind) : "default";
-  const kind = kindRaw === "picked" || kindRaw === "auto" || kindRaw === "default" ? kindRaw : "default";
+  const kind =
+    kindRaw === "picked" || kindRaw === "auto" || kindRaw === "default"
+      ? kindRaw
+      : "default";
 
   const url = cover?.url ? String(cover.url) : "";
   const out = { kind, url };
@@ -110,20 +118,34 @@ export function applyRouteCoverPatchToRoute(route, payload) {
 
 /**
  * Route listesi (array) patch: Sadece ilgili routeId item’ını günceller.
- * Hiç değişiklik yoksa aynı array referansını döndürür.
+ * Hiç değişiklik yoksa aynı array referansını döndürür. (perf + EMİR-6)
  */
 export function applyRouteCoverPatchToList(list, payload) {
   try {
     if (!Array.isArray(list) || !payload?.routeId || !payload?.cover) return list;
 
-    let changed = false;
-    const next = list.map((it) => {
-      const patched = applyRouteCoverPatchToRoute(it, payload);
-      if (patched !== it) changed = true;
-      return patched;
-    });
+    const rid = String(payload.routeId);
 
-    return changed ? next : list;
+    // sadece hedef route’u bul
+    let idx = -1;
+    for (let i = 0; i < list.length; i++) {
+      const it = list[i];
+      const id = getRouteIdLoose(it);
+      if (id && id === rid) {
+        idx = i;
+        break;
+      }
+    }
+
+    if (idx === -1) return list;
+
+    const cur = list[idx];
+    const patched = applyRouteCoverPatchToRoute(cur, payload);
+    if (patched === cur) return list;
+
+    const next = list.slice();
+    next[idx] = patched;
+    return next;
   } catch {
     return list;
   }
