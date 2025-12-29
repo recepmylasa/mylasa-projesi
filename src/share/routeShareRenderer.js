@@ -1,10 +1,14 @@
+// src/utils/routeShareRenderer.js
 // Canvas tabanlı rota paylaşım görseli üretimi (Story/Kare).
 // Harici harita karo/Static Maps YOK. route.path (lat,lng) ve stops kullanılır.
 
-const DPR = typeof window !== "undefined" ? Math.max(1, Math.min(3, window.devicePixelRatio || 1)) : 1;
+const DPR =
+  typeof window !== "undefined"
+    ? Math.max(1, Math.min(3, window.devicePixelRatio || 1))
+    : 1;
 
 const SIZES = {
-  story:  { w: 1080, h: 1920 },
+  story: { w: 1080, h: 1920 },
   square: { w: 1080, h: 1080 },
 };
 
@@ -20,18 +24,69 @@ const COLORS = {
   watermark: "#7a7a7a",
 };
 
+// ✅ PUBLIC_URL uyumlu default cover
+const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+const DEFAULT_COVER_URL = `${PUBLIC_URL}/route-default-cover.jpg`;
+
+/* -------------------- helpers -------------------- */
+
+function stripQueryAndHash(url) {
+  try {
+    const s = String(url || "").trim();
+    if (!s) return "";
+    return s.split(/[?#]/)[0];
+  } catch {
+    return "";
+  }
+}
+
+function getFileNameFromUrl(url) {
+  try {
+    const clean = stripQueryAndHash(url);
+    if (!clean) return "";
+    const parts = clean.split("/");
+    return (parts[parts.length - 1] || "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isMylasaLogoUrl(url) {
+  try {
+    const file = getFileNameFromUrl(url);
+    if (!file) return false;
+    return file === "mylasa-logo.png" || file === "mylasa-logo.svg";
+  } catch {
+    return false;
+  }
+}
+
+// takeHeaderThumb: cand seç → mylasa-logo ise DEFAULT'e zorla
+function takeHeaderThumb(route) {
+  const r = route || {};
+  const cand =
+    (r?.cover?.url && String(r.cover.url)) ||
+    r.coverUrl ||
+    r.coverPhotoUrl ||
+    r.coverImageUrl ||
+    r.thumbnailUrl ||
+    r.previewUrl ||
+    "";
+
+  const s = String(cand || "").trim();
+  if (!s) return DEFAULT_COVER_URL;
+
+  if (isMylasaLogoUrl(s)) return DEFAULT_COVER_URL;
+  return s;
+}
+
 function ensureNumber(n, fallback = 0) {
   const v = Number(n);
   return Number.isFinite(v) ? v : fallback;
 }
 
 function takeTitle(route) {
-  return (
-    route?.title ||
-    route?.name ||
-    route?.routeTitle ||
-    "İsimsiz Rota"
-  );
+  return route?.title || route?.name || route?.routeTitle || "İsimsiz Rota";
 }
 
 function takeOwnerName(route) {
@@ -62,7 +117,7 @@ function takeOwnerAvatar(route) {
 
 function kmFromMeters(m) {
   const km = ensureNumber(m, 0) / 1000;
-  return Math.round(km * 10) / 10; // 1 ondalık
+  return Math.round(km * 10) / 10;
 }
 
 function minsFromMs(ms) {
@@ -72,7 +127,8 @@ function minsFromMs(ms) {
 
 function ratingLine(route) {
   const avg = route?.ratingAvg ?? route?.rating_average ?? route?.rating?.avg;
-  const cnt = route?.ratingCount ?? route?.rating_count ?? route?.rating?.count;
+  const cnt =
+    route?.ratingCount ?? route?.rating_count ?? route?.rating?.count;
   if (!avg || !cnt) return "Henüz oy yok";
   const avgStr = (Math.round(avg * 10) / 10).toFixed(1);
   return `★ ${avgStr} • ${cnt}`;
@@ -80,7 +136,7 @@ function ratingLine(route) {
 
 function areasLine(route) {
   const city = route?.areas?.city;
-  const cc   = route?.areas?.countryCode;
+  const cc = route?.areas?.countryCode;
   if (city && cc) return `${city} • ${cc}`;
   if (city) return city;
   if (cc) return cc;
@@ -88,7 +144,10 @@ function areasLine(route) {
 }
 
 function computeBounds(points) {
-  let minLat =  90, maxLat = -90, minLng =  180, maxLng = -180;
+  let minLat = 90,
+    maxLat = -90,
+    minLng = 180,
+    maxLng = -180;
   let any = false;
   for (const p of points) {
     const lat = ensureNumber(p.lat ?? p.latitude);
@@ -101,7 +160,6 @@ function computeBounds(points) {
     if (lng > maxLng) maxLng = lng;
   }
   if (!any) return null;
-  // BBox en/boy oranını biraz şişir (çok ince çizgilerde kenara yapışmasın)
   const latPad = (maxLat - minLat) * 0.08 || 0.01;
   const lngPad = (maxLng - minLng) * 0.08 || 0.01;
   return {
@@ -118,16 +176,16 @@ function projectFactory(bbox, rect) {
 
   const sx = rect.w / (lngSpan || 1e-6);
   const sy = rect.h / (latSpan || 1e-6);
-  const s  = Math.min(sx, sy); // içe sığdır
+  const s = Math.min(sx, sy);
 
-  const extraX = (rect.w - (lngSpan * s)) / 2;
-  const extraY = (rect.h - (latSpan * s)) / 2;
+  const extraX = (rect.w - lngSpan * s) / 2;
+  const extraY = (rect.h - latSpan * s) / 2;
 
   return (ll) => {
     const lat = ensureNumber(ll.lat ?? ll.latitude);
     const lng = ensureNumber(ll.lng ?? ll.longitude ?? ll.lon);
     const x = rect.x + extraX + (lng - bbox.minLng) * s;
-    const y = rect.y + extraY + (bbox.maxLat - lat) * s; // lat ↑ yukarı
+    const y = rect.y + extraY + (bbox.maxLat - lat) * s;
     return { x, y };
   };
 }
@@ -138,20 +196,28 @@ function simplifyRDP(pts, epsilon) {
   const dmax = (() => {
     let idx = 0;
     let max = 0;
-    const start = pts[0], end = pts[pts.length - 1];
+    const start = pts[0],
+      end = pts[pts.length - 1];
     const denom = Math.hypot(end.x - start.x, end.y - start.y) || 1e-6;
     for (let i = 1; i < pts.length - 1; i++) {
       const p = pts[i];
-      // noktanın doğruya mesafesi
-      const num = Math.abs((end.y - start.y) * p.x - (end.x - start.x) * p.y + end.x * start.y - end.y * start.x);
+      const num = Math.abs(
+        (end.y - start.y) * p.x -
+          (end.x - start.x) * p.y +
+          end.x * start.y -
+          end.y * start.x
+      );
       const d = num / denom;
-      if (d > max) { idx = i; max = d; }
+      if (d > max) {
+        idx = i;
+        max = d;
+      }
     }
     return { idx, max };
   })();
 
   if (dmax.max > epsilon) {
-    const left  = simplifyRDP(pts.slice(0, dmax.idx + 1), epsilon);
+    const left = simplifyRDP(pts.slice(0, dmax.idx + 1), epsilon);
     const right = simplifyRDP(pts.slice(dmax.idx), epsilon);
     return left.slice(0, -1).concat(right);
   } else {
@@ -169,10 +235,25 @@ function drawRoundedImage(ctx, img, cx, cy, r) {
   ctx.restore();
 }
 
+function drawRoundedRectImage(ctx, img, x, y, w, h, r) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(img, x, y, w, h);
+  ctx.restore();
+}
+
 function fitTextEllipsis(ctx, text, maxWidth) {
   if (!text) return "";
   if (ctx.measureText(text).width <= maxWidth) return text;
-  let lo = 0, hi = text.length;
+  let lo = 0,
+    hi = text.length;
   const ell = "…";
   while (lo < hi) {
     const mid = Math.floor((lo + hi) / 2);
@@ -190,9 +271,9 @@ async function loadImageSafe(src) {
     img.crossOrigin = "anonymous";
     img.decoding = "async";
     img.referrerPolicy = "no-referrer";
-    const p = new Promise((res, rej) => {
+    const p = new Promise((res) => {
       img.onload = () => res(img);
-      img.onerror = rej;
+      img.onerror = () => res(null);
     });
     img.src = src;
     return await p;
@@ -201,15 +282,12 @@ async function loadImageSafe(src) {
   }
 }
 
-async function loadLogo() {
-  // public/ altından erişilir
-  try {
-    return await loadImageSafe("/mylasa-logo.png");
-  } catch { return null; }
-}
-
 function currentOrigin() {
-  try { return window?.location?.origin || ""; } catch { return ""; }
+  try {
+    return window?.location?.origin || "";
+  } catch {
+    return "";
+  }
 }
 
 function buildPermalink(routeId) {
@@ -218,13 +296,14 @@ function buildPermalink(routeId) {
   return `${origin}/r/${encodeURIComponent(routeId)}`;
 }
 
-function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
+}
 
 function buildMapRect(W, H) {
-  // Üst bilgi ve alt user bloklarına yer bırak
   const pad = 32;
-  const topBar = 180;     // başlık + meta alanı
-  const bottomBar = 150;  // avatar + watermark
+  const topBar = 200;
+  const bottomBar = 150;
   return {
     x: pad,
     y: topBar,
@@ -235,7 +314,6 @@ function buildMapRect(W, H) {
 
 function drawPolyline(ctx, pts, haloPx, linePx) {
   if (!pts || pts.length < 2) return;
-  // Halo
   ctx.save();
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
@@ -245,7 +323,7 @@ function drawPolyline(ctx, pts, haloPx, linePx) {
   ctx.moveTo(pts[0].x, pts[0].y);
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.stroke();
-  // Ana çizgi
+
   ctx.strokeStyle = COLORS.line;
   ctx.lineWidth = linePx;
   ctx.stroke();
@@ -253,11 +331,10 @@ function drawPolyline(ctx, pts, haloPx, linePx) {
 }
 
 function drawPinsAndStops(ctx, projectedPath, projectedStops, dpr) {
-  // Başlangıç & bitiş
   if (projectedPath && projectedPath.length >= 2) {
     const start = projectedPath[0];
-    const end   = projectedPath[projectedPath.length - 1];
-    // Start (yeşil)
+    const end = projectedPath[projectedPath.length - 1];
+
     ctx.save();
     ctx.beginPath();
     ctx.fillStyle = COLORS.start;
@@ -268,7 +345,6 @@ function drawPinsAndStops(ctx, projectedPath, projectedStops, dpr) {
     ctx.stroke();
     ctx.restore();
 
-    // End (kırmızı)
     ctx.save();
     ctx.beginPath();
     ctx.fillStyle = COLORS.end;
@@ -280,7 +356,6 @@ function drawPinsAndStops(ctx, projectedPath, projectedStops, dpr) {
     ctx.restore();
   }
 
-  // Stops (siyah noktalar)
   if (projectedStops && projectedStops.length) {
     for (const s of projectedStops) {
       ctx.save();
@@ -288,7 +363,6 @@ function drawPinsAndStops(ctx, projectedPath, projectedStops, dpr) {
       ctx.fillStyle = COLORS.stop;
       ctx.arc(s.x, s.y, 4 * dpr, 0, Math.PI * 2);
       ctx.fill();
-      // beyaz ince halka
       ctx.strokeStyle = COLORS.halo;
       ctx.lineWidth = 2 * dpr;
       ctx.stroke();
@@ -300,23 +374,31 @@ function drawPinsAndStops(ctx, projectedPath, projectedStops, dpr) {
 function textStyles(ctx, dpr) {
   ctx.textBaseline = "alphabetic";
   return {
-    setTitle:   () => (ctx.font = `${Math.round(36 * dpr)}px ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial`),
-    setMeta:    () => (ctx.font = `${Math.round(24 * dpr)}px ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial`),
-    setWater:   () => (ctx.font = `${Math.round(18 * dpr)}px ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial`),
-    setAuthor:  () => (ctx.font = `${Math.round(26 * dpr)}px ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial`),
+    setTitle: () =>
+      (ctx.font = `${Math.round(
+        36 * dpr
+      )}px ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial`),
+    setMeta: () =>
+      (ctx.font = `${Math.round(
+        24 * dpr
+      )}px ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial`),
+    setWater: () =>
+      (ctx.font = `${Math.round(
+        18 * dpr
+      )}px ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial`),
+    setAuthor: () =>
+      (ctx.font = `${Math.round(
+        26 * dpr
+      )}px ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial`),
   };
 }
 
-/**
- * renderRouteShare
- * @param {Object} opts
- * @param {Object} opts.route - rota dokümanı
- * @param {Array}  opts.stops - {lat,lng} veya {location:{lat,lng}} listesi
- * @param {"story"|"square"} opts.size
- * @param {Object} [opts.theme]
- * @returns {Promise<{blob:Blob,width:number,height:number}>}
- */
-export async function renderRouteShare({ route = {}, stops = [], size = "story", theme = {} }) {
+export async function renderRouteShare({
+  route = {},
+  stops = [],
+  size = "story",
+  theme = {},
+}) {
   const { w, h } = SIZES[size] || SIZES.story;
   const W = Math.round(w * DPR);
   const H = Math.round(h * DPR);
@@ -326,37 +408,45 @@ export async function renderRouteShare({ route = {}, stops = [], size = "story",
   canvas.height = H;
   const ctx = canvas.getContext("2d");
 
-  // Arkaplan
   ctx.fillStyle = theme.bg || COLORS.bg;
   ctx.fillRect(0, 0, W, H);
 
-  // Üst bilgi
-  const title  = takeTitle(route);
-  const meta1  = areasLine(route);
-  const km     = kmFromMeters(route?.totalDistanceM ?? route?.distanceM ?? route?.distance_m);
-  const mins   = minsFromMs(route?.durationMs ?? route?.duration_ms ?? route?.duration);
-  const meta2  = `${km || 0} km • ${mins || 0} dk`;
-  const meta3  = ratingLine(route);
+  const title = takeTitle(route);
+  const meta1 = areasLine(route);
+  const km = kmFromMeters(route?.totalDistanceM ?? route?.distanceM ?? route?.distance_m);
+  const mins = minsFromMs(route?.durationMs ?? route?.duration_ms ?? route?.duration);
+  const meta2 = `${km || 0} km • ${mins || 0} dk`;
+  const meta3 = ratingLine(route);
 
   const styles = textStyles(ctx, DPR);
 
-  // Logo
-  const logo = await loadLogo();
+  const headerThumbSrc = takeHeaderThumb(route);
+  let headerThumbImg = await loadImageSafe(headerThumbSrc);
 
-  // Harita dikdörtgeni
+  // Bonus: CORS / fail olursa default cover’u bir kez daha dene
+  if (!headerThumbImg && headerThumbSrc !== DEFAULT_COVER_URL) {
+    headerThumbImg = await loadImageSafe(DEFAULT_COVER_URL);
+  }
+
   const mapRect = buildMapRect(W, H);
 
-  // Noktaları topla
   const path = Array.isArray(route?.path) ? route.path : [];
-  const pathLL = path.map(p => ({
-    lat: p.lat ?? p.latitude,
-    lng: p.lng ?? p.longitude ?? p.lon
-  })).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  const pathLL = path
+    .map((p) => ({
+      lat: p.lat ?? p.latitude,
+      lng: p.lng ?? p.longitude ?? p.lon,
+    }))
+    .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
 
-  const stopsLL = (stops || []).map(s => {
-    const ll = s?.location || s;
-    return { lat: ll?.lat ?? ll?.latitude, lng: ll?.lng ?? ll?.longitude ?? ll?.lon };
-  }).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  const stopsLL = (stops || [])
+    .map((s) => {
+      const ll = s?.location || s;
+      return {
+        lat: ll?.lat ?? ll?.latitude,
+        lng: ll?.lng ?? ll?.longitude ?? ll?.lon,
+      };
+    })
+    .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
 
   const allForBounds = pathLL.length ? pathLL : stopsLL;
 
@@ -368,16 +458,11 @@ export async function renderRouteShare({ route = {}, stops = [], size = "story",
     const project = projectFactory(bbox, mapRect);
     if (pathLL.length) {
       const pxPts = pathLL.map(project);
-      // px cinsinden sadeleştirme
-      const simplified = simplifyRDP(pxPts, 2.0 * DPR);
-      projectedPath = simplified;
+      projectedPath = simplifyRDP(pxPts, 2.0 * DPR);
     }
-    if (stopsLL.length) {
-      projectedStops = stopsLL.map(project);
-    }
+    if (stopsLL.length) projectedStops = stopsLL.map(project);
   }
 
-  // Haritayı çiz
   if (projectedPath || projectedStops) {
     const haloPx = 6 * DPR;
     const linePx = 4 * DPR;
@@ -386,7 +471,6 @@ export async function renderRouteShare({ route = {}, stops = [], size = "story",
     }
     drawPinsAndStops(ctx, projectedPath, projectedStops, DPR);
   } else {
-    // Fallback — harita verisi yok
     ctx.save();
     ctx.fillStyle = "#f5f6f7";
     ctx.fillRect(mapRect.x, mapRect.y, mapRect.w, mapRect.h);
@@ -399,15 +483,16 @@ export async function renderRouteShare({ route = {}, stops = [], size = "story",
     ctx.fillText(msg, mapRect.x + (mapRect.w - tw) / 2, mapRect.y + mapRect.h / 2);
   }
 
-  // ÜST: Logo + başlık + areas + km/süre + rating
   const pad = 24 * DPR;
-  const colX = pad + (logo ? 48 * DPR + 12 * DPR : 0);
-  const maxTitleW = W - colX - pad;
+  const TH = 72 * DPR;
+  const gap = 14 * DPR;
 
-  if (logo) {
-    const L = 48 * DPR;
-    ctx.drawImage(logo, pad, pad, L, L);
+  if (headerThumbImg) {
+    drawRoundedRectImage(ctx, headerThumbImg, pad, pad, TH, TH, 14 * DPR);
   }
+
+  const colX = pad + (headerThumbImg ? TH + gap : 0);
+  const maxTitleW = W - colX - pad;
 
   styles.setTitle();
   ctx.fillStyle = COLORS.ink;
@@ -422,10 +507,10 @@ export async function renderRouteShare({ route = {}, stops = [], size = "story",
     ctx.fillText(m1, colX, ty);
     ty += 26 * DPR;
   }
-  ctx.fillText(meta2, colX, ty); ty += 26 * DPR;
+  ctx.fillText(meta2, colX, ty);
+  ty += 26 * DPR;
   ctx.fillText(meta3, colX, ty);
 
-  // ALT: avatar + kullanıcı adı + watermark + permalink
   const avatarSrc = takeOwnerAvatar(route);
   const avatarImg = await loadImageSafe(avatarSrc);
   const AV = 44 * DPR;
@@ -433,7 +518,6 @@ export async function renderRouteShare({ route = {}, stops = [], size = "story",
   const ay = H - pad - AV / 2 - 8 * DPR;
 
   if (avatarImg) {
-    // beyaz halka
     ctx.save();
     ctx.beginPath();
     ctx.arc(ax, ay, AV / 2 + 3 * DPR, 0, Math.PI * 2);
@@ -458,12 +542,12 @@ export async function renderRouteShare({ route = {}, stops = [], size = "story",
   const wmTw = ctx.measureText(watermark).width;
   ctx.fillText(watermark, W - pad - wmTw, H - pad - 8 * DPR);
 
-  // küçük permalink (çok küçük, log gibi)
   const link = buildPermalink(route?.id);
   const linkTw = ctx.measureText(link).width;
   ctx.fillText(link, W - pad - linkTw, H - pad - 34 * DPR);
 
-  // PNG BLOB
-  const blob = await new Promise((res) => canvas.toBlob((b) => res(b), "image/png", 0.92));
+  const blob = await new Promise((res) =>
+    canvas.toBlob((b) => res(b), "image/png", 0.92)
+  );
   return { blob, width: w, height: h };
 }

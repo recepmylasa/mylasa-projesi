@@ -19,7 +19,9 @@ import {
   increment,
 } from "firebase/firestore";
 
-const PLACEHOLDER_COVER = "/mylasa-logo.png";
+// ✅ PUBLIC_URL uyumlu default cover (subpath deploy güvenli)
+const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+const DEFAULT_COVER_URL = `${PUBLIC_URL}/route-default-cover.jpg`;
 
 /* -------------------- helpers -------------------- */
 
@@ -51,7 +53,13 @@ function isPlaceholderCover(v) {
   const base = stripQueryAndHash(v).toLowerCase();
   if (!base) return false;
   const file = base.split("/").pop();
-  return file === "mylasa-logo.png" || file === "mylasa-logo.svg";
+
+  // ✅ HOTFIX: route-default-cover.jpg da placeholder sayılır
+  return (
+    file === "mylasa-logo.png" ||
+    file === "mylasa-logo.svg" ||
+    file === "route-default-cover.jpg"
+  );
 }
 
 function normalizeCoverUrl(v) {
@@ -268,9 +276,7 @@ export async function recomputeRouteSummary(routeId) {
         );
         existingThumb = normalizeCoverUrl(raw.thumbnailUrl || raw.thumbUrl || "");
       }
-    } catch {
-      // sessiz
-    }
+    } catch {}
 
     // 1) ilk/son stop (order)
     const firstQ = query(stopsCol, orderBy("order", "asc"), qlimit(1));
@@ -288,13 +294,12 @@ export async function recomputeRouteSummary(routeId) {
       ? { id: lastSnap.docs[0].id, ...lastSnap.docs[0].data() }
       : null;
 
-    // 2) stop count / length (MVP): order/idx’den çıkar, olmazsa küçük fallback
+    // 2) stop count / length (MVP)
     const lastOrderGuess = safeNum(lastStop?.order ?? lastStop?.idx, 0);
     const firstOrderGuess = safeNum(firstStop?.order ?? firstStop?.idx, 0);
     let length = Math.max(lastOrderGuess, firstOrderGuess, 0);
 
     if (!length) {
-      // çok nadir: order yoksa minik fallback
       const allSnap = await getDocs(query(stopsCol, qlimit(250)));
       length = allSnap.size || 0;
     }
@@ -319,7 +324,6 @@ export async function recomputeRouteSummary(routeId) {
       safeStr(p2?.title || p1?.title);
 
     // 4) cover/thumbnail üretimi
-    // cover için: first media -> last media
     const firstMedia = firstStop ? safeStr(extractStopMediaUrl(firstStop)) : "";
     const lastMedia = lastStop ? safeStr(extractStopMediaUrl(lastStop)) : "";
 
@@ -333,16 +337,16 @@ export async function recomputeRouteSummary(routeId) {
       computedCover ||
       "";
 
-    // cover var mı?
     const hasMedia = Boolean(computedCover || computedThumb);
 
-    // ✅ yazılacak cover: mevcut (placeholder değilse) > computed > placeholder
-    const coverUrl = existingCover || computedCover || PLACEHOLDER_COVER;
+    // ✅ yazılacak cover: mevcut (placeholder değilse) > computed > default cover
+    // HOTFIX sayesinde existingCover default ise "" olacak ve computedCover yazılacak.
+    const coverUrl = existingCover || computedCover || DEFAULT_COVER_URL;
     const thumbnailUrl = existingThumb || computedThumb || coverUrl;
 
     await updateDoc(routeRef, {
       stopsMeta,
-      stopsPreview, // ✅ array
+      stopsPreview,
       startName: startName || "",
       endName: endName || "",
       coverUrl,
@@ -350,39 +354,34 @@ export async function recomputeRouteSummary(routeId) {
       hasMedia,
       summaryUpdatedAt: serverTimestamp(),
     });
-  } catch (e) {
-    // sessiz tolerans
-    // console.warn("recomputeRouteSummary error:", e);
-  }
+  } catch (e) {}
 }
 
 /** Yeni rota oluşturur, routeId döner */
 export async function createRoute({ ownerId, title = "", visibility = "public" }) {
   const routesCol = collection(db, "routes");
 
-  // ✅ ownerId boş gelirse currentUser’dan doldur (stop rules’ı bunun yüzünden patlıyordu)
   const uid = auth.currentUser?.uid ? String(auth.currentUser.uid) : "";
   const oid = safeStr(ownerId) || uid;
 
   const payload = {
-    ownerId: oid, // ✅ asla "" olmasın
+    ownerId: oid,
     title: safeStr(title),
     visibility: normalizeVisibility(visibility),
     status: "active",
     createdAt: serverTimestamp(),
     finishedAt: null,
 
-    // recording stats
     path: [],
     totalDistanceM: 0,
     durationMs: 0,
     bounds: null,
 
-    // ✅ Route-level cover standardı
-    coverUrl: PLACEHOLDER_COVER,
-    thumbnailUrl: PLACEHOLDER_COVER,
-    stopsPreview: [], // ✅ array
-    stopsMeta: { has: false, length: 0 }, // ✅ object
+    // ✅ placeholder default cover (PUBLIC_URL uyumlu)
+    coverUrl: DEFAULT_COVER_URL,
+    thumbnailUrl: DEFAULT_COVER_URL,
+    stopsPreview: [],
+    stopsMeta: { has: false, length: 0 },
     startName: "",
     endName: "",
     hasMedia: false,
@@ -398,19 +397,14 @@ export async function appendPath(routeId, pathChunk) {
     if (!routeId || !Array.isArray(pathChunk) || pathChunk.length === 0) return;
     const routeRef = doc(db, "routes", routeId);
 
-    // Firestore arrayUnion çağrısına 30’lu parçalara bölelim
     const CHUNK = 30;
     for (let i = 0; i < pathChunk.length; i += CHUNK) {
       const slice = pathChunk.slice(i, i + CHUNK);
-      await updateDoc(routeRef, { path: arrayUnion(...slice) }).catch(
-        async () => {
-          await setDoc(routeRef, { path: arrayUnion(...slice) }, { merge: true });
-        }
-      );
+      await updateDoc(routeRef, { path: arrayUnion(...slice) }).catch(async () => {
+        await setDoc(routeRef, { path: arrayUnion(...slice) }, { merge: true });
+      });
     }
-  } catch (e) {
-    // console.warn("appendPath error:", e);
-  }
+  } catch (e) {}
 }
 
 /** Alt koleksiyona durak ekler (ADIM 2: atomik + route meta update) */
@@ -430,7 +424,6 @@ export async function addStop(routeId, stop) {
 
     const stopsDoc = doc(db, "routes", routeId, "stops", stopId);
 
-    // ✅ media normalize: downloadUrl/url/photoUrl vb. gelirse mediaUrl’e düşür
     const mediaUrl = safeStr(
       stop.mediaUrl ||
         stop.downloadUrl ||
@@ -459,35 +452,30 @@ export async function addStop(routeId, stop) {
 
     const batch = writeBatch(db);
 
-    // 1) /routes/{routeId}/stops/{stopId} set
     batch.set(stopsDoc, {
       order,
-      idx: order, // ✅ legacy uyum
+      idx: order,
       lat,
       lng,
-      loc: { lat, lng }, // ✅ ADIM 2 spec
+      loc: { lat, lng },
       t,
       title,
       name,
       note: safeStr(stop.note),
       createdAt: serverTimestamp(),
 
-      // ✅ cover üretimi için standart alanlar (bu adımda medya yok; boş kalır)
       mediaUrl,
       thumbnailUrl,
 
-      // ✅ gelen şemayı bozmamak için (varsa) orijinal alanları da sakla
       ...(safeStr(stop.downloadUrl) ? { downloadUrl: safeStr(stop.downloadUrl) } : {}),
       ...(safeStr(stop.downloadURL) ? { downloadURL: safeStr(stop.downloadURL) } : {}),
     });
 
-    // 2) /routes/{routeId} update (atomik)
     batch.update(routeRef, {
       stopsCount: increment(1),
       lastStopAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
 
-      // meta (en risksiz: last*)
       stopsMetaLastTitle: title,
       stopsMetaLastLoc: { lat, lng },
       stopsMetaLastOrder: order,
@@ -497,7 +485,6 @@ export async function addStop(routeId, stop) {
     await batch.commit();
     return stopId;
   } catch (e) {
-    // ADIM 2: permission-denied net log
     if (String(e?.code || "").toLowerCase() === "permission-denied") {
       console.error(`addStop permission-denied routes/${routeId}/stops`);
     }
@@ -507,7 +494,6 @@ export async function addStop(routeId, stop) {
 
 /**
  * Rotayı sonlandırır; özet değerleri yazar + route summary’yi garanti doldurur
- * (medya alanları farklı isimle gelmiş olsa bile artık yakalar)
  */
 export async function finishRoute(routeId, stats) {
   try {
@@ -524,9 +510,63 @@ export async function finishRoute(routeId, stats) {
       ...(stats.visibility ? { visibility: normalizeVisibility(stats.visibility) } : {}),
     });
 
-    // ✅ “cover + durak önizleme” yazma garantisi
     await recomputeRouteSummary(routeId);
+  } catch (e) {}
+}
+
+/* -------------------- EMIR-17: cover helpers -------------------- */
+
+// ✅ Kullanıcı seçimi: picked cover (kalıcı; recompute placeholder değilse ezmez)
+export async function setRouteCoverPicked(routeId, { url, stopId, mediaId } = {}) {
+  try {
+    const rid = safeStr(routeId);
+    const pickedUrl = normalizeCoverUrl(url);
+    if (!rid || !pickedUrl) return;
+
+    const routeRef = doc(db, "routes", rid);
+
+    await updateDoc(routeRef, {
+      cover: {
+        kind: "picked",
+        url: pickedUrl,
+        ...(safeStr(stopId) ? { stopId: safeStr(stopId) } : {}),
+        ...(safeStr(mediaId) ? { mediaId: safeStr(mediaId) } : {}),
+        updatedAt: serverTimestamp(),
+      },
+      coverUrl: pickedUrl,
+      thumbnailUrl: pickedUrl,
+      hasMedia: true,
+      updatedAt: serverTimestamp(),
+    });
   } catch (e) {
-    // console.warn("finishRoute error:", e);
+    if (String(e?.code || "").toLowerCase() === "permission-denied") {
+      console.error(`setRouteCoverPicked permission-denied routes/${routeId}`);
+    }
+  }
+}
+
+// ✅ Kapağı kaldır (minimum): auto/default’a düş; resolver default/auto’ya döner
+export async function clearRouteCover(routeId) {
+  try {
+    const rid = safeStr(routeId);
+    if (!rid) return;
+
+    const routeRef = doc(db, "routes", rid);
+
+    await updateDoc(routeRef, {
+      cover: {
+        kind: "auto",
+        url: "",
+        updatedAt: serverTimestamp(),
+      },
+      coverUrl: DEFAULT_COVER_URL,
+      thumbnailUrl: DEFAULT_COVER_URL,
+      hasMedia: false,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (e) {
+    if (String(e?.code || "").toLowerCase() === "permission-denied") {
+      console.error(`clearRouteCover permission-denied routes/${routeId}`);
+    }
   }
 }

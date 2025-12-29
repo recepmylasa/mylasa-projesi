@@ -2,15 +2,75 @@
 import { db } from "../../firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-export const DEFAULT_ROUTE_COVER_URL = "/route-default-cover.jpg";
+// ✅ PUBLIC_URL uyumlu default cover
+const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+export const DEFAULT_ROUTE_COVER_URL = `${PUBLIC_URL}/route-default-cover.jpg`;
+
+/* -------------------- placeholder helpers -------------------- */
+
+// query/hash temizle + dosya adını çıkar
+function stripQueryAndHash(url) {
+  try {
+    const s = String(url || "").trim();
+    if (!s) return "";
+    return s.split(/[?#]/)[0];
+  } catch {
+    return "";
+  }
+}
+
+function getFileNameFromUrl(url) {
+  try {
+    const clean = stripQueryAndHash(url);
+    if (!clean) return "";
+    const parts = clean.split("/");
+    return (parts[parts.length - 1] || "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+// mylasa-logo.* => placeholder kabul et
+function isMylasaLogoUrl(url) {
+  try {
+    const file = getFileNameFromUrl(url);
+    if (!file) return false;
+    return file === "mylasa-logo.png" || file === "mylasa-logo.svg";
+  } catch {
+    return false;
+  }
+}
+
+// route-default-cover.jpg => placeholder kabul et (CTA için kritik)
+function isDefaultRouteCoverUrl(url) {
+  try {
+    const file = getFileNameFromUrl(url);
+    if (!file) return false;
+    return file === "route-default-cover.jpg";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeCandidateUrl(url) {
+  const s = String(url || "").trim();
+  if (!s) return "";
+  if (isMylasaLogoUrl(s)) return "";
+  if (isDefaultRouteCoverUrl(s)) return "";
+  return s;
+}
+
+/* -------------------- cover resolving -------------------- */
 
 export function resolveRouteCoverUrl(route = {}) {
   try {
     const r = route || {};
-    const direct = r?.cover?.url ? String(r.cover.url) : "";
+
+    const directRaw = r?.cover?.url ? String(r.cover.url) : "";
+    const direct = normalizeCandidateUrl(directRaw);
     if (direct) return direct;
 
-    const legacy =
+    const legacyRaw =
       r.coverUrl ||
       r.coverPhotoUrl ||
       r.coverImageUrl ||
@@ -18,7 +78,9 @@ export function resolveRouteCoverUrl(route = {}) {
       r.thumbnailUrl ||
       "";
 
-    if (legacy) return String(legacy);
+    const legacy = normalizeCandidateUrl(legacyRaw);
+    if (legacy) return legacy;
+
     return DEFAULT_ROUTE_COVER_URL;
   } catch {
     return DEFAULT_ROUTE_COVER_URL;
@@ -34,22 +96,24 @@ export function normalizeRouteCover(route = {}) {
         ? rawKind
         : null;
 
-    const url = r?.cover?.url ? String(r.cover.url) : "";
+    const urlRaw = r?.cover?.url ? String(r.cover.url) : "";
+    const url = normalizeCandidateUrl(urlRaw);
+
     const stopId = r?.cover?.stopId ? String(r.cover.stopId) : null;
     const mediaId = r?.cover?.mediaId ? String(r.cover.mediaId) : null;
 
+    // kind varsa: url placeholder ise yok say ve resolver'a düş
     if (kind) {
-      const out = {
-        kind,
-        url: url || resolveRouteCoverUrl(r),
-      };
+      const resolved = url || resolveRouteCoverUrl(r);
+      const out = { kind, url: resolved || DEFAULT_ROUTE_COVER_URL };
       if (stopId) out.stopId = stopId;
       if (mediaId) out.mediaId = mediaId;
       if (r?.cover?.updatedAt) out.updatedAt = r.cover.updatedAt;
       return out;
     }
 
-    const legacy =
+    // legacy alanlar
+    const legacyRaw =
       r.coverUrl ||
       r.coverPhotoUrl ||
       r.coverImageUrl ||
@@ -57,12 +121,21 @@ export function normalizeRouteCover(route = {}) {
       r.thumbnailUrl ||
       null;
 
+    // ✅ legacy placeholder ise "default" say
+    const legacy = normalizeCandidateUrl(legacyRaw);
     if (legacy) return { kind: "picked", url: String(legacy) };
+
+    if (legacyRaw && (isMylasaLogoUrl(legacyRaw) || isDefaultRouteCoverUrl(legacyRaw))) {
+      return { kind: "default", url: DEFAULT_ROUTE_COVER_URL };
+    }
+
     return { kind: "default", url: DEFAULT_ROUTE_COVER_URL };
   } catch {
     return { kind: "default", url: DEFAULT_ROUTE_COVER_URL };
   }
 }
+
+/* -------------------- format helpers -------------------- */
 
 export function fmtKm(m) {
   const km = (Number(m) || 0) / 1000;
@@ -79,7 +152,9 @@ export function fmtDur(ms) {
 }
 
 export function calcAvg(sum, count) {
-  return (Number(count) || 0) > 0 ? (Number(sum || 0) / Number(count)).toFixed(1) : "—";
+  return (Number(count) || 0) > 0
+    ? (Number(sum || 0) / Number(count)).toFixed(1)
+    : "—";
 }
 
 export function isFiniteNumber(value) {
@@ -124,7 +199,10 @@ export function buildStatsFromRoute(raw = {}) {
     distanceMeters = raw.distanceMeters;
   } else if (isFiniteNumber(raw.distance) && raw.distance > 0) {
     distanceMeters = raw.distance;
-  } else if (isFiniteNumber(raw.stats?.distanceMeters) && raw.stats.distanceMeters > 0) {
+  } else if (
+    isFiniteNumber(raw.stats?.distanceMeters) &&
+    raw.stats.distanceMeters > 0
+  ) {
     distanceMeters = raw.stats.distanceMeters;
   }
 
@@ -137,7 +215,10 @@ export function buildStatsFromRoute(raw = {}) {
     durationSeconds = raw.duration;
   } else if (isFiniteNumber(raw.durationMinutes) && raw.durationMinutes > 0) {
     durationSeconds = Math.round(raw.durationMinutes * 60);
-  } else if (isFiniteNumber(raw.stats?.durationSeconds) && raw.stats.durationSeconds > 0) {
+  } else if (
+    isFiniteNumber(raw.stats?.durationSeconds) &&
+    raw.stats.durationSeconds > 0
+  ) {
     durationSeconds = raw.stats.durationSeconds;
   }
 
@@ -153,7 +234,11 @@ export function buildStatsFromRoute(raw = {}) {
   }
 
   let avgSpeedKmh = null;
-  if (isFiniteNumber(distanceMeters) && isFiniteNumber(durationSeconds) && durationSeconds > 0) {
+  if (
+    isFiniteNumber(distanceMeters) &&
+    isFiniteNumber(durationSeconds) &&
+    durationSeconds > 0
+  ) {
     const km = distanceMeters / 1000;
     const hours = durationSeconds / 3600;
     if (hours > 0) {
@@ -170,11 +255,18 @@ export function buildStatsFromRoute(raw = {}) {
 }
 
 export function getVisibilityKeyFromRoute(raw = {}) {
-  const source = raw.visibility ?? raw.audience ?? raw.routeVisibility ?? raw.privacy ?? "";
+  const source =
+    raw.visibility ?? raw.audience ?? raw.routeVisibility ?? raw.privacy ?? "";
   const v = source.toString().toLowerCase();
 
   if (!v || v === "public" || v === "everyone") return "public";
-  if (v === "followers" || v === "followers_only" || v === "followers-only" || v === "friends" || v.includes("follower")) {
+  if (
+    v === "followers" ||
+    v === "followers_only" ||
+    v === "followers-only" ||
+    v === "friends" ||
+    v.includes("follower")
+  ) {
     return "followers";
   }
   if (v === "private" || v === "only_me") return "private";
@@ -327,14 +419,24 @@ export function getRouteRatingLabelSafe(model) {
     return `${avg} ★ (${cnt})`;
   }
   const avg =
-    (typeof m.ratingAvg === "number" && Number.isFinite(m.ratingAvg) && m.ratingAvg) ||
-    (typeof m.avgRating === "number" && Number.isFinite(m.avgRating) && m.avgRating) ||
-    (typeof m.raw?.ratingAvg === "number" && Number.isFinite(m.raw.ratingAvg) && m.raw.ratingAvg) ||
+    (typeof m.ratingAvg === "number" &&
+      Number.isFinite(m.ratingAvg) &&
+      m.ratingAvg) ||
+    (typeof m.avgRating === "number" &&
+      Number.isFinite(m.avgRating) &&
+      m.avgRating) ||
+    (typeof m.raw?.ratingAvg === "number" &&
+      Number.isFinite(m.raw.ratingAvg) &&
+      m.raw.ratingAvg) ||
     null;
 
   const cnt =
-    (typeof m.ratingCount === "number" && Number.isFinite(m.ratingCount) && m.ratingCount) ||
-    (typeof m.raw?.ratingCount === "number" && Number.isFinite(m.raw.ratingCount) && m.raw.ratingCount) ||
+    (typeof m.ratingCount === "number" &&
+      Number.isFinite(m.ratingCount) &&
+      m.ratingCount) ||
+    (typeof m.raw?.ratingCount === "number" &&
+      Number.isFinite(m.raw.ratingCount) &&
+      m.raw.ratingCount) ||
     null;
 
   if (typeof avg === "number") {
@@ -356,8 +458,10 @@ export function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
       ownerDoc.name ||
       r.ownerUsername ||
       r.ownerName;
-    r.ownerName = ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
-    r.ownerAvatar = ownerDoc.photoURL || ownerDoc.profilFoto || ownerDoc.avatar || r.ownerAvatar;
+    r.ownerName =
+      ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
+    r.ownerAvatar =
+      ownerDoc.photoURL || ownerDoc.profilFoto || ownerDoc.avatar || r.ownerAvatar;
   }
 
   const coverUrl = resolveRouteCoverUrl(r);

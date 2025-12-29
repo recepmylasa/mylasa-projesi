@@ -6,6 +6,9 @@ import { AiOutlineHeart } from 'react-icons/ai';
 import { RiMessengerLine } from 'react-icons/ri';
 import { IoLocationOutline } from 'react-icons/io5';
 
+const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+const APP_LOGO_URL = `${PUBLIC_URL}/logo192.png`;
+
 function LogoBar({ onNotificationClick, onMessageClick, onLocationClick }) {
     const [hasUnread, setHasUnread] = useState(false);
 
@@ -26,7 +29,7 @@ function LogoBar({ onNotificationClick, onMessageClick, onLocationClick }) {
     return (
         <header className="logobar-container">
             <div className="logobar-logo-container" onClick={() => window.location.reload()}>
-                <img src="/mylasa-logo.png" alt="Mylasa İkon" className="logobar-logo-icon" />
+                <img src={APP_LOGO_URL} alt="Mylasa İkon" className="logobar-logo-icon" />
                 <span className="logobar-logo-text">mylasa</span>
             </div>
             
