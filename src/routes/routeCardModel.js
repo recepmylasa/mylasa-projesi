@@ -9,60 +9,14 @@
 // - URL kuralı: UI'ya giden src her zaman https://... veya data:image/... olmalı.
 //   (storage path / gs:// -> resolveMediaToHttps ile https downloadURL'ye çevrilir)
 //
-// Not:
-// - buildRouteCardModel sync kalır. Asıl "https’e çevirme" işi hook/UI tarafında resolveMediaToHttps ile tamamlanır.
-// - Placeholder burada data:image SVG olarak verilir (relative path yok).
+// EMİR-3 (Placeholder standardını tekleştir + data:image placeholder’ı kaldır):
+// - Varsayılan kapak her yerde tek: (PUBLIC_URL base-path uyumlu) /route-default-cover.jpg
+// - mylasa-logo.* ve route-default-cover.jpg “kapak seçilmemiş” sayılır (stop fallback’e izin verir)
 
 import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage";
 
-export const DEFAULT_ROUTE_COVER =
-  "data:image/svg+xml;charset=utf-8," +
-  encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280" viewBox="0 0 720 1280">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0b0b0f"/>
-      <stop offset="0.55" stop-color="#12121a"/>
-      <stop offset="1" stop-color="#0b0b0f"/>
-    </linearGradient>
-    <radialGradient id="r" cx="35%" cy="28%" r="75%">
-      <stop offset="0" stop-color="#2a2a3a" stop-opacity="0.9"/>
-      <stop offset="1" stop-color="#0b0b0f" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.08"/>
-      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.10"/>
-    </linearGradient>
-  </defs>
-
-  <rect width="720" height="1280" fill="url(#g)"/>
-  <rect width="720" height="1280" fill="url(#r)"/>
-
-  <path d="M0 920 C140 880 260 900 360 940 C500 1000 590 1010 720 980 L720 1280 L0 1280 Z" fill="#0f0f16" opacity="0.9"/>
-  <path d="M0 900 C140 860 260 880 360 920 C500 980 590 990 720 960" stroke="#ffffff" opacity="0.06" stroke-width="2" fill="none"/>
-
-  <g opacity="0.85" transform="translate(80,180)">
-    <circle cx="280" cy="360" r="230" fill="#0c0c12" opacity="0.75"/>
-    <path d="M140 360 C220 240 340 240 420 360 C340 520 220 520 140 360 Z" fill="#1b1b26"/>
-    <path d="M220 360 C250 315 310 315 340 360 C310 420 250 420 220 360 Z" fill="#2a2a3a"/>
-    <path d="M280 260 L320 360 L280 460 L240 360 Z" fill="#3a3a52" opacity="0.9"/>
-    <circle cx="280" cy="360" r="10" fill="#ffffff" opacity="0.35"/>
-  </g>
-
-  <rect x="0" y="0" width="720" height="1280" fill="url(#shine)"/>
-
-  <g opacity="0.55" fill="#ffffff">
-    <circle cx="120" cy="140" r="2"/>
-    <circle cx="210" cy="90" r="1.5"/>
-    <circle cx="620" cy="180" r="2"/>
-    <circle cx="560" cy="120" r="1.2"/>
-    <circle cx="640" cy="320" r="1.6"/>
-    <circle cx="90" cy="320" r="1.2"/>
-    <circle cx="170" cy="260" r="1.6"/>
-  </g>
-</svg>
-`);
+// ✅ EMİR-3: tek standart placeholder (PUBLIC_URL uyumlu)
+export const DEFAULT_ROUTE_COVER = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
 
 function getVisibilitySource(raw = {}) {
   return raw.visibility ?? raw.audience ?? raw.routeVisibility ?? raw.privacy ?? "";
@@ -251,13 +205,62 @@ export function isVideoUrl(url) {
  * KURAL: UI <img> / <video> src’si olarak sadece:
  * - data:image/...  (img için)
  * - https://...     (img/video için)
+ * - app default placeholder: /route-default-cover.jpg (PUBLIC_URL uyumlu)
  */
 export function isRenderableMediaSrc(u) {
   const s = (u || "").toString().trim();
   if (!s) return false;
+
+  // ✅ EMİR-3: placeholder da renderable say (resolver null döndürmesin)
+  if (isPlaceholderCoverUrl(s)) return true;
+
   if (isDataImageUrl(s)) return true;
   if (!isHttpUrl(s)) return false;
   return s.toLowerCase().startsWith("https://");
+}
+
+// ✅ EMİR: placeholder cover standardı (mylasa-logo.* + route-default-cover.jpg)
+function stripQueryAndHash(url) {
+  try {
+    const s = String(url || "").trim();
+    if (!s) return "";
+    return s.split(/[?#]/)[0];
+  } catch {
+    return "";
+  }
+}
+
+function getFileNameFromUrl(url) {
+  try {
+    const clean = stripQueryAndHash(url);
+    if (!clean) return "";
+    const parts = clean.split("/");
+    return (parts[parts.length - 1] || "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isPlaceholderCoverUrl(url) {
+  const file = getFileNameFromUrl(url);
+  if (!file) return false;
+  return (
+    file === "mylasa-logo.png" ||
+    file === "mylasa-logo.svg" ||
+    file === "route-default-cover.jpg"
+  );
+}
+
+function normalizeString(v) {
+  return isNonEmptyString(v) ? String(v).trim() : "";
+}
+
+function normalizeCandidateUrl(v) {
+  const s = normalizeString(v);
+  if (!s) return "";
+  // ✅ EMİR-3: placeholder cover “seçilmiş kapak” sayılmasın (stop fallback’e izin ver)
+  if (isPlaceholderCoverUrl(s)) return "";
+  return s;
 }
 
 // module-level cache + concurrency
@@ -288,7 +291,7 @@ function _pump() {
 }
 
 /**
- * resolveMediaToHttps(urlOrPath) -> https downloadURL (veya data:image)
+ * resolveMediaToHttps(urlOrPath) -> https downloadURL (veya data:image veya app placeholder)
  * - cache: aynı input 1 kere
  * - max 3 concurrent
  */
@@ -328,10 +331,6 @@ export function resolveMediaToHttps(urlOrPath) {
   return p;
 }
 
-function normalizeString(v) {
-  return isNonEmptyString(v) ? String(v).trim() : "";
-}
-
 function pickFirstString(obj, keys = []) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -352,7 +351,7 @@ function isVideoHintObj(o = {}) {
  * A) route.cover (canonical) -> image/video
  * B) legacy image alanları (read-only)
  * C) stopsPreview/stops -> image veya (video+poster)
- * D) placeholder
+ * D) placeholder (tek standart)
  *
  * Not: url/posterUrl storage path/gs:// olabilir. UI/Hook resolveMediaToHttps ile https'e çevirir.
  */
@@ -364,18 +363,24 @@ export function pickCoverCandidate(route) {
   const c = r?.cover && typeof r.cover === "object" ? r.cover : null;
   if (c) {
     const kind = (c.kind || "").toString().toLowerCase() === "video" ? "video" : "image";
-    const url = normalizeString(c.url);
-    const posterUrl = normalizeString(c.posterUrl || c.poster);
+
+    // ✅ EMİR-3: placeholder cover url erken return ETMESİN (normalizeCandidateUrl -> "" yapar)
+    const url = normalizeCandidateUrl(c.url);
+    const posterUrl = normalizeCandidateUrl(c.posterUrl || c.poster);
+
     const sf = normalizeString(c.sourceField) || "cover";
     const source = (c.source || "").toString().toLowerCase() === "auto" ? "auto" : "manual";
 
     if (kind === "video") {
-      if (url && isVideoUrl(url) && posterUrl && !isVideoUrl(posterUrl)) {
-        return { kind: "video", url, posterUrl, sourceField: sf || "cover.video", source, hasVideo: true };
+      const vurl = normalizeString(c.url);
+      const purl = posterUrl;
+
+      if (vurl && isVideoUrl(vurl) && purl && !isVideoUrl(purl)) {
+        return { kind: "video", url: vurl, posterUrl: purl, sourceField: sf || "cover.video", source, hasVideo: true };
       }
-      // video cover bozuksa image'e düş
-      if (posterUrl && !isVideoUrl(posterUrl)) {
-        return { kind: "image", url: posterUrl, posterUrl: "", sourceField: sf || "cover.poster", source, hasVideo: true };
+      // video cover bozuksa image'e düş (poster)
+      if (purl && !isVideoUrl(purl)) {
+        return { kind: "image", url: purl, posterUrl: "", sourceField: sf || "cover.poster", source, hasVideo: true };
       }
     } else {
       if (url && !isVideoUrl(url)) {
@@ -402,7 +407,7 @@ export function pickCoverCandidate(route) {
   ];
 
   for (const [k, v] of legacyFields) {
-    const u = normalizeString(v);
+    const u = normalizeCandidateUrl(v);
     if (!u) continue;
     if (isVideoUrl(u)) continue;
     return { kind: "image", url: u, posterUrl: "", sourceField: k, source: "auto", hasVideo: false };
@@ -414,10 +419,10 @@ export function pickCoverCandidate(route) {
     if (!st) continue;
 
     const stopId = normalizeString(st.id) || "";
-    const poster = normalizeString(st.posterUrl || st.poster || st.thumbUrl || st.thumbnailUrl || st.previewUrl);
+    const poster = normalizeCandidateUrl(st.posterUrl || st.poster || st.thumbUrl || st.thumbnailUrl || st.previewUrl);
     const videoUrl = normalizeString(st.videoUrl || st.videoURL || st.video || "");
     const mediaUrl = normalizeString(st.mediaUrl || st.mediaURL || st.url || st.src || "");
-    const imageUrl = normalizeString(st.imageUrl || st.photoUrl || "");
+    const imageUrl = normalizeCandidateUrl(st.imageUrl || st.photoUrl || "");
 
     const videoHint =
       isVideoUrl(videoUrl) ||
@@ -454,8 +459,9 @@ export function pickCoverCandidate(route) {
     }
 
     // image cover
-    const img = !isVideoUrl(imageUrl) ? imageUrl : "";
-    const mu = !isVideoUrl(mediaUrl) ? mediaUrl : "";
+    const img = imageUrl && !isVideoUrl(imageUrl) ? imageUrl : "";
+    const mu0 = normalizeCandidateUrl(mediaUrl);
+    const mu = mu0 && !isVideoUrl(mu0) ? mu0 : "";
     if (img) {
       return { kind: "image", url: img, posterUrl: "", sourceField: "stopMedia.image", source: "auto", hasVideo: false, stopId };
     }
@@ -464,7 +470,7 @@ export function pickCoverCandidate(route) {
     }
   }
 
-  // (D) placeholder
+  // (D) placeholder (tek standart)
   return { kind: "image", url: DEFAULT_ROUTE_COVER, posterUrl: "", sourceField: "placeholder", source: "auto", hasVideo: false };
 }
 
@@ -486,7 +492,7 @@ function ensureCanonicalCover(rawObj) {
 
     if (isVideo) {
       const vurl = normalizeString(videoCandidate);
-      const purl = normalizeString(posterCandidate);
+      const purl = normalizeCandidateUrl(posterCandidate);
 
       if (vurl && isVideoUrl(vurl) && purl && !isVideoUrl(purl)) {
         return {
@@ -517,7 +523,7 @@ function ensureCanonicalCover(rawObj) {
     }
 
     // image cover
-    const imageCandidate = normalizeString(rawCover.url);
+    const imageCandidate = normalizeCandidateUrl(rawCover.url);
     if (imageCandidate && !isVideoUrl(imageCandidate)) {
       return {
         kind: "image",

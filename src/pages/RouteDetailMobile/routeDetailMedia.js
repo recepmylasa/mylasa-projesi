@@ -174,3 +174,73 @@ export async function listStopMediaInline({ routeId, stopId, limit = 50 }) {
     return { items: [], error: code || "unknown" };
   }
 }
+
+// ✅ EMİR — Rota kapak seçimi: cihazdan yükleme (cover -> https downloadURL)
+export async function uploadRouteCoverInline({ routeId, file, onProgress, signal }) {
+  if (!routeId || !file) throw new Error("Eksik parametre");
+  const u = auth.currentUser;
+  if (!u?.uid) throw new Error("Kullanıcı yok");
+
+  const isImage = /^image\//i.test(file.type);
+  if (!isImage) throw new Error("Sadece image/*");
+
+  let toUpload = file;
+
+  try {
+    const mod = await import("browser-image-compression");
+    toUpload = await mod.default(file, {
+      maxWidthOrHeight: 1920,
+      initialQuality: 0.86,
+      maxSizeMB: 6,
+      useWebWorker: true,
+    });
+  } catch {}
+
+  const dims = await readImageDims(toUpload);
+
+  const ts = Date.now();
+  const path = `route_covers/${routeId}/${u.uid}/${ts}-${sanitizeName(file.name || "cover.jpg")}`;
+  const storageRef = ref(storage, path);
+
+  const task = uploadBytesResumable(storageRef, toUpload, {
+    contentType: toUpload.type || file.type || "image/jpeg",
+  });
+
+  if (signal) {
+    const onAbort = () => {
+      try {
+        task.cancel();
+      } catch {}
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  const url = await new Promise((resolve, reject) => {
+    task.on(
+      "state_changed",
+      (snap) => {
+        const p = snap.totalBytes
+          ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
+          : 0;
+        if (onProgress) onProgress(p);
+      },
+      (err) => reject(err),
+      async () => {
+        try {
+          resolve(await getDownloadURL(task.snapshot.ref)); // ✅ https download URL
+        } catch (e) {
+          reject(e);
+        }
+      }
+    );
+  });
+
+  return {
+    url,
+    w: Number(dims.w) || 0,
+    h: Number(dims.h) || 0,
+    size: Number(toUpload.size || file.size) || 0,
+    path,
+  };
+}
