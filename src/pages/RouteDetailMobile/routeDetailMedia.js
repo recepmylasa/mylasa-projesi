@@ -10,9 +10,21 @@ import {
   query,
   serverTimestamp,
 } from "firebase/firestore";
+import { setRouteCoverPicked } from "../../services/routeStore";
 
 function sanitizeName(name = "") {
   return name.replace(/[^\w.-]+/g, "_").slice(0, 120);
+}
+
+function randId(len = 6) {
+  try {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let out = "";
+    for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    return out;
+  } catch {
+    return String(Math.random()).slice(2, 2 + len);
+  }
 }
 
 function readImageDims(fileOrBlob) {
@@ -175,17 +187,35 @@ export async function listStopMediaInline({ routeId, stopId, limit = 50 }) {
   }
 }
 
-// ✅ EMİR — Rota kapak seçimi: cihazdan yükleme (cover -> https downloadURL)
-export async function uploadRouteCoverInline({ routeId, file, onProgress, signal }) {
+/**
+ * ✅ EMİR — Rota kapak upload (SDK şart) + Firestore cover update
+ * Path standardı: route-covers/{uid}/{routeId}/{ts}_{rand}.jpg|png
+ *
+ * ownerId verilirse:
+ * - auth.uid != ownerId ise daha upload başlamadan hata verir (pırıl pırıl)
+ */
+export async function uploadRouteCoverInline({
+  routeId,
+  file,
+  ownerId,
+  onProgress,
+  signal,
+}) {
   if (!routeId || !file) throw new Error("Eksik parametre");
   const u = auth.currentUser;
   if (!u?.uid) throw new Error("Kullanıcı yok");
+
+  const uid = String(ownerId || u.uid);
+  if (ownerId && String(ownerId) !== String(u.uid)) {
+    throw new Error("Bu rotanın kapağını sadece sahibi değiştirebilir.");
+  }
 
   const isImage = /^image\//i.test(file.type);
   if (!isImage) throw new Error("Sadece image/*");
 
   let toUpload = file;
 
+  // mümkünse JPEG’e normalize (dosya boyutu + feed performansı)
   try {
     const mod = await import("browser-image-compression");
     toUpload = await mod.default(file, {
@@ -193,13 +223,19 @@ export async function uploadRouteCoverInline({ routeId, file, onProgress, signal
       initialQuality: 0.86,
       maxSizeMB: 6,
       useWebWorker: true,
+      fileType: "image/jpeg",
     });
   } catch {}
 
   const dims = await readImageDims(toUpload);
 
   const ts = Date.now();
-  const path = `route_covers/${routeId}/${u.uid}/${ts}-${sanitizeName(file.name || "cover.jpg")}`;
+  const r = randId(6);
+  const mime = String(toUpload.type || file.type || "image/jpeg").toLowerCase();
+  const ext = mime.includes("png") ? "png" : "jpg";
+
+  // ✅ yeni standart path (dash + uid/routeId sırası)
+  const path = `route-covers/${uid}/${routeId}/${ts}_${r}.${ext}`;
   const storageRef = ref(storage, path);
 
   const task = uploadBytesResumable(storageRef, toUpload, {
@@ -228,7 +264,7 @@ export async function uploadRouteCoverInline({ routeId, file, onProgress, signal
       (err) => reject(err),
       async () => {
         try {
-          resolve(await getDownloadURL(task.snapshot.ref)); // ✅ https download URL
+          resolve(await getDownloadURL(task.snapshot.ref));
         } catch (e) {
           reject(e);
         }
@@ -236,11 +272,16 @@ export async function uploadRouteCoverInline({ routeId, file, onProgress, signal
     );
   });
 
+  // ✅ Upload bitti → Firestore route doc cover alanlarını yaz
+  // (routeStore helper ile tek standart)
+  await setRouteCoverPicked(routeId, { url });
+
   return {
     url,
     w: Number(dims.w) || 0,
     h: Number(dims.h) || 0,
     size: Number(toUpload.size || file.size) || 0,
     path,
+    ownerId: uid,
   };
 }

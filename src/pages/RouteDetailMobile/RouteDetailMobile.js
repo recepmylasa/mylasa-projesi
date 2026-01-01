@@ -202,7 +202,7 @@ export default function RouteDetailMobile({
         return String(parts[parts.length - 1] || "").toLowerCase();
       } catch {
         return "";
-      }
+    }
     },
     [stripQueryAndHash]
   );
@@ -1242,7 +1242,9 @@ export default function RouteDetailMobile({
       } catch (e) {
         const code = String(e?.code || e?.message || e || "unknown");
         setCoverLocal(prevLocal || null);
-        setCoverUpload((s) => (s ? { ...s, uploading: false, error: code } : { uploading: false, p: 0, error: code }));
+        setCoverUpload((s) =>
+          s ? { ...s, uploading: false, error: code } : { uploading: false, p: 0, error: code }
+        );
       } finally {
         try {
           if (objectUrl) URL.revokeObjectURL(objectUrl);

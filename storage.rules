@@ -1,3 +1,4 @@
+// storage.rules
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
@@ -10,10 +11,20 @@ service firebase.storage {
       allow write: if isSignedIn();
     }
 
-    /* --- ROUTE KAPAKLARI (Kapak seç upload + server-side cover) --- */
+    /* ✅ YENİ STANDART — ROUTE KAPAKLARI (minimum + kontrollü)
+       route-covers/{uid}/{routeId}/{file}
+       - read: public (profil/keşif için)
+       - write: sadece owner */
+    match /route-covers/{uid}/{routeId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    /* ⚠️ ESKİ YOL (underscore) — geriye dönük okuma açık, yazma kapalı
+       (mevcut kapak URL’leri kırılmasın) */
     match /route_covers/{routeId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if false;
     }
 
     /* --- Uygulama medyaları --- */
