@@ -584,3 +584,59 @@
 .route-detail-media-tile video {
   pointer-events: none;
 }
+
+/* ✅ EMİR 01 — Quest Layer UI (local only) */
+.route-detail-quest {
+  margin-top: 10px;
+  margin-bottom: 12px;
+  border: 1px solid #eee;
+  border-radius: 16px;
+  background: #fff;
+  padding: 12px;
+}
+
+.route-detail-quest-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #8e8e8e;
+  margin-bottom: 8px;
+}
+
+.route-detail-quest-primary {
+  width: 100%;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid #111;
+  background: #111;
+  color: #fff;
+  font-weight: 900;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.route-detail-quest-primary:active {
+  transform: scale(0.99);
+}
+
+.route-detail-quest-primary[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.route-detail-quest-stop {
+  width: 100%;
+  margin-top: 10px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid #dbdbdb;
+  background: #fff;
+  color: #111;
+  font-weight: 900;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.route-detail-quest-stop:active {
+  transform: scale(0.99);
+}

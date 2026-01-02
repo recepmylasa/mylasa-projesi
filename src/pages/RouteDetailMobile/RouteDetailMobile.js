@@ -164,6 +164,19 @@ export default function RouteDetailMobile({
   const [mapsRetryTick, setMapsRetryTick] = useState(0);
   const retryMap = useCallback(() => setMapsRetryTick((x) => x + 1), []);
 
+  // ✅ EMİR 01 — Quest Layer UI + Local State (haritasız)
+  const [questState, setQuestState] = useState("idle"); // "idle" | "active"
+  const startQuest = useCallback(() => setQuestState("active"), []);
+  const stopQuest = useCallback(() => setQuestState("idle"), []);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[QuestUI]", questState);
+    } catch {}
+  }, [questState]);
+
   // ✅ DEFAULT cover (base-path uyumlu)
   const DEFAULT_ROUTE_COVER_URL_PUBLIC =
     (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
@@ -202,7 +215,7 @@ export default function RouteDetailMobile({
         return String(parts[parts.length - 1] || "").toLowerCase();
       } catch {
         return "";
-    }
+      }
     },
     [stripQueryAndHash]
   );
@@ -375,6 +388,9 @@ export default function RouteDetailMobile({
     setTab(readTabFromUrl());
 
     setMapsRetryTick(0);
+
+    // ✅ EMİR 01: quest reset
+    setQuestState("idle");
 
     // ✅ cover reset
     setCoverLocal(null);
@@ -1641,6 +1657,26 @@ export default function RouteDetailMobile({
         </div>
 
         <div className="route-detail-body" ref={routeBodyRef}>
+          {/* ✅ EMİR 01 — Quest Layer UI (haritasız, local state) */}
+          <div className="route-detail-quest">
+            <div className="route-detail-quest-label">Quest modu (beta)</div>
+
+            <button
+              type="button"
+              className="route-detail-quest-primary"
+              onClick={startQuest}
+              disabled={questState === "active"}
+            >
+              {questState === "active" ? "Devam ediyor…" : "Rotayı Başlat"}
+            </button>
+
+            {questState === "active" && (
+              <button type="button" className="route-detail-quest-stop" onClick={stopQuest}>
+                Durdur
+              </button>
+            )}
+          </div>
+
           <div className="route-detail-map" style={{ position: "relative" }}>
             <RouteDetailMapPreviewShell
               key={mapsRetryTick}
