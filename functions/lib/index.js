@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.backfillRouteCoversCallable = exports.onRouteWriteEnsureCoverDefault = exports.onRouteStopMediaCreate = exports.onRouteStopCreate = exports.openBlindBox = exports.incrementStars = exports.seedSeriesS1 = exports.backfillContentStubs = exports.recomputeUserReputation = exports.onRatingWrite = exports.processUploadedVideo = exports.exportShareAggCsv = exports.purgeOldShareEvents = exports.aggregateShareMetricsDaily = exports.logShareEvent = exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
+exports.claimRouteDrop = exports.backfillRouteCoversCallable = exports.onRouteWriteEnsureCoverDefault = exports.onRouteStopMediaCreate = exports.onRouteStopCreate = exports.openBlindBox = exports.incrementStars = exports.seedSeriesS1 = exports.backfillContentStubs = exports.recomputeUserReputation = exports.onRatingWrite = exports.processUploadedVideo = exports.exportShareAggCsv = exports.purgeOldShareEvents = exports.aggregateShareMetricsDaily = exports.logShareEvent = exports.backfillGeoCallable = exports.onRouteGeoFinish = exports.routeOgImage = exports.renderRouteShare = exports.onFollowsDelete = exports.onFollowsCreate = exports.onFollowersDelete = exports.onFollowersCreate = exports.backfillAreasCallable = exports.onRouteAreasFinish = void 0;
 // Node 20 / TS (firebase-functions v4 - v1 API)
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
@@ -307,3 +307,6 @@ Object.defineProperty(exports, "onRouteStopCreate", { enumerable: true, get: fun
 Object.defineProperty(exports, "onRouteStopMediaCreate", { enumerable: true, get: function () { return route_cover_1.onRouteStopMediaCreate; } });
 Object.defineProperty(exports, "onRouteWriteEnsureCoverDefault", { enumerable: true, get: function () { return route_cover_1.onRouteWriteEnsureCoverDefault; } });
 Object.defineProperty(exports, "backfillRouteCoversCallable", { enumerable: true, get: function () { return route_cover_1.backfillRouteCoversCallable; } });
+/* === YENİ: Route Drops === */
+var route_drops_1 = require("./route_drops");
+Object.defineProperty(exports, "claimRouteDrop", { enumerable: true, get: function () { return route_drops_1.claimRouteDrop; } });

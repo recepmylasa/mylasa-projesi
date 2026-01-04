@@ -288,3 +288,6 @@ export {
   onRouteWriteEnsureCoverDefault,
   backfillRouteCoversCallable,
 } from "./route_cover";
+
+/* === YENİ: Route Drops === */
+export { claimRouteDrop } from "./route_drops";

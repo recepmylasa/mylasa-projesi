@@ -7,6 +7,19 @@ service cloud.firestore {
     function isSignedIn() { return request.auth != null; }
     function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
 
+    // EMİR 07: Catch-all okuma kuralı routeDrops/drops'u ezmesin diye
+    // Bu iki subcollection için "self-only read" zorunlu kılıyoruz.
+    function isSensitiveUserDropPath(p) {
+      return p.matches('users/[^/]+/routeDrops/[^/]+') || p.matches('users/[^/]+/drops/[^/]+');
+    }
+    function isSelfSensitiveUserDropPath(p) {
+      return isSignedIn()
+        && (
+          p.matches('users/' + request.auth.uid + '/routeDrops/[^/]+')
+          || p.matches('users/' + request.auth.uid + '/drops/[^/]+')
+        );
+    }
+
     /* =================== USERS =================== */
     match /users/{userId} {
       allow read: if isSignedIn();
@@ -49,6 +62,18 @@ service cloud.firestore {
 
       // stats: owner-only read
       match /stats/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      // EMİR 07: Route drops — read self, write kapalı (sadece server yazar)
+      match /routeDrops/{routeId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      // EMİR 07: Drops log — read self, write kapalı (sadece server yazar)
+      match /drops/{dropId} {
         allow read: if isOwner(userId);
         allow write: if false;
       }
@@ -171,6 +196,31 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
 
+      // --- EKLENDİ: reverseGeocode ve yorumlar alt koleksiyonları ---
+      match /areas/{areaId} {
+        allow read, list: if true;   // herkes okuyabilir (reverseGeocode)
+        allow write: if false;       // sadece backend
+      }
+
+      match /comments/{commentId} {
+        allow read, list: if
+          get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "public"
+          || (isSignedIn()
+              && get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId == request.auth.uid)
+          || (isSignedIn()
+              && get(/databases/$(database)/documents/routes/$(routeId)).data.visibility == "followers"
+              && (
+                exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId)/followers/$(request.auth.uid))
+                || exists(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + get(/databases/$(database)/documents/routes/$(routeId)).data.ownerId))
+              ));
+        allow create: if isSignedIn()
+          && request.resource.data.routeId == routeId
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.text is string;
+        allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+        allow update: if false;
+      }
+
       match /stops/{stopId} {
         // stop read → route görünürlüğü/ownership’e göre
         allow read: if
@@ -239,20 +289,19 @@ service cloud.firestore {
 
     /* =================== TELEMETRY (Share) =================== */
     match /metrics_share_events/{docId} {
-      // Ham event tablosu: sadece backend (Admin SDK) erişir.
       allow read: if false;
       allow write: if false;
     }
 
     match /metrics_share_agg/daily/{docId} {
-      // Günlük özetler: sadece admin kullanıcılar okuyabilir.
       allow read: if isSignedIn() && request.auth.token.admin == true;
       allow write: if false;
     }
 
     /* =================== CATCH-ALL (DEV OKUMA) =================== */
     match /{document=**} {
-      allow read: if isSignedIn() || devWindow();
+      allow read: if (isSignedIn() || devWindow())
+        && (!isSensitiveUserDropPath(document) || isSelfSensitiveUserDropPath(document));
       allow write: if false;
     }
   }

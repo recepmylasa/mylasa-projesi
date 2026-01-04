@@ -1,8 +1,11 @@
+// functions/index.js
 // -----------------------------------------------------
 // Mylasa Cloud Functions (Node 20, v2 API)
 // - Video işleme
 // - Rating agg + reputasyon
 // - Blind Box (Labubu): incrementStars, openBlindBox, seedSeriesS1
+// - Routes summary (cover + stopsPreview + stopsMeta)
+// - Route Drops: claimRouteDrop (EMİR 06/07)
 // -----------------------------------------------------
 
 const admin = require("firebase-admin");
@@ -435,6 +438,83 @@ exports.openBlindBox = onCall({ region: REGION }, async (req) => {
   });
 
   return { ok:true, drop: result };
+});
+
+/* ================== 4.4) ROUTE DROPS (EMİR 06/07) ==================
+   - Idempotent: users/{uid}/routeDrops/{routeId} varsa tekrar verme
+   - Prod sertleştirme:
+     * Region: europe-west3 (REGION constant)
+     * Route doğrulama: routes/{routeId} yoksa NOT_FOUND
+   - Ödül: users/{uid}.boxesEarned increment(1)
+   - Opsiyonel log: users/{uid}/drops altına type:"route_drop_claimed"
+====================================================== */
+
+exports.claimRouteDrop = onCall({ region: REGION }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Login required");
+
+  const routeIdRaw = req.data?.routeId;
+  const routeId = String(routeIdRaw || "").trim();
+
+  if (!routeId) throw new HttpsError("invalid-argument", "routeId required");
+  if (routeId.includes("/")) throw new HttpsError("invalid-argument", "Invalid routeId");
+  if (routeId.length > 200) throw new HttpsError("invalid-argument", "routeId too long");
+
+  const userRef = db.collection("users").doc(uid);
+  const dropRef = userRef.collection("routeDrops").doc(routeId);
+  const routeRef = db.collection("routes").doc(routeId);
+
+  const res = await db.runTransaction(async (tx) => {
+    // EMİR 07: Route var mı?
+    const routeSnap = await tx.get(routeRef);
+    if (!routeSnap.exists) throw new HttpsError("not-found", "Route not found");
+
+    const already = await tx.get(dropRef);
+    if (already.exists) {
+      return { ok: true, alreadyClaimed: true };
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const routeData = routeSnap.data() || {};
+    const ownerId = typeof routeData.ownerId === "string" ? routeData.ownerId : null;
+
+    // lock doc
+    tx.set(
+      dropRef,
+      {
+        routeId,
+        type: "route_drop",
+        ownerId,
+        claimedAt: now,
+      },
+      { merge: true }
+    );
+
+    // reward
+    tx.set(
+      userRef,
+      {
+        boxesEarned: admin.firestore.FieldValue.increment(1),
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    // opsiyonel log (openBlindBox yapısını bozmaz)
+    tx.set(
+      userRef.collection("drops").doc(),
+      {
+        type: "route_drop_claimed",
+        routeId,
+        createdAt: now,
+      },
+      { merge: true }
+    );
+
+    return { ok: true, alreadyClaimed: false };
+  });
+
+  return res;
 });
 
 // ================== 5) ROUTES SUMMARY (cover + stopsPreview + stopsMeta) ✅ ==================
