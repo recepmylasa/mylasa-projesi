@@ -6,6 +6,7 @@
 // - Blind Box (Labubu): incrementStars, openBlindBox, seedSeriesS1
 // - Routes summary (cover + stopsPreview + stopsMeta)
 // - Route Drops: claimRouteDrop (EMİR 06/07)
+// - ✅ EMİR 12: CommentsCount counter (content.commentsCount)
 // -----------------------------------------------------
 
 const admin = require("firebase-admin");
@@ -63,8 +64,10 @@ exports.processUploadedVideo = onObjectFinalized(
             "-crf 24",
             "-c:a aac",
             "-b:a 128k",
-            "-vf", "scale=-2:720",
-            "-movflags", "faststart",
+            "-vf",
+            "scale=-2:720",
+            "-movflags",
+            "faststart",
           ])
           .on("end", resolve)
           .on("error", reject)
@@ -80,10 +83,7 @@ exports.processUploadedVideo = onObjectFinalized(
       await uploadedFile.makePublic();
       const publicUrl = uploadedFile.publicUrl();
 
-      await db.collection("clips").doc(clipId).set(
-        { mediaUrl: publicUrl, status: "processed" },
-        { merge: true }
-      );
+      await db.collection("clips").doc(clipId).set({ mediaUrl: publicUrl, status: "processed" }, { merge: true });
     } catch (error) {
       console.error("processUploadedVideo error:", error);
       await db.collection("clips").doc(clipId).set(
@@ -91,15 +91,21 @@ exports.processUploadedVideo = onObjectFinalized(
         { merge: true }
       );
     } finally {
-      try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch {}
-      try { if (fs.existsSync(targetTempFilePath)) fs.unlinkSync(targetTempFilePath); } catch {}
-      try { await bucket.file(filePath).delete(); } catch {}
+      try {
+        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+      } catch {}
+      try {
+        if (fs.existsSync(targetTempFilePath)) fs.unlinkSync(targetTempFilePath);
+      } catch {}
+      try {
+        await bucket.file(filePath).delete();
+      } catch {}
     }
   }
 );
 
 // ================== 2) RATING AGG + REPUTASYON ==================
-const PRIOR_MEAN = 3.5;     // μ
+const PRIOR_MEAN = 3.5; // μ
 const PRIOR_STRENGTH = 100; // K
 
 function bayes(sum, count) {
@@ -124,7 +130,8 @@ exports.onRatingWrite = onDocumentWritten(
     // 1) İçeriğin tüm oylarını topla
     const ratingsSnap = await db.collection("content").doc(contentId).collection("ratings").get();
 
-    let count = 0, sum = 0;
+    let count = 0,
+      sum = 0;
     const byStar = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
 
     ratingsSnap.forEach((d) => {
@@ -169,8 +176,8 @@ async function recomputeUserReputationInternal(uid) {
     const a = d.data()?.agg || {};
     const c = Number(a.count || 0);
     const s = Number(a.sum || 0);
-    const b = (typeof a.bayes === "number" ? a.bayes : bayes(s, c));
-    const w = (typeof a.weight === "number" ? a.weight : weightOf(c));
+    const b = typeof a.bayes === "number" ? a.bayes : bayes(s, c);
+    const w = typeof a.weight === "number" ? a.weight : weightOf(c);
     sample += c;
     if (w > 0) {
       weightedSum += b * w;
@@ -203,91 +210,161 @@ async function recomputeUserReputationInternal(uid) {
   return { raw, visible, progress, sample, gold };
 }
 
-exports.recomputeUserReputation = onCall(
-  { region: REGION },
-  async (req) => {
-    if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
-    const uid = req.data?.uid || req.auth.uid;
-    const res = await recomputeUserReputationInternal(uid);
-    return { ok: true, ...res };
+exports.recomputeUserReputation = onCall({ region: REGION }, async (req) => {
+  if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
+  const uid = req.data?.uid || req.auth.uid;
+  const res = await recomputeUserReputationInternal(uid);
+  return { ok: true, ...res };
+});
+
+// ================== 2.5) ✅ EMİR 12 — COMMENTS COUNT COUNTER ==================
+// Amaç:
+// - content/{contentId}/comments/{commentId} yazılınca
+// - content/{contentId}.commentsCount alanını atomik güncelle
+// - Frontend tile/tab: artık comments collection snapshot yok, sadece content doc dinlenecek
+function isTruthy(v) {
+  return v === true || v === 1 || v === "1" || v === "true";
+}
+
+function isSoftDeletedComment(data) {
+  if (!data || typeof data !== "object") return false;
+  // olası delete alanları (geniş tolerans)
+  if (isTruthy(data.deleted) || isTruthy(data.isDeleted) || isTruthy(data.removed) || isTruthy(data.hidden)) return true;
+  if (data.deletedAt) return true;
+  if (data.removedAt) return true;
+  if (data.hiddenAt) return true;
+  return false;
+}
+
+function isAliveComment(data) {
+  // “yorum sayısı” için sayılacak yorum
+  if (!data || typeof data !== "object") return false;
+  return !isSoftDeletedComment(data);
+}
+
+exports.onContentCommentWrite = onDocumentWritten(
+  { region: REGION, document: "content/{contentId}/comments/{commentId}" },
+  async (event) => {
+    const { contentId } = event.params || {};
+    if (!contentId) return;
+
+    const before = event.data?.before;
+    const after = event.data?.after;
+
+    const beforeAlive = before?.exists ? isAliveComment(before.data()) : false;
+    const afterAlive = after?.exists ? isAliveComment(after.data()) : false;
+
+    const delta = (afterAlive ? 1 : 0) - (beforeAlive ? 1 : 0);
+    if (delta === 0) return;
+
+    const contentRef = db.collection("content").doc(String(contentId));
+
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(contentRef);
+        const curRaw = snap.exists ? snap.data()?.commentsCount : 0;
+        const cur = Number(curRaw || 0);
+        const curSafe = Number.isFinite(cur) ? cur : 0;
+
+        const next = Math.max(0, curSafe + delta);
+
+        tx.set(
+          contentRef,
+          {
+            commentsCount: next,
+            commentsCountUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      });
+    } catch (e) {
+      console.error("onContentCommentWrite error:", contentId, e);
+    }
   }
 );
 
 // ================== 3) BACKFILL (idempotent) ==================
-exports.backfillContentStubs = onCall(
-  { region: REGION, timeoutSeconds: 540 },
-  async (req) => {
-    if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
-    const limitPerType = Number(req.data?.maxPerType || 1000);
+exports.backfillContentStubs = onCall({ region: REGION, timeoutSeconds: 540 }, async (req) => {
+  if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
+  const limitPerType = Number(req.data?.maxPerType || 1000);
 
-    const defAgg = {
-      count: 0,
-      sum: 0,
-      byStar: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 },
-      bayes: PRIOR_MEAN,
-      weight: 0,
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-    };
+  const defAgg = {
+    count: 0,
+    sum: 0,
+    byStar: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 },
+    bayes: PRIOR_MEAN,
+    weight: 0,
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  };
 
-    async function backfill(collName, type) {
-      const snap = await db.collection(collName).limit(limitPerType).get();
+  async function backfill(collName, type) {
+    const snap = await db.collection(collName).limit(limitPerType).get();
 
-      let n = 0;
-      let batch = db.batch();
+    let n = 0;
+    let batch = db.batch();
 
-      for (const docSnap of snap.docs) {
-        const id = docSnap.id;
-        const data = docSnap.data() || {};
-        const authorId = data.authorId || data.userId || data.uid;
-        if (!authorId) continue;
+    for (const docSnap of snap.docs) {
+      const id = docSnap.id;
+      const data = docSnap.data() || {};
+      const authorId = data.authorId || data.userId || data.uid;
+      if (!authorId) continue;
 
-        const contentRef = db.collection("content").doc(id);
-        batch.set(
-          contentRef,
-          {
-            authorId,
-            type, // 'post' | 'story' | 'clip'
-            createdAt: data.createdAt || data.tarih || admin.firestore.FieldValue.serverTimestamp(),
-            agg: defAgg,
-          },
-          { merge: true }
-        );
+      const contentRef = db.collection("content").doc(id);
+      batch.set(
+        contentRef,
+        {
+          authorId,
+          type, // 'post' | 'story' | 'clip'
+          createdAt: data.createdAt || data.tarih || admin.firestore.FieldValue.serverTimestamp(),
+          agg: defAgg,
+        },
+        { merge: true }
+      );
 
-        n++;
-        if (n % 400 === 0) {
-          await batch.commit();
-          batch = db.batch();
-        }
+      n++;
+      if (n % 400 === 0) {
+        await batch.commit();
+        batch = db.batch();
       }
-      if (n % 400 !== 0) await batch.commit();
-      return n;
     }
-
-    const createdPosts = await backfill("posts", "post");
-    const createdStories = await backfill("hikayeler", "story");
-    const createdClips = await backfill("clips", "clip");
-
-    return { ok: true, created: { posts: createdPosts, hikayeler: createdStories, clips: createdClips } };
+    if (n % 400 !== 0) await batch.commit();
+    return n;
   }
-);
+
+  const createdPosts = await backfill("posts", "post");
+  const createdStories = await backfill("hikayeler", "story");
+  const createdClips = await backfill("clips", "clip");
+
+  return { ok: true, created: { posts: createdPosts, hikayeler: createdStories, clips: createdClips } };
+});
 
 // ================== 4) BLIND BOX (Labubu) ==================
 const SERIES_ID = "S1";
 
 /* helpers */
 // RNG'yi [0,1) aralığına oturt: 2^32 = 4294967296
-const hashSeed = (s) => { let h = 2166136261>>>0; for (let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return (h>>>0)/4294967296; };
+const hashSeed = (s) => {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967296;
+};
 
 const pickWeighted = (rng, weights) => {
-  const arr = Object.entries(weights).filter(([,w])=>w>0);
-  const total = arr.reduce((a,[,w])=>a+w,0);
-  let r = rng*total; for (const [k,w] of arr){ if((r-=w)<=0) return k; }
-  return arr[arr.length-1][0];
+  const arr = Object.entries(weights).filter(([, w]) => w > 0);
+  const total = arr.reduce((a, [, w]) => a + w, 0);
+  let r = rng * total;
+  for (const [k, w] of arr) {
+    if ((r -= w) <= 0) return k;
+  }
+  return arr[arr.length - 1][0];
 };
 
 async function getSeriesOrThrow() {
   const s = await db.collection("series").doc(SERIES_ID).get();
-  if (!s.exists) throw new HttpsError("not-found","Series not found");
+  if (!s.exists) throw new HttpsError("not-found", "Series not found");
   return s.data();
 }
 
@@ -307,21 +384,21 @@ exports.seedSeriesS1 = onCall({ region: REGION }, async (req) => {
     pityRareAt: 30,
     weights: {
       standardBox: { common: 0.88, rare: 0.12, legendaryHidden: 0.0 },
-      milestoneBox: { common: 0.70, rare: 0.29, legendaryHidden: 0.01 }
+      milestoneBox: { common: 0.7, rare: 0.29, legendaryHidden: 0.01 },
     },
     legendaryCaps: { AURORA: 250, VOID: 100 },
     milestones: [5, 1000, 5000, 10000, 25000, 50000],
     milestoneRewards: { "5": 1, "1000": 1, "5000": 1, "10000": 1, "25000": 1, "50000": 2 },
     cards: [
       // Asset yolları repo içeriğiyle hizalandı:
-      { code:"S1-LOVE",      name:"LOVE",      rarity:"common",          asset:"/cards/S1/LOVE.png" },
-      { code:"S1-HAPPINESS", name:"HAPPINESS", rarity:"common",          asset:"/cards/S1/HAPPINESS.jpg.png" },
-      { code:"S1-SERENITY",  name:"SERENITY",  rarity:"common",          asset:"/cards/S1/SERENITY.jpg.png" },
-      { code:"S1-HOPE",      name:"HOPE",      rarity:"common",          asset:"/cards/S1/HOPE.png" },
-      { code:"S1-LOYALTY",   name:"LOYALTY",   rarity:"rare",            asset:"/cards/S1/LOYALTY.jpg.png" },
-      { code:"S1-AURORA",    name:"AURORA",    rarity:"legendaryHidden", asset:"/cards/S1/AURORA.jpg.png", hidden:true },
-      { code:"S1-VOID",      name:"VOID",      rarity:"legendaryHidden", asset:"/cards/S1/VOID.jpg.png",   hidden:true }
-    ]
+      { code: "S1-LOVE", name: "LOVE", rarity: "common", asset: "/cards/S1/LOVE.png" },
+      { code: "S1-HAPPINESS", name: "HAPPINESS", rarity: "common", asset: "/cards/S1/HAPPINESS.jpg.png" },
+      { code: "S1-SERENITY", name: "SERENITY", rarity: "common", asset: "/cards/S1/SERENITY.jpg.png" },
+      { code: "S1-HOPE", name: "HOPE", rarity: "common", asset: "/cards/S1/HOPE.png" },
+      { code: "S1-LOYALTY", name: "LOYALTY", rarity: "rare", asset: "/cards/S1/LOYALTY.jpg.png" },
+      { code: "S1-AURORA", name: "AURORA", rarity: "legendaryHidden", asset: "/cards/S1/AURORA.jpg.png", hidden: true },
+      { code: "S1-VOID", name: "VOID", rarity: "legendaryHidden", asset: "/cards/S1/VOID.jpg.png", hidden: true },
+    ],
   };
 
   await ref.set(data, { merge: true });
@@ -331,44 +408,45 @@ exports.seedSeriesS1 = onCall({ region: REGION }, async (req) => {
 // 4.2 Yıldız sayacı: oy verildikçe kutu kazandırır
 exports.incrementStars = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated","Login required");
+  if (!uid) throw new HttpsError("unauthenticated", "Login required");
 
   const series = await getSeriesOrThrow();
   const userRef = db.collection("users").doc(uid);
 
-  await db.runTransaction(async (tx)=>{
+  await db.runTransaction(async (tx) => {
     const now = admin.firestore.FieldValue.serverTimestamp();
     const uSnap = await tx.get(userRef);
-    const u = uSnap.exists ? uSnap.data() : { starsTotal:0, boxesEarned:0, boxesOpened:0 };
-    const starsTotal = (u.starsTotal||0) + 1;
-    let boxesEarned = u.boxesEarned||0;
+    const u = uSnap.exists ? uSnap.data() : { starsTotal: 0, boxesEarned: 0, boxesOpened: 0 };
+    const starsTotal = (u.starsTotal || 0) + 1;
+    let boxesEarned = u.boxesEarned || 0;
 
     // 100 yıldızda bir standart kutu
-    if (starsTotal % (series.boxThreshold||100) === 0) boxesEarned += 1;
+    if (starsTotal % (series.boxThreshold || 100) === 0) boxesEarned += 1;
 
     // milestone kutuları
-    const milestones = series.milestones||[];
-    const rewards = series.milestoneRewards||{};
-    const prev = u.starsTotal||0;
-    for (const ms of milestones) if (prev < ms && starsTotal >= ms) {
-      boxesEarned += (rewards[String(ms)]||1);
-      tx.set(userRef.collection("notifications").doc(), { type:"milestone_box", ms, at: now });
-    }
+    const milestones = series.milestones || [];
+    const rewards = series.milestoneRewards || {};
+    const prev = u.starsTotal || 0;
+    for (const ms of milestones)
+      if (prev < ms && starsTotal >= ms) {
+        boxesEarned += rewards[String(ms)] || 1;
+        tx.set(userRef.collection("notifications").doc(), { type: "milestone_box", ms, at: now });
+      }
 
     tx.set(userRef, { starsTotal, boxesEarned, updatedAt: now }, { merge: true });
   });
 
-  return { ok:true };
+  return { ok: true };
 });
 
 // 4.3 Kutu açma
 exports.openBlindBox = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated","Login required");
+  if (!uid) throw new HttpsError("unauthenticated", "Login required");
 
-  const { boxType="standardBox" } = req.data || {};
-  if (!["standardBox","milestoneBox"].includes(boxType)) {
-    throw new HttpsError("invalid-argument","Invalid box type");
+  const { boxType = "standardBox" } = req.data || {};
+  if (!["standardBox", "milestoneBox"].includes(boxType)) {
+    throw new HttpsError("invalid-argument", "Invalid box type");
   }
 
   const series = await getSeriesOrThrow();
@@ -380,35 +458,42 @@ exports.openBlindBox = onCall({ region: REGION }, async (req) => {
   const seed = `${uid}|${now.seconds}.${now.nanoseconds}|${boxType}`;
   const rng = hashSeed(seed);
 
-  const result = await db.runTransaction(async (tx)=>{
+  const result = await db.runTransaction(async (tx) => {
     const uSnap = await tx.get(userRef);
     const u = uSnap.exists ? uSnap.data() : null;
-    const ready = (u?.boxesEarned||0) - (u?.boxesOpened||0);
-    if (ready <= 0) throw new HttpsError("failed-precondition","No boxes ready");
+    const ready = (u?.boxesEarned || 0) - (u?.boxesOpened || 0);
+    if (ready <= 0) throw new HttpsError("failed-precondition", "No boxes ready");
 
     // günlük limit (opsiyonel): standard için 5
-    const day = new Date().toISOString().slice(0,10);
-    const openedToday = u?.[`opened_${day}`]||0;
-    if (boxType==="standardBox" && openedToday>=5) throw new HttpsError("resource-exhausted","Daily open limit");
+    const day = new Date().toISOString().slice(0, 10);
+    const openedToday = u?.[`opened_${day}`] || 0;
+    if (boxType === "standardBox" && openedToday >= 5) throw new HttpsError("resource-exhausted", "Daily open limit");
 
     let rarity = pickWeighted(rng, series.weights[boxType]);
     let chosen = null;
 
     // Legendary-Hidden ise, global cap kontrolü
     if (rarity === "legendaryHidden") {
-      const order = [{code:"S1-AURORA",key:"AURORA"},{code:"S1-VOID",key:"VOID"}];
+      const order = [
+        { code: "S1-AURORA", key: "AURORA" },
+        { code: "S1-VOID", key: "VOID" },
+      ];
       for (const o of order) {
         const capDoc = db.collection("global_legendary_caps").doc(o.code);
         const capSnap = await tx.get(capDoc);
-        const initial = series.legendaryCaps[o.key]||0;
-        const left = capSnap.exists ? (capSnap.data().left||0) : initial;
-        if (left > 0) { chosen = series.cards.find(c=>c.code===o.code); tx.set(capDoc, { left: left-1 }, { merge:true }); break; }
+        const initial = series.legendaryCaps[o.key] || 0;
+        const left = capSnap.exists ? capSnap.data().left || 0 : initial;
+        if (left > 0) {
+          chosen = series.cards.find((c) => c.code === o.code);
+          tx.set(capDoc, { left: left - 1 }, { merge: true });
+          break;
+        }
       }
       if (!chosen) rarity = "rare";
     }
 
     if (!chosen) {
-      const pool = series.cards.filter(c=>c.rarity===rarity);
+      const pool = series.cards.filter((c) => c.rarity === rarity);
       if (!pool.length) {
         throw new HttpsError("failed-precondition", `No cards available in pool for rarity "${rarity}"`);
       }
@@ -425,19 +510,28 @@ exports.openBlindBox = onCall({ region: REGION }, async (req) => {
     const cardSnap = await tx.get(cardRef);
     const dupe = cardSnap.exists;
 
-    tx.set(cardRef, {
-      seriesId: SERIES_ID, code: chosen.code, name: chosen.name, rarity,
-      asset: chosen.asset, count: (cardSnap.data()?.count||0) + 1,
-      obtainedAt: now, lastSrc: boxType
-    }, { merge:true });
+    tx.set(
+      cardRef,
+      {
+        seriesId: SERIES_ID,
+        code: chosen.code,
+        name: chosen.name,
+        rarity,
+        asset: chosen.asset,
+        count: (cardSnap.data()?.count || 0) + 1,
+        obtainedAt: now,
+        lastSrc: boxType,
+      },
+      { merge: true }
+    );
 
-    tx.set(userRef, { boxesOpened: (u?.boxesOpened||0)+1, [`opened_${day}`]: openedToday+1 }, { merge:true });
+    tx.set(userRef, { boxesOpened: (u?.boxesOpened || 0) + 1, [`opened_${day}`]: openedToday + 1 }, { merge: true });
     tx.set(dropsCol.doc(), { seriesId: SERIES_ID, code: chosen.code, rarity, dupe, createdAt: now });
 
     return { ...chosen, rarity, dupe };
   });
 
-  return { ok:true, drop: result };
+  return { ok: true, drop: result };
 });
 
 /* ================== 4.4) ROUTE DROPS (EMİR 06/07) ==================
@@ -520,6 +614,7 @@ exports.claimRouteDrop = onCall({ region: REGION }, async (req) => {
 // ================== 5) ROUTES SUMMARY (cover + stopsPreview + stopsMeta) ✅ ==================
 // Amaç: UI'ya bırakmadan route doc'unu "tile-ready" yapmak.
 
+// ------------------ basic helpers ------------------
 function isNonEmptyString(v) {
   return typeof v === "string" && v.trim().length > 0;
 }
@@ -536,6 +631,53 @@ function pickString(...vals) {
   return "";
 }
 
+// ------------------ EMİR 10 helpers (video cover yasak) ------------------
+function stripUrlQueryHash(u) {
+  if (typeof u !== "string") return "";
+  const s = u.trim();
+  if (!s) return "";
+  return s.split("#")[0].split("?")[0].trim();
+}
+
+const VIDEO_EXTS = new Set(["mp4", "mov", "m4v", "webm", "mkv", "avi", "3gp", "3gpp", "ts", "m3u8"]);
+
+function getUrlExt(u) {
+  const clean = stripUrlQueryHash(u);
+  if (!clean) return "";
+  const lastDot = clean.lastIndexOf(".");
+  if (lastDot === -1) return "";
+  return clean.slice(lastDot + 1).toLowerCase();
+}
+
+function isVideoUrl(u) {
+  const ext = getUrlExt(u);
+  return !!(ext && VIDEO_EXTS.has(ext));
+}
+
+function isDefaultRouteCover(u) {
+  const clean = stripUrlQueryHash(u).toLowerCase();
+  if (!clean) return false;
+  return clean.endsWith("/route-default-cover.jpg") || clean.endsWith("route-default-cover.jpg");
+}
+
+function isVideoLikeMedia(obj) {
+  if (!obj || typeof obj !== "object") return false;
+  const t = pickString(obj.type, obj.mediaType, obj.kind, obj.mimeType, obj.contentType);
+  if (!t) return false;
+  return t.toLowerCase().includes("video");
+}
+
+function pickNonVideoString(...vals) {
+  for (const v of vals) {
+    if (typeof v !== "string") continue;
+    const s = v.trim();
+    if (!s) continue;
+    if (!isVideoUrl(s)) return s;
+  }
+  return "";
+}
+
+// ------------------ route/stops summary builders ------------------
 function inferOwnerId(route) {
   if (!route || typeof route !== "object") return "";
   return pickString(
@@ -556,11 +698,27 @@ function pickStopTitle(s) {
   if (!s || typeof s !== "object") return "";
   const raw = s.raw || s.data || null;
   const v = pickString(
-    s.title, s.name, s.label, s.placeName, s.addressName, s.locationName,
-    s?.place?.mainText, s?.place?.name, s?.place?.title, s?.place?.formattedAddress, s?.place?.formatted,
-    s?.poi?.name, s?.poi?.title,
-    raw?.title, raw?.name, raw?.label, raw?.placeName, raw?.addressName,
-    raw?.place?.mainText, raw?.place?.name, raw?.poi?.name
+    s.title,
+    s.name,
+    s.label,
+    s.placeName,
+    s.addressName,
+    s.locationName,
+    s?.place?.mainText,
+    s?.place?.name,
+    s?.place?.title,
+    s?.place?.formattedAddress,
+    s?.place?.formatted,
+    s?.poi?.name,
+    s?.poi?.title,
+    raw?.title,
+    raw?.name,
+    raw?.label,
+    raw?.placeName,
+    raw?.addressName,
+    raw?.place?.mainText,
+    raw?.place?.name,
+    raw?.poi?.name
   );
   return v;
 }
@@ -571,60 +729,136 @@ function pickStopLatLng(s) {
   const raw = s.raw || s.data || null;
 
   const lat = toFiniteNumber(
-    s.lat ?? s.latitude ??
-    raw?.lat ?? raw?.latitude ??
-    s?.location?.lat ?? s?.location?.latitude ??
-    s?.position?.lat ?? s?.position?.latitude ??
-    s?.coordinates?.lat ?? s?.coordinates?.latitude ??
-    s?.coords?.lat ?? s?.coords?.latitude ??
-    raw?.location?.lat ?? raw?.location?.latitude ??
-    raw?.position?.lat ?? raw?.position?.latitude ??
-    raw?.coordinates?.lat ?? raw?.coordinates?.latitude ??
-    raw?.coords?.lat ?? raw?.coords?.latitude
+    s.lat ??
+      s.latitude ??
+      raw?.lat ??
+      raw?.latitude ??
+      s?.location?.lat ??
+      s?.location?.latitude ??
+      s?.position?.lat ??
+      s?.position?.latitude ??
+      s?.coordinates?.lat ??
+      s?.coordinates?.latitude ??
+      s?.coords?.lat ??
+      s?.coords?.latitude ??
+      raw?.location?.lat ??
+      raw?.location?.latitude ??
+      raw?.position?.lat ??
+      raw?.position?.latitude ??
+      raw?.coordinates?.lat ??
+      raw?.coordinates?.latitude ??
+      raw?.coords?.lat ??
+      raw?.coords?.latitude
   );
 
   const lng = toFiniteNumber(
-    s.lng ?? s.lon ?? s.longitude ??
-    raw?.lng ?? raw?.lon ?? raw?.longitude ??
-    s?.location?.lng ?? s?.location?.longitude ??
-    s?.position?.lng ?? s?.position?.longitude ??
-    s?.coordinates?.lng ?? s?.coordinates?.longitude ??
-    s?.coords?.lng ?? s?.coords?.longitude ??
-    raw?.location?.lng ?? raw?.location?.longitude ??
-    raw?.position?.lng ?? raw?.position?.longitude ??
-    raw?.coordinates?.lng ?? raw?.coordinates?.longitude ??
-    raw?.coords?.lng ?? raw?.coords?.longitude
+    s.lng ??
+      s.lon ??
+      s.longitude ??
+      raw?.lng ??
+      raw?.lon ??
+      raw?.longitude ??
+      s?.location?.lng ??
+      s?.location?.longitude ??
+      s?.position?.lng ??
+      s?.position?.longitude ??
+      s?.coordinates?.lng ??
+      s?.coordinates?.longitude ??
+      s?.coords?.lng ??
+      s?.coords?.longitude ??
+      raw?.location?.lng ??
+      raw?.location?.longitude ??
+      raw?.position?.lng ??
+      raw?.position?.longitude ??
+      raw?.coordinates?.lng ??
+      raw?.coordinates?.longitude ??
+      raw?.coords?.lng ??
+      raw?.coords?.longitude
   );
 
   return { lat: lat != null ? lat : null, lng: lng != null ? lng : null };
 }
 
+/**
+ * EMİR 10:
+ * Stop için cover/preview amaçlı media seçimi:
+ * - Poster/thumbnail/image öncelikli (non-video)
+ * - Fallback: mediaUrl/url (non-video)
+ * - Video ise (poster yoksa) boş döner (UI placeholder'a düşsün)
+ */
 function pickStopMediaUrl(s) {
   if (!s || typeof s !== "object") return "";
   const raw = s.raw || s.data || null;
 
-  const direct = pickString(
-    s.mediaUrl, s.mediaURL, s.imageUrl, s.imageURL, s.photoUrl, s.photoURL,
-    s.thumbUrl, s.thumbnailUrl, s.coverUrl, s.coverURL, s.url, s.previewUrl, s.previewURL,
-    raw?.mediaUrl, raw?.imageUrl, raw?.photoUrl, raw?.thumbUrl, raw?.thumbnailUrl, raw?.coverUrl, raw?.previewUrl
+  // Direct fields (poster/thumbnail first) — non-video filtreli
+  const direct = pickNonVideoString(
+    s.posterUrl,
+    s.posterURL,
+    s.thumbnailUrl,
+    s.thumbUrl,
+    s.previewUrl,
+    s.previewURL,
+    s.coverUrl,
+    s.coverURL,
+    s.imageUrl,
+    s.imageURL,
+    s.photoUrl,
+    s.photoURL,
+    s.mediaUrl,
+    s.mediaURL,
+    s.url,
+    raw?.posterUrl,
+    raw?.posterURL,
+    raw?.thumbnailUrl,
+    raw?.thumbUrl,
+    raw?.previewUrl,
+    raw?.coverUrl,
+    raw?.imageUrl,
+    raw?.photoUrl,
+    raw?.mediaUrl,
+    raw?.url
   );
   if (direct) return direct;
 
   // arrays
-  const arr = Array.isArray(s.media) ? s.media
-    : Array.isArray(s.medias) ? s.medias
-    : Array.isArray(s.gallery) ? s.gallery
-    : Array.isArray(s.items) ? s.items
-    : Array.isArray(s.photos) ? s.photos
-    : null;
+  const arr = Array.isArray(s.media)
+    ? s.media
+    : Array.isArray(s.medias)
+      ? s.medias
+      : Array.isArray(s.gallery)
+        ? s.gallery
+        : Array.isArray(s.items)
+          ? s.items
+          : Array.isArray(s.photos)
+            ? s.photos
+            : null;
 
   if (Array.isArray(arr)) {
     for (const it of arr) {
       if (!it) continue;
-      if (typeof it === "string" && it.trim()) return it.trim();
+
+      if (typeof it === "string") {
+        const u = it.trim();
+        if (u && !isVideoUrl(u)) return u;
+        continue;
+      }
+
       if (typeof it === "object") {
+        // Video objesi ise poster/thumbnail yakala
+        const poster = pickNonVideoString(
+          it.posterUrl,
+          it.posterURL,
+          it.thumbnailUrl,
+          it.thumbUrl,
+          it.imageUrl,
+          it.photoUrl,
+          it.previewUrl,
+          it.coverUrl
+        );
+        if (poster) return poster;
+
         const u = pickString(it.url, it.mediaUrl, it.imageUrl, it.photoUrl, it.thumbUrl, it.thumbnailUrl, it.previewUrl);
-        if (u) return u;
+        if (u && !isVideoUrl(u)) return u;
       }
     }
   }
@@ -732,7 +966,7 @@ async function recomputeRouteSummary(routeId, opts = {}) {
   if (firstStop) stopsPreview.push(firstStop);
   if (lastStop && (!firstStop || String(lastStop.id) !== String(firstStop.id))) stopsPreview.push(lastStop);
 
-  const hasStops = (stopLen > 0) || (stopsPreview.length > 0);
+  const hasStops = stopLen > 0 || stopsPreview.length > 0;
   const stopsMeta = {
     has: !!hasStops,
     length: stopLen > 0 ? stopLen : stopsPreview.length,
@@ -741,25 +975,49 @@ async function recomputeRouteSummary(routeId, opts = {}) {
   const startName = firstStop?.title ? String(firstStop.title).trim() : "";
   const endName = lastStop?.title ? String(lastStop.title).trim() : "";
 
-  const existingCover = pickString(route.coverUrl, route.coverPhotoUrl, route.coverImageUrl, route.previewUrl, route.thumbnailUrl);
-  const existingThumb = pickString(route.thumbnailUrl, route.thumbUrl, route.previewUrl);
+  // --- EMİR 10: existing cover/thumb video ise geçersiz say + temizle ---
+  const existingCoverRaw = pickString(route.coverUrl, route.coverPhotoUrl, route.coverImageUrl, route.previewUrl, route.thumbnailUrl);
+  const existingThumbRaw = pickString(route.thumbnailUrl, route.thumbUrl, route.previewUrl);
+
+  const existingCoverWasVideo = isNonEmptyString(existingCoverRaw) && isVideoUrl(existingCoverRaw);
+  const existingThumbWasVideo = isNonEmptyString(existingThumbRaw) && isVideoUrl(existingThumbRaw);
+
+  const existingCover = !existingCoverWasVideo ? existingCoverRaw : "";
+  const existingThumb = !existingThumbWasVideo ? existingThumbRaw : "";
+
+  const coverIsDefault = isDefaultRouteCover(existingCoverRaw);
+  const thumbIsDefault = isDefaultRouteCover(existingThumbRaw);
 
   let coverUrl = existingCover;
   let thumbnailUrl = existingThumb || existingCover;
 
-  if (forceCover || !isNonEmptyString(existingCover)) {
-    const candidate = pickString(firstStop?.mediaUrl, lastStop?.mediaUrl);
+  const shouldRecomputeCover =
+    !isNonEmptyString(existingCover) || existingCoverWasVideo || (forceCover && coverIsDefault);
+
+  if (shouldRecomputeCover) {
+    // Candidate already non-video (makeStopPreview -> pickStopMediaUrl)
+    const candidate = pickNonVideoString(firstStop?.mediaUrl, lastStop?.mediaUrl);
+
     if (candidate) {
       coverUrl = candidate;
-      thumbnailUrl = thumbnailUrl || candidate;
+
+      const shouldSetThumb =
+        !isNonEmptyString(existingThumb) || existingThumbWasVideo || (forceCover && thumbIsDefault);
+
+      if (shouldSetThumb) thumbnailUrl = candidate;
     } else {
-      coverUrl = ""; // bilinçli boş => UI placeholder
-      thumbnailUrl = thumbnailUrl || "";
+      // Stops'tan image çıkmadı. Thumbnail image varsa cover'a düşebiliriz.
+      if (!isNonEmptyString(coverUrl) && isNonEmptyString(existingThumb)) {
+        coverUrl = existingThumb;
+      }
     }
   }
 
-  const totalDistanceM = extractTotalDistanceM(route);
+  // Final safety: cover/thumb asla video olamaz.
+  if (isNonEmptyString(coverUrl) && isVideoUrl(coverUrl)) coverUrl = "";
+  if (isNonEmptyString(thumbnailUrl) && isVideoUrl(thumbnailUrl)) thumbnailUrl = "";
 
+  const totalDistanceM = extractTotalDistanceM(route);
   const ownerId = isNonEmptyString(route.ownerId) ? String(route.ownerId).trim() : inferOwnerId(route);
 
   const patch = {
@@ -767,14 +1025,25 @@ async function recomputeRouteSummary(routeId, opts = {}) {
     stopsMeta,
     startName,
     endName,
-    hasMedia: isNonEmptyString(coverUrl) ? true : false,
+    hasMedia: isNonEmptyString(coverUrl) || isNonEmptyString(thumbnailUrl),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 
   if (isNonEmptyString(ownerId) && !isNonEmptyString(route.ownerId)) patch.ownerId = ownerId;
 
-  if (isNonEmptyString(coverUrl)) patch.coverUrl = coverUrl;
-  if (isNonEmptyString(thumbnailUrl)) patch.thumbnailUrl = thumbnailUrl;
+  // coverUrl: set veya legacy-video ise temizle
+  if (isNonEmptyString(coverUrl)) {
+    patch.coverUrl = coverUrl;
+  } else if (existingCoverWasVideo) {
+    patch.coverUrl = admin.firestore.FieldValue.delete();
+  }
+
+  // thumbnailUrl: set veya legacy-video ise temizle
+  if (isNonEmptyString(thumbnailUrl)) {
+    patch.thumbnailUrl = thumbnailUrl;
+  } else if (existingThumbWasVideo) {
+    patch.thumbnailUrl = admin.firestore.FieldValue.delete();
+  }
 
   // totalDistanceM: yalnızca 0/boş ise set etmeye çalış
   const currentDist = toFiniteNumber(route.totalDistanceM);
@@ -788,8 +1057,8 @@ async function recomputeRouteSummary(routeId, opts = {}) {
     ok: true,
     routeId: rid,
     stopsMeta,
-    coverSet: isNonEmptyString(patch.coverUrl),
-    thumbSet: isNonEmptyString(patch.thumbnailUrl),
+    coverSet: typeof patch.coverUrl === "string" ? isNonEmptyString(patch.coverUrl) : false,
+    thumbSet: typeof patch.thumbnailUrl === "string" ? isNonEmptyString(patch.thumbnailUrl) : false,
     ownerIdSet: !!patch.ownerId,
   };
 }
@@ -820,22 +1089,46 @@ exports.onRouteStopMediaWrite = onDocumentWritten(
     const media = after?.exists ? after.data() : null;
     if (!media) return;
 
-    const mediaUrl = pickString(
-      media.url, media.mediaUrl, media.imageUrl, media.photoUrl, media.downloadURL, media.downloadUrl,
-      media.thumbUrl, media.thumbnailUrl, media.previewUrl, media.posterUrl, media.path
+    const rawUrl = pickString(media.url, media.mediaUrl, media.downloadURL, media.downloadUrl, media.path);
+
+    // Video için poster/thumbnail/image gibi non-video adaylar
+    const posterUrl = pickNonVideoString(
+      media.posterUrl,
+      media.thumbnailUrl,
+      media.thumbUrl,
+      media.imageUrl,
+      media.photoUrl,
+      media.previewUrl,
+      media.coverUrl
     );
-    if (!isNonEmptyString(mediaUrl)) return;
+
+    if (!isNonEmptyString(rawUrl) && !isNonEmptyString(posterUrl)) return;
+
+    const looksVideo = isVideoLikeMedia(media) || (isNonEmptyString(rawUrl) && isVideoUrl(rawUrl));
 
     const stopRef = db.collection("routes").doc(String(routeId)).collection("stops").doc(String(stopId));
 
     try {
       const stopSnap = await stopRef.get();
-      const stopData = stopSnap.exists ? (stopSnap.data() || {}) : {};
-      if (!isNonEmptyString(stopData.mediaUrl)) {
-        await stopRef.set(
-          { mediaUrl: mediaUrl.trim(), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-          { merge: true }
-        );
+      const stopData = stopSnap.exists ? stopSnap.data() || {} : {};
+
+      const patch = {
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      // stop.mediaUrl: detay sayfası için (video da olabilir) — mevcut davranışı bozma
+      if (!isNonEmptyString(stopData.mediaUrl) && isNonEmptyString(rawUrl)) {
+        patch.mediaUrl = rawUrl.trim();
+      }
+
+      // EMİR 10: video ise cover/preview için poster/thumbnail bind et (varsa)
+      if (looksVideo && isNonEmptyString(posterUrl)) {
+        if (!isNonEmptyString(stopData.posterUrl)) patch.posterUrl = posterUrl.trim();
+        if (!isNonEmptyString(stopData.thumbnailUrl)) patch.thumbnailUrl = posterUrl.trim();
+      }
+
+      if (Object.keys(patch).length > 1) {
+        await stopRef.set(patch, { merge: true });
       }
     } catch (e) {
       console.error("onRouteStopMediaWrite stop set error:", routeId, stopId, e);
@@ -850,35 +1143,35 @@ exports.onRouteStopMediaWrite = onDocumentWritten(
 );
 
 // Callable: mevcut route'lara 1 kere backfill
-exports.backfillRoutesSummary = onCall(
-  { region: REGION, timeoutSeconds: 540 },
-  async (req) => {
-    if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
+exports.backfillRoutesSummary = onCall({ region: REGION, timeoutSeconds: 540 }, async (req) => {
+  if (!req.auth?.uid) throw new HttpsError("unauthenticated", "Giriş yap.");
 
-    const ownerId = isNonEmptyString(req.data?.ownerId) ? String(req.data.ownerId).trim() : "";
-    const lim = toFiniteNumber(req.data?.limit) != null ? Math.max(1, Math.min(500, Math.round(Number(req.data.limit)))) : 200;
-    const forceCover = !!req.data?.forceCover;
+  const ownerId = isNonEmptyString(req.data?.ownerId) ? String(req.data.ownerId).trim() : "";
+  const lim =
+    toFiniteNumber(req.data?.limit) != null
+      ? Math.max(1, Math.min(500, Math.round(Number(req.data.limit))))
+      : 200;
+  const forceCover = !!req.data?.forceCover;
 
-    let q = db.collection("routes").limit(lim);
-    if (ownerId) q = db.collection("routes").where("ownerId", "==", ownerId).limit(lim);
+  let q = db.collection("routes").limit(lim);
+  if (ownerId) q = db.collection("routes").where("ownerId", "==", ownerId).limit(lim);
 
-    const snap = await q.get();
-    const docs = snap.docs || [];
+  const snap = await q.get();
+  const docs = snap.docs || [];
 
-    let ok = 0;
-    let fail = 0;
+  let ok = 0;
+  let fail = 0;
 
-    for (const d of docs) {
-      try {
-        const res = await recomputeRouteSummary(d.id, { forceCover });
-        if (res?.ok) ok += 1;
-        else fail += 1;
-      } catch (e) {
-        fail += 1;
-        console.error("backfillRoutesSummary item error:", d.id, e);
-      }
+  for (const d of docs) {
+    try {
+      const res = await recomputeRouteSummary(d.id, { forceCover });
+      if (res?.ok) ok += 1;
+      else fail += 1;
+    } catch (e) {
+      fail += 1;
+      console.error("backfillRoutesSummary item error:", d.id, e);
     }
-
-    return { ok: true, scanned: docs.length, updated: ok, failed: fail, ownerId: ownerId || null, limit: lim, forceCover };
   }
-);
+
+  return { ok: true, scanned: docs.length, updated: ok, failed: fail, ownerId: ownerId || null, limit: lim, forceCover };
+});

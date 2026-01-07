@@ -12,7 +12,12 @@ import {
   resolveOwnerIdForLockedRoute,
 } from "../routeDetailUtils";
 
-export default function useRouteDetailData({ routeId, initialRoute, followInitially, ownerFromLink }) {
+export default function useRouteDetailData({
+  routeId,
+  initialRoute,
+  followInitially,
+  ownerFromLink,
+}) {
   const [routeDoc, setRouteDoc] = useState(null);
   const [stops, setStops] = useState([]);
   const [stopsLoaded, setStopsLoaded] = useState(false);
@@ -64,7 +69,8 @@ export default function useRouteDetailData({ routeId, initialRoute, followInitia
       } catch (e) {
         const code = String(e?.code || e?.message || "");
         if (!alive) return;
-        if (code.includes("permission") || code.includes("denied")) setPermError("forbidden");
+        if (code.includes("permission") || code.includes("denied"))
+          setPermError("forbidden");
         else setPermError(null);
       }
     })();
@@ -101,12 +107,18 @@ export default function useRouteDetailData({ routeId, initialRoute, followInitia
   // comments count watch
   useEffect(() => {
     if (!routeId) return;
-    if (permError === "forbidden" || permError === "private" || permError === "not-found") return;
+    if (
+      permError === "forbidden" ||
+      permError === "private" ||
+      permError === "not-found"
+    )
+      return;
 
     let unsubscribe;
     try {
-      unsubscribe = watchCommentsCount({ targetType: "route", targetId: routeId }, (cnt) =>
-        setCommentsCount(typeof cnt === "number" ? cnt : 0)
+      unsubscribe = watchCommentsCount(
+        { targetType: "route", targetId: routeId },
+        (cnt) => setCommentsCount(typeof cnt === "number" ? cnt : 0)
       );
     } catch {}
     return () => {
@@ -121,7 +133,12 @@ export default function useRouteDetailData({ routeId, initialRoute, followInitia
   // route/stops watch
   useEffect(() => {
     if (!routeId) return;
-    if (permError === "forbidden" || permError === "private" || permError === "not-found") return;
+    if (
+      permError === "forbidden" ||
+      permError === "private" ||
+      permError === "not-found"
+    )
+      return;
 
     let offRoute = () => {};
     let offStops = () => {};
@@ -140,7 +157,9 @@ export default function useRouteDetailData({ routeId, initialRoute, followInitia
 
     try {
       offStops = watchStops(routeId, (arr) => {
-        const sorted = (arr || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+        const sorted = (arr || [])
+          .slice()
+          .sort((a, b) => (a.order || 0) - (b.order || 0));
         setStops(sorted);
         setStopsLoaded(true);
       });
@@ -159,12 +178,23 @@ export default function useRouteDetailData({ routeId, initialRoute, followInitia
   // locked owner resolve (for forbidden/private/not-found)
   useEffect(() => {
     if (!routeId) return;
-    if (!(permError === "forbidden" || permError === "private" || permError === "not-found")) return;
+    if (
+      !(
+        permError === "forbidden" ||
+        permError === "private" ||
+        permError === "not-found"
+      )
+    )
+      return;
 
     let alive = true;
     (async () => {
       const direct =
-        ownerHint || routeModel?.ownerId || routeModel?.owner || owner?.id || null;
+        ownerHint ||
+        routeModel?.ownerId ||
+        routeModel?.owner ||
+        owner?.id ||
+        null;
       const baseOwnerId = direct ? String(direct) : null;
 
       const fetchOwnerDoc = async (uid) => {
@@ -205,7 +235,8 @@ export default function useRouteDetailData({ routeId, initialRoute, followInitia
   }, [routeId, permError, ownerHint]);
 
   const ownerIdForProfile = useMemo(() => {
-    const fromRoute = routeDoc?.ownerId || initialRoute?.ownerId || initialRoute?.owner || null;
+    const fromRoute =
+      routeDoc?.ownerId || initialRoute?.ownerId || initialRoute?.owner || null;
     return (
       (fromRoute ? String(fromRoute) : null) ||
       (owner?.id ? String(owner.id) : null) ||

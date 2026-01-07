@@ -6,7 +6,7 @@ import "./CommentsPanel.css";
 function ts(v) {
   if (!v) return 0;
   if (typeof v === "number") return v < 2e12 ? v * 1000 : v;
-  if (v.seconds) return v.seconds * 1000;
+  if (v?.seconds) return v.seconds * 1000;
   const t = Date.parse(v);
   return Number.isFinite(t) ? t : 0;
 }
@@ -18,7 +18,7 @@ function relTimeTR(input) {
   const m = Math.floor(diff / 60);
   if (m < 60) return `${m}dk önce`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}s önce`;
+  if (h < 24) return `${h}sa önce`;
   const g = Math.floor(h / 24);
   return `${g}g önce`;
 }
@@ -46,13 +46,37 @@ export default function CommentsPanel({
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [initialized, setInitialized] = useState(false);
   const [isEnd, setIsEnd] = useState(false);
 
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef(null);
   const sentinelRef = useRef(null);
+
+  // ✅ EMİR 12: targetType/targetId varsa contentId'i yok say (tek standart kaynak kilidi)
+  const hasTarget = !!(targetType && targetId);
+  const effectiveContentId = hasTarget ? undefined : contentId;
+
+  const keySig = useMemo(() => {
+    if (hasTarget) return `${String(targetType)}:${String(targetId)}`;
+    if (contentId) return String(contentId);
+    return "";
+  }, [hasTarget, targetType, targetId, contentId]);
+
+  // state snapshot (deps şişirmeden kontrol)
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  // hedef değişince reset (ileri uyumluluk)
+  useEffect(() => {
+    setItems([]);
+    setCursor(null);
+    setIsEnd(false);
+    setDraft("");
+    setSubmitting(false);
+  }, [keySig]);
 
   // panel açıldığında inputa fokusla
   useEffect(() => {
@@ -61,39 +85,51 @@ export default function CommentsPanel({
     }
   }, [open]);
 
-  // panel açıldığında ilk veriyi çek
+  // ✅ panel açılışını tek sefer yakala (double-fetch/spam fix)
+  const prevOpenRef = useRef(false);
+
+  // panel açıldığında ilk veriyi çek (B yolu)
   useEffect(() => {
-    if (!open || (!contentId && !(targetType && targetId))) return;
+    const becameOpen = open && !prevOpenRef.current;
+    prevOpenRef.current = open;
+
+    if (!becameOpen) return;
+    if (!keySig) return;
+
     let mounted = true;
 
-    // yerel (karttan) varsa önce onu göster
-    if (!initialized) {
-      const primed = Array.isArray(initialLocal) ? initialLocal : [];
-      const mapped = primed.map((y, i) => ({
-        id: y.id || `local-${i}`,
-        text: y.text || y.mesaj || "",
-        authorId: y.userId || y.authorId || "",
-        authorName: y.userName || y.username || "kullanıcı",
-        authorPhoto: y.userPhoto || y.photoURL || y.avatar || "",
-        createdAt: y.tarih || y.createdAt || y.timestamp || null,
-      }));
-      if (mapped.length) setItems(mapped);
+    // yerel (karttan) varsa önce onu göster (sadece liste boşsa)
+    try {
+      if (itemsRef.current.length === 0) {
+        const primed = Array.isArray(initialLocal) ? initialLocal : [];
+        const mapped = primed.map((y, i) => ({
+          id: y.id || `local-${i}`,
+          text: y.text || y.mesaj || "",
+          authorId: y.userId || y.authorId || "",
+          authorName: y.userName || y.username || "kullanıcı",
+          authorPhoto: y.userPhoto || y.photoURL || y.avatar || "",
+          createdAt: y.tarih || y.createdAt || y.timestamp || null,
+        }));
+        if (mapped.length) setItems((prev) => mergeUnique(prev, mapped));
+      }
+    } catch {
+      // no-op
     }
 
     (async () => {
       setLoading(true);
       try {
         const { items: first, nextCursor } = await getComments({
-          contentId,
+          contentId: effectiveContentId,
           targetType,
           targetId,
           pageSize: 25,
         });
         if (!mounted) return;
+
         setItems((prev) => mergeUnique(prev, first));
         setCursor(nextCursor);
         setIsEnd(!nextCursor);
-        setInitialized(true);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -102,12 +138,13 @@ export default function CommentsPanel({
     return () => {
       mounted = false;
     };
-  }, [open, contentId, targetType, targetId, initialized, initialLocal]);
+  }, [open, keySig, effectiveContentId, targetType, targetId, initialLocal]);
 
   // sonsuz kaydırma
   useEffect(() => {
     if (!open || isEnd) return;
-    if (!contentId && !(targetType && targetId)) return;
+    if (!keySig) return;
+
     const el = sentinelRef.current;
     if (!el) return;
 
@@ -115,10 +152,11 @@ export default function CommentsPanel({
       async (entries) => {
         if (!entries[0]?.isIntersecting) return;
         if (loading || !cursor) return;
+
         setLoading(true);
         try {
           const { items: more, nextCursor } = await getComments({
-            contentId,
+            contentId: effectiveContentId,
             targetType,
             targetId,
             pageSize: 25,
@@ -136,7 +174,7 @@ export default function CommentsPanel({
 
     io.observe(el);
     return () => io.disconnect();
-  }, [open, contentId, targetType, targetId, cursor, loading, isEnd]);
+  }, [open, keySig, cursor, loading, isEnd, effectiveContentId, targetType, targetId]);
 
   // ESC/backdrop kapatmayı üst bileşen yönetiyor.
   const stop = (e) => e.stopPropagation();
@@ -145,56 +183,46 @@ export default function CommentsPanel({
 
   const canSend = draft.trim().length > 0 && !submitting;
 
-  const handleSubmit = useCallback(
-    async () => {
-      const text = draft.trim();
-      if (!text || submitting) return;
-      setSubmitting(true);
-      try {
-        const optimistic = await addComment({
-          contentId,
-          targetType,
-          targetId,
-          text,
-        });
-        // En yeni üstte: başa ekleyelim (liste desc ise uyumlu)
-        setItems((prev) => mergeUnique([optimistic, ...prev], []));
-        setDraft("");
+  const handleSubmit = useCallback(async () => {
+    const text = draft.trim();
+    if (!text || submitting) return;
 
-        // ADIM 31: Hafif analitik tetikleyici (route yorumları)
-        try {
-          if (typeof window !== "undefined" && window.dispatchEvent) {
-            const detail = {
-              event:
-                targetType === "route"
-                  ? "route_comment_added"
-                  : "content_comment_added",
-            };
-            if (targetType) detail.targetType = targetType;
-            if (targetId) detail.targetId = targetId;
-            if (targetType === "route" && targetId) {
-              detail.routeId = targetId;
-            }
-            window.dispatchEvent(
-              new CustomEvent("analytics", {
-                detail,
-              })
-            );
-          }
-        } catch {
-          // analytics hataları akışı bozmasın
+    setSubmitting(true);
+    try {
+      const optimistic = await addComment({
+        contentId: effectiveContentId,
+        targetType,
+        targetId,
+        text,
+      });
+
+      // En yeni üstte: mergeUnique zaten createdAt desc sıralar
+      setItems((prev) => mergeUnique([optimistic], prev));
+      setDraft("");
+
+      // ADIM 31: Hafif analitik tetikleyici (route yorumları)
+      try {
+        if (typeof window !== "undefined" && window.dispatchEvent) {
+          const detail = {
+            event: targetType === "route" ? "route_comment_added" : "content_comment_added",
+          };
+          if (targetType) detail.targetType = targetType;
+          if (targetId) detail.targetId = targetId;
+          if (targetType === "route" && targetId) detail.routeId = targetId;
+
+          window.dispatchEvent(new CustomEvent("analytics", { detail }));
         }
-        // Not: serverTimestamp güncellendiğinde, sonraki sayfa/yeniden yüklemede hizalanır
-      } catch (e) {
-        // eslint-disable-next-line no-alert
-        alert(e?.message || "Yorum eklenemedi.");
-      } finally {
-        setSubmitting(false);
-        inputRef.current?.focus();
+      } catch {
+        // analytics hataları akışı bozmasın
       }
-    },
-    [draft, submitting, contentId, targetType, targetId]
-  );
+    } catch (e) {
+      // eslint-disable-next-line no-alert
+      alert(e?.message || "Yorum eklenemedi.");
+    } finally {
+      setSubmitting(false);
+      inputRef.current?.focus();
+    }
+  }, [draft, submitting, effectiveContentId, targetType, targetId]);
 
   const onKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -224,12 +252,7 @@ export default function CommentsPanel({
           {list.length === 0 && (
             <>
               {Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="cp-item skel"
-                  role="listitem"
-                  aria-hidden="true"
-                >
+                <div key={i} className="cp-item skel" role="listitem" aria-hidden="true">
                   <div className="cp-avatar skel-block" />
                   <div className="cp-body">
                     <div className="cp-skel-line w60" />
@@ -249,9 +272,7 @@ export default function CommentsPanel({
               )}
               <div className="cp-body">
                 <div className="cp-line">
-                  <strong className="cp-name">
-                    {c.authorName || "kullanıcı"}
-                  </strong>
+                  <strong className="cp-name">{c.authorName || "kullanıcı"}</strong>
                   <span className="cp-time">{relTimeTR(c.createdAt)}</span>
                 </div>
                 <div className="cp-text">{c.text}</div>
@@ -262,11 +283,7 @@ export default function CommentsPanel({
           {!isEnd && (
             <>
               {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={"skel-more-" + i}
-                  className="cp-item skel"
-                  aria-hidden="true"
-                >
+                <div key={"skel-more-" + i} className="cp-item skel" aria-hidden="true">
                   <div className="cp-avatar skel-block" />
                   <div className="cp-body">
                     <div className="cp-skel-line w70" />
@@ -298,11 +315,16 @@ export default function CommentsPanel({
   );
 }
 
-function mergeUnique(prev, add) {
-  const map = new Map(prev.map((x) => [x.id, x]));
-  for (const it of add) {
-    if (!it || !it.id) continue;
-    map.set(it.id, it);
-  }
-  return Array.from(map.values());
+function mergeUnique(a, b) {
+  const map = new Map();
+  (a || []).forEach((x) => {
+    if (x?.id) map.set(x.id, x);
+  });
+  (b || []).forEach((x) => {
+    if (x?.id) map.set(x.id, x);
+  });
+
+  const arr = Array.from(map.values());
+  arr.sort((x, y) => ts(y?.createdAt) - ts(x?.createdAt));
+  return arr;
 }

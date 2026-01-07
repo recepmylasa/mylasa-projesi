@@ -62,10 +62,31 @@ function isPlaceholderCover(v) {
   );
 }
 
+function isVideoUrl(url) {
+  const u = (url || "").toString().toLowerCase();
+  return (
+    u.includes(".mp4") ||
+    u.includes(".webm") ||
+    u.includes(".mov") ||
+    u.includes(".m4v") ||
+    u.includes("video/")
+  );
+}
+
 function normalizeCoverUrl(v) {
   const s = safeStr(v);
   if (!s) return "";
-  return isPlaceholderCover(s) ? "" : s;
+  if (isPlaceholderCover(s)) return "";
+  return s;
+}
+
+// ✅ EMİR-9: kapak/özet üretiminde video URL kapak olamaz
+function isGoodImageCandidate(v) {
+  const s = safeStr(v);
+  if (!s) return false;
+  if (isPlaceholderCover(s)) return false;
+  if (isVideoUrl(s)) return false;
+  return true;
 }
 
 function pickFirstString(obj, keys) {
@@ -100,86 +121,192 @@ function extractFirstUrlFromArray(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return "";
   for (const it of arr) {
     if (!it) continue;
+
+    // string item
     if (typeof it === "string") {
       const s = safeStr(it);
-      if (s) return s;
-      continue;
+      if (isGoodImageCandidate(s)) return s;
+      continue; // video ise geç
     }
-    if (typeof it === "object") {
-      const direct = pickFirstString(it, [
-        "url",
-        "src",
-        "mediaUrl",
-        "imageUrl",
-        "photoUrl",
-        "downloadUrl",
-        "downloadURL",
-        "publicUrl",
-        "fileUrl",
-        "thumbnailUrl",
-        "thumbUrl",
-        "previewUrl",
-      ]);
-      if (direct) return direct;
 
-      const nested = pickNestedString(it, [
-        "file.url",
-        "file.downloadUrl",
-        "file.downloadURL",
-        "asset.url",
-        "asset.downloadUrl",
-        "asset.downloadURL",
-      ]);
-      if (nested) return nested;
+    if (typeof it === "object") {
+      const typeRaw = safeStr(it.type || it.mediaType || it.kind || it.mime).toLowerCase();
+
+      const url =
+        pickFirstString(it, [
+          "url",
+          "src",
+          "imageUrl",
+          "photoUrl",
+          "thumbnailUrl",
+          "thumbUrl",
+          "previewUrl",
+          "posterUrl",
+          "poster",
+          "mediaUrl",
+          "fileUrl",
+          "downloadUrl",
+          "downloadURL",
+          "publicUrl",
+          "uri",
+          "path",
+          "fullPath",
+          "storagePath",
+          "gsUrl",
+          "gsURL",
+        ]) || "";
+
+      const poster =
+        pickFirstString(it, [
+          "posterUrl",
+          "poster",
+          "thumbnailUrl",
+          "thumbUrl",
+          "previewUrl",
+          "imageUrl",
+          "photoUrl",
+        ]) || "";
+
+      const nestedUrl =
+        pickNestedString(it, [
+          "file.url",
+          "file.downloadUrl",
+          "file.downloadURL",
+          "asset.url",
+          "asset.downloadUrl",
+          "asset.downloadURL",
+        ]) || "";
+
+      const nestedPoster =
+        pickNestedString(it, [
+          "file.posterUrl",
+          "file.thumbnailUrl",
+          "file.thumbUrl",
+          "asset.posterUrl",
+          "asset.thumbnailUrl",
+          "asset.thumbUrl",
+        ]) || "";
+
+      const urlStr = safeStr(url || nestedUrl);
+      const posterStr = safeStr(poster || nestedPoster);
+
+      const isVid =
+        typeRaw.includes("video") ||
+        typeRaw.includes("mp4") ||
+        typeRaw.includes("webm") ||
+        (urlStr ? isVideoUrl(urlStr) : false);
+
+      if (isVid) {
+        // ✅ video ise poster/thumbnail dene
+        if (isGoodImageCandidate(posterStr)) return posterStr;
+        continue;
+      }
+
+      // image: url > poster
+      if (isGoodImageCandidate(urlStr)) return urlStr;
+      if (isGoodImageCandidate(posterStr)) return posterStr;
     }
   }
   return "";
 }
 
+// ✅ EMİR-9: stop medya seçiminde image/poster önce; video ise poster’a düş; video url döndürme
 function extractStopMediaUrl(stop) {
   if (!stop || typeof stop !== "object") return "";
 
-  // 1) direkt alanlar
-  const direct = pickFirstString(stop, [
-    "mediaUrl",
-    "mediaURL",
-    "downloadUrl",
-    "downloadURL",
-    "url",
-    "src",
+  // 1) image/poster/thumbnail öncelik
+  const imageFirstKeys = [
     "imageUrl",
     "imageURL",
     "photoUrl",
     "photoURL",
-    "publicUrl",
-    "fileUrl",
-    "signedUrl",
+    "thumbnailUrl",
+    "thumbUrl",
+    "thumbURL",
     "previewUrl",
     "previewURL",
-    "gsUrl",
-    "gsURL",
+    "posterUrl",
+    "poster",
+    "coverUrl",
+    "coverURL",
+    "downloadUrl",
+    "downloadURL",
+    "signedUrl",
+    "publicUrl",
+    "fileUrl",
     "uri",
     "path",
     "fullPath",
     "storagePath",
-  ]);
-  if (direct) return direct;
+    "gsUrl",
+    "gsURL",
+    "url",
+    "src",
+  ];
 
-  // 2) nested alanlar
-  const nested = pickNestedString(stop, [
-    "file.url",
-    "file.downloadUrl",
-    "file.downloadURL",
-    "asset.url",
-    "asset.downloadUrl",
-    "asset.downloadURL",
-    "media.url",
-    "media.downloadUrl",
-    "media.downloadURL",
-  ]);
-  if (nested) return nested;
+  for (const k of imageFirstKeys) {
+    const v = stop?.[k];
+    const s = safeStr(v);
+    if (!s) continue;
+    if (isGoodImageCandidate(s)) return s;
+  }
 
-  // 3) array paketleri
+  // 2) mediaUrl (video olabilir) -> video ise poster/thumbnail'a düş
+  const media = safeStr(stop.mediaUrl || stop.mediaURL || "");
+  if (media) {
+    if (isGoodImageCandidate(media)) return media;
+
+    if (isVideoUrl(media)) {
+      const posterTry =
+        pickFirstString(stop, [
+          "posterUrl",
+          "poster",
+          "thumbnailUrl",
+          "thumbUrl",
+          "previewUrl",
+          "imageUrl",
+          "photoUrl",
+          "downloadUrl",
+          "downloadURL",
+        ]) || "";
+      if (isGoodImageCandidate(posterTry)) return posterTry;
+    }
+  }
+
+  // 3) nested
+  const nested =
+    pickNestedString(stop, [
+      "file.url",
+      "file.downloadUrl",
+      "file.downloadURL",
+      "asset.url",
+      "asset.downloadUrl",
+      "asset.downloadURL",
+      "media.url",
+      "media.downloadUrl",
+      "media.downloadURL",
+    ]) || "";
+
+  if (nested) {
+    if (isGoodImageCandidate(nested)) return nested;
+    if (isVideoUrl(nested)) {
+      const nestedPoster =
+        pickNestedString(stop, [
+          "file.posterUrl",
+          "file.thumbnailUrl",
+          "file.thumbUrl",
+          "asset.posterUrl",
+          "asset.thumbnailUrl",
+          "asset.thumbUrl",
+          "media.posterUrl",
+          "media.thumbnailUrl",
+          "media.thumbUrl",
+        ]) || "";
+      if (isGoodImageCandidate(nestedPoster)) return nestedPoster;
+    }
+  }
+
+  // 4) array paketleri
   const arr =
     stop.media ||
     stop.medias ||
@@ -209,20 +336,31 @@ function extractStopThumbUrl(stop) {
     "previewUrl",
     "downloadThumbnailUrl",
     "downloadThumbUrl",
+    "posterUrl",
+    "poster",
   ]);
-  if (direct) return direct;
+
+  if (direct) {
+    // ✅ thumb alanına video geldiyse yok say
+    if (isGoodImageCandidate(direct)) return direct;
+  }
 
   const nested = pickNestedString(stop, [
     "thumbnail.url",
     "thumb.url",
     "file.thumbUrl",
     "file.thumbnailUrl",
+    "file.posterUrl",
     "asset.thumbUrl",
     "asset.thumbnailUrl",
+    "asset.posterUrl",
   ]);
-  if (nested) return nested;
 
-  // thumb bulunamazsa media’ya düş
+  if (nested) {
+    if (isGoodImageCandidate(nested)) return nested;
+  }
+
+  // thumb bulunamazsa media’ya düş (media da video dönmez)
   return extractStopMediaUrl(stop);
 }
 
@@ -234,6 +372,7 @@ function normalizeStopForPreview(s) {
   const lat = safeNumNullable(s?.lat);
   const lng = safeNumNullable(s?.lng);
 
+  // ✅ EMİR-9: mediaUrl video dönmez; poster/image seçilir
   const mediaUrl = safeStr(extractStopMediaUrl(s));
   const thumbnailUrl = safeStr(extractStopThumbUrl(s));
 
@@ -275,6 +414,9 @@ export async function recomputeRouteSummary(routeId) {
           raw.coverUrl || raw.previewUrl || raw.imageUrl || raw.mediaUrl || ""
         );
         existingThumb = normalizeCoverUrl(raw.thumbnailUrl || raw.thumbUrl || "");
+        // ✅ video ise asla koruma
+        if (existingCover && isVideoUrl(existingCover)) existingCover = "";
+        if (existingThumb && isVideoUrl(existingThumb)) existingThumb = "";
       }
     } catch {}
 
@@ -282,10 +424,7 @@ export async function recomputeRouteSummary(routeId) {
     const firstQ = query(stopsCol, orderBy("order", "asc"), qlimit(1));
     const lastQ = query(stopsCol, orderBy("order", "desc"), qlimit(1));
 
-    const [firstSnap, lastSnap] = await Promise.all([
-      getDocs(firstQ),
-      getDocs(lastQ),
-    ]);
+    const [firstSnap, lastSnap] = await Promise.all([getDocs(firstQ), getDocs(lastQ)]);
 
     const firstStop = firstSnap.docs[0]
       ? { id: firstSnap.docs[0].id, ...firstSnap.docs[0].data() }
@@ -320,22 +459,24 @@ export async function recomputeRouteSummary(routeId) {
     const startName =
       safeStr(firstStop?.title || firstStop?.name || "") || safeStr(p1?.title);
     const endName =
-      safeStr(lastStop?.title || lastStop?.name || "") ||
-      safeStr(p2?.title || p1?.title);
+      safeStr(lastStop?.title || lastStop?.name || "") || safeStr(p2?.title || p1?.title);
 
     // 4) cover/thumbnail üretimi
+    // ✅ EMİR-9: extractStopMediaUrl video döndürmez (poster/image seçer)
     const firstMedia = firstStop ? safeStr(extractStopMediaUrl(firstStop)) : "";
     const lastMedia = lastStop ? safeStr(extractStopMediaUrl(lastStop)) : "";
 
     const firstThumb = firstStop ? safeStr(extractStopThumbUrl(firstStop)) : "";
     const lastThumb = lastStop ? safeStr(extractStopThumbUrl(lastStop)) : "";
 
-    const computedCover =
-      normalizeCoverUrl(firstMedia || lastMedia) || (stopsMeta.has ? "" : "");
-    const computedThumb =
+    const computedCoverRaw = normalizeCoverUrl(firstMedia || lastMedia) || "";
+    const computedCover = isVideoUrl(computedCoverRaw) ? "" : computedCoverRaw;
+
+    const computedThumbRaw =
       normalizeCoverUrl(firstThumb || firstMedia || lastThumb || lastMedia) ||
       computedCover ||
       "";
+    const computedThumb = isVideoUrl(computedThumbRaw) ? "" : computedThumbRaw;
 
     const hasMedia = Boolean(computedCover || computedThumb);
 
@@ -424,6 +565,7 @@ export async function addStop(routeId, stop) {
 
     const stopsDoc = doc(db, "routes", routeId, "stops", stopId);
 
+    // mediaUrl (video olabilir) + thumbnailUrl (poster)
     const mediaUrl = safeStr(
       stop.mediaUrl ||
         stop.downloadUrl ||
@@ -437,15 +579,33 @@ export async function addStop(routeId, stop) {
         ""
     );
 
-    const thumbnailUrl = safeStr(
+    let thumbnailUrl = safeStr(
       stop.thumbnailUrl ||
         stop.thumbUrl ||
         stop.thumbURL ||
         stop.previewUrl ||
         stop.previewURL ||
-        mediaUrl ||
         ""
     );
+
+    // ✅ EMİR-9: eğer media video ise, thumbnail boşsa poster/preview dene
+    if (!thumbnailUrl && mediaUrl && isVideoUrl(mediaUrl)) {
+      const posterTry = safeStr(
+        stop.posterUrl ||
+          stop.poster ||
+          stop.previewUrl ||
+          stop.previewURL ||
+          stop.thumbnailUrl ||
+          stop.thumbUrl ||
+          stop.imageUrl ||
+          stop.photoUrl ||
+          ""
+      );
+      if (posterTry && !isVideoUrl(posterTry)) thumbnailUrl = posterTry;
+    }
+
+    // thumb hala yoksa, eski davranış: media’ya düş (ama cover üretimi video istemiyor)
+    if (!thumbnailUrl) thumbnailUrl = safeStr(mediaUrl);
 
     const title = safeStr(stop.title || stop.name || "");
     const name = safeStr(stop.name || stop.title || "");
@@ -521,7 +681,9 @@ export async function setRouteCoverPicked(routeId, { url, stopId, mediaId } = {}
   try {
     const rid = safeStr(routeId);
     const pickedUrl = normalizeCoverUrl(url);
-    if (!rid || !pickedUrl) return;
+
+    // ✅ picked cover video olamaz
+    if (!rid || !pickedUrl || isVideoUrl(pickedUrl)) return;
 
     const routeRef = doc(db, "routes", rid);
 
