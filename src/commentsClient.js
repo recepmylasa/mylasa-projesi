@@ -4,17 +4,19 @@ import { auth, db } from "./firebase";
 import {
   addDoc,
   collection,
+  doc,
+  getCountFromServer,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   startAfter,
-  onSnapshot,
 } from "firebase/firestore";
 
-const COMMENTS_PATH = (contentKey) =>
-  collection(db, "content", contentKey, "comments");
+const COMMENTS_PATH = (contentKey) => collection(db, "content", contentKey, "comments");
+const CONTENT_DOC = (contentKey) => doc(db, "content", contentKey);
 
 // -------------------- EMİR 09: permission-denied dedupe logger --------------------
 const __DEV__ = process.env.NODE_ENV !== "production";
@@ -48,6 +50,11 @@ function safeCall(cb, value) {
   }
 }
 
+function toSafeNumber(v) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /**
  * Yorumları getir (sayfalı)
  * @param {object} args
@@ -57,13 +64,7 @@ function safeCall(cb, value) {
  * @param {number} [args.pageSize=25]
  * @param {*} [args.cursor] Firestore lastDoc
  */
-export async function getComments({
-  contentId,
-  targetType,
-  targetId,
-  pageSize = 25,
-  cursor = null,
-}) {
+export async function getComments({ contentId, targetType, targetId, pageSize = 25, cursor = null }) {
   let key;
   try {
     key = buildContentKey({ contentId, targetType, targetId });
@@ -111,9 +112,7 @@ export async function addComment({ contentId, targetType, targetId, text }) {
   const key = buildContentKey({ contentId, targetType, targetId });
 
   const user = auth.currentUser;
-  const authorName =
-    user?.displayName ||
-    (user?.email ? user.email.split("@")[0] : "kullanıcı");
+  const authorName = user?.displayName || (user?.email ? user.email.split("@")[0] : "kullanıcı");
   const authorPhoto = user?.photoURL || "";
 
   const ref = await addDoc(COMMENTS_PATH(key), {
@@ -135,15 +134,40 @@ export async function addComment({ contentId, targetType, targetId, text }) {
   };
 }
 
-// -------------------- EMİR 11: comments:count fail-graceful + tek listener/cache --------------------
+// -------------------- EMİR 13: commentsCount doc-field watcher (+ 1x fallback) --------------------
 const __countBlockedPaths = new Set(); // permission-denied aldıysa aynı session'da tekrar dinleme
-const __countWatchers = new Map(); // path -> { callbacks:Set<fn>, last:number, unsub:fn|null }
+const __countWatchers = new Map(); // path -> { callbacks:Set<fn>, last:number, unsub:fn|null, fallbackDone:boolean }
 
 function getCountEntry(path) {
   return __countWatchers.get(path) || null;
 }
 
-function ensureCountEntry(path, colRef) {
+async function runFallbackOnce({ key, entry, docPath }) {
+  if (!entry || entry.fallbackDone) return;
+  entry.fallbackDone = true;
+
+  try {
+    // 1 kere: collection size yerine count aggregation (maliyet düşük)
+    const q = query(COMMENTS_PATH(key));
+    const agg = await getCountFromServer(q);
+    const n = toSafeNumber(agg?.data()?.count);
+    entry.last = n;
+    for (const cb of entry.callbacks) safeCall(cb, n);
+  } catch (err) {
+    const code = err?.code ? String(err.code) : "unknown";
+    logPermDeniedOnce("comments:count:fallback", `content/${key}/comments`, err);
+
+    // degrade: 0
+    entry.last = 0;
+    for (const cb of entry.callbacks) safeCall(cb, 0);
+
+    if (code === "permission-denied") {
+      __countBlockedPaths.add(docPath);
+    }
+  }
+}
+
+function ensureCountEntry(path, docRef, key) {
   const existing = getCountEntry(path);
   if (existing) return existing;
 
@@ -151,24 +175,44 @@ function ensureCountEntry(path, colRef) {
     callbacks: new Set(),
     last: 0,
     unsub: null,
+    fallbackDone: false,
   };
 
   entry.unsub = onSnapshot(
-    colRef,
+    docRef,
     (snap) => {
-      const size = snap && typeof snap.size === "number" ? snap.size : 0;
-      entry.last = size;
-      for (const cb of entry.callbacks) safeCall(cb, size);
+      // doc yoksa veya alan yoksa: 0 bas + 1 kere fallback dene
+      if (!snap || !snap.exists()) {
+        entry.last = 0;
+        for (const cb of entry.callbacks) safeCall(cb, 0);
+        runFallbackOnce({ key, entry, docPath: path });
+        return;
+      }
+
+      const data = snap.data() || {};
+      const raw = data.commentsCount;
+
+      // alan yoksa: 0 + 1 kere fallback
+      if (raw === undefined || raw === null) {
+        entry.last = 0;
+        for (const cb of entry.callbacks) safeCall(cb, 0);
+        runFallbackOnce({ key, entry, docPath: path });
+        return;
+      }
+
+      const v = toSafeNumber(raw);
+      entry.last = v;
+      for (const cb of entry.callbacks) safeCall(cb, v);
     },
     (err) => {
       const code = err?.code ? String(err.code) : "unknown";
-      logPermDeniedOnce("comments:count", path, err);
+      logPermDeniedOnce("comments:count:doc", path, err);
 
-      // degrade: count yokmuş gibi davran
+      // degrade: 0
       entry.last = 0;
       for (const cb of entry.callbacks) safeCall(cb, 0);
 
-      // permission-denied → bu path için tekrar listener kurma (spam döngüsünü kır)
+      // permission-denied → bu docPath için tekrar listener kurma (spam döngüsünü kır)
       if (code === "permission-denied") {
         __countBlockedPaths.add(path);
         try {
@@ -203,16 +247,12 @@ function detachCountCallback(path, cb) {
 }
 
 /**
- * ADIM 31: Yorum sayısını gerçek zamanlı takip et (sekme etiketi için)
- * - EMİR 11: error callback asla uncaught değil
- * - logged-in değilse listener açma
- * - aynı contentKey için tek listener (cache)
- * - permission-denied aldıysa aynı session’da tekrar deneme (spam fix)
+ * EMİR 13: Yorum sayısını gerçek zamanlı takip et (sekme etiketi için)
+ * - Artık collection snapshot yok → content/{key} doc snapshot
+ * - Field yoksa / doc yoksa: 1 kere count aggregation fallback (geriye uyumluluk)
+ * - permission-denied spam kırıcı (session cache)
  */
-export function watchCommentsCount(
-  { contentId, targetType, targetId },
-  onChange
-) {
+export function watchCommentsCount({ contentId, targetType, targetId }, onChange) {
   if (typeof onChange !== "function") return () => {};
 
   let key;
@@ -223,15 +263,15 @@ export function watchCommentsCount(
     return () => {};
   }
 
-  // ✅ logged-in değilse listener açma
+  // ✅ logged-in değilse listener açma (rules: content read signed-in)
   const uid = auth?.currentUser?.uid;
   if (!uid) {
     safeCall(onChange, 0);
     return () => {};
   }
 
-  const colRef = COMMENTS_PATH(key);
-  const path = colRef?.path ? String(colRef.path) : `content/${key}/comments`;
+  const docRef = CONTENT_DOC(key);
+  const path = docRef?.path ? String(docRef.path) : `content/${key}`;
 
   // ✅ permission-denied gördüysek tekrar dinleme (session içinde)
   if (__countBlockedPaths.has(path)) {
@@ -240,7 +280,7 @@ export function watchCommentsCount(
   }
 
   // ✅ tek listener: aynı path’e bağlananlar callback set’ine eklenir
-  const entry = ensureCountEntry(path, colRef);
+  const entry = ensureCountEntry(path, docRef, key);
   entry.callbacks.add(onChange);
 
   // anlık last varsa hemen bas (pırıl pırıl)
