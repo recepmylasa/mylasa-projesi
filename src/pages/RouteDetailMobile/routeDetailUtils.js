@@ -1,4 +1,4 @@
-// src/pages/RouteDetailMobile/routeDetailUtils.js
+// FILE: src/pages/RouteDetailMobile/routeDetailUtils.js
 import { db } from "../../firebase";
 import { doc, getDoc } from "firebase/firestore";
 
@@ -92,9 +92,7 @@ export function normalizeRouteCover(route = {}) {
     const r = route || {};
     const rawKind = r?.cover?.kind;
     const kind =
-      rawKind === "picked" || rawKind === "auto" || rawKind === "default"
-        ? rawKind
-        : null;
+      rawKind === "picked" || rawKind === "auto" || rawKind === "default" ? rawKind : null;
 
     const urlRaw = r?.cover?.url ? String(r.cover.url) : "";
     const url = normalizeCandidateUrl(urlRaw);
@@ -152,9 +150,7 @@ export function fmtDur(ms) {
 }
 
 export function calcAvg(sum, count) {
-  return (Number(count) || 0) > 0
-    ? (Number(sum || 0) / Number(count)).toFixed(1)
-    : "—";
+  return (Number(count) || 0) > 0 ? (Number(sum || 0) / Number(count)).toFixed(1) : "—";
 }
 
 export function isFiniteNumber(value) {
@@ -174,18 +170,160 @@ export function getValidLatLng(lat, lng) {
   return { lat: la, lng: ln };
 }
 
+/* -------------------- EMİR 17: tek normalize merkezi -------------------- */
+
+function _isObj(v) {
+  return v != null && typeof v === "object";
+}
+
+function _extractNestedNumber(v) {
+  // { _lat } / { _long } gibi nested yapılar
+  if (!_isObj(v)) return v;
+  if ("_lat" in v && v._lat != null) return v._lat;
+  if ("_long" in v && v._long != null) return v._long;
+  if ("latitude" in v && v.latitude != null) return v.latitude;
+  if ("longitude" in v && v.longitude != null) return v.longitude;
+  if ("lon" in v && v.lon != null) return v.lon;
+  if ("long" in v && v.long != null) return v.long;
+  return v;
+}
+
+/**
+ * normalizeLatLng(any) → {lat:number,lng:number} | null
+ * Desteklenen formatlar:
+ * - {lat,lng} / {latitude,longitude} / {lat,lon}
+ * - Firestore GeoPoint (latitude/longitude)
+ * - Google LatLng (lat() / lng())
+ * - nested: {_lat,_long}, {lat:{_lat},lng:{_long}}
+ * - nested kapsayıcılar: location/coords/position/geo/point/center
+ * - Places: {geometry:{location:...}}
+ * - array: [lat,lng] (heuristic: [lng,lat] olursa güvenli swap)
+ * - string sayı: "37.21"
+ */
+export function normalizeLatLng(value, _depth = 0) {
+  try {
+    if (value == null) return null;
+    if (_depth > 6) return null;
+
+    // Array: [lat, lng] veya [lng, lat]
+    if (Array.isArray(value)) {
+      if (value.length < 2) return null;
+
+      const a = value[0];
+      const b = value[1];
+
+      const na = typeof a === "number" ? a : Number(a);
+      const nb = typeof b === "number" ? b : Number(b);
+
+      if (Number.isFinite(na) && Number.isFinite(nb)) {
+        // Heuristic: ilk değer 90+ ise lat olamaz, swap dene
+        if (Math.abs(na) > 90 && Math.abs(nb) <= 90) {
+          const swapped = getValidLatLng(nb, na);
+          if (swapped) return swapped;
+        }
+      }
+
+      return getValidLatLng(a, b);
+    }
+
+    // Primitive: tek başına latlng olamaz
+    if (!_isObj(value)) return null;
+
+    // Google LatLng: lat()/lng()
+    try {
+      if (typeof value.lat === "function" && typeof value.lng === "function") {
+        return getValidLatLng(value.lat(), value.lng());
+      }
+    } catch {}
+
+    // GeoPoint: latitude/longitude
+    if ("latitude" in value && "longitude" in value) {
+      return getValidLatLng(value.latitude, value.longitude);
+    }
+
+    // Flat internal: {_lat,_long}
+    if ("_lat" in value && "_long" in value) {
+      return getValidLatLng(value._lat, value._long);
+    }
+
+    // Plain {lat,lng} / {lat,lon} / {latitude,longitude}
+    if ("lat" in value && ("lng" in value || "lon" in value || "long" in value)) {
+      const laRaw = _extractNestedNumber(value.lat);
+      const lnRaw =
+        "lng" in value ? _extractNestedNumber(value.lng) : "lon" in value ? _extractNestedNumber(value.lon) : _extractNestedNumber(value.long);
+      const out = getValidLatLng(laRaw, lnRaw);
+      if (out) return out;
+    }
+
+    // Places geometry.location
+    if (value?.geometry?.location) {
+      const out = normalizeLatLng(value.geometry.location, _depth + 1);
+      if (out) return out;
+    }
+
+    // Sık nested kapsayıcılar
+    const nestedKeys = [
+      "location",
+      "coords",
+      "position",
+      "geo",
+      "geopoint",
+      "geoPoint",
+      "point",
+      "center",
+      "latLng",
+      "latlng",
+      "lngLat",
+      "lnglat",
+    ];
+    for (const k of nestedKeys) {
+      if (value && value[k] != null) {
+        const out = normalizeLatLng(value[k], _depth + 1);
+        if (out) return out;
+      }
+    }
+
+    // Daha derin bazı yapılar (coords.location vb.)
+    if (value?.coords?.location) {
+      const out = normalizeLatLng(value.coords.location, _depth + 1);
+      if (out) return out;
+    }
+    if (value?.location?.coords) {
+      const out = normalizeLatLng(value.location.coords, _depth + 1);
+      if (out) return out;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function getValidLatLngSafe(a, b) {
   try {
-    if (a && typeof a === "object") {
-      if (typeof a.lat === "function" && typeof a.lng === "function") {
-        return getValidLatLng(a.lat(), a.lng());
+    // a,b sayısal ise direkt dene (string sayı dahil)
+    const direct = getValidLatLng(a, b);
+    if (direct) return direct;
+
+    // tek objeden normalize
+    const na = normalizeLatLng(a);
+    if (na) return na;
+
+    const nb = normalizeLatLng(b);
+    if (nb) return nb;
+
+    // string "lat,lng" gibi (çok nadir ama güvenli)
+    try {
+      if (typeof a === "string" && a.includes(",") && (b == null || b === "")) {
+        const parts = a.split(",").map((x) => x.trim());
+        if (parts.length >= 2) {
+          const out = getValidLatLng(parts[0], parts[1]);
+          if (out) return out;
+        }
       }
-      if ("latitude" in a && "longitude" in a) {
-        return getValidLatLng(a.latitude, a.longitude);
-      }
-      return getValidLatLng(a.lat, a.lng);
-    }
-    return getValidLatLng(a, b);
+    } catch {}
+
+    return null;
   } catch {
     return null;
   }
@@ -199,10 +337,7 @@ export function buildStatsFromRoute(raw = {}) {
     distanceMeters = raw.distanceMeters;
   } else if (isFiniteNumber(raw.distance) && raw.distance > 0) {
     distanceMeters = raw.distance;
-  } else if (
-    isFiniteNumber(raw.stats?.distanceMeters) &&
-    raw.stats.distanceMeters > 0
-  ) {
+  } else if (isFiniteNumber(raw.stats?.distanceMeters) && raw.stats.distanceMeters > 0) {
     distanceMeters = raw.stats.distanceMeters;
   }
 
@@ -215,10 +350,7 @@ export function buildStatsFromRoute(raw = {}) {
     durationSeconds = raw.duration;
   } else if (isFiniteNumber(raw.durationMinutes) && raw.durationMinutes > 0) {
     durationSeconds = Math.round(raw.durationMinutes * 60);
-  } else if (
-    isFiniteNumber(raw.stats?.durationSeconds) &&
-    raw.stats.durationSeconds > 0
-  ) {
+  } else if (isFiniteNumber(raw.stats?.durationSeconds) && raw.stats.durationSeconds > 0) {
     durationSeconds = raw.stats.durationSeconds;
   }
 
@@ -234,11 +366,7 @@ export function buildStatsFromRoute(raw = {}) {
   }
 
   let avgSpeedKmh = null;
-  if (
-    isFiniteNumber(distanceMeters) &&
-    isFiniteNumber(durationSeconds) &&
-    durationSeconds > 0
-  ) {
+  if (isFiniteNumber(distanceMeters) && isFiniteNumber(durationSeconds) && durationSeconds > 0) {
     const km = distanceMeters / 1000;
     const hours = durationSeconds / 3600;
     if (hours > 0) {
@@ -255,8 +383,7 @@ export function buildStatsFromRoute(raw = {}) {
 }
 
 export function getVisibilityKeyFromRoute(raw = {}) {
-  const source =
-    raw.visibility ?? raw.audience ?? raw.routeVisibility ?? raw.privacy ?? "";
+  const source = raw.visibility ?? raw.audience ?? raw.routeVisibility ?? raw.privacy ?? "";
   const v = source.toString().toLowerCase();
 
   if (!v || v === "public" || v === "everyone") return "public";
@@ -419,24 +546,14 @@ export function getRouteRatingLabelSafe(model) {
     return `${avg} ★ (${cnt})`;
   }
   const avg =
-    (typeof m.ratingAvg === "number" &&
-      Number.isFinite(m.ratingAvg) &&
-      m.ratingAvg) ||
-    (typeof m.avgRating === "number" &&
-      Number.isFinite(m.avgRating) &&
-      m.avgRating) ||
-    (typeof m.raw?.ratingAvg === "number" &&
-      Number.isFinite(m.raw.ratingAvg) &&
-      m.raw.ratingAvg) ||
+    (typeof m.ratingAvg === "number" && Number.isFinite(m.ratingAvg) && m.ratingAvg) ||
+    (typeof m.avgRating === "number" && Number.isFinite(m.avgRating) && m.avgRating) ||
+    (typeof m.raw?.ratingAvg === "number" && Number.isFinite(m.raw.ratingAvg) && m.raw.ratingAvg) ||
     null;
 
   const cnt =
-    (typeof m.ratingCount === "number" &&
-      Number.isFinite(m.ratingCount) &&
-      m.ratingCount) ||
-    (typeof m.raw?.ratingCount === "number" &&
-      Number.isFinite(m.raw.ratingCount) &&
-      m.raw.ratingCount) ||
+    (typeof m.ratingCount === "number" && Number.isFinite(m.ratingCount) && m.ratingCount) ||
+    (typeof m.raw?.ratingCount === "number" && Number.isFinite(m.raw.ratingCount) && m.raw.ratingCount) ||
     null;
 
   if (typeof avg === "number") {
@@ -458,10 +575,8 @@ export function buildShareRoutePayload(routeDoc, ownerDoc, routeId) {
       ownerDoc.name ||
       r.ownerUsername ||
       r.ownerName;
-    r.ownerName =
-      ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
-    r.ownerAvatar =
-      ownerDoc.photoURL || ownerDoc.profilFoto || ownerDoc.avatar || r.ownerAvatar;
+    r.ownerName = ownerDoc.name || ownerDoc.fullName || r.ownerName || r.ownerUsername;
+    r.ownerAvatar = ownerDoc.photoURL || ownerDoc.profilFoto || ownerDoc.avatar || r.ownerAvatar;
   }
 
   const coverUrl = resolveRouteCoverUrl(r);

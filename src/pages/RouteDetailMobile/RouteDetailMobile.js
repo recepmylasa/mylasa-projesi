@@ -503,7 +503,7 @@ export default function RouteDetailMobile({
   // ✅ Main UI
   // =========================
   const content = (
-    <div className="route-detail-backdrop" onClick={handleBackdropClick}>
+    <div className="route-detail-backdrop route-detail-dark" onClick={handleBackdropClick}>
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
@@ -621,42 +621,57 @@ export default function RouteDetailMobile({
       </div>
 
       {showShareSheet && (
-        <div className="route-detail-share-overlay">
-          <ShareSheetMobile
-            route={buildShareRoutePayload(
-              { ...(routeDoc || initialRoute || {}), cover: { kind: coverKindUi, url: coverResolved } },
-              owner,
-              routeId
-            )}
-            stops={stops}
-            onClose={() => setShowShareSheet(false)}
-          />
+        <div
+          className="route-detail-share-overlay"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowShareSheet(false);
+          }}
+        >
+          <div className="route-detail-share-overlay__inner" onClick={(e) => e.stopPropagation()}>
+            <ShareSheetMobile
+              route={buildShareRoutePayload(
+                { ...(routeDoc || initialRoute || {}), cover: { kind: coverKindUi, url: coverResolved } },
+                owner,
+                routeId
+              )}
+              stops={stops}
+              onClose={() => setShowShareSheet(false)}
+            />
+          </div>
         </div>
       )}
 
-      <RouteDetailCoverPickerOverlayMobile
-        open={coverPickerOpen}
-        mode={coverPickerMode}
-        state={coverPickerState}
-        upload={coverUpload}
-        onClose={closeCoverPicker}
-        onBack={backToCoverPickerMenu}
-        onChooseFromStops={chooseCoverFromStops}
-        onUploadFromDevice={uploadCoverFromDevice}
-        onPickCover={pickCover}
-        onImgLoad={handleImgLoadProof}
-        onImgError={handleImgErrorToDefault}
-      />
+      {/* ✅ Overlay’ler RouteDetail backdrop’ına click sızdırmasın */}
+      <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
+        <RouteDetailCoverPickerOverlayMobile
+          open={coverPickerOpen}
+          mode={coverPickerMode}
+          state={coverPickerState}
+          upload={coverUpload}
+          onClose={closeCoverPicker}
+          onBack={backToCoverPickerMenu}
+          onChooseFromStops={chooseCoverFromStops}
+          onUploadFromDevice={uploadCoverFromDevice}
+          onPickCover={pickCover}
+          onImgLoad={handleImgLoadProof}
+          onImgError={handleImgErrorToDefault}
+        />
+      </div>
 
-      <CommentsPanel
-        open={tab === "comments"}
-        targetType="route"
-        targetId={routeId}
-        placeholder="Bu rota hakkında ne düşünüyorsun?"
-        onClose={() => onTabChange("stops")}
-      />
+      <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
+        <CommentsPanel
+          open={tab === "comments"}
+          targetType="route"
+          targetId={routeId}
+          placeholder="Bu rota hakkında ne düşünüyorsun?"
+          onClose={() => onTabChange("stops")}
+        />
+      </div>
 
-      {lightboxItems && <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />}
+      {lightboxItems && (
+        <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />
+      )}
     </div>
   );
 

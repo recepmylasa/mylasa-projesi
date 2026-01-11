@@ -19,7 +19,7 @@ export default function RouteDetailStopsTab({
   onImgError,
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="rdtab rdtab--stops">
       {(stops || []).map((s) => {
         const cache = mediaCacheRef.current.get(s.id) || {};
         const media = cache.items || [];
@@ -27,7 +27,7 @@ export default function RouteDetailStopsTab({
         const hadPermErr = cache.__error && String(cache.__error).includes("permission");
 
         return (
-          <div key={s.id} style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+          <div key={s.id} className="rdglass-card">
             <div
               style={{
                 padding: "10px 12px",
@@ -42,31 +42,31 @@ export default function RouteDetailStopsTab({
                   {s.order ? `${s.order}. ` : ""}
                   {s.title || `Durak ${s.order || ""}`}
                 </div>
-                {s.note && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{s.note}</div>}
+
+                {s.note && (
+                  <div className="rdglass-muted" style={{ fontSize: 12, marginTop: 2 }}>
+                    {s.note}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 {stopAgg && stopAgg[s.id] && (
                   <div style={{ minWidth: 120 }}>
-                    <StarBars counts={stopAgg[s.id].counts} total={stopAgg[s.id].total} compact height={8} showNumbers={false} />
+                    <StarBars
+                      counts={stopAgg[s.id].counts}
+                      total={stopAgg[s.id].total}
+                      compact
+                      height={8}
+                      showNumbers={false}
+                    />
                   </div>
                 )}
 
                 <StarRatingV2 onRated={(v) => onStopRate(s.id, v)} size={22} disabled={isOwner} />
 
                 {isOwner && (
-                  <button
-                    type="button"
-                    onClick={() => onPickMedia(s.id)}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #ddd",
-                      background: "#fff",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
+                  <button type="button" onClick={() => onPickMedia(s.id)} className="rdglass-btn">
                     Medya Ekle
                   </button>
                 )}
@@ -83,14 +83,13 @@ export default function RouteDetailStopsTab({
                 return (
                   <div
                     key={m.id || idx}
-                    className="route-detail-media-tile"
+                    className="route-detail-media-tile rdglass-tile"
                     onClick={() => openLightbox(buildLightboxItems(media), idx)}
                     style={{
                       width: 76,
                       height: 76,
                       borderRadius: 8,
                       overflow: "hidden",
-                      background: "#f3f4f6",
                       flex: "0 0 auto",
                       cursor: "pointer",
                       position: "relative",
@@ -128,21 +127,28 @@ export default function RouteDetailStopsTab({
               })}
 
               {media.length === 0 && (
-                <div style={{ fontSize: 12, opacity: 0.7 }}>{hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}</div>
+                <div className="rdglass-muted" style={{ fontSize: 12 }}>
+                  {hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}
+                </div>
               )}
             </div>
 
             {up && (
               <div style={{ padding: "0 10px 10px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ flex: 1, height: 8, background: "#eee", borderRadius: 999, overflow: "hidden" }}>
+                  <div className="rdglass-progress-track">
                     <div style={{ width: `${up.p || 0}%`, height: "100%", background: "#1a73e8" }} />
                   </div>
-                  <div style={{ fontSize: 12, width: 36, textAlign: "right" }}>{up.p || 0}%</div>
+
+                  <div className="rdglass-muted" style={{ fontSize: 12, width: 36, textAlign: "right" }}>
+                    {up.p || 0}%
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => cancelUpload(s.id)}
-                    style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}
+                    className="rdglass-muted"
+                    style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer", padding: 6 }}
                   >
                     İptal
                   </button>
@@ -154,7 +160,11 @@ export default function RouteDetailStopsTab({
       })}
 
       {(stops || []).length === 0 && (
-        <div style={{ padding: "10px 4px", fontSize: 13, opacity: 0.7 }}>Bu rotada durak yok.</div>
+        <div className="rdglass-card rdglass-card--pad rdglass-empty">
+          <div className="rdglass-muted" style={{ fontSize: 13 }}>
+            Bu rotada durak yok.
+          </div>
+        </div>
       )}
     </div>
   );

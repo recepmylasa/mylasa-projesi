@@ -174,7 +174,15 @@ export default function Lightbox({ items = [], index = 0, onClose = () => {} }) 
 
   if (!len) {
     return (
-      <div className="mylasa-lightbox" role="dialog" aria-modal="true" onClick={close}>
+      <div
+        className="mylasa-lightbox"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => {
+          e.stopPropagation();
+          close();
+        }}
+      >
         <div className="mylasa-lightbox__panel" onClick={(e) => e.stopPropagation()}>
           <div className="mylasa-lightbox__top">
             <button
@@ -198,7 +206,15 @@ export default function Lightbox({ items = [], index = 0, onClose = () => {} }) 
   const activeTitle = safeItems[active]?.title ? String(safeItems[active].title) : "";
 
   return (
-    <div className="mylasa-lightbox" role="dialog" aria-modal="true" onClick={close}>
+    <div
+      className="mylasa-lightbox"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        e.stopPropagation();
+        close();
+      }}
+    >
       <div className="mylasa-lightbox__panel" onClick={(e) => e.stopPropagation()}>
         <div className="mylasa-lightbox__top">
           <button

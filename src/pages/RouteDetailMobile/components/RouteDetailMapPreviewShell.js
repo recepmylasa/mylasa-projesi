@@ -1,4 +1,4 @@
-// src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js
+// FILE: src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js
 import React, { useMemo } from "react";
 import { useGoogleMaps } from "../../../hooks/useGoogleMaps";
 import RouteDetailMapPreview from "./RouteDetailMapPreview";
@@ -52,7 +52,10 @@ export default function RouteDetailMapPreviewShell({
     justifyContent: "center",
     padding: 14,
     borderRadius: 14,
-    background: "rgba(255,255,255,0.86)",
+
+    // ✅ Light tema aynı kalsın; dark override sadece .route-detail-dark altından gelsin
+    background: "var(--rdmps-overlay-bg, rgba(255,255,255,0.86))",
+
     backdropFilter: "blur(6px)",
     WebkitBackdropFilter: "blur(6px)",
     zIndex: 5,
@@ -62,50 +65,70 @@ export default function RouteDetailMapPreviewShell({
     width: "100%",
     maxWidth: 360,
     borderRadius: 14,
-    border: "1px solid rgba(0,0,0,0.08)",
-    background: "#fff",
-    boxShadow: "0 10px 26px rgba(0,0,0,0.10)",
+
+    // ✅ Dark override: CSS variable üzerinden
+    border: "1px solid var(--rdmps-card-border, rgba(0,0,0,0.08))",
+    background: "var(--rdmps-card-bg, #fff)",
+    boxShadow: "var(--rdmps-card-shadow, 0 10px 26px rgba(0,0,0,0.10))",
+
     padding: 14,
     display: "flex",
     flexDirection: "column",
     gap: 10,
   };
 
-  const title = { fontWeight: 900, fontSize: 14, color: "#111" };
-  const desc = { fontSize: 12, color: "rgba(0,0,0,0.72)", lineHeight: 1.35 };
+  const title = {
+    fontWeight: 900,
+    fontSize: 14,
+    color: "var(--rdmps-title, #111)",
+  };
+
+  const desc = {
+    fontSize: 12,
+    color: "var(--rdmps-sub, rgba(0,0,0,0.72))",
+    lineHeight: 1.35,
+  };
 
   const btnRow = { display: "flex", gap: 10, flexWrap: "wrap" };
 
   const retryBtn = {
-    height: 38,
+    height: "var(--rdmps-btn-h, 38px)",
     padding: "0 14px",
     borderRadius: 999,
-    border: "1px solid #111",
-    background: "#111",
-    color: "#fff",
+
+    border: "1px solid var(--rdmps-btn-primary-border, #111)",
+    background: "var(--rdmps-btn-primary-bg, #111)",
+    color: "var(--rdmps-btn-primary-fg, #fff)",
+    boxShadow: "var(--rdmps-btn-primary-shadow, none)",
+
     fontWeight: 900,
     cursor: "pointer",
     flex: "1 1 140px",
+    WebkitTapHighlightColor: "transparent",
   };
 
   const ghostBtn = {
-    height: 38,
+    height: "var(--rdmps-btn-h, 38px)",
     padding: "0 14px",
     borderRadius: 999,
-    border: "1px solid rgba(0,0,0,0.12)",
-    background: "#fff",
-    color: "#111",
+
+    border: "1px solid var(--rdmps-btn-ghost-border, rgba(0,0,0,0.12))",
+    background: "var(--rdmps-btn-ghost-bg, #fff)",
+    color: "var(--rdmps-btn-ghost-fg, #111)",
+    boxShadow: "var(--rdmps-btn-ghost-shadow, none)",
+
     fontWeight: 900,
     cursor: "pointer",
     flex: "1 1 140px",
+    WebkitTapHighlightColor: "transparent",
   };
 
   const spinner = {
     width: 18,
     height: 18,
     borderRadius: 999,
-    border: "2px solid rgba(0,0,0,0.12)",
-    borderTopColor: "rgba(0,0,0,0.65)",
+    border: "2px solid var(--rdmps-spin-track, rgba(0,0,0,0.12))",
+    borderTopColor: "var(--rdmps-spin-head, rgba(0,0,0,0.65))",
     animation: "rdmpspin 0.9s linear infinite",
     flex: "0 0 auto",
   };
@@ -121,6 +144,19 @@ export default function RouteDetailMapPreviewShell({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      {/* ✅ Harita canvas (useGoogleMaps ref mutlaka bir DOM elemente bağlanmalı) */}
+      <div
+        ref={mapDivRef || undefined}
+        className="rdmps-map"
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: 14,
+          overflow: "hidden",
+          background: "rgba(0,0,0,0.04)",
+        }}
+      />
+
       {/* Harita/preview içeriği (tek source of truth) */}
       <RouteDetailMapPreview
         routeId={routeId}
@@ -134,21 +170,28 @@ export default function RouteDetailMapPreviewShell({
 
       {/* Loading overlay */}
       {isLoading && (
-        <div style={overlayBase} aria-live="polite" aria-busy="true">
+        <div className="rdmps-overlay" style={overlayBase} aria-live="polite" aria-busy="true">
           <style>{`
             @keyframes rdmpspin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
           `}</style>
-          <div style={card}>
+
+          <div className="rdmps-card" style={card}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={spinner} />
               <div>
-                <div style={title}>Harita yükleniyor…</div>
-                <div style={desc}>Bağlantı yavaşsa biraz sürebilir.</div>
+                <div className="rdmps-title" style={title}>
+                  Harita yükleniyor…
+                </div>
+                <div className="rdmps-sub" style={desc}>
+                  Bağlantı yavaşsa biraz sürebilir.
+                </div>
               </div>
             </div>
+
             <div style={btnRow}>
               <button
                 type="button"
+                className="rdmps-btn rdmps-btn--ghost"
                 style={ghostBtn}
                 onClick={() => {
                   try {
@@ -165,16 +208,21 @@ export default function RouteDetailMapPreviewShell({
 
       {/* Error overlay */}
       {isError && (
-        <div style={overlayBase} role="alert">
-          <div style={card}>
+        <div className="rdmps-overlay" style={overlayBase} role="alert">
+          <div className="rdmps-card" style={card}>
             <div>
-              <div style={title}>Harita açılamadı</div>
-              <div style={desc}>{messageForError()}</div>
+              <div className="rdmps-title" style={title}>
+                Harita açılamadı
+              </div>
+              <div className="rdmps-sub" style={desc}>
+                {messageForError()}
+              </div>
             </div>
 
             <div style={btnRow}>
               <button
                 type="button"
+                className="rdmps-btn rdmps-btn--primary"
                 style={retryBtn}
                 onClick={() => {
                   try {
@@ -187,6 +235,7 @@ export default function RouteDetailMapPreviewShell({
 
               <button
                 type="button"
+                className="rdmps-btn rdmps-btn--ghost"
                 style={ghostBtn}
                 onClick={() => {
                   try {

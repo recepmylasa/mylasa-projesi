@@ -1,9 +1,14 @@
-// src/pages/RouteDetailMobile/components/RouteDetailMapPreview.js
+// FILE: src/pages/RouteDetailMobile/components/RouteDetailMapPreview.js
 import React, { useEffect, useMemo, useRef } from "react";
 
 // ✅ Backward-safe import: named export yoksa bile build patlamasın
 import * as routeDetailUtils from "../routeDetailUtils";
 
+/**
+ * getLL(a,b) → {lat,lng} | null
+ * - routeDetailUtils.getValidLatLngSafe varsa onu kullanır (en güvenlisi)
+ * - yoksa getValidLatLng fallback
+ */
 const getLL = (a, b) => {
   try {
     if (typeof routeDetailUtils.getValidLatLngSafe === "function") {
@@ -19,8 +24,25 @@ const getLL = (a, b) => {
   }
 };
 
-function key5(lat, lng) {
-  const ll = getLL(lat, lng);
+/**
+ * mapRef bazen React ref (mapRef.current), bazen direkt Map instance gelebiliyor.
+ * Bu helper ikisini de tekleştirir.
+ */
+function getMapInstance(mapRefLike) {
+  try {
+    if (!mapRefLike) return null;
+    const m = mapRefLike?.current ? mapRefLike.current : mapRefLike;
+    if (!m) return null;
+    // Google Maps Map instance için minimal kontrol
+    if (typeof m.setCenter === "function" && typeof m.fitBounds === "function") return m;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function key5Any(v) {
+  const ll = getLL(v);
   if (!ll) return null;
   const la = Number(ll.lat);
   const ln = Number(ll.lng);
@@ -33,7 +55,7 @@ function buildStopsSignature(stops) {
   const parts = arr
     .map((s) => {
       const id = s?.id != null ? String(s.id) : s?.stopId != null ? String(s.stopId) : "";
-      const k = key5(s?.lat, s?.lng) || "x";
+      const k = key5Any(s) || "x";
       return `${id}@${k}`;
     })
     .sort((a, b) => a.localeCompare(b));
@@ -49,7 +71,7 @@ function buildPathSignature(path) {
     maxLng = -Infinity;
 
   for (const p of arr) {
-    const ll = getLL(p?.lat, p?.lng);
+    const ll = getLL(p);
     if (!ll) continue;
     const la = Number(ll.lat);
     const ln = Number(ll.lng);
@@ -81,14 +103,15 @@ function buildFitSignature(path, stops) {
     maxLat = -Infinity,
     maxLng = -Infinity;
 
-  const add = (lat, lng) => {
-    const ll = getLL(lat, lng);
+  const addAny = (v) => {
+    const ll = getLL(v);
     if (!ll) return;
     const la = Number(ll.lat);
     const ln = Number(ll.lng);
     if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
 
-    keys.push(`${la.toFixed(5)},${ln.toFixed(5)}`);
+    const k = `${la.toFixed(5)},${ln.toFixed(5)}`;
+    keys.push(k);
 
     if (la < minLat) minLat = la;
     if (ln < minLng) minLng = ln;
@@ -96,8 +119,8 @@ function buildFitSignature(path, stops) {
     if (ln > maxLng) maxLng = ln;
   };
 
-  (Array.isArray(path) ? path : []).forEach((p) => add(p?.lat, p?.lng));
-  (Array.isArray(stops) ? stops : []).forEach((s) => add(s?.lat, s?.lng));
+  (Array.isArray(path) ? path : []).forEach((p) => addAny(p));
+  (Array.isArray(stops) ? stops : []).forEach((s) => addAny(s));
 
   if (!keys.length) return "";
 
@@ -114,11 +137,11 @@ function buildFitSignature(path, stops) {
 function collectAllPts(path, stops) {
   const out = [];
   (Array.isArray(path) ? path : []).forEach((p) => {
-    const ll = getLL(p?.lat, p?.lng);
+    const ll = getLL(p);
     if (ll) out.push(ll);
   });
   (Array.isArray(stops) ? stops : []).forEach((s) => {
-    const ll = getLL(s?.lat, s?.lng);
+    const ll = getLL(s);
     if (ll) out.push(ll);
   });
   return out;
@@ -190,11 +213,11 @@ export default function RouteDetailMapPreview({
 
   // ✅ Polyline çiz
   useEffect(() => {
-    if (gmapsStatus !== "ready") return;
-    if (!mapRef?.current) return;
+    if (gmapsStatus !== "ready" && gmapsStatus !== "loaded") return;
     if (!(window.google && window.google.maps)) return;
 
-    const map = mapRef.current;
+    const map = getMapInstance(mapRef);
+    if (!map) return;
 
     if (lastMapInstanceRef.current !== map) {
       lastMapInstanceRef.current = map;
@@ -208,7 +231,7 @@ export default function RouteDetailMapPreview({
     lastPathSigRef.current = pathSig;
 
     const pts = (Array.isArray(path) ? path : [])
-      .map((p) => getLL(p?.lat, p?.lng))
+      .map((p) => getLL(p))
       .filter(Boolean)
       .map((ll) => ({ lat: Number(ll.lat), lng: Number(ll.lng) }))
       .filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng));
@@ -245,12 +268,12 @@ export default function RouteDetailMapPreview({
 
   // ✅ Stop marker’ları
   useEffect(() => {
-    if (gmapsStatus !== "ready") return;
-    if (!mapRef?.current) return;
+    if (gmapsStatus !== "ready" && gmapsStatus !== "loaded") return;
     if (!(window.google && window.google.maps)) return;
-
-    const map = mapRef.current;
     if (!stopsLoaded) return;
+
+    const map = getMapInstance(mapRef);
+    if (!map) return;
 
     if (lastStopsSigRef.current === stopsSig) return;
     lastStopsSigRef.current = stopsSig;
@@ -267,10 +290,12 @@ export default function RouteDetailMapPreview({
     const gm = window.google.maps;
 
     const arr = Array.isArray(stops) ? stops : [];
-    const ordered = arr.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    const ordered = arr
+      .slice()
+      .sort((a, b) => (Number(a?.order) || 0) - (Number(b?.order) || 0));
 
     ordered.forEach((s, idx) => {
-      const ll = getLL(s?.lat, s?.lng);
+      const ll = getLL(s);
       if (!ll) return;
       const la = Number(ll.lat);
       const ln = Number(ll.lng);
@@ -306,21 +331,30 @@ export default function RouteDetailMapPreview({
 
   // ✅ Fit bounds
   useEffect(() => {
-    if (gmapsStatus !== "ready") return;
-    if (!mapRef?.current) return;
+    if (gmapsStatus !== "ready" && gmapsStatus !== "loaded") return;
     if (!(window.google && window.google.maps)) return;
 
     if (lastFitSigRef.current === fitSig) return;
     lastFitSigRef.current = fitSig;
 
-    const map = mapRef.current;
+    const map = getMapInstance(mapRef);
+    if (!map) return;
+
     const gm = window.google.maps;
 
-    const pts = collectAllPts(path, stops)
+    // EMİR 17: path + stops → tek normalize havuzu (dedupe + finite)
+    const ptsRaw = collectAllPts(path, stops)
       .map((x) => ({ lat: Number(x.lat), lng: Number(x.lng) }))
       .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
 
-    if (!pts.length) return;
+    if (!ptsRaw.length) return;
+
+    const uniqMap = new Map();
+    ptsRaw.forEach((p) => {
+      const k = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+      if (!uniqMap.has(k)) uniqMap.set(k, p);
+    });
+    const pts = Array.from(uniqMap.values());
 
     cancelRaf();
     rafRef.current = requestAnimationFrame(() => {
