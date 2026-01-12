@@ -1,4 +1,4 @@
-// src/pages/RouteDetailMobile/tabs/RouteDetailReportTab.js
+// FILE: src/pages/RouteDetailMobile/tabs/RouteDetailReportTab.js
 import React from "react";
 import StarBars from "../components/StarBars";
 

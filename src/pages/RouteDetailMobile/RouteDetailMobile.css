@@ -1,4 +1,4 @@
-/* src/pages/RouteDetailMobile/RouteDetailMobile.css */
+/* FILE: src/pages/RouteDetailMobile/RouteDetailMobile.css */
 
 .route-detail-backdrop {
   position: fixed;
@@ -596,7 +596,7 @@
   pointer-events: none;
 }
 
-/* ✅ EMİR 01 — Quest Layer UI (local only) */
+/* ✅ EMİR 02 — Quest Layer UI (local only) */
 .route-detail-quest {
   margin-top: 10px;
   margin-bottom: 12px;
@@ -606,15 +606,128 @@
   padding: 12px;
 }
 
-.route-detail-quest-label {
+.route-detail-quest-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.route-detail-quest-left {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.route-detail-quest-title {
+  font-weight: 900;
+  font-size: 14px;
+  color: #111;
+  line-height: 1.2;
+}
+
+.route-detail-quest-sub {
+  margin-top: 3px;
   font-size: 12px;
   font-weight: 800;
-  color: #8e8e8e;
-  margin-bottom: 8px;
+  color: #777;
+  line-height: 1.35;
+}
+
+.route-detail-quest-badge {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #e3e3e3;
+  background: #fafafa;
+  color: #111;
+  font-size: 12px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.route-detail-quest-badge.is-active {
+  border-color: #111;
+}
+
+.route-detail-quest-line {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #333;
+}
+
+.route-detail-quest-line.is-muted {
+  color: #777;
+}
+
+.route-detail-quest-line.is-warn {
+  color: #a31919;
+}
+
+.route-detail-quest-metrics {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.route-detail-quest-pill {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #eee;
+  background: #fafafa;
+  color: #111;
+  font-size: 12px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.route-detail-quest-pill--warn {
+  border-color: #f0caca;
+  background: #fff6f6;
+  color: #a31919;
+}
+
+.route-detail-quest-progress {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-detail-quest-progressTrack {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 999px;
+  background: #eee;
+  overflow: hidden;
+}
+
+.route-detail-quest-progressFill {
+  height: 100%;
+  width: 0%;
+  background: #111;
+  border-radius: 999px;
+}
+
+.route-detail-quest-progressPct {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 900;
+  color: #333;
+  min-width: 44px;
+  text-align: right;
 }
 
 .route-detail-quest-primary {
   width: 100%;
+  margin-top: 12px;
   height: 48px;
   border-radius: 14px;
   border: 1px solid #111;
@@ -633,6 +746,13 @@
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+.route-detail-quest-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #777;
 }
 
 .route-detail-quest-stop {
@@ -672,10 +792,12 @@
 }
 
 .route-detail-dark.route-detail-backdrop {
-  background: radial-gradient(120% 80% at 50% 0%,
-      rgba(255, 255, 255, 0.10) 0%,
-      rgba(0, 0, 0, 0.60) 38%,
-      rgba(0, 0, 0, 0.88) 100%);
+  background: radial-gradient(
+    120% 80% at 50% 0%,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(0, 0, 0, 0.6) 38%,
+    rgba(0, 0, 0, 0.88) 100%
+  );
 }
 
 .route-detail-dark .route-detail-sheet {
@@ -712,7 +834,7 @@
 
 .route-detail-dark .route-detail-chip {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.1);
   color: var(--rd-muted);
 }
 
@@ -736,7 +858,7 @@
 
 .route-detail-dark .route-detail-chip--unknown {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.1);
   color: var(--rd-muted);
 }
 
@@ -773,7 +895,7 @@
 
 .route-detail-dark .route-detail-map {
   background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.1);
   border-radius: 16px;
 }
 
@@ -790,7 +912,7 @@
 .route-detail-dark .route-detail-rate-row,
 .route-detail-dark .route-detail-quest {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .route-detail-dark .route-detail-cover-title,
@@ -798,14 +920,13 @@
   color: var(--rd-ink);
 }
 
-.route-detail-dark .route-detail-cover-sub,
-.route-detail-dark .route-detail-quest-label {
+.route-detail-dark .route-detail-cover-sub {
   color: var(--rd-muted2);
 }
 
 .route-detail-dark .route-detail-cover-thumb {
   background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .route-detail-dark .route-detail-tabs {
@@ -814,18 +935,63 @@
 
 .route-detail-dark .route-detail-tab-button {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.10);
-  color: rgba(255, 255, 255, 0.90);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .route-detail-dark .route-detail-tab-button--active {
   border-color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.1);
   color: #fff;
 }
 
+/* Quest dark tweaks */
+.route-detail-dark .route-detail-quest-title {
+  color: #fff;
+}
+
+.route-detail-dark .route-detail-quest-sub,
+.route-detail-dark .route-detail-quest-line.is-muted,
+.route-detail-dark .route-detail-quest-hint {
+  color: var(--rd-muted2);
+}
+
+.route-detail-dark .route-detail-quest-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.route-detail-dark .route-detail-quest-badge.is-active {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.route-detail-dark .route-detail-quest-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.route-detail-dark .route-detail-quest-pill--warn {
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(244, 63, 94, 0.22);
+  color: rgba(255, 225, 232, 0.92);
+}
+
+.route-detail-dark .route-detail-quest-progressTrack {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.route-detail-dark .route-detail-quest-progressFill {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.route-detail-dark .route-detail-quest-progressPct {
+  color: rgba(255, 255, 255, 0.92);
+}
+
 .route-detail-dark .route-detail-quest-primary {
-  border-color: rgba(255, 255, 255, 0.20);
+  border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
 }
@@ -890,23 +1056,18 @@
    ========================================================= */
 
 .route-detail-dark .rdmps-overlay {
-  /* overlay: map görünür kalsın, yazılar net */
-  --rdmps-overlay-bg: rgba(0, 0, 0, 0.10);
+  --rdmps-overlay-bg: rgba(0, 0, 0, 0.1);
 
-  /* card glass */
   --rdmps-card-bg: var(--rd-glass);
   --rdmps-card-border: var(--rd-border);
   --rdmps-card-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
 
-  /* text */
   --rdmps-title: #fff;
   --rdmps-sub: var(--rd-muted2);
 
-  /* spinner */
   --rdmps-spin-track: rgba(255, 255, 255, 0.22);
   --rdmps-spin-head: rgba(255, 255, 255, 0.88);
 
-  /* buttons */
   --rdmps-btn-h: 44px;
 
   --rdmps-btn-primary-bg: rgba(255, 255, 255, 0.14);
@@ -1043,7 +1204,7 @@
 
 .route-detail-dark .route-detail-sheet .rdglass-card {
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -1077,7 +1238,7 @@
 /* Gallery tile: dark’ta glass border + blur */
 .route-detail-dark .route-detail-sheet .rdglass-gallery-tile {
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }

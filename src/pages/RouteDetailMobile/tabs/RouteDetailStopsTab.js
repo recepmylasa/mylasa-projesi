@@ -1,4 +1,4 @@
-// src/pages/RouteDetailMobile/tabs/RouteDetailStopsTab.js
+// FILE: src/pages/RouteDetailMobile/tabs/RouteDetailStopsTab.js
 import React from "react";
 import StarBars from "../components/StarBars";
 import StarRatingV2 from "../../../components/StarRatingV2/StarRatingV2";
@@ -94,7 +94,7 @@ export default function RouteDetailStopsTab({
                       cursor: "pointer",
                       position: "relative",
                     }}
-                    title={m.type}
+                    title={isVideo ? "Video" : "Fotoğraf"}
                   >
                     {isVideo && (
                       <div className="route-detail-video-badge" aria-hidden="true">
@@ -115,7 +115,7 @@ export default function RouteDetailStopsTab({
                     ) : (
                       <img
                         src={m.url}
-                        alt="media"
+                        alt="Durak medyası"
                         loading="lazy"
                         decoding="async"
                         onError={(e) => onImgError?.(e, { scope: "stop_media", stopId: s.id, mediaId: m?.id || null })}

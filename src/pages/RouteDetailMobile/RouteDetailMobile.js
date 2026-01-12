@@ -1,4 +1,4 @@
-// src/pages/RouteDetailMobile/RouteDetailMobile.js
+// FILE: src/pages/RouteDetailMobile/RouteDetailMobile.js
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import "./RouteDetailMobile.css";
@@ -14,7 +14,6 @@ import RouteDetailMapPreviewShell from "./components/RouteDetailMapPreviewShell"
 import RouteDetailAccessSheet from "./components/RouteDetailAccessSheet";
 import RouteDetailPrefillSheet from "./components/RouteDetailPrefillSheet";
 import RouteDetailHeaderMobile from "./components/RouteDetailHeaderMobile";
-import RouteDetailQuestPanel from "./components/RouteDetailQuestPanel";
 import RouteDetailCoverRow from "./components/RouteDetailCoverRow";
 import RouteDetailRateRow from "./components/RouteDetailRateRow";
 import RouteDetailTabs from "./components/RouteDetailTabs";
@@ -47,6 +46,8 @@ import {
   getAudienceFromRoute,
   getRouteRatingLabelSafe,
   getRouteTitleSafe,
+  normalizePathForPreview,
+  getValidLatLng,
 } from "./routeDetailUtils";
 
 import { getRouteStarsAgg, getStopsStarsAgg } from "./routeDetailAgg";
@@ -133,6 +134,49 @@ export default function RouteDetailMobile({
 
   const routeModel = routeDoc || initialRoute;
 
+  // ✅ EMİR 02: path canonical (tek format) + dev-only dropped log
+  const rawPath = useMemo(() => {
+    const m = routeDoc || initialRoute || {};
+    return m?.path || m?.routePath || m?.polyline || m?.points || m?.raw?.path || m?.raw?.polyline || [];
+  }, [routeDoc, initialRoute]);
+
+  const { pts: pathPts, dropped: pathDropped } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
+
+  const stopsMissingCoords = useMemo(() => {
+    try {
+      const list = stops || [];
+      let missing = 0;
+      for (const s of list) {
+        const ok = getValidLatLng(s?.lat, s?.lng);
+        if (!ok) missing += 1;
+      }
+      return missing;
+    } catch {
+      return 0;
+    }
+  }, [stops]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (!routeId) return;
+    if (!routeDoc && !initialRoute) return;
+
+    try {
+      const rawLen = Array.isArray(rawPath) ? rawPath.length : 0;
+      if (pathDropped > 0) {
+        // eslint-disable-next-line no-console
+        console.warn(`[RouteDetailMobile] path normalize dropped ${pathDropped}/${rawLen}`, { routeId });
+      }
+
+      const totalStops = (stops || []).length;
+      if (totalStops > 0 && stopsMissingCoords > 0) {
+        // eslint-disable-next-line no-console
+        console.warn(`[RouteDetailMobile] stops missing coords ${stopsMissingCoords}/${totalStops}`, { routeId });
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId, pathDropped, stopsMissingCoords, routeDoc, initialRoute]);
+
   const normalizeMediaType = useCallback((it) => {
     try {
       const t = String(it?.type || it?.mime || it?.contentType || "").toLowerCase();
@@ -176,9 +220,105 @@ export default function RouteDetailMobile({
   const { questState, startQuest, stopQuest, finishQuest, questLocLine, ghostMetrics } = useRouteDetailQuest({
     routeId,
     enabled: V3_ENABLED,
-    path: routeDoc?.path || initialRoute?.path || [],
+    path: pathPts,
     stops: stops || [],
   });
+
+  const questUi = useMemo(() => {
+    if (!V3_ENABLED) return null;
+
+    const hasPath = Array.isArray(pathPts) && pathPts.length >= 2;
+    const hasStops = Array.isArray(stops) && stops.length >= 1;
+
+    const total = Number(ghostMetrics?.totalCheckpoints) || (hasStops ? stops.length : 0);
+    const visitedCount = Number(ghostMetrics?.visitedCount) || 0;
+
+    const completion =
+      typeof ghostMetrics?.completion === "number" && Number.isFinite(ghostMetrics.completion)
+        ? ghostMetrics.completion
+        : 0;
+
+    const pct = Math.max(0, Math.min(1, completion));
+    const pctText = Math.round(pct * 100);
+
+    const dist = ghostMetrics?.distanceToRouteM;
+    const distText = typeof dist === "number" && Number.isFinite(dist) ? `${Math.round(dist)}m` : "—";
+
+    const offRoute = !!ghostMetrics?.offRoute;
+    const canFinish = !!ghostMetrics?.canFinish;
+    const isAuthed = !!auth.currentUser;
+
+    let disabledReason = "";
+    if (!hasPath) disabledReason = "Bu rotada iz bulunamadı.";
+    else if (!hasStops) disabledReason = "Bu rotada checkpoint bulunamadı.";
+
+    const startDisabled = questState !== "idle" || !!disabledReason;
+    const finishDisabled = !canFinish || !isAuthed;
+
+    const statusKey = questState === "active" ? "active" : "idle";
+    const statusText = questState === "active" ? "Aktif" : "Hazır";
+
+    return (
+      <div className="route-detail-quest" data-status={statusKey}>
+        <div className="route-detail-quest-top">
+          <div className="route-detail-quest-left">
+            <div className="route-detail-quest-title">Ghost Mode</div>
+            <div className="route-detail-quest-sub">Rotayı takip et, %85 tamamla, ödülü al.</div>
+          </div>
+          <div className={`route-detail-quest-badge ${questState === "active" ? "is-active" : ""}`}>{statusText}</div>
+        </div>
+
+        {questLocLine ? (
+          <div className={`route-detail-quest-line ${offRoute ? "is-warn" : ""}`}>{questLocLine}</div>
+        ) : disabledReason ? (
+          <div className="route-detail-quest-line is-muted">{disabledReason}</div>
+        ) : (
+          <div className="route-detail-quest-line is-muted">Konum hazır olunca başlat.</div>
+        )}
+
+        <div className="route-detail-quest-metrics">
+          <span className={`route-detail-quest-pill ${offRoute ? "route-detail-quest-pill--warn" : ""}`}>
+            Sapma: {distText}
+          </span>
+          <span className="route-detail-quest-pill">
+            Checkpoint: {visitedCount}/{total || "—"}
+          </span>
+          <span className="route-detail-quest-pill">%{pctText}</span>
+        </div>
+
+        <div className="route-detail-quest-progress">
+          <div className="route-detail-quest-progressTrack" aria-hidden="true">
+            <div className="route-detail-quest-progressFill" style={{ width: `${pctText}%` }} />
+          </div>
+          <div className="route-detail-quest-progressPct">%{pctText}</div>
+        </div>
+
+        {questState === "idle" ? (
+          <button type="button" className="route-detail-quest-primary" onClick={startQuest} disabled={startDisabled}>
+            Quest’i başlat
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="route-detail-quest-primary"
+              onClick={finishQuest}
+              disabled={finishDisabled}
+              title={!isAuthed ? "Ödül için giriş yapmalısın." : !canFinish ? "Bitirmek için en az %85 tamamla." : ""}
+            >
+              Bitir ve ödülü al
+            </button>
+
+            {!isAuthed && <div className="route-detail-quest-hint">Ödül için giriş yapmalısın.</div>}
+
+            <button type="button" className="route-detail-quest-stop" onClick={stopQuest}>
+              Durdur
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }, [V3_ENABLED, pathPts, stops, ghostMetrics, questState, questLocLine, startQuest, stopQuest, finishQuest]);
 
   // ✅ media (cache + gallery + upload + routeBodyRef)
   const {
@@ -283,15 +423,9 @@ export default function RouteDetailMobile({
   const ratingAvgLabel = useMemo(() => getRouteRatingLabelSafe(routeModel), [routeModel]);
   const stats = useMemo(() => (routeModel ? buildStatsFromRoute(routeModel) : null), [routeModel]);
 
-  const { key: audienceKey, label: audienceLabel } = useMemo(
-    () => getAudienceFromRoute(routeModel || {}),
-    [routeModel]
-  );
+  const { key: audienceKey, label: audienceLabel } = useMemo(() => getAudienceFromRoute(routeModel || {}), [routeModel]);
 
-  const dateText = useMemo(
-    () => formatDateTimeTR(routeModel?.finishedAt || routeModel?.createdAt),
-    [routeModel]
-  );
+  const dateText = useMemo(() => formatDateTimeTR(routeModel?.finishedAt || routeModel?.createdAt), [routeModel]);
 
   const distanceText = formatDistanceFromStats(stats);
   const durationText = formatDurationFromStats(stats);
@@ -332,7 +466,7 @@ export default function RouteDetailMobile({
 
   const onExportGpx = useCallback(async () => {
     try {
-      const xml = buildGpx({ route: routeDoc, stops, path: routeDoc?.path || [] });
+      const xml = buildGpx({ route: routeDoc, stops, path: pathPts });
       const slug = (getRouteTitleSafe(routeDoc) || "rota")
         .toLowerCase()
         .replace(/[^\w-]+/g, "-")
@@ -343,7 +477,7 @@ export default function RouteDetailMobile({
     } catch {
       alert("GPX oluşturulamadı");
     }
-  }, [routeDoc, stops]);
+  }, [routeDoc, stops, pathPts]);
 
   const canRateRoute = !!(auth.currentUser && routeDoc && auth.currentUser.uid !== routeDoc.ownerId);
 
@@ -371,8 +505,7 @@ export default function RouteDetailMobile({
   // ✅ cover resolve (picked / auto / default)
   const coverResolvedRaw = coverLocal?.url ? coverLocal.url : resolveRouteCoverUrl(routeModel || {});
   const coverResolvedBase = isDefaultCoverUrl(coverResolvedRaw) ? "" : coverResolvedRaw || "";
-  const coverKindResolvedBase =
-    coverLocal?.kind ? coverLocal.kind : normalizeRouteCover(routeModel || {}).kind || "default";
+  const coverKindResolvedBase = coverLocal?.kind ? coverLocal.kind : normalizeRouteCover(routeModel || {}).kind || "default";
 
   // UI fallback: kapak yoksa -> first stop first photo (cache) -> default
   const toMillisSafe = (v) => {
@@ -427,14 +560,13 @@ export default function RouteDetailMobile({
 
   const coverIsPlaceholder = !coverResolvedBase;
   const coverPickBtnLabel = coverKindUi === "picked" ? "Kapağı değiştir" : "Kapak seç";
-  const coverStatusText =
-    coverUpload?.uploading
-      ? `Yükleniyor… ${Number(coverUpload.p) || 0}%`
-      : coverKindUi === "picked"
-      ? "Seçildi"
-      : coverKindUi === "auto"
-      ? "Otomatik"
-      : "Varsayılan";
+  const coverStatusText = coverUpload?.uploading
+    ? `Yükleniyor… ${Number(coverUpload.p) || 0}%`
+    : coverKindUi === "picked"
+    ? "Seçildi"
+    : coverKindUi === "auto"
+    ? "Otomatik"
+    : "Varsayılan";
 
   const handleBackdropClick = useCallback(() => onClose(), [onClose]);
 
@@ -442,9 +574,7 @@ export default function RouteDetailMobile({
   // ✅ Early returns (access/prefill)
   // =========================
   if (!routeId)
-    return withPortal(
-      <RouteDetailAccessSheet kind="not-found" followInitially={followInitially} onClose={onClose} />
-    );
+    return withPortal(<RouteDetailAccessSheet kind="not-found" followInitially={followInitially} onClose={onClose} />);
 
   if (permError === "forbidden")
     return withPortal(
@@ -471,9 +601,7 @@ export default function RouteDetailMobile({
     );
 
   if (permError === "not-found")
-    return withPortal(
-      <RouteDetailAccessSheet kind="not-found" followInitially={followInitially} onClose={onClose} />
-    );
+    return withPortal(<RouteDetailAccessSheet kind="not-found" followInitially={followInitially} onClose={onClose} />);
 
   if (!routeDoc && initialRoute)
     return withPortal(
@@ -521,22 +649,13 @@ export default function RouteDetailMobile({
 
         <div className="route-detail-body" ref={routeBodyRef}>
           {/* ✅ V3 Quest panel sadece flag açıkken */}
-          {V3_ENABLED && (
-            <RouteDetailQuestPanel
-              questState={questState}
-              startQuest={startQuest}
-              stopQuest={stopQuest}
-              finishQuest={finishQuest}
-              questLocLine={questLocLine}
-              ghostMetrics={ghostMetrics}
-            />
-          )}
+          {questUi}
 
           <div className="route-detail-map" style={{ position: "relative" }}>
             <RouteDetailMapPreviewShell
               key={mapsRetryTick}
               routeId={routeId}
-              path={routeDoc?.path || []}
+              path={pathPts}
               stops={stops || []}
               stopsLoaded={stopsLoaded}
               onRetry={retryMap}
@@ -669,9 +788,7 @@ export default function RouteDetailMobile({
         />
       </div>
 
-      {lightboxItems && (
-        <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />
-      )}
+      {lightboxItems && <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />}
     </div>
   );
 

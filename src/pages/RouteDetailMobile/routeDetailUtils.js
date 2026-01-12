@@ -250,7 +250,11 @@ export function normalizeLatLng(value, _depth = 0) {
     if ("lat" in value && ("lng" in value || "lon" in value || "long" in value)) {
       const laRaw = _extractNestedNumber(value.lat);
       const lnRaw =
-        "lng" in value ? _extractNestedNumber(value.lng) : "lon" in value ? _extractNestedNumber(value.lon) : _extractNestedNumber(value.long);
+        "lng" in value
+          ? _extractNestedNumber(value.lng)
+          : "lon" in value
+          ? _extractNestedNumber(value.lon)
+          : _extractNestedNumber(value.long);
       const out = getValidLatLng(laRaw, lnRaw);
       if (out) return out;
     }
@@ -326,6 +330,63 @@ export function getValidLatLngSafe(a, b) {
     return null;
   } catch {
     return null;
+  }
+}
+
+/* -------------------- EMİR 02: MapPreview canonical helpers -------------------- */
+
+/**
+ * normalizePathForPreview(rawPath) -> { pts: [{lat,lng}...], dropped:number }
+ * MapPreview'a gidecek path'i her zaman canonical hale getirir.
+ */
+export function normalizePathForPreview(rawPath) {
+  try {
+    const list = Array.isArray(rawPath) ? rawPath : [];
+    const pts = [];
+    let dropped = 0;
+
+    for (const p of list) {
+      const ll = normalizeLatLng(p);
+      if (ll) pts.push(ll);
+      else dropped += 1;
+    }
+
+    return { pts, dropped };
+  } catch {
+    return { pts: [], dropped: 0 };
+  }
+}
+
+/**
+ * normalizeStopsForPreview(rawStops) -> { stops:[...], dropped:number }
+ * Stops state'ini canonical hale getirir (lat/lng root'ta garanti edilir).
+ * Not: Stop'u UI için drop ETMEZ; sadece koordinatı olmayanları "dropped" sayar.
+ */
+export function normalizeStopsForPreview(rawStops) {
+  try {
+    const list = Array.isArray(rawStops) ? rawStops : [];
+    const out = [];
+    let dropped = 0;
+
+    for (const s of list) {
+      const stop = s || {};
+      const ll = normalizeLatLng(stop);
+
+      if (ll) {
+        out.push({
+          ...stop,
+          lat: ll.lat,
+          lng: ll.lng,
+        });
+      } else {
+        dropped += 1;
+        out.push({ ...stop });
+      }
+    }
+
+    return { stops: out, dropped };
+  } catch {
+    return { stops: Array.isArray(rawStops) ? rawStops.slice() : [], dropped: 0 };
   }
 }
 

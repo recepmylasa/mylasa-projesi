@@ -1,4 +1,4 @@
-// src/pages/RouteDetailMobile/tabs/RouteDetailGalleryTab.js
+// FILE: src/pages/RouteDetailMobile/tabs/RouteDetailGalleryTab.js
 import React from "react";
 
 export default function RouteDetailGalleryTab({
@@ -39,7 +39,9 @@ export default function RouteDetailGalleryTab({
                   alt=""
                   loading="lazy"
                   decoding="async"
-                  onError={(e) => onImgError?.(e, { scope: "gallery_grid", stopId: it.stopId || null, mediaId: it.id || null })}
+                  onError={(e) =>
+                    onImgError?.(e, { scope: "gallery_grid", stopId: it.stopId || null, mediaId: it.id || null })
+                  }
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               )}

@@ -1,4 +1,4 @@
-// src/pages/RouteDetailMobile/hooks/useRouteDetailData.js
+// FILE: src/pages/RouteDetailMobile/hooks/useRouteDetailData.js
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { auth, db } from "../../../firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -10,6 +10,7 @@ import {
   getOwnerHintFromUrl,
   getVisibilityKeyFromRoute,
   resolveOwnerIdForLockedRoute,
+  normalizeStopsForPreview,
 } from "../routeDetailUtils";
 
 export default function useRouteDetailData({
@@ -140,32 +141,58 @@ export default function useRouteDetailData({
     )
       return;
 
+    let alive = true;
+    let lastOwnerId = "";
+
     let offRoute = () => {};
     let offStops = () => {};
 
     try {
       offRoute = watchRoute(routeId, async (d) => {
+        if (!alive) return;
+
         setRouteDoc(d);
-        if (d?.ownerId) {
-          try {
-            const u = await getDoc(doc(db, "users", d.ownerId));
-            if (u.exists()) setOwner({ id: u.id, ...u.data() });
-          } catch {}
+
+        const ownerId = d?.ownerId ? String(d.ownerId) : "";
+        if (!ownerId) {
+          lastOwnerId = "";
+          setOwner(null);
+          return;
+        }
+
+        lastOwnerId = ownerId;
+        try {
+          const u = await getDoc(doc(db, "users", ownerId));
+          if (!alive) return;
+          if (lastOwnerId !== ownerId) return;
+
+          if (u.exists()) setOwner({ id: u.id, ...u.data() });
+          else setOwner(null);
+        } catch {
+          if (!alive) return;
+          if (lastOwnerId !== ownerId) return;
+          setOwner(null);
         }
       });
     } catch {}
 
     try {
       offStops = watchStops(routeId, (arr) => {
+        if (!alive) return;
+
         const sorted = (arr || [])
           .slice()
           .sort((a, b) => (a.order || 0) - (b.order || 0));
-        setStops(sorted);
+
+        // ✅ EMİR 02: stops canonical (lat/lng root garantisi)
+        const norm = normalizeStopsForPreview(sorted);
+        setStops(norm?.stops || sorted);
         setStopsLoaded(true);
       });
     } catch {}
 
     return () => {
+      alive = false;
       try {
         offRoute();
       } catch {}

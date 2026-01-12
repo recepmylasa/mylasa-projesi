@@ -1,5 +1,5 @@
 // FILE: src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGoogleMaps } from "../../../hooks/useGoogleMaps";
 import RouteDetailMapPreview from "./RouteDetailMapPreview";
 
@@ -43,6 +43,70 @@ export default function RouteDetailMapPreviewShell({
     gmapsStatus === "missing_key";
 
   const isLoading = !isReady && !isError;
+
+  // ✅ EMİR 5: Map "hazır" tetiklerini tek noktadan yönet (fitBounds retry / idle sonrası için)
+  const [mapReadyTick, setMapReadyTick] = useState(0);
+  const bumpTick = useCallback(() => {
+    setMapReadyTick((t) => (t + 1) % 1000000);
+  }, []);
+
+  const lastMapInstanceRef = useRef(null);
+
+  // map instance’ı dışarıya “direkt instance” olarak geçiriyoruz (preview daha güvenli yakalasın)
+  const mapInstance = useMemo(() => {
+    try {
+      const m = mapRef?.current ? mapRef.current : mapRef;
+      if (m && typeof m.setCenter === "function" && typeof m.fitBounds === "function") return m;
+      return null;
+    } catch {
+      return null;
+    }
+  }, [mapRef]);
+
+  // ready olduğunda bir tick
+  useEffect(() => {
+    if (!isReady) return;
+    bumpTick();
+  }, [isReady, bumpTick]);
+
+  // map instance değişince tick (remount / retry / strict mode durumları)
+  useEffect(() => {
+    if (!mapInstance) return;
+    if (lastMapInstanceRef.current !== mapInstance) {
+      lastMapInstanceRef.current = mapInstance;
+      bumpTick();
+    }
+  }, [mapInstance, bumpTick]);
+
+  // container resize → tick (fitBounds’in “0px ölçü” anına takılmasını kırar)
+  useEffect(() => {
+    const el = mapDivRef && typeof mapDivRef === "object" ? mapDivRef.current : null;
+    if (!el) return;
+
+    // ResizeObserver varsa en iyisi
+    if (typeof ResizeObserver !== "undefined") {
+      try {
+        const ro = new ResizeObserver(() => bumpTick());
+        ro.observe(el);
+        return () => {
+          try {
+            ro.disconnect();
+          } catch {}
+        };
+      } catch {}
+    }
+
+    // fallback: window resize
+    const onResize = () => bumpTick();
+    try {
+      window.addEventListener("resize", onResize);
+    } catch {}
+    return () => {
+      try {
+        window.removeEventListener("resize", onResize);
+      } catch {}
+    };
+  }, [mapDivRef, bumpTick]);
 
   const overlayBase = {
     position: "absolute",
@@ -163,6 +227,8 @@ export default function RouteDetailMapPreviewShell({
         gmapsStatus={gmapsStatus}
         mapDivRef={mapDivRef}
         mapRef={mapRef}
+        mapInstance={mapInstance}
+        mapReadyTick={mapReadyTick}
         path={path}
         stops={stops}
         stopsLoaded={stopsLoaded}
