@@ -47,7 +47,7 @@ import {
   getRouteRatingLabelSafe,
   getRouteTitleSafe,
   normalizePathForPreview,
-  getValidLatLng,
+  normalizeStopsForPreview,
 } from "./routeDetailUtils";
 
 import { getRouteStarsAgg, getStopsStarsAgg } from "./routeDetailAgg";
@@ -142,19 +142,11 @@ export default function RouteDetailMobile({
 
   const { pts: pathPts, dropped: pathDropped } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
 
-  const stopsMissingCoords = useMemo(() => {
-    try {
-      const list = stops || [];
-      let missing = 0;
-      for (const s of list) {
-        const ok = getValidLatLng(s?.lat, s?.lng);
-        if (!ok) missing += 1;
-      }
-      return missing;
-    } catch {
-      return 0;
-    }
-  }, [stops]);
+  // ✅ EMİR 17/18: stops canonical (MapPreview/Quest/GPX için)
+  const { stops: stopsForPreview, dropped: stopsDropped } = useMemo(
+    () => normalizeStopsForPreview(stops || []),
+    [stops]
+  );
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -169,13 +161,13 @@ export default function RouteDetailMobile({
       }
 
       const totalStops = (stops || []).length;
-      if (totalStops > 0 && stopsMissingCoords > 0) {
+      if (totalStops > 0 && stopsDropped > 0) {
         // eslint-disable-next-line no-console
-        console.warn(`[RouteDetailMobile] stops missing coords ${stopsMissingCoords}/${totalStops}`, { routeId });
+        console.warn(`[RouteDetailMobile] stops missing coords ${stopsDropped}/${totalStops}`, { routeId });
       }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeId, pathDropped, stopsMissingCoords, routeDoc, initialRoute]);
+  }, [routeId, pathDropped, stopsDropped, routeDoc, initialRoute]);
 
   const normalizeMediaType = useCallback((it) => {
     try {
@@ -221,16 +213,16 @@ export default function RouteDetailMobile({
     routeId,
     enabled: V3_ENABLED,
     path: pathPts,
-    stops: stops || [],
+    stops: stopsForPreview || [],
   });
 
   const questUi = useMemo(() => {
     if (!V3_ENABLED) return null;
 
     const hasPath = Array.isArray(pathPts) && pathPts.length >= 2;
-    const hasStops = Array.isArray(stops) && stops.length >= 1;
+    const hasStops = Array.isArray(stopsForPreview) && stopsForPreview.length >= 1;
 
-    const total = Number(ghostMetrics?.totalCheckpoints) || (hasStops ? stops.length : 0);
+    const total = Number(ghostMetrics?.totalCheckpoints) || (hasStops ? stopsForPreview.length : 0);
     const visitedCount = Number(ghostMetrics?.visitedCount) || 0;
 
     const completion =
@@ -318,7 +310,7 @@ export default function RouteDetailMobile({
         )}
       </div>
     );
-  }, [V3_ENABLED, pathPts, stops, ghostMetrics, questState, questLocLine, startQuest, stopQuest, finishQuest]);
+  }, [V3_ENABLED, pathPts, stopsForPreview, ghostMetrics, questState, questLocLine, startQuest, stopQuest, finishQuest]);
 
   // ✅ media (cache + gallery + upload + routeBodyRef)
   const {
@@ -466,7 +458,7 @@ export default function RouteDetailMobile({
 
   const onExportGpx = useCallback(async () => {
     try {
-      const xml = buildGpx({ route: routeDoc, stops, path: pathPts });
+      const xml = buildGpx({ route: routeDoc, stops: stopsForPreview, path: pathPts });
       const slug = (getRouteTitleSafe(routeDoc) || "rota")
         .toLowerCase()
         .replace(/[^\w-]+/g, "-")
@@ -477,7 +469,7 @@ export default function RouteDetailMobile({
     } catch {
       alert("GPX oluşturulamadı");
     }
-  }, [routeDoc, stops, pathPts]);
+  }, [routeDoc, stopsForPreview, pathPts]);
 
   const canRateRoute = !!(auth.currentUser && routeDoc && auth.currentUser.uid !== routeDoc.ownerId);
 
@@ -656,7 +648,7 @@ export default function RouteDetailMobile({
               key={mapsRetryTick}
               routeId={routeId}
               path={pathPts}
-              stops={stops || []}
+              stops={stopsForPreview || []}
               stopsLoaded={stopsLoaded}
               onRetry={retryMap}
             />

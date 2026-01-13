@@ -12,6 +12,7 @@ export default function StarBars({
   compact = false,
   showNumbers = true,
   height = 10,
+  minPct = 4, // küçük ama sadece >0 değerlerde
 }) {
   const rows = [5, 4, 3, 2, 1];
 
@@ -20,19 +21,27 @@ export default function StarBars({
     rows.forEach((r) => {
       c[r] = toNum(counts?.[r] ?? counts?.[String(r)] ?? 0);
     });
+
     const t = toNum(total);
-    const maxCount = Math.max(...rows.map((r) => c[r] || 0), 1);
-    const denom = t > 0 ? t : maxCount; // total varsa yüzde; yoksa max'a göre relatif
+    const maxCount = Math.max(...rows.map((r) => c[r] || 0), 0);
+
+    // denom: total varsa yüzde; yoksa max'a göre relatif; ikisi de yoksa 0
+    const denom = t > 0 ? t : maxCount;
+
     return { c, t, maxCount, denom };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [counts, total]);
 
   const pctFor = (r) => {
     const v = safe.c[r] || 0;
-    if (!safe.denom) return 0;
+    if (v <= 0) return 0;
+    if (!safe.denom || safe.denom <= 0) return 0;
+
     const raw = (v / safe.denom) * 100;
     const clamped = Math.max(0, Math.min(100, raw));
-    return clamped;
+
+    // minPct sadece v>0 iken
+    return Math.max(0, Math.min(100, Math.max(minPct, clamped)));
   };
 
   const wrapStyle = {
@@ -48,8 +57,8 @@ export default function StarBars({
     <div className="rdglass-starbars" style={{ width: "100%" }}>
       <div style={wrapStyle}>
         {rows.map((r) => {
-          const w = safe.t > 0 ? pctFor(r) : pctFor(r); // tek hesap (denom zaten seçildi)
-          const width = safe.t > 0 ? `${Math.max(4, w).toFixed(2)}%` : `${Math.max(4, w).toFixed(2)}%`;
+          const w = pctFor(r);
+          const width = `${w.toFixed(2)}%`;
 
           return (
             <div key={r} style={rowCss}>
@@ -72,7 +81,7 @@ export default function StarBars({
                   className="rdglass-starbar-fill"
                   style={{
                     height,
-                    width: safe.t > 0 || safe.maxCount > 0 ? width : "4%",
+                    width,
                     background: "var(--rdglass-accent, #1a73e8)",
                     borderRadius: 999,
                     transition: "width .25s ease",

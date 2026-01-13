@@ -32,7 +32,7 @@ export default function RouteDetailMapPreviewShell({
     gmaps.status ||
     (gmaps.isLoaded ? "ready" : gmaps.error ? "error" : "loading");
 
-  const mapDivRef = gmaps.mapDivRef || gmaps.containerRef || gmaps.divRef || null;
+  const hookMapDivRef = gmaps.mapDivRef || gmaps.containerRef || gmaps.divRef || null;
   const mapRef = gmaps.mapRef || gmaps.map || null;
 
   const isReady = gmapsStatus === "ready" || gmapsStatus === "loaded";
@@ -51,6 +51,24 @@ export default function RouteDetailMapPreviewShell({
   }, []);
 
   const lastMapInstanceRef = useRef(null);
+
+  // ✅ Resize / size ölçümü için local ref (hook ref function/object olabiliyor)
+  const localDivRef = useRef(null);
+
+  const setDivRef = useCallback(
+    (node) => {
+      localDivRef.current = node;
+
+      try {
+        if (typeof hookMapDivRef === "function") {
+          hookMapDivRef(node);
+        } else if (hookMapDivRef && typeof hookMapDivRef === "object") {
+          hookMapDivRef.current = node;
+        }
+      } catch {}
+    },
+    [hookMapDivRef]
+  );
 
   // map instance’ı dışarıya “direkt instance” olarak geçiriyoruz (preview daha güvenli yakalasın)
   const mapInstance = useMemo(() => {
@@ -80,7 +98,7 @@ export default function RouteDetailMapPreviewShell({
 
   // container resize → tick (fitBounds’in “0px ölçü” anına takılmasını kırar)
   useEffect(() => {
-    const el = mapDivRef && typeof mapDivRef === "object" ? mapDivRef.current : null;
+    const el = localDivRef.current;
     if (!el) return;
 
     // ResizeObserver varsa en iyisi
@@ -106,7 +124,7 @@ export default function RouteDetailMapPreviewShell({
         window.removeEventListener("resize", onResize);
       } catch {}
     };
-  }, [mapDivRef, bumpTick]);
+  }, [bumpTick]);
 
   const overlayBase = {
     position: "absolute",
@@ -210,7 +228,7 @@ export default function RouteDetailMapPreviewShell({
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       {/* ✅ Harita canvas (useGoogleMaps ref mutlaka bir DOM elemente bağlanmalı) */}
       <div
-        ref={mapDivRef || undefined}
+        ref={setDivRef}
         className="rdmps-map"
         style={{
           position: "absolute",
@@ -225,7 +243,7 @@ export default function RouteDetailMapPreviewShell({
       <RouteDetailMapPreview
         routeId={routeId}
         gmapsStatus={gmapsStatus}
-        mapDivRef={mapDivRef}
+        mapDivRef={localDivRef}
         mapRef={mapRef}
         mapInstance={mapInstance}
         mapReadyTick={mapReadyTick}

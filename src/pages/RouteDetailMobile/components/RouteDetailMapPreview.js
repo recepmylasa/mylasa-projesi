@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 // ✅ Backward-safe import: named export yoksa bile build patlamasın
 import * as routeDetailUtils from "../routeDetailUtils";
 
-/* -------------------- Robust Lat/Lng Extractor (GeoPoint / LatLng / nested / array) -------------------- */
+/* -------------------- Safe number helpers -------------------- */
 function toNum(v) {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
@@ -21,147 +21,158 @@ function inRangeLatLng(lat, lng) {
   );
 }
 
-function extractFromLatLngMethods(obj) {
+function parseCoordString(str) {
   try {
-    if (!obj) return null;
-    if (typeof obj.lat === "function" && typeof obj.lng === "function") {
-      const la = toNum(obj.lat());
-      const ln = toNum(obj.lng());
-      if (la == null || ln == null) return null;
-      if (!inRangeLatLng(la, ln)) return null;
-      return { lat: la, lng: ln };
-    }
-  } catch {}
-  return null;
-}
+    if (!str || typeof str !== "string") return null;
+    const s = str.trim();
+    if (!s) return null;
 
-function extractFromGeoPoint(obj) {
-  try {
-    if (!obj) return null;
-    // Firestore GeoPoint: { latitude, longitude }
-    const la = toNum(obj.latitude);
-    const ln = toNum(obj.longitude);
-    if (la == null || ln == null) return null;
-    if (!inRangeLatLng(la, ln)) return null;
-    return { lat: la, lng: ln };
-  } catch {}
-  return null;
-}
+    // "lat,lng" | "lat lng" | "lng,lat"
+    const parts = s.split(/[,\s]+/).filter(Boolean);
+    if (parts.length < 2) return null;
 
-function extractFromPlain(obj) {
-  try {
-    if (!obj || typeof obj !== "object") return null;
+    const a = toNum(parts[0]);
+    const b = toNum(parts[1]);
+    if (a == null || b == null) return null;
 
-    // direct {lat,lng}
-    const la0 = toNum(obj.lat);
-    const ln0 = toNum(obj.lng);
-    if (la0 != null && ln0 != null && inRangeLatLng(la0, ln0)) return { lat: la0, lng: ln0 };
-
-    // alt keys {latitude, longitude}
-    const la1 = toNum(obj.latitude);
-    const ln1 = toNum(obj.longitude);
-    if (la1 != null && ln1 != null && inRangeLatLng(la1, ln1)) return { lat: la1, lng: ln1 };
-
-    // nested candidates
-    const nestedKeys = ["position", "location", "loc", "geo", "coords", "coordinate", "latLng", "point", "center"];
-    for (const k of nestedKeys) {
-      const v = obj[k];
-      if (!v) continue;
-      const got = extractFromLatLngMethods(v) || extractFromGeoPoint(v) || extractFromPlain(v);
-      if (got) return got;
-    }
-
-    // sometimes {lat: {lat,lng}} etc.
-    if (obj.lat && typeof obj.lat === "object") {
-      const got = extractFromLatLngMethods(obj.lat) || extractFromGeoPoint(obj.lat) || extractFromPlain(obj.lat);
-      if (got) return got;
-    }
-  } catch {}
-  return null;
-}
-
-function extractLatLngAny(v) {
-  try {
-    if (!v) return null;
-
-    // [lat,lng] or [lng,lat]
-    if (Array.isArray(v) && v.length >= 2) {
-      const a = toNum(v[0]);
-      const b = toNum(v[1]);
-      if (a == null || b == null) return null;
-
-      const asLatLng = inRangeLatLng(a, b) ? { lat: a, lng: b } : null;
-      const asLngLat = inRangeLatLng(b, a) ? { lat: b, lng: a } : null;
-
-      return asLatLng || asLngLat || null;
-    }
-
-    // google.maps.LatLng-like
-    const m = extractFromLatLngMethods(v);
-    if (m) return m;
-
-    // Firestore GeoPoint
-    const g = extractFromGeoPoint(v);
-    if (g) return g;
-
-    // plain / nested objects
-    const p = extractFromPlain(v);
-    if (p) return p;
-
+    if (inRangeLatLng(a, b)) return { lat: a, lng: b };
+    if (inRangeLatLng(b, a)) return { lat: b, lng: a };
     return null;
   } catch {
     return null;
   }
 }
-/* ------------------------------------------------------------------------------------------------------- */
 
-/**
- * getLL(a,b) → {lat,lng} | null
- * - routeDetailUtils.getValidLatLngSafe varsa onu kullanır (en güvenlisi)
- * - yoksa internal extractor + getValidLatLng (varsa) ile doğrular
- */
-const getLL = (a, b) => {
+function parseLL(value, depth = 0) {
   try {
-    // 1) varsa en güvenlisi
-    if (typeof routeDetailUtils.getValidLatLngSafe === "function") {
-      const out = routeDetailUtils.getValidLatLngSafe(a, b);
-      const la = toNum(out?.lat);
-      const ln = toNum(out?.lng);
+    if (!value || depth > 3) return null;
+
+    // string -> "lat,lng"
+    if (typeof value === "string") return parseCoordString(value);
+
+    // [lat,lng] / [lng,lat]
+    if (Array.isArray(value) && value.length >= 2) {
+      const a = toNum(value[0]);
+      const b = toNum(value[1]);
+      if (a == null || b == null) return null;
+      if (inRangeLatLng(a, b)) return { lat: a, lng: b };
+      if (inRangeLatLng(b, a)) return { lat: b, lng: a };
+      return null;
+    }
+
+    // Google LatLng: lat()/lng()
+    if (typeof value?.lat === "function" && typeof value?.lng === "function") {
+      const la = toNum(value.lat());
+      const ln = toNum(value.lng());
       return inRangeLatLng(la, ln) ? { lat: la, lng: ln } : null;
     }
 
-    // 2) internal normalize
-    let ll = null;
-
-    if (b !== undefined) {
-      const la = toNum(a);
-      const ln = toNum(b);
-      if (la != null && ln != null && inRangeLatLng(la, ln)) ll = { lat: la, lng: ln };
-    } else {
-      ll = extractLatLngAny(a);
+    // nested latLng (Google Places geometry.location gibi)
+    if (value?.latLng) {
+      const out = parseLL(value.latLng, depth + 1);
+      if (out) return out;
+    }
+    if (value?.geometry?.location) {
+      const out = parseLL(value.geometry.location, depth + 1);
+      if (out) return out;
     }
 
-    if (!ll) return null;
+    // GeoPoint variants
+    const la =
+      toNum(value?.lat) ??
+      toNum(value?.latitude) ??
+      toNum(value?._lat) ??
+      toNum(value?._latitude) ??
+      toNum(value?.y);
 
-    // 3) util validate (varsa)
-    if (typeof routeDetailUtils.getValidLatLng === "function") {
-      const v = routeDetailUtils.getValidLatLng(ll.lat, ll.lng);
-      if (v && toNum(v.lat) != null && toNum(v.lng) != null) {
-        const la = toNum(v.lat);
-        const ln = toNum(v.lng);
-        return inRangeLatLng(la, ln) ? { lat: la, lng: ln } : null;
-      }
-    }
+    const ln =
+      toNum(value?.lng) ??
+      toNum(value?.lon) ??
+      toNum(value?.long) ??
+      toNum(value?.longitude) ??
+      toNum(value?._long) ??
+      toNum(value?._longitude) ??
+      toNum(value?.x);
 
-    return ll;
+    if (inRangeLatLng(la, ln)) return { lat: la, lng: ln };
+
+    // coord string fields
+    const s1 = typeof value?.coord === "string" ? value.coord : null;
+    const s2 = typeof value?.coords === "string" ? value.coords : null;
+    const s3 = typeof value?.coordinate === "string" ? value.coordinate : null;
+    const s4 = typeof value?.coordinates === "string" ? value.coordinates : null;
+
+    const strParsed = parseCoordString(s1 || s2 || s3 || s4);
+    if (strParsed) return strParsed;
+
+    return null;
   } catch {
     return null;
   }
-};
+}
+
+/**
+ * getLL(any) → {lat,lng} | null
+ * Öncelik: routeDetailUtils.getValidLatLngSafe → normalizeLatLng → güçlü fallback
+ */
+function getLL(v) {
+  try {
+    // 1) Utils (varsa)
+    if (typeof routeDetailUtils.getValidLatLngSafe === "function") {
+      const out = routeDetailUtils.getValidLatLngSafe(v);
+      const la = toNum(out?.lat);
+      const ln = toNum(out?.lng);
+      if (inRangeLatLng(la, ln)) return { lat: la, lng: ln };
+    }
+
+    if (typeof routeDetailUtils.normalizeLatLng === "function") {
+      const out = routeDetailUtils.normalizeLatLng(v);
+      const la = toNum(out?.lat);
+      const ln = toNum(out?.lng);
+      if (inRangeLatLng(la, ln)) return { lat: la, lng: ln };
+    }
+
+    // 2) Direct parse
+    const direct = parseLL(v, 0);
+    if (direct) return direct;
+
+    // 3) Common nested candidates (stop / place / map data)
+    const candidates = [
+      v?.location,
+      v?.loc,
+      v?.geo,
+      v?.geoPoint,
+      v?.geopoint,
+      v?.point,
+      v?.position,
+      v?.pos,
+      v?.center,
+      v?.coords,
+      v?.coord,
+      v?.latLng,
+      v?.latlng,
+      v?.data?.location,
+      v?.raw?.location,
+      v?.raw?.coords,
+      v?.raw?.position,
+      v?.place?.location,
+      v?.place?.geometry?.location,
+      v?.geometry?.location,
+    ].filter(Boolean);
+
+    for (const c of candidates) {
+      const out = parseLL(c, 1);
+      if (out) return out;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * mapRef bazen React ref (mapRef.current), bazen direkt Map instance gelebiliyor.
- * Bu helper ikisini de tekleştirir.
  */
 function getMapInstance(mapRefLike) {
   try {
@@ -175,13 +186,15 @@ function getMapInstance(mapRefLike) {
   }
 }
 
-function key5Any(v) {
-  const ll = getLL(v);
-  if (!ll) return null;
-  const la = Number(ll.lat);
-  const ln = Number(ll.lng);
-  if (!Number.isFinite(la) || !Number.isFinite(ln)) return null;
-  return `${la.toFixed(5)},${ln.toFixed(5)}`;
+function key5(ll) {
+  try {
+    const la = Number(ll?.lat);
+    const ln = Number(ll?.lng);
+    if (!Number.isFinite(la) || !Number.isFinite(ln)) return null;
+    return `${la.toFixed(5)},${ln.toFixed(5)}`;
+  } catch {
+    return null;
+  }
 }
 
 function buildStopsSignature(stops) {
@@ -189,72 +202,69 @@ function buildStopsSignature(stops) {
   const parts = arr
     .map((s) => {
       const id = s?.id != null ? String(s.id) : s?.stopId != null ? String(s.stopId) : "";
-      const k = key5Any(s) || "x";
-      return `${id}@${k}`;
+      const ll = getLL(s) || (Number.isFinite(s?.lat) && Number.isFinite(s?.lng) ? { lat: s.lat, lng: s.lng } : null);
+      const k = ll ? key5(ll) : null;
+      return `${id}@${k || "x"}`;
     })
     .sort((a, b) => a.localeCompare(b));
   return parts.join("|");
 }
 
-function buildPathSignature(path) {
-  const arr = Array.isArray(path) ? path : [];
-  const pts = [];
+function buildPathSignature(pathPts) {
+  const pts = Array.isArray(pathPts) ? pathPts : [];
+  if (!pts.length) return "";
+
   let minLat = Infinity,
     minLng = Infinity,
     maxLat = -Infinity,
     maxLng = -Infinity;
 
-  for (const p of arr) {
-    const ll = getLL(p);
-    if (!ll) continue;
-    const la = Number(ll.lat);
-    const ln = Number(ll.lng);
+  const valid = [];
+  for (const p of pts) {
+    const la = Number(p?.lat);
+    const ln = Number(p?.lng);
     if (!Number.isFinite(la) || !Number.isFinite(ln)) continue;
-    pts.push({ lat: la, lng: ln });
+    valid.push({ lat: la, lng: ln });
     if (la < minLat) minLat = la;
     if (ln < minLng) minLng = ln;
     if (la > maxLat) maxLat = la;
     if (ln > maxLng) maxLng = ln;
   }
 
-  if (!pts.length) return "";
+  if (!valid.length) return "";
 
-  const first = pts[0];
-  const last = pts[pts.length - 1];
-  const mid = pts[Math.floor(pts.length / 2)];
+  const first = valid[0];
+  const last = valid[valid.length - 1];
+  const mid = valid[Math.floor(valid.length / 2)];
 
   const bbox = `${minLat.toFixed(5)},${minLng.toFixed(5)},${maxLat.toFixed(5)},${maxLng.toFixed(5)}`;
   const ends = `${first.lat.toFixed(5)},${first.lng.toFixed(5)}|${last.lat.toFixed(5)},${last.lng.toFixed(5)}`;
   const sample = `${mid.lat.toFixed(5)},${mid.lng.toFixed(5)}`;
 
-  return `${pts.length}|${bbox}|${ends}|${sample}`;
+  return `${valid.length}|${bbox}|${ends}|${sample}`;
 }
 
-function buildFitSignature(path, stops) {
+function buildFitSignature(pathPts, stopPts) {
   const keys = [];
   let minLat = Infinity,
     minLng = Infinity,
     maxLat = -Infinity,
     maxLng = -Infinity;
 
-  const addAny = (v) => {
-    const ll = getLL(v);
-    if (!ll) return;
-    const la = Number(ll.lat);
-    const ln = Number(ll.lng);
+  const add = (ll) => {
+    const la = Number(ll?.lat);
+    const ln = Number(ll?.lng);
     if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
-
     const k = `${la.toFixed(5)},${ln.toFixed(5)}`;
     keys.push(k);
-
     if (la < minLat) minLat = la;
     if (ln < minLng) minLng = ln;
     if (la > maxLat) maxLat = la;
     if (ln > maxLng) maxLng = ln;
   };
 
-  (Array.isArray(path) ? path : []).forEach((p) => addAny(p));
-  (Array.isArray(stops) ? stops : []).forEach((s) => addAny(s));
+  (Array.isArray(pathPts) ? pathPts : []).forEach(add);
+  (Array.isArray(stopPts) ? stopPts : []).forEach(add);
 
   if (!keys.length) return "";
 
@@ -263,22 +273,8 @@ function buildFitSignature(path, stops) {
   const b = uniq[1] || "";
   const y = uniq.length >= 2 ? uniq[uniq.length - 2] : "";
   const z = uniq[uniq.length - 1] || "";
-
   const bbox = `${minLat.toFixed(5)},${minLng.toFixed(5)},${maxLat.toFixed(5)},${maxLng.toFixed(5)}`;
   return `${uniq.length}|${bbox}|${a}|${b}|${y}|${z}`;
-}
-
-function collectAllPts(path, stops) {
-  const out = [];
-  (Array.isArray(path) ? path : []).forEach((p) => {
-    const ll = getLL(p);
-    if (ll) out.push(ll);
-  });
-  (Array.isArray(stops) ? stops : []).forEach((s) => {
-    const ll = getLL(s);
-    if (ll) out.push(ll);
-  });
-  return out;
 }
 
 function getBestMapDiv(map, mapDivRef) {
@@ -306,10 +302,10 @@ function divHasSize(div) {
 export default function RouteDetailMapPreview({
   routeId,
   gmapsStatus,
-  mapDivRef, // shell veriyor olabilir; burada opsiyonel
+  mapDivRef,
   mapRef,
-  mapInstance, // ✅ shell EMİR 4: mapRef.current değişince render kaçmasın diye opsiyonel direkt instance
-  mapReadyTick, // ✅ shell EMİR 4: ready tick (opsiyonel)
+  mapInstance,
+  mapReadyTick,
   path,
   stops,
   stopsLoaded = true,
@@ -318,16 +314,68 @@ export default function RouteDetailMapPreview({
   const stopMarkersRef = useRef([]);
   const lastStopsSigRef = useRef(null);
   const lastPathSigRef = useRef(null);
-  const lastFitSigRef = useRef(null);
+  const lastFitKeyRef = useRef(null);
   const lastMapInstanceRef = useRef(null);
   const rafRef = useRef(0);
 
   const fitTimersRef = useRef([]);
   const idleListenerRef = useRef(null);
 
-  const stopsSig = useMemo(() => buildStopsSignature(stops), [stops]);
-  const pathSig = useMemo(() => buildPathSignature(path), [path]);
-  const fitSig = useMemo(() => buildFitSignature(path, stops), [path, stops]);
+  const isReady = gmapsStatus === "ready" || gmapsStatus === "loaded";
+
+  // ✅ Canonical normalize (EMİR 17/18)
+  const pathNorm = useMemo(() => {
+    try {
+      if (typeof routeDetailUtils.normalizePathForPreview === "function") {
+        const out = routeDetailUtils.normalizePathForPreview(path);
+        if (Array.isArray(out)) return { pts: out, dropped: 0 };
+        if (out && Array.isArray(out.pts)) return { pts: out.pts, dropped: Number(out.dropped) || 0 };
+      }
+    } catch {}
+    // fallback
+    const list = Array.isArray(path) ? path : [];
+    const pts = [];
+    let dropped = 0;
+    for (const p of list) {
+      const ll = getLL(p);
+      if (ll) pts.push(ll);
+      else dropped += 1;
+    }
+    return { pts, dropped };
+  }, [path]);
+
+  const stopsNorm = useMemo(() => {
+    try {
+      if (typeof routeDetailUtils.normalizeStopsForPreview === "function") {
+        const out = routeDetailUtils.normalizeStopsForPreview(stops);
+        if (Array.isArray(out)) return { stops: out, dropped: 0 };
+        if (out && Array.isArray(out.stops)) return { stops: out.stops, dropped: Number(out.dropped) || 0 };
+      }
+    } catch {}
+    // fallback
+    const list = Array.isArray(stops) ? stops : [];
+    const out = [];
+    let dropped = 0;
+    for (const s of list) {
+      const ll = getLL(s);
+      if (ll) out.push({ ...(s || {}), lat: ll.lat, lng: ll.lng });
+      else {
+        dropped += 1;
+        out.push({ ...(s || {}) });
+      }
+    }
+    return { stops: out, dropped };
+  }, [stops]);
+
+  // markers/fit için stopsLoaded kontrolü (partial state world-view riskini azaltır)
+  const stopsForMap = stopsLoaded ? stopsNorm.stops : [];
+
+  const stopsSig = useMemo(() => buildStopsSignature(stopsForMap), [stopsForMap]);
+  const pathSig = useMemo(() => buildPathSignature(pathNorm.pts), [pathNorm.pts]);
+  const fitSig = useMemo(() => buildFitSignature(pathNorm.pts, stopsForMap), [pathNorm.pts, stopsForMap]);
+
+  // ✅ mapReadyTick değişince fit tekrar denensin (shell resize/ready/instance swap)
+  const fitKey = useMemo(() => `${fitSig}::${Number(mapReadyTick) || 0}`, [fitSig, mapReadyTick]);
 
   const cancelRaf = () => {
     try {
@@ -384,7 +432,7 @@ export default function RouteDetailMapPreview({
   useEffect(() => {
     lastStopsSigRef.current = null;
     lastPathSigRef.current = null;
-    lastFitSigRef.current = null;
+    lastFitKeyRef.current = null;
     lastMapInstanceRef.current = null;
     clearArtifacts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -398,34 +446,31 @@ export default function RouteDetailMapPreview({
   const map = useMemo(() => {
     const m = mapInstance || getMapInstance(mapRef);
     return m || null;
-    // mapReadyTick sadece dependency olarak “değişim yakalasın” diye
   }, [mapInstance, mapRef, mapReadyTick]);
 
-  // ✅ Map instance değiştiyse artifacts reset (world view / eski polyline kalıntısı engeli)
+  // ✅ Map instance değiştiyse artifacts reset (eski polyline/marker kalıntısı engeli)
   useEffect(() => {
     if (!map) return;
     if (lastMapInstanceRef.current !== map) {
       lastMapInstanceRef.current = map;
       lastStopsSigRef.current = null;
       lastPathSigRef.current = null;
-      lastFitSigRef.current = null;
+      lastFitKeyRef.current = null;
       clearArtifacts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
-  // ✅ Polyline çiz
+  // ✅ Polyline çiz (canonical pathNorm.pts)
   useEffect(() => {
-    if (gmapsStatus !== "ready" && gmapsStatus !== "loaded") return;
+    if (!isReady) return;
     if (!(window.google && window.google.maps)) return;
     if (!map) return;
 
     if (lastPathSigRef.current === pathSig) return;
     lastPathSigRef.current = pathSig;
 
-    const pts = (Array.isArray(path) ? path : [])
-      .map((p) => getLL(p))
-      .filter(Boolean)
+    const pts = (Array.isArray(pathNorm.pts) ? pathNorm.pts : [])
       .map((ll) => ({ lat: Number(ll.lat), lng: Number(ll.lng) }))
       .filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng));
 
@@ -457,11 +502,11 @@ export default function RouteDetailMapPreview({
         polylineRef.current.setPath(pts);
       } catch {}
     }
-  }, [gmapsStatus, map, pathSig, path]);
+  }, [isReady, map, pathSig, pathNorm.pts]);
 
-  // ✅ Stop marker’ları
+  // ✅ Stop marker’ları (canonical stopsForMap)
   useEffect(() => {
-    if (gmapsStatus !== "ready" && gmapsStatus !== "loaded") return;
+    if (!isReady) return;
     if (!(window.google && window.google.maps)) return;
     if (!stopsLoaded) return;
     if (!map) return;
@@ -480,15 +525,16 @@ export default function RouteDetailMapPreview({
 
     const gm = window.google.maps;
 
-    const arr = Array.isArray(stops) ? stops : [];
+    const arr = Array.isArray(stopsForMap) ? stopsForMap : [];
     const ordered = arr.slice().sort((a, b) => (Number(a?.order) || 0) - (Number(b?.order) || 0));
 
     ordered.forEach((s, idx) => {
-      const ll = getLL(s);
+      const ll = getLL(s) || (Number.isFinite(s?.lat) && Number.isFinite(s?.lng) ? { lat: s.lat, lng: s.lng } : null);
       if (!ll) return;
-      const la = Number(ll.lat);
-      const ln = Number(ll.lng);
-      if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
+
+      const la = toNum(ll.lat);
+      const ln = toNum(ll.lng);
+      if (!inRangeLatLng(la, ln)) return;
 
       const labelText = String(s?.order || idx + 1);
 
@@ -516,21 +562,25 @@ export default function RouteDetailMapPreview({
         stopMarkersRef.current.push(marker);
       } catch {}
     });
-  }, [gmapsStatus, map, stopsSig, stops, stopsLoaded]);
+  }, [isReady, map, stopsSig, stopsLoaded, stopsForMap]);
 
-  // ✅ Fit bounds (EMİR 4): container-size + idle + retry backoff
+  // ✅ Fit bounds (container-size + idle + retry) + shell mapReadyTick ile yeniden deneme
   useEffect(() => {
-    if (gmapsStatus !== "ready" && gmapsStatus !== "loaded") return;
+    if (!isReady) return;
     if (!(window.google && window.google.maps)) return;
     if (!map) return;
 
-    if (lastFitSigRef.current === fitSig) return;
-    lastFitSigRef.current = fitSig;
+    if (lastFitKeyRef.current === fitKey) return;
+    lastFitKeyRef.current = fitKey;
 
     const gm = window.google.maps;
 
-    // path + stops → tek normalize havuzu (dedupe + finite)
-    const ptsRaw = collectAllPts(path, stops)
+    // path + stops → dedupe + finite
+    const ptsRaw = []
+      .concat(Array.isArray(pathNorm.pts) ? pathNorm.pts : [])
+      .concat(Array.isArray(stopsForMap) ? stopsForMap : [])
+      .map((x) => getLL(x) || (Number.isFinite(x?.lat) && Number.isFinite(x?.lng) ? { lat: x.lat, lng: x.lng } : null))
+      .filter(Boolean)
       .map((x) => ({ lat: Number(x.lat), lng: Number(x.lng) }))
       .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
 
@@ -588,7 +638,7 @@ export default function RouteDetailMapPreview({
           }
         } catch {}
 
-        // küçük backoff retries (çok minimal)
+        // minimal backoff retries
         if (attempt < 2) {
           const delays = [140, 420];
           const t = setTimeout(() => doApply(attempt + 1), delays[attempt] || 240);
@@ -603,7 +653,7 @@ export default function RouteDetailMapPreview({
     });
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gmapsStatus, map, fitSig, path, stops]);
+  }, [isReady, map, fitKey, pathNorm.pts, stopsForMap, mapDivRef]);
 
   return null;
 }
