@@ -162,12 +162,24 @@ export function toFiniteNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * ✅ EMİR 17 fix:
+ * getValidLatLng artık objelerde / yanlış beslemelerde (lat/lng ters) güvenli swap dener.
+ * - Önce (lat,lng) direkt doğrula
+ * - Geçmezse (lng,lat) swap dene (lat aralığı <=90, lng aralığı <=180)
+ */
 export function getValidLatLng(lat, lng) {
   const la = toFiniteNumber(lat);
   const ln = toFiniteNumber(lng);
   if (la == null || ln == null) return null;
-  if (Math.abs(la) > 90 || Math.abs(ln) > 180) return null;
-  return { lat: la, lng: ln };
+
+  // normal
+  if (Math.abs(la) <= 90 && Math.abs(ln) <= 180) return { lat: la, lng: ln };
+
+  // swap heuristic (lat/lng ters gelmiş olabilir)
+  if (Math.abs(ln) <= 90 && Math.abs(la) <= 180) return { lat: ln, lng: la };
+
+  return null;
 }
 
 /* -------------------- EMİR 17: tek normalize merkezi -------------------- */
@@ -305,7 +317,7 @@ export function normalizeLatLng(value, _depth = 0) {
 
 export function getValidLatLngSafe(a, b) {
   try {
-    // a,b sayısal ise direkt dene (string sayı dahil)
+    // a,b sayısal ise direkt dene (string sayı dahil) + swap heuristic artık burada da var
     const direct = getValidLatLng(a, b);
     if (direct) return direct;
 

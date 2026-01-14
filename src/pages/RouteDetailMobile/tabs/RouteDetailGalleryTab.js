@@ -19,10 +19,16 @@ export default function RouteDetailGalleryTab({
             <button
               key={`${it.stopId || "s"}_${it.id || idx}`}
               type="button"
-              className="rdglass-card rdglass-tile rdglass-gallery-tile"
+              className="rdglass-gallery-tile route-detail-media-tile"
               onClick={() => openLightbox(buildLightboxItems(galleryItems), idx)}
               title={isVideo ? "Video" : "Fotoğraf"}
             >
+              {isVideo && (
+                <div className="route-detail-video-badge" aria-hidden="true">
+                  ▶︎
+                </div>
+              )}
+
               {isVideo ? (
                 <video
                   src={it.url}
@@ -39,28 +45,9 @@ export default function RouteDetailGalleryTab({
                   alt=""
                   loading="lazy"
                   decoding="async"
-                  onError={(e) =>
-                    onImgError?.(e, { scope: "gallery_grid", stopId: it.stopId || null, mediaId: it.id || null })
-                  }
+                  onError={(e) => onImgError?.(e, { scope: "gallery_grid", stopId: it.stopId || null, mediaId: it.id || null })}
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
-              )}
-
-              {isVideo && (
-                <div
-                  style={{
-                    position: "absolute",
-                    right: 6,
-                    top: 6,
-                    background: "rgba(0,0,0,.55)",
-                    color: "#fff",
-                    padding: "2px 6px",
-                    borderRadius: 999,
-                    fontSize: 11,
-                  }}
-                >
-                  ▶︎
-                </div>
               )}
             </button>
           );
@@ -75,7 +62,7 @@ export default function RouteDetailGalleryTab({
         </div>
       )}
 
-      <div ref={gallerySentinelRef} style={{ height: 1 }} />
+      <div ref={gallerySentinelRef} className="rdglass-row" style={{ height: 1 }} />
 
       {galleryState?.loading && (
         <div className="rdglass-card rdglass-card--pad rdglass-empty">

@@ -37,29 +37,30 @@ export default function RouteDetailReportTab({
 
           <div className="rdglass-card rdglass-card--pad">
             <div style={{ fontWeight: 900, marginBottom: 8 }}>Genel istatistik</div>
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-              <div className="rdglass-card rdglass-stat">
+              <div className="rdglass-card rdglass-card--pad rdglass-stat">
                 <div className="rdglass-muted" style={{ fontSize: 12 }}>
                   Mesafe
                 </div>
                 <div style={{ fontWeight: 900 }}>{distanceText || "—"}</div>
               </div>
 
-              <div className="rdglass-card rdglass-stat">
+              <div className="rdglass-card rdglass-card--pad rdglass-stat">
                 <div className="rdglass-muted" style={{ fontSize: 12 }}>
                   Süre
                 </div>
                 <div style={{ fontWeight: 900 }}>{durationText || "—"}</div>
               </div>
 
-              <div className="rdglass-card rdglass-stat">
+              <div className="rdglass-card rdglass-card--pad rdglass-stat">
                 <div className="rdglass-muted" style={{ fontSize: 12 }}>
                   Durak
                 </div>
                 <div style={{ fontWeight: 900 }}>{stopsText || `${(stops || []).length || 0}`}</div>
               </div>
 
-              <div className="rdglass-card rdglass-stat">
+              <div className="rdglass-card rdglass-card--pad rdglass-stat">
                 <div className="rdglass-muted" style={{ fontSize: 12 }}>
                   Ort. hız
                 </div>
@@ -74,6 +75,7 @@ export default function RouteDetailReportTab({
             {(stops || []).slice(0, 10).map((s) => {
               const agg = stopAgg?.[s.id];
               if (!agg) return null;
+
               return (
                 <div key={s.id} className="rdglass-row" style={{ padding: "8px 0" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>

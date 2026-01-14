@@ -72,6 +72,33 @@ export default function RouteDetailMobile({
 }) {
   const V3_ENABLED = ROUTES_V3_ENABLED;
 
+  // =========================
+  // ✅ EMİR 18-2 — Theme state (persist’li)
+  // =========================
+  const THEME_KEY = "mylasa:rdm_theme";
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined") return "dark";
+    try {
+      const v = window.localStorage.getItem(THEME_KEY);
+      return v === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(THEME_KEY, theme);
+    } catch {}
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  }, []);
+
+  const themeClass = theme === "light" ? "route-detail-light" : "route-detail-dark";
+
   const readTabFromUrl = useCallback(() => {
     if (typeof window === "undefined") return "stops";
     try {
@@ -83,10 +110,7 @@ export default function RouteDetailMobile({
   }, []);
 
   const portalTarget = typeof document !== "undefined" ? document.body : null;
-  const withPortal = useCallback(
-    (node) => (portalTarget ? createPortal(node, portalTarget) : node),
-    [portalTarget]
-  );
+  const withPortal = useCallback((node) => (portalTarget ? createPortal(node, portalTarget) : node), [portalTarget]);
 
   // ✅ Scroll lock
   useEffect(() => {
@@ -115,22 +139,13 @@ export default function RouteDetailMobile({
   }, []);
 
   // ✅ data (route/stops/owner/perm/comments/lockedOwner)
-  const {
-    routeDoc,
-    stops,
-    stopsLoaded,
-    owner,
-    permError,
-    commentsCount,
-    ownerIdForProfile,
-    lockedOwnerDoc,
-    retryPermCheck,
-  } = useRouteDetailData({
-    routeId,
-    initialRoute,
-    followInitially,
-    ownerFromLink,
-  });
+  const { routeDoc, stops, stopsLoaded, owner, permError, commentsCount, ownerIdForProfile, lockedOwnerDoc, retryPermCheck } =
+    useRouteDetailData({
+      routeId,
+      initialRoute,
+      followInitially,
+      ownerFromLink,
+    });
 
   const routeModel = routeDoc || initialRoute;
 
@@ -143,10 +158,7 @@ export default function RouteDetailMobile({
   const { pts: pathPts, dropped: pathDropped } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
 
   // ✅ EMİR 17/18: stops canonical (MapPreview/Quest/GPX için)
-  const { stops: stopsForPreview, dropped: stopsDropped } = useMemo(
-    () => normalizeStopsForPreview(stops || []),
-    [stops]
-  );
+  const { stops: stopsForPreview, dropped: stopsDropped } = useMemo(() => normalizeStopsForPreview(stops || []), [stops]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -226,9 +238,7 @@ export default function RouteDetailMobile({
     const visitedCount = Number(ghostMetrics?.visitedCount) || 0;
 
     const completion =
-      typeof ghostMetrics?.completion === "number" && Number.isFinite(ghostMetrics.completion)
-        ? ghostMetrics.completion
-        : 0;
+      typeof ghostMetrics?.completion === "number" && Number.isFinite(ghostMetrics.completion) ? ghostMetrics.completion : 0;
 
     const pct = Math.max(0, Math.min(1, completion));
     const pctText = Math.round(pct * 100);
@@ -269,9 +279,7 @@ export default function RouteDetailMobile({
         )}
 
         <div className="route-detail-quest-metrics">
-          <span className={`route-detail-quest-pill ${offRoute ? "route-detail-quest-pill--warn" : ""}`}>
-            Sapma: {distText}
-          </span>
+          <span className={`route-detail-quest-pill ${offRoute ? "route-detail-quest-pill--warn" : ""}`}>Sapma: {distText}</span>
           <span className="route-detail-quest-pill">
             Checkpoint: {visitedCount}/{total || "—"}
           </span>
@@ -623,21 +631,35 @@ export default function RouteDetailMobile({
   // ✅ Main UI
   // =========================
   const content = (
-    <div className="route-detail-backdrop route-detail-dark" onClick={handleBackdropClick}>
+    <div className={`route-detail-backdrop ${themeClass}`} data-theme={theme} onClick={handleBackdropClick}>
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
-        <RouteDetailHeaderMobile
-          title={title || "Rota"}
-          audienceKey={audienceKey}
-          audienceLabel={audienceLabel}
-          ratingAvgLabel={ratingAvgLabel}
-          metaLine={metaLine}
-          onShare={onShare}
-          onOpenVisualShare={() => setShowShareSheet(true)}
-          onExportGpx={onExportGpx}
-          onClose={onClose}
-        />
+        {/* ✅ Header host (toggle butonu RouteDetailHeaderMobile’a dokunmadan overlay) */}
+        <div className="route-detail-header-host">
+          <RouteDetailHeaderMobile
+            title={title || "Rota"}
+            audienceKey={audienceKey}
+            audienceLabel={audienceLabel}
+            ratingAvgLabel={ratingAvgLabel}
+            metaLine={metaLine}
+            onShare={onShare}
+            onOpenVisualShare={() => setShowShareSheet(true)}
+            onExportGpx={onExportGpx}
+            onClose={onClose}
+          />
+
+          <button
+            type="button"
+            className="route-detail-theme-toggle"
+            onClick={toggleTheme}
+            aria-label="Temayı değiştir"
+            aria-pressed={theme === "light"}
+            title="Temayı değiştir"
+          >
+            <span aria-hidden="true">{theme === "dark" ? "☀️" : "🌙"}</span>
+          </button>
+        </div>
 
         <div className="route-detail-body" ref={routeBodyRef}>
           {/* ✅ V3 Quest panel sadece flag açıkken */}
@@ -650,7 +672,7 @@ export default function RouteDetailMobile({
               path={pathPts}
               stops={stopsForPreview || []}
               stopsLoaded={stopsLoaded}
-              onRetry={retryMap}
+              onRetry={() => retryMap()}
             />
           </div>
 
@@ -733,13 +755,13 @@ export default function RouteDetailMobile({
 
       {showShareSheet && (
         <div
-          className="route-detail-share-overlay"
+          className="route-detail-share-overlay rdglass-overlay"
           onClick={(e) => {
             e.stopPropagation();
             setShowShareSheet(false);
           }}
         >
-          <div className="route-detail-share-overlay__inner" onClick={(e) => e.stopPropagation()}>
+          <div className="route-detail-share-overlay__inner rdglass-overlay__inner" onClick={(e) => e.stopPropagation()}>
             <ShareSheetMobile
               route={buildShareRoutePayload(
                 { ...(routeDoc || initialRoute || {}), cover: { kind: coverKindUi, url: coverResolved } },

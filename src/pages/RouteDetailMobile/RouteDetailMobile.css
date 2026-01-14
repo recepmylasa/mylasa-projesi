@@ -6,12 +6,79 @@
   width: 100vw;
   height: 100vh;
   z-index: 6000;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--bg, rgba(0, 0, 0, 0.45));
   display: flex;
   justify-content: center;
   align-items: flex-end;
   padding: 0;
   overscroll-behavior: contain;
+}
+
+/* =========================
+   EMİR 18-2 — Vitreous Theme Foundation (token set)
+   data-theme="dark" | "light"
+   ========================= */
+
+.route-detail-backdrop[data-theme="dark"] {
+  --bg: radial-gradient(
+    120% 80% at 50% 0%,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(0, 0, 0, 0.6) 38%,
+    rgba(0, 0, 0, 0.88) 100%
+  );
+
+  --blur: 28px;
+
+  --sheet-bg: rgba(15, 15, 18, 0.72);
+  --nav-bg: rgba(15, 15, 18, 0.55);
+
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-2: rgba(255, 255, 255, 0.08);
+
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-divider: rgba(255, 255, 255, 0.08);
+  --glass-highlight: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+
+  --text-main: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.72);
+  --text-dim2: rgba(255, 255, 255, 0.55);
+
+  --accent: #a78bfa;
+  --accent-glow: rgba(167, 139, 250, 0.35);
+
+  --sheet-shadow: 0 -20px 60px rgba(0, 0, 0, 0.55);
+
+  /* ✅ EMİR 18-4 — overlay backdrop token (dark) */
+  --overlay-bg: rgba(0, 0, 0, 0.55);
+}
+
+.route-detail-backdrop[data-theme="light"] {
+  --bg: rgba(15, 23, 42, 0.42);
+
+  --blur: 28px;
+
+  --sheet-bg: rgba(255, 255, 255, 0.92);
+  --nav-bg: rgba(255, 255, 255, 0.78);
+
+  /* Light modda okunurluk: glass daha opak */
+  --glass: rgba(255, 255, 255, 0.86);
+  --glass-2: rgba(255, 255, 255, 0.92);
+
+  --glass-border: rgba(15, 23, 42, 0.1);
+  --glass-divider: rgba(15, 23, 42, 0.08);
+  --glass-highlight: linear-gradient(90deg, transparent, rgba(15, 23, 42, 0.08), transparent);
+
+  --text-main: #1e293b;
+  --text-dim: #64748b;
+  --text-dim2: rgba(30, 41, 59, 0.72);
+
+  --accent: #7c3aed;
+  --accent-glow: rgba(124, 58, 237, 0.28);
+
+  --sheet-shadow: 0 -14px 50px rgba(0, 0, 0, 0.22);
+
+  /* ✅ EMİR 18-4 — overlay backdrop token (light) */
+  --overlay-bg: rgba(15, 23, 42, 0.36);
 }
 
 @supports (height: 100dvh) {
@@ -23,15 +90,35 @@
 .route-detail-sheet {
   width: 100%;
   max-width: 720px;
-  background: #fff;
+  background: var(--sheet-bg, #fff);
+  color: var(--text-main, #111);
   border-top-left-radius: 18px;
   border-top-right-radius: 18px;
-  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--sheet-shadow, 0 -10px 40px rgba(0, 0, 0, 0.25));
   overflow: hidden;
   max-height: calc(100vh - 44px);
   display: flex;
   flex-direction: column;
   padding-bottom: env(safe-area-inset-bottom);
+  border: 1px solid var(--glass-border, transparent);
+
+  /* Vitreous */
+  backdrop-filter: blur(var(--blur, 0px)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur, 0px)) saturate(160%);
+  position: relative;
+}
+
+/* 1px refraction çizgisi (minimal) */
+.route-detail-sheet::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 1px;
+  background: var(--glass-highlight, transparent);
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 @supports (height: 100dvh) {
@@ -52,6 +139,12 @@
   padding: 10px 14px 10px;
   border-bottom: 1px solid #eee;
   position: relative;
+
+  /* Vitreous nav */
+  background: var(--nav-bg, #fff);
+  backdrop-filter: blur(var(--blur, 0px));
+  -webkit-backdrop-filter: blur(var(--blur, 0px));
+  border-bottom-color: var(--glass-divider, #eee);
 }
 
 .route-detail-header-top {
@@ -72,7 +165,7 @@
 .route-detail-title {
   font-size: 16px;
   font-weight: 900;
-  color: #111;
+  color: var(--text-main, #111);
   line-height: 1.2;
   max-width: 100%;
   overflow: hidden;
@@ -83,7 +176,7 @@
 .route-detail-header-rating {
   font-weight: 900;
   font-size: 13px;
-  color: #111;
+  color: var(--text-main, #111);
   opacity: 0.9;
   white-space: nowrap;
 }
@@ -91,7 +184,7 @@
 .route-detail-meta {
   margin-top: 6px;
   font-size: 12px;
-  color: #666;
+  color: var(--text-dim, #666);
   line-height: 1.35;
 }
 
@@ -105,7 +198,7 @@
   font-size: 12px;
   font-weight: 800;
   background: #fafafa;
-  color: #333;
+  color: var(--text-dim2, #333);
 }
 
 .route-detail-chip--public {
@@ -148,7 +241,7 @@
   background: #fff;
   font-weight: 900;
   font-size: 12px;
-  color: #111;
+  color: var(--text-main, #111);
   cursor: pointer;
 }
 
@@ -169,6 +262,41 @@
 
 .route-detail-close-icon:active {
   transform: scale(0.98);
+}
+
+/* ✅ EMİR 18-2 — Theme toggle button (header overlay) */
+.route-detail-header-host {
+  position: relative;
+}
+
+/* close ikonuna çarpmaması için sağdan boşluk bırak */
+.route-detail-theme-toggle {
+  position: absolute;
+  top: 10px;
+  right: 56px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border, #e3e3e3);
+  background: var(--glass, #fff);
+  color: var(--text-main, #111);
+  font-weight: 900;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(var(--blur, 0px));
+  -webkit-backdrop-filter: blur(var(--blur, 0px));
+}
+
+.route-detail-theme-toggle:active {
+  transform: scale(0.98);
+}
+
+.route-detail-theme-toggle span {
+  font-size: 16px;
+  line-height: 1;
 }
 
 .route-detail-body {
@@ -263,13 +391,13 @@
 .route-detail-cover-title {
   font-weight: 900;
   font-size: 13px;
-  color: #111;
+  color: var(--text-main, #111);
 }
 
 .route-detail-cover-sub {
   margin-top: 2px;
   font-size: 12px;
-  color: #777;
+  color: var(--text-dim, #777);
   font-weight: 800;
 }
 
@@ -288,7 +416,7 @@
   background: #fff;
   font-weight: 900;
   font-size: 12px;
-  color: #111;
+  color: var(--text-main, #111);
   cursor: pointer;
 }
 
@@ -323,7 +451,7 @@
 .route-detail-rate-label {
   font-size: 13px;
   font-weight: 900;
-  color: #111;
+  color: var(--text-main, #111);
 }
 
 .route-detail-tabs {
@@ -343,7 +471,7 @@
   background: #fff;
   font-weight: 900;
   font-size: 12px;
-  color: #111;
+  color: var(--text-main, #111);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -369,7 +497,7 @@
   border: 1px solid #e3e3e3;
   background: #fff;
   font-weight: 900;
-  color: #111;
+  color: var(--text-main, #111);
   cursor: pointer;
 }
 
@@ -377,24 +505,43 @@
   transform: scale(0.99);
 }
 
+/* =========================================================
+   EMİR 18-4 — Overlay Vitreous Parite + Click-sızıntı kilidi
+   (Logic yok: sadece className/wrapper + token)
+   ========================================================= */
+
+.rdglass-overlay {
+  /* ✅ token’a bağlı backdrop rengi */
+  background: var(--overlay-bg, rgba(0, 0, 0, 0.55));
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.rdglass-overlay__inner {
+  width: 100%;
+  max-width: 720px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ✅ Share overlay */
 .route-detail-share-overlay {
   position: fixed;
   inset: 0;
   z-index: 6500;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--overlay-bg, rgba(0, 0, 0, 0.55));
   display: flex;
   align-items: flex-end;
   justify-content: center;
   padding: 0;
 }
 
-/* ✅ NEW: ShareSheet iç tıklarında overlay kapanmasın + layout sabit kalsın */
+/* ✅ ShareSheet iç tıklarında overlay kapanmasın + layout sabit kalsın */
 .route-detail-share-overlay__inner {
   width: 100%;
   max-width: 720px;
 }
 
-/* ✅ NEW: Genel overlay stop helper (layout bozmasın diye minimal) */
+/* ✅ Genel overlay stop helper (layout bozmasın diye minimal) */
 .route-detail-overlay-stop {
   position: relative;
 }
@@ -404,7 +551,7 @@
   position: fixed;
   inset: 0;
   z-index: 6800;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--overlay-bg, rgba(0, 0, 0, 0.55));
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -439,7 +586,7 @@
 
 .route-detail-cover-picker-title {
   font-weight: 900;
-  color: #111;
+  color: var(--text-main, #111);
   font-size: 14px;
 }
 
@@ -504,7 +651,7 @@
   background: #fff;
   font-weight: 900;
   font-size: 13px;
-  color: #111;
+  color: var(--text-main, #111);
   cursor: pointer;
   padding: 0 14px;
   display: flex;
@@ -621,7 +768,7 @@
 .route-detail-quest-title {
   font-weight: 900;
   font-size: 14px;
-  color: #111;
+  color: var(--text-main, #111);
   line-height: 1.2;
 }
 
@@ -629,7 +776,7 @@
   margin-top: 3px;
   font-size: 12px;
   font-weight: 800;
-  color: #777;
+  color: var(--text-dim, #777);
   line-height: 1.35;
 }
 
@@ -640,7 +787,7 @@
   border-radius: 999px;
   border: 1px solid #e3e3e3;
   background: #fafafa;
-  color: #111;
+  color: var(--text-main, #111);
   font-size: 12px;
   font-weight: 900;
   display: inline-flex;
@@ -680,7 +827,7 @@
   border-radius: 999px;
   border: 1px solid #eee;
   background: #fafafa;
-  color: #111;
+  color: var(--text-main, #111);
   font-size: 12px;
   font-weight: 900;
   display: inline-flex;
@@ -762,7 +909,7 @@
   border-radius: 14px;
   border: 1px solid #dbdbdb;
   background: #fff;
-  color: #111;
+  color: var(--text-main, #111);
   font-weight: 900;
   font-size: 13px;
   cursor: pointer;
@@ -778,26 +925,21 @@
    ========================================================= */
 
 .route-detail-dark {
-  --rd-ink: #ffffff;
-  --rd-muted: rgba(255, 255, 255, 0.72);
-  --rd-muted2: rgba(255, 255, 255, 0.55);
+  --rd-ink: var(--text-main);
+  --rd-muted: var(--text-dim);
+  --rd-muted2: var(--text-dim2);
 
-  --rd-glass: rgba(15, 15, 18, 0.72);
-  --rd-glass-2: rgba(255, 255, 255, 0.06);
+  --rd-glass: var(--sheet-bg);
+  --rd-glass-2: var(--glass-2);
 
-  --rd-border: rgba(255, 255, 255, 0.10);
-  --rd-divider: rgba(255, 255, 255, 0.08);
+  --rd-border: var(--glass-border);
+  --rd-divider: var(--glass-divider);
 
-  --rd-shadow: 0 -20px 60px rgba(0, 0, 0, 0.55);
+  --rd-shadow: var(--sheet-shadow);
 }
 
 .route-detail-dark.route-detail-backdrop {
-  background: radial-gradient(
-    120% 80% at 50% 0%,
-    rgba(255, 255, 255, 0.1) 0%,
-    rgba(0, 0, 0, 0.6) 38%,
-    rgba(0, 0, 0, 0.88) 100%
-  );
+  background: var(--bg);
 }
 
 .route-detail-dark .route-detail-sheet {
@@ -868,7 +1010,8 @@
 .route-detail-dark .route-detail-cover-picker-back,
 .route-detail-dark .route-detail-cover-picker-close,
 .route-detail-dark .route-detail-cover-picker-actionBtn,
-.route-detail-dark .route-detail-close-btn {
+.route-detail-dark .route-detail-close-btn,
+.route-detail-dark .route-detail-theme-toggle {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.12);
   color: var(--rd-ink);
@@ -880,7 +1023,8 @@
 .route-detail-dark .route-detail-cover-picker-back:active,
 .route-detail-dark .route-detail-cover-picker-close:active,
 .route-detail-dark .route-detail-cover-picker-actionBtn:active,
-.route-detail-dark .route-detail-close-btn:active {
+.route-detail-dark .route-detail-close-btn:active,
+.route-detail-dark .route-detail-theme-toggle:active {
   transform: scale(0.98);
 }
 
@@ -1116,8 +1260,8 @@
 }
 
 .route-detail-sheet .rdglass-card {
-  background: #fff;
-  border: 1px solid #eee;
+  background: var(--glass, #fff);
+  border: 1px solid var(--glass-border, #eee);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -1128,22 +1272,22 @@
 }
 
 .route-detail-sheet .rdglass-row {
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--glass-divider, #f0f0f0);
 }
 
 .route-detail-sheet .rdglass-muted {
-  color: #777;
+  color: var(--text-dim, #777);
 }
 
 .route-detail-sheet .rdglass-btn {
   height: 44px;
   padding: 0 14px;
   border-radius: 999px;
-  border: 1px solid #e3e3e3;
-  background: #fff;
+  border: 1px solid var(--glass-border, #e3e3e3);
+  background: var(--glass, #fff);
   font-weight: 900;
   font-size: 12px;
-  color: #111;
+  color: var(--text-main, #111);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1241,4 +1385,163 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+
+/* =========================================================
+   EMİR 18-2 — Light Theme Vitreous Overrides
+   Scope: sadece .route-detail-light altında
+   ========================================================= */
+
+.route-detail-light.route-detail-backdrop {
+  background: var(--bg);
+}
+
+.route-detail-light .route-detail-grab {
+  background: rgba(30, 41, 59, 0.18);
+}
+
+.route-detail-light .route-detail-sheet {
+  background: var(--sheet-bg);
+  color: var(--text-main);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--sheet-shadow);
+  backdrop-filter: blur(var(--blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(160%);
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
+}
+
+.route-detail-light .route-detail-header {
+  background: var(--nav-bg);
+  border-bottom-color: var(--glass-divider);
+}
+
+.route-detail-light .route-detail-meta {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-pill-btn,
+.route-detail-light .route-detail-close-icon,
+.route-detail-light .route-detail-cover-btn,
+.route-detail-light .route-detail-cover-picker-back,
+.route-detail-light .route-detail-cover-picker-close,
+.route-detail-light .route-detail-cover-picker-actionBtn,
+.route-detail-light .route-detail-close-btn,
+.route-detail-light .route-detail-theme-toggle {
+  background: var(--glass);
+  border-color: var(--glass-border);
+  color: var(--text-main);
+}
+
+.route-detail-light .route-detail-footer {
+  border-top-color: var(--glass-divider);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.route-detail-light .route-detail-map {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: var(--glass-border);
+  border-radius: 16px;
+}
+
+.route-detail-light .route-detail-map-error {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.route-detail-light .route-detail-map-note {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-cover-row,
+.route-detail-light .route-detail-rate-row,
+.route-detail-light .route-detail-quest {
+  background: var(--glass);
+  border-color: var(--glass-border);
+}
+
+.route-detail-light .route-detail-cover-sub {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-cover-thumb {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: var(--glass-border);
+}
+
+.route-detail-light .route-detail-tab-button {
+  background: var(--glass);
+  border-color: var(--glass-border);
+  color: var(--text-main);
+}
+
+.route-detail-light .route-detail-tab-button--active {
+  border-color: rgba(30, 41, 59, 0.85);
+}
+
+/* Quest light tweaks */
+.route-detail-light .route-detail-quest-sub,
+.route-detail-light .route-detail-quest-line.is-muted,
+.route-detail-light .route-detail-quest-hint {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-quest-badge {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--glass-border);
+  color: var(--text-main);
+}
+
+.route-detail-light .route-detail-quest-progressTrack {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.route-detail-light .route-detail-quest-progressFill {
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.route-detail-light .route-detail-quest-progressPct {
+  color: var(--text-main);
+}
+
+.route-detail-light .route-detail-quest-primary {
+  border-color: rgba(15, 23, 42, 0.22);
+  background: rgba(15, 23, 42, 0.86);
+  color: #fff;
+}
+
+.route-detail-light .route-detail-quest-stop {
+  border-color: var(--glass-border);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-main);
+}
+
+/* Cover picker light vitreous */
+.route-detail-light .route-detail-cover-picker-overlay {
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.route-detail-light .route-detail-cover-picker-sheet {
+  background: var(--sheet-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--sheet-shadow);
+  backdrop-filter: blur(var(--blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(160%);
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
+}
+
+.route-detail-light .route-detail-cover-picker-head {
+  border-bottom-color: var(--glass-divider);
+}
+
+.route-detail-light .route-detail-cover-picker-loading,
+.route-detail-light .route-detail-cover-picker-hint,
+.route-detail-light .route-detail-cover-picker-empty {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-cover-grid-item {
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--glass-border);
 }
