@@ -37,7 +37,12 @@
 
   --glass-border: rgba(255, 255, 255, 0.1);
   --glass-divider: rgba(255, 255, 255, 0.08);
-  --glass-highlight: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  --glass-highlight: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.22),
+    transparent
+  );
 
   --text-main: #ffffff;
   --text-dim: rgba(255, 255, 255, 0.72);
@@ -53,7 +58,13 @@
 }
 
 .route-detail-backdrop[data-theme="light"] {
-  --bg: rgba(15, 23, 42, 0.42);
+  /* ✅ EMİR 18-5 — açık arka plan (okunurluk) */
+  --bg: radial-gradient(
+    120% 90% at 50% 0%,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(240, 246, 255, 0.96) 48%,
+    rgba(226, 236, 255, 0.98) 100%
+  );
 
   --blur: 28px;
 
@@ -64,9 +75,14 @@
   --glass: rgba(255, 255, 255, 0.86);
   --glass-2: rgba(255, 255, 255, 0.92);
 
-  --glass-border: rgba(15, 23, 42, 0.1);
+  --glass-border: rgba(15, 23, 42, 0.12);
   --glass-divider: rgba(15, 23, 42, 0.08);
-  --glass-highlight: linear-gradient(90deg, transparent, rgba(15, 23, 42, 0.08), transparent);
+  --glass-highlight: linear-gradient(
+    90deg,
+    transparent,
+    rgba(15, 23, 42, 0.08),
+    transparent
+  );
 
   --text-main: #1e293b;
   --text-dim: #64748b;
@@ -77,8 +93,8 @@
 
   --sheet-shadow: 0 -14px 50px rgba(0, 0, 0, 0.22);
 
-  /* ✅ EMİR 18-4 — overlay backdrop token (light) */
-  --overlay-bg: rgba(15, 23, 42, 0.36);
+  /* ✅ EMİR 18-5 — overlay cam perde (light) */
+  --overlay-bg: rgba(15, 23, 42, 0.24);
 }
 
 @supports (height: 100dvh) {
@@ -249,6 +265,19 @@
   transform: scale(0.98);
 }
 
+/* ✅ EMİR 18-5 — theme pill (header içinde) */
+.route-detail-pill-btn--theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.route-detail-pill-btn__icon {
+  line-height: 1;
+  font-size: 14px;
+}
+
 .route-detail-close-icon {
   margin-left: auto;
   width: 34px;
@@ -262,41 +291,6 @@
 
 .route-detail-close-icon:active {
   transform: scale(0.98);
-}
-
-/* ✅ EMİR 18-2 — Theme toggle button (header overlay) */
-.route-detail-header-host {
-  position: relative;
-}
-
-/* close ikonuna çarpmaması için sağdan boşluk bırak */
-.route-detail-theme-toggle {
-  position: absolute;
-  top: 10px;
-  right: 56px;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border, #e3e3e3);
-  background: var(--glass, #fff);
-  color: var(--text-main, #111);
-  font-weight: 900;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  -webkit-tap-highlight-color: transparent;
-  backdrop-filter: blur(var(--blur, 0px));
-  -webkit-backdrop-filter: blur(var(--blur, 0px));
-}
-
-.route-detail-theme-toggle:active {
-  transform: scale(0.98);
-}
-
-.route-detail-theme-toggle span {
-  font-size: 16px;
-  line-height: 1;
 }
 
 .route-detail-body {
@@ -503,6 +497,74 @@
 
 .route-detail-close-btn:active {
   transform: scale(0.99);
+}
+
+/* =========================================================
+   EMİR 18-6 — Overlay Portal Root (Theme parity inherit)
+   Not: Global theme yok; sadece RouteDetail scope.
+   ========================================================= */
+
+.rd-overlay-root {
+  position: fixed;
+  inset: 0;
+  z-index: 6900; /* RouteDetail sheet (6000) üstü, overlay’ler için güvenli */
+  pointer-events: none; /* root click yakalamasın */
+}
+
+/* ✅ KRİTİK FIX:
+   rd-overlay-root içine yanlışlıkla full-screen bir wrapper düşerse (kapalı bile olsa),
+   eski kural ( > * { pointer-events:auto } ) tüm tıklamaları öldürür.
+   Bu yüzden çocuklar default NONE, sadece gerçek overlay sınıfları AUTO.
+*/
+.rd-overlay-root > * {
+  pointer-events: none;
+}
+
+/* ✅ Gerçek overlay’ler tıklanabilir (sadece bunlar)
+   NOT: RouteDetailAccessSheet aynı class’ları (route-detail-backdrop/sheet) kullanıyor.
+   Bu yüzden overlay root içinde route-detail-backdrop da whitelist'e alınmalı.
+*/
+.rd-overlay-root .route-detail-share-overlay,
+.rd-overlay-root .route-detail-cover-picker-overlay,
+.rd-overlay-root .rdglass-overlay,
+.rd-overlay-root .mylasa-lightbox,
+.rd-overlay-root .route-detail-backdrop {
+  pointer-events: auto;
+}
+
+/* CommentsPanel: sadece açıkken tıklanabilir kalsın (kapalıyken asla bloklamasın) */
+.rd-overlay-root .cp-backdrop.open {
+  pointer-events: auto;
+}
+.rd-overlay-root .cp-backdrop.open * {
+  pointer-events: auto;
+}
+
+/* Overlay içerikleri de tıklanabilir */
+.rd-overlay-root .route-detail-share-overlay *,
+.rd-overlay-root .route-detail-cover-picker-overlay *,
+.rd-overlay-root .rdglass-overlay *,
+.rd-overlay-root .mylasa-lightbox *,
+.rd-overlay-root .route-detail-backdrop * {
+  pointer-events: auto;
+}
+
+/* Token + text inherit garantisi */
+.route-detail-backdrop .rd-overlay-root {
+  color: var(--text-main, #111);
+}
+
+/* RouteDetail scope’unda overlay backdrop token’ı zorla */
+.route-detail-backdrop .rd-overlay-root .rdglass-overlay,
+.route-detail-backdrop .rd-overlay-root .route-detail-share-overlay,
+.route-detail-backdrop .rd-overlay-root .route-detail-cover-picker-overlay {
+  background: var(--overlay-bg, rgba(0, 0, 0, 0.55));
+}
+
+/* Eğer portal içerik role="dialog" gibi render ediyorsa, default beyazı kır */
+.route-detail-backdrop .rd-overlay-root [role="dialog"],
+.route-detail-backdrop .rd-overlay-root dialog {
+  color: var(--text-main, #111);
 }
 
 /* =========================================================
@@ -1010,8 +1072,7 @@
 .route-detail-dark .route-detail-cover-picker-back,
 .route-detail-dark .route-detail-cover-picker-close,
 .route-detail-dark .route-detail-cover-picker-actionBtn,
-.route-detail-dark .route-detail-close-btn,
-.route-detail-dark .route-detail-theme-toggle {
+.route-detail-dark .route-detail-close-btn {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.12);
   color: var(--rd-ink);
@@ -1023,8 +1084,7 @@
 .route-detail-dark .route-detail-cover-picker-back:active,
 .route-detail-dark .route-detail-cover-picker-close:active,
 .route-detail-dark .route-detail-cover-picker-actionBtn:active,
-.route-detail-dark .route-detail-close-btn:active,
-.route-detail-dark .route-detail-theme-toggle:active {
+.route-detail-dark .route-detail-close-btn:active {
   transform: scale(0.98);
 }
 
@@ -1426,8 +1486,7 @@
 .route-detail-light .route-detail-cover-picker-back,
 .route-detail-light .route-detail-cover-picker-close,
 .route-detail-light .route-detail-cover-picker-actionBtn,
-.route-detail-light .route-detail-close-btn,
-.route-detail-light .route-detail-theme-toggle {
+.route-detail-light .route-detail-close-btn {
   background: var(--glass);
   border-color: var(--glass-border);
   color: var(--text-main);
@@ -1518,7 +1577,7 @@
 
 /* Cover picker light vitreous */
 .route-detail-light .route-detail-cover-picker-overlay {
-  background: rgba(15, 23, 42, 0.42);
+  background: rgba(15, 23, 42, 0.24);
 }
 
 .route-detail-light .route-detail-cover-picker-sheet {

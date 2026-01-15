@@ -1,5 +1,6 @@
-// src/components/CommentsPanel/CommentsPanel.js
+// FILE: src/components/CommentsPanel/CommentsPanel.js
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { getComments, addComment } from "../../commentsClient";
 import "./CommentsPanel.css";
 
@@ -33,6 +34,7 @@ function relTimeTR(input) {
  *  - onClose: fn()
  *  - initialLocal?: array
  *  - placeholder?: string
+ *  - portalTarget?: HTMLElement | { current: HTMLElement | null } (opsiyonel, geriye uyumlu)
  */
 export default function CommentsPanel({
   open,
@@ -42,6 +44,7 @@ export default function CommentsPanel({
   onClose,
   initialLocal,
   placeholder = "Yorum ekle…",
+  portalTarget,
 }) {
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
@@ -231,7 +234,7 @@ export default function CommentsPanel({
     }
   };
 
-  return (
+  const node = (
     <div
       className={"cp-backdrop" + (open ? " open" : "")}
       role="presentation"
@@ -313,6 +316,10 @@ export default function CommentsPanel({
       </div>
     </div>
   );
+
+  // ✅ EMİR 18-6: portalTarget desteği (geriye uyumlu)
+  const targetEl = portalTarget?.current || portalTarget || null;
+  return targetEl ? createPortal(node, targetEl) : node;
 }
 
 function mergeUnique(a, b) {

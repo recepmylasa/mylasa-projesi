@@ -1,47 +1,150 @@
-/* src/components/CommentsPanel/CommentsPanel.css */
+/* FILE: src/components/CommentsPanel/CommentsPanel.css */
 /* Aşağıdan açılan yorum paneli – sınıf öneki: cp- */
+
+/* =========================================================
+   EMİR 18-6 — Portal root click-yutma kilidi (RouteDetail scope)
+   Amaç: rd-overlay-root asla tıklamayı yemesin; sadece iç overlayler tıklanabilir olsun.
+   ========================================================= */
+.route-detail-backdrop .rd-overlay-root {
+  /* root tam ekran bile olsa tıklamayı yutmasın */
+  pointer-events: none;
+}
+
+.route-detail-backdrop .rd-overlay-root > * {
+  /* root içine portal basılan gerçek overlayler tıklanabilir olsun */
+  pointer-events: auto;
+}
+
+/* =========================================================
+   Varsayılanlar (globali bozmaz)
+   ========================================================= */
 .cp-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.35);
+  background: var(--cp-overlay-bg, rgba(0, 0, 0, 0.35));
   z-index: 2200;
   opacity: 0;
   pointer-events: none;
-  transition: opacity .18s ease;
+  transition: opacity 0.18s ease;
 }
-.cp-backdrop.open { opacity: 1; pointer-events: auto; }
+
+.cp-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* RouteDetail içinde CommentsPanel overlay’i mutlaka üstte kalsın */
+.route-detail-backdrop .cp-backdrop {
+  z-index: 6900;
+}
+
+/* =========================================================
+   RouteDetail scope: theme parity (sadece RouteDetail altında)
+   Not: RouteDetail token’ları zaten var: --overlay-bg, --sheet-bg, --glass-border, --glass-divider,
+        --text-main, --text-dim, --blur vs.
+   ========================================================= */
+.route-detail-backdrop[data-theme="dark"] {
+  --cp-overlay-bg: var(--overlay-bg, rgba(2, 6, 23, 0.58));
+  --cp-overlay-blur: 14px;
+
+  --cp-sheet-bg: var(--sheet-bg, rgba(17, 24, 39, 0.88));
+  --cp-sheet-border: var(--glass-border, rgba(255, 255, 255, 0.12));
+  --cp-shadow: 0 -10px 30px rgba(0, 0, 0, 0.4);
+
+  --cp-handle: rgba(255, 255, 255, 0.22);
+  --cp-divider: var(--glass-divider, rgba(255, 255, 255, 0.1));
+
+  --cp-text: var(--text-main, rgba(255, 255, 255, 0.96));
+  --cp-muted: var(--text-dim, rgba(255, 255, 255, 0.7));
+
+  --cp-list-bg: transparent;
+
+  --cp-input-bg: rgba(255, 255, 255, 0.06);
+  --cp-input-border: rgba(255, 255, 255, 0.14);
+
+  --cp-btn-disabled-bg: rgba(255, 255, 255, 0.1);
+  --cp-btn-disabled-fg: rgba(255, 255, 255, 0.65);
+
+  --cp-accent: #0095f6;
+}
+
+.route-detail-backdrop[data-theme="light"] {
+  --cp-overlay-bg: var(--overlay-bg, rgba(15, 23, 42, 0.22));
+  --cp-overlay-blur: 10px;
+
+  --cp-sheet-bg: var(--sheet-bg, rgba(255, 255, 255, 0.92));
+  --cp-sheet-border: var(--glass-border, rgba(0, 0, 0, 0.08));
+  --cp-shadow: 0 -10px 26px rgba(0, 0, 0, 0.12);
+
+  --cp-handle: rgba(0, 0, 0, 0.18);
+  --cp-divider: var(--glass-divider, rgba(0, 0, 0, 0.08));
+
+  --cp-text: var(--text-main, rgba(15, 23, 42, 0.96));
+  --cp-muted: var(--text-dim, rgba(15, 23, 42, 0.62));
+
+  --cp-list-bg: transparent;
+
+  --cp-input-bg: rgba(15, 23, 42, 0.04);
+  --cp-input-border: rgba(15, 23, 42, 0.14);
+
+  --cp-btn-disabled-bg: rgba(15, 23, 42, 0.08);
+  --cp-btn-disabled-fg: rgba(15, 23, 42, 0.45);
+
+  --cp-accent: #0095f6;
+}
+
+/* Overlay blur (RouteDetail altında) */
+.route-detail-backdrop .cp-backdrop {
+  backdrop-filter: blur(var(--cp-overlay-blur, 0px)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--cp-overlay-blur, 0px)) saturate(140%);
+}
 
 .cp-sheet {
   position: fixed;
-  left: 0; right: 0; bottom: 0;
-  background: #fff;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  background: var(--cp-sheet-bg, #fff);
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
-  box-shadow: 0 -8px 24px rgba(0,0,0,.15);
+  box-shadow: var(--cp-shadow, 0 -8px 24px rgba(0, 0, 0, 0.15));
+
   transform: translateY(100%);
-  transition: transform .18s ease-out;
+  transition: transform 0.18s ease-out;
+
   max-height: min(80vh, 720px);
   display: grid;
   grid-template-rows: auto 1fr auto;
+
+  border-top: 1px solid var(--cp-sheet-border, transparent);
+  color: var(--cp-text, #111);
 }
-.cp-sheet.open { transform: translateY(0%); }
+
+.cp-sheet.open {
+  transform: translateY(0%);
+}
 
 .cp-handle {
-  width: 44px; height: 5px; border-radius: 999px;
-  background: #e5e5e5; margin: 8px auto 4px;
+  width: 44px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--cp-handle, #e5e5e5);
+  margin: 8px auto 4px;
 }
+
 .cp-title {
   text-align: center;
   font-weight: 700;
   padding: 4px 16px 8px;
-  border-bottom: 1px solid #efefef;
+  border-bottom: 1px solid var(--cp-divider, #efefef);
 }
 
 .cp-list {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 4px 8px 8px;
-  background: #fff;
+  background: var(--cp-list-bg, #fff);
 }
 
 .cp-item {
@@ -50,60 +153,143 @@
   gap: 10px;
   padding: 10px 6px;
 }
+
 .cp-avatar {
-  width: 36px; height: 36px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: #eee;
+  background: rgba(0, 0, 0, 0.08);
   object-fit: cover;
 }
-.cp-avatar.placeholder { background: #eee; }
-.cp-body { min-width: 0; }
-.cp-line { display: flex; align-items: baseline; gap: 8px; }
-.cp-name { font-weight: 700; font-size: 14px; }
-.cp-time { color: #8e8e8e; font-size: 12px; }
-.cp-text { color: #111; font-size: 14px; line-height: 1.35; margin-top: 2px; }
 
-.cp-sentinel { height: 1px; width: 100%; }
+.cp-avatar.placeholder {
+  background: rgba(0, 0, 0, 0.08);
+}
 
-.skel { position: relative; }
+.cp-body {
+  min-width: 0;
+}
+
+.cp-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cp-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.cp-time {
+  color: var(--cp-muted, #8e8e8e);
+  font-size: 12px;
+}
+
+.cp-text {
+  color: var(--cp-text, #111);
+  font-size: 14px;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
+.cp-sentinel {
+  height: 1px;
+  width: 100%;
+}
+
+.skel {
+  position: relative;
+}
+
 .skel-block {
-  background: #f2f2f2;
+  background: rgba(0, 0, 0, 0.06);
   border-radius: 50%;
 }
+
 .cp-skel-line {
-  height: 10px; background: #f2f2f2; border-radius: 6px;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 6px;
   margin: 6px 0;
-  position: relative; overflow: hidden;
+  position: relative;
+  overflow: hidden;
 }
+
+.route-detail-backdrop[data-theme="dark"] .skel-block,
+.route-detail-backdrop[data-theme="dark"] .cp-skel-line {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .cp-skel-line::after {
   content: "";
-  position: absolute; inset: 0;
+  position: absolute;
+  inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.6) 50%, rgba(255,255,255,0) 100%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
   animation: cp-shine 1.2s infinite;
 }
-.cp-skel-line.w60 { width: 60%; }
-.cp-skel-line.w70 { width: 70%; }
-.cp-skel-line.w80 { width: 80%; }
-.cp-skel-line.w90 { width: 90%; }
+
+.cp-skel-line.w60 {
+  width: 60%;
+}
+.cp-skel-line.w70 {
+  width: 70%;
+}
+.cp-skel-line.w80 {
+  width: 80%;
+}
+.cp-skel-line.w90 {
+  width: 90%;
+}
 
 @keyframes cp-shine {
-  100% { transform: translateX(100%); }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .cp-input {
-  display: grid; grid-template-columns: 1fr auto;
-  align-items: center; gap: 8px;
-  padding: 8px; border-top: 1px solid #efefef; background: #fff;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--cp-divider, #efefef);
+  background: transparent;
 }
+
 .cp-input input {
-  height: 36px; border: 1px solid #dbdbdb; border-radius: 10px;
-  padding: 0 10px; font-size: 14px;
+  height: 36px;
+  border: 1px solid var(--cp-input-border, #dbdbdb);
+  border-radius: 10px;
+  padding: 0 10px;
+  font-size: 14px;
+  background: var(--cp-input-bg, #fff);
+  color: var(--cp-text, #111);
 }
+
+.cp-input input::placeholder {
+  color: var(--cp-muted, rgba(0, 0, 0, 0.45));
+}
+
 .cp-input button {
-  height: 36px; padding: 0 12px; border: 0; border-radius: 10px;
-  background: #efefef; color: #999; font-weight: 600;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--cp-btn-disabled-bg, #efefef);
+  color: var(--cp-btn-disabled-fg, #999);
+  font-weight: 600;
 }
+
 .cp-input button:not(:disabled) {
-  background: #0095f6; color: #fff; cursor: pointer;
+  background: var(--cp-accent, #0095f6);
+  color: #fff;
+  cursor: pointer;
 }

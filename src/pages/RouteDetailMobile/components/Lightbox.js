@@ -1,10 +1,16 @@
-// src/pages/RouteDetailMobile/components/Lightbox.js
+// FILE: src/pages/RouteDetailMobile/components/Lightbox.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "./Lightbox.css";
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-export default function Lightbox({ items = [], index = 0, onClose = () => {} }) {
+export default function Lightbox({
+  items = [],
+  index = 0,
+  onClose = () => {},
+  portalTarget = null,
+}) {
   const safeItems = useMemo(() => (Array.isArray(items) ? items.filter(Boolean) : []), [items]);
   const len = safeItems.length;
 
@@ -172,40 +178,44 @@ export default function Lightbox({ items = [], index = 0, onClose = () => {} }) 
     [flushScroll]
   );
 
-  if (!len) {
-    return (
-      <div
-        className="mylasa-lightbox"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => {
-          e.stopPropagation();
-          close();
-        }}
-      >
-        <div className="mylasa-lightbox__panel" onClick={(e) => e.stopPropagation()}>
-          <div className="mylasa-lightbox__top">
-            <button
-              type="button"
-              className="mylasa-lightbox__iconBtn"
-              onClick={close}
-              aria-label="Kapat"
-              ref={closeBtnRef}
-            >
-              ✕
-            </button>
-            <div className="mylasa-lightbox__meta">Medya yok</div>
-            <div className="mylasa-lightbox__spacer" />
-          </div>
-          <div className="mylasa-lightbox__empty">Gösterilecek medya bulunamadı.</div>
+  // ✅ EMİR 18-6: ref object veya direkt element destekle
+  const targetEl = portalTarget?.current || portalTarget || null;
+  const canPortal = useMemo(() => {
+    try {
+      return !!(targetEl && typeof targetEl.appendChild === "function");
+    } catch {
+      return false;
+    }
+  }, [targetEl]);
+
+  const node = !len ? (
+    <div
+      className="mylasa-lightbox"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        e.stopPropagation();
+        close();
+      }}
+    >
+      <div className="mylasa-lightbox__panel" onClick={(e) => e.stopPropagation()}>
+        <div className="mylasa-lightbox__top">
+          <button
+            type="button"
+            className="mylasa-lightbox__iconBtn"
+            onClick={close}
+            aria-label="Kapat"
+            ref={closeBtnRef}
+          >
+            ✕
+          </button>
+          <div className="mylasa-lightbox__meta">Medya yok</div>
+          <div className="mylasa-lightbox__spacer" />
         </div>
+        <div className="mylasa-lightbox__empty">Gösterilecek medya bulunamadı.</div>
       </div>
-    );
-  }
-
-  const activeTitle = safeItems[active]?.title ? String(safeItems[active].title) : "";
-
-  return (
+    </div>
+  ) : (
     <div
       className="mylasa-lightbox"
       role="dialog"
@@ -249,8 +259,8 @@ export default function Lightbox({ items = [], index = 0, onClose = () => {} }) 
                       controls
                       playsInline
                       preload="metadata"
-                      ref={(node) => {
-                        if (node) videoElsRef.current.set(idx, node);
+                      ref={(node2) => {
+                        if (node2) videoElsRef.current.set(idx, node2);
                         else videoElsRef.current.delete(idx);
                       }}
                     />
@@ -286,8 +296,14 @@ export default function Lightbox({ items = [], index = 0, onClose = () => {} }) 
           )}
         </div>
 
-        {!!activeTitle && <div className="mylasa-lightbox__caption">{activeTitle}</div>}
+        {!!(safeItems[active]?.title ? String(safeItems[active].title) : "") && (
+          <div className="mylasa-lightbox__caption">
+            {safeItems[active]?.title ? String(safeItems[active].title) : ""}
+          </div>
+        )}
       </div>
     </div>
   );
+
+  return canPortal ? createPortal(node, targetEl) : node;
 }

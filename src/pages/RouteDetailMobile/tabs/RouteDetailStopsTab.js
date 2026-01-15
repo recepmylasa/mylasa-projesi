@@ -28,9 +28,10 @@ export default function RouteDetailStopsTab({
 
         return (
           <div key={s.id} className="rdglass-card">
+            {/* Header / actions */}
             <div
+              className="rdglass-card rdglass-card--pad"
               style={{
-                padding: "10px 12px",
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
@@ -73,7 +74,9 @@ export default function RouteDetailStopsTab({
               </div>
             </div>
 
+            {/* Media row */}
             <div
+              className="rdglass-row"
               onMouseEnter={() => ensureStopThumbs(s.id)}
               onTouchStart={() => ensureStopThumbs(s.id)}
               style={{ display: "flex", gap: 6, padding: "8px 10px", overflowX: "auto" }}
@@ -133,8 +136,9 @@ export default function RouteDetailStopsTab({
               )}
             </div>
 
+            {/* Upload row */}
             {up && (
-              <div style={{ padding: "0 10px 10px" }}>
+              <div className="rdglass-row" style={{ padding: "10px 12px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div className="rdglass-progress-track">
                     <div style={{ width: `${up.p || 0}%`, height: "100%", background: "#1a73e8" }} />
@@ -147,8 +151,8 @@ export default function RouteDetailStopsTab({
                   <button
                     type="button"
                     onClick={() => cancelUpload(s.id)}
-                    className="rdglass-muted"
-                    style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer", padding: 6 }}
+                    className="rdglass-btn"
+                    style={{ height: 34, padding: "0 12px", fontSize: 12, marginLeft: "auto" }}
                   >
                     İptal
                   </button>

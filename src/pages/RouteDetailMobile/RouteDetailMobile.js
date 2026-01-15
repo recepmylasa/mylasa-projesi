@@ -1,5 +1,5 @@
 // FILE: src/pages/RouteDetailMobile/RouteDetailMobile.js
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import "./RouteDetailMobile.css";
 
@@ -72,15 +72,38 @@ export default function RouteDetailMobile({
 }) {
   const V3_ENABLED = ROUTES_V3_ENABLED;
 
+  // ✅ EMİR 18-6 — RouteDetail scoped overlay portal root (theme token inherit)
+  const overlayRootRef = useRef(null);
+
   // =========================
-  // ✅ EMİR 18-2 — Theme state (persist’li)
+  // ✅ EMİR 18-5 — Dark/Light Toggle + data-theme bağlama (persist’li)
   // =========================
-  const THEME_KEY = "mylasa:rdm_theme";
-  const [theme, setTheme] = useState(() => {
+  const THEME_KEY = "rd_theme";
+  const LEGACY_THEME_KEY = "mylasa:rdm_theme";
+
+  const readDocTheme = () => {
+    try {
+      const v = document?.documentElement?.getAttribute?.("data-theme");
+      return v === "light" ? "light" : v === "dark" ? "dark" : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const [rdTheme, setRdTheme] = useState(() => {
     if (typeof window === "undefined") return "dark";
     try {
       const v = window.localStorage.getItem(THEME_KEY);
-      return v === "light" ? "light" : "dark";
+      if (v === "light" || v === "dark") return v;
+
+      // Legacy (18-2) uyumluluk
+      const legacy = window.localStorage.getItem(LEGACY_THEME_KEY);
+      if (legacy === "light" || legacy === "dark") return legacy;
+
+      const docTheme = readDocTheme();
+      if (docTheme) return docTheme;
+
+      return "dark";
     } catch {
       return "dark";
     }
@@ -89,15 +112,15 @@ export default function RouteDetailMobile({
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(THEME_KEY, theme);
+      window.localStorage.setItem(THEME_KEY, rdTheme);
+      // Legacy key’i de güncel tut (regresyon önlemi)
+      window.localStorage.setItem(LEGACY_THEME_KEY, rdTheme);
     } catch {}
-  }, [theme]);
+  }, [rdTheme]);
 
-  const toggleTheme = useCallback(() => {
-    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  const onToggleTheme = useCallback(() => {
+    setRdTheme((prev) => (prev === "light" ? "dark" : "light"));
   }, []);
-
-  const themeClass = theme === "light" ? "route-detail-light" : "route-detail-dark";
 
   const readTabFromUrl = useCallback(() => {
     if (typeof window === "undefined") return "stops";
@@ -553,7 +576,7 @@ export default function RouteDetailMobile({
       coverResolved = coverFallbackFromStops;
       coverKindUi = "auto";
     } else {
-      coverResolved = DEFAULT_ROUTE_COVER_URL_PUBLIC || DEFAULT_ROUTE_COVER_URL;
+      coverResolved = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
       coverKindUi = "default";
     }
   }
@@ -631,38 +654,29 @@ export default function RouteDetailMobile({
   // ✅ Main UI
   // =========================
   const content = (
-    <div className={`route-detail-backdrop ${themeClass}`} data-theme={theme} onClick={handleBackdropClick}>
+    <div
+      className={`route-detail-backdrop ${rdTheme === "light" ? "route-detail-light" : "route-detail-dark"}`}
+      data-theme={rdTheme}
+      onClick={handleBackdropClick}
+    >
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
-        {/* ✅ Header host (toggle butonu RouteDetailHeaderMobile’a dokunmadan overlay) */}
-        <div className="route-detail-header-host">
-          <RouteDetailHeaderMobile
-            title={title || "Rota"}
-            audienceKey={audienceKey}
-            audienceLabel={audienceLabel}
-            ratingAvgLabel={ratingAvgLabel}
-            metaLine={metaLine}
-            onShare={onShare}
-            onOpenVisualShare={() => setShowShareSheet(true)}
-            onExportGpx={onExportGpx}
-            onClose={onClose}
-          />
-
-          <button
-            type="button"
-            className="route-detail-theme-toggle"
-            onClick={toggleTheme}
-            aria-label="Temayı değiştir"
-            aria-pressed={theme === "light"}
-            title="Temayı değiştir"
-          >
-            <span aria-hidden="true">{theme === "dark" ? "☀️" : "🌙"}</span>
-          </button>
-        </div>
+        <RouteDetailHeaderMobile
+          title={title || "Rota"}
+          audienceKey={audienceKey}
+          audienceLabel={audienceLabel}
+          ratingAvgLabel={ratingAvgLabel}
+          metaLine={metaLine}
+          onShare={onShare}
+          onOpenVisualShare={() => setShowShareSheet(true)}
+          onExportGpx={onExportGpx}
+          onClose={onClose}
+          theme={rdTheme}
+          onToggleTheme={onToggleTheme}
+        />
 
         <div className="route-detail-body" ref={routeBodyRef}>
-          {/* ✅ V3 Quest panel sadece flag açıkken */}
           {questUi}
 
           <div className="route-detail-map" style={{ position: "relative" }}>
@@ -685,7 +699,7 @@ export default function RouteDetailMobile({
             coverUpload={coverUpload}
             coverKindUi={coverKindUi}
             onOpenPicker={openCoverPicker}
-            onClearCover={clearCover}
+            onClearCover={() => {}}
             onImgLoad={(e) => handleImgLoadProof(e, { scope: "cover_thumb" })}
             onImgError={(e) => handleImgErrorToDefault(e, { scope: "cover_thumb" })}
           />
@@ -775,7 +789,6 @@ export default function RouteDetailMobile({
         </div>
       )}
 
-      {/* ✅ Overlay’ler RouteDetail backdrop’ına click sızdırmasın */}
       <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
         <RouteDetailCoverPickerOverlayMobile
           open={coverPickerOpen}
@@ -799,10 +812,23 @@ export default function RouteDetailMobile({
           targetId={routeId}
           placeholder="Bu rota hakkında ne düşünüyorsun?"
           onClose={() => onTabChange("stops")}
+          // ✅ EMİR 18-6: CommentsPanel portal kullanıyorsa RouteDetail overlay root’a basabilsin
+          portalTarget={overlayRootRef.current}
         />
       </div>
 
-      {lightboxItems && <Lightbox items={lightboxItems} index={lightboxIndex} onClose={() => setLightboxItems(null)} />}
+      {lightboxItems && (
+        <Lightbox
+          items={lightboxItems}
+          index={lightboxIndex}
+          onClose={() => setLightboxItems(null)}
+          // ✅ EMİR 18-6: Lightbox’ı RouteDetail overlay root’a portal’layabilir (token inherit garantisi)
+          portalTarget={overlayRootRef.current}
+        />
+      )}
+
+      {/* ✅ EMİR 18-6 — Scoped overlay portal root (RouteDetail tokenları inherit eder) */}
+      <div ref={overlayRootRef} className="rd-overlay-root" />
     </div>
   );
 

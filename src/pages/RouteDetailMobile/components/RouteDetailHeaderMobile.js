@@ -1,4 +1,4 @@
-// src/pages/RouteDetailMobile/components/RouteDetailHeaderMobile.js
+// FILE: src/pages/RouteDetailMobile/components/RouteDetailHeaderMobile.js
 import React from "react";
 
 export default function RouteDetailHeaderMobile({
@@ -11,7 +11,12 @@ export default function RouteDetailHeaderMobile({
   onOpenVisualShare,
   onExportGpx,
   onClose,
+  theme = "dark",
+  onToggleTheme = () => {},
 }) {
+  const nextLabel = theme === "dark" ? "Açık" : "Koyu";
+  const nextIcon = theme === "dark" ? "☀️" : "🌙";
+
   return (
     <div className="route-detail-header">
       <div className="route-detail-header-top">
@@ -40,6 +45,21 @@ export default function RouteDetailHeaderMobile({
         <button type="button" className="route-detail-pill-btn" onClick={onExportGpx}>
           GPX
         </button>
+
+        <button
+          type="button"
+          className="route-detail-pill-btn route-detail-pill-btn--theme"
+          onClick={onToggleTheme}
+          aria-label="Temayı değiştir"
+          aria-pressed={theme === "light"}
+          title="Temayı değiştir"
+        >
+          <span className="route-detail-pill-btn__icon" aria-hidden="true">
+            {nextIcon}
+          </span>
+          {nextLabel}
+        </button>
+
         <button type="button" className="route-detail-close-icon" onClick={onClose} title="Kapat">
           ✕
         </button>

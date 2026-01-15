@@ -1,4 +1,4 @@
-/* src/pages/RouteDetailMobile/components/Lightbox.css */
+/* FILE: src/pages/RouteDetailMobile/components/Lightbox.css */
 
 .mylasa-lightbox {
   position: fixed;
@@ -9,6 +9,13 @@
   align-items: stretch;
   justify-content: center;
   padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+
+/* RouteDetail scope: overlay token parity */
+.route-detail-backdrop .mylasa-lightbox {
+  background: var(--rd-overlay-bg, rgba(0, 0, 0, 0.88));
+  backdrop-filter: blur(var(--rd-overlay-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--rd-overlay-blur, 0px));
 }
 
 .mylasa-lightbox__panel {
