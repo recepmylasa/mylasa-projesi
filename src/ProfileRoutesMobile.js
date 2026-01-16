@@ -1,4 +1,4 @@
-// src/ProfileRoutesMobile.js
+// FILE: src/ProfileRoutesMobile.js
 // Profil "Rotalarım" sekmesi – profil sahibine ait rotaları premium grid olarak listeler (read-only).
 // Kapak (EMİR-1 + EMİR-2 uyumlu):
 // A) route.cover.url (tek doğru kaynak)
@@ -19,8 +19,53 @@ import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage"
 const __DEV__ = process.env.NODE_ENV !== "production";
 const DEFAULT_ROUTE_COVER_URL = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
 
+// ✅ EMİR 18-7: DEV console “permission-denied” spam kırıcı (hedefli, tek sefer patch)
+if (typeof window !== "undefined" && __DEV__) {
+  const PATCH_FLAG = "__mylasa_console_permspam_breaker_v1";
+  try {
+    if (!window[PATCH_FLAG]) {
+      window[PATCH_FLAG] = true;
+
+      const swallow = (msg) => {
+        const s = String(msg || "");
+        if (/permission[- ]denied/i.test(s)) return true;
+        if (/missing or insufficient permissions/i.test(s)) return true;
+        if (/FirebaseError:.*permission/i.test(s)) return true;
+        return false;
+      };
+
+      const _warn = console.warn;
+      const _error = console.error;
+
+      console.warn = (...args) => {
+        const first = args?.[0] ? String(args[0]) : "";
+        if (swallow(first)) return;
+        _warn(...args);
+      };
+
+      console.error = (...args) => {
+        const first = args?.[0] ? String(args[0]) : "";
+        if (swallow(first)) return;
+        _error(...args);
+      };
+    }
+  } catch {
+    // no-op
+  }
+}
+
 // StrictMode / remount spamını kesmek için (DEV only) modül seviyesinde tek sefer log
 const __devProofLoggedRouteIds = new Set();
+
+// ✅ getDownloadURL spamını kes (özellikle unauthorized / permission)
+const __dlWarnOnce = new Set();
+function warnOnce(key, ...args) {
+  if (!__DEV__) return;
+  if (__dlWarnOnce.has(key)) return;
+  __dlWarnOnce.add(key);
+  // eslint-disable-next-line no-console
+  console.warn(...args);
+}
 
 function toDate(dt) {
   if (!dt) return null;
@@ -69,9 +114,7 @@ function isHttpHttpsOrDataUrl(v) {
 }
 
 function isGsUrl(v) {
-  return (
-    typeof v === "string" && v.trim().toLowerCase().startsWith("gs://")
-  );
+  return typeof v === "string" && v.trim().toLowerCase().startsWith("gs://");
 }
 
 function looksLikeRelativeStoragePath(v) {
@@ -134,11 +177,7 @@ function toSameOriginAbsoluteUrl(v) {
 
   if (s.startsWith("/")) {
     try {
-      if (
-        typeof window !== "undefined" &&
-        window.location &&
-        window.location.origin
-      ) {
+      if (typeof window !== "undefined" && window.location && window.location.origin) {
         return `${window.location.origin}${s}`;
       }
     } catch {
@@ -164,11 +203,7 @@ async function resolveToHttpsUrl(input) {
   // ✅ "/route-default-cover.jpg" ya da "/app/route-default-cover.jpg" gibi public asset → same-origin absolute URL
   if (raw0.startsWith("/")) {
     try {
-      if (
-        typeof window !== "undefined" &&
-        window.location &&
-        window.location.origin
-      ) {
+      if (typeof window !== "undefined" && window.location && window.location.origin) {
         return `${window.location.origin}${raw0}`;
       }
     } catch {
@@ -188,11 +223,24 @@ async function resolveToHttpsUrl(input) {
       const storage = getStorage();
       const r = storageRef(storage, gsFromHttp);
       const https = await getDownloadURL(r);
-      return typeof https === "string" && /^https?:\/\//i.test(https)
-        ? https
-        : raw0;
+      return typeof https === "string" && /^https?:\/\//i.test(https) ? https : raw0;
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
+
+      // ✅ EMİR 18-7: yetki/permission spam kır (tek sefer warn)
+      if (
+        code === "permission-denied" ||
+        code === "storage/unauthorized" ||
+        code === "storage/unauthenticated" ||
+        code === "storage/unknown"
+      ) {
+        warnOnce(
+          `dlwarn_http_${code}`,
+          `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — fallback’a düşülecek.`
+        );
+        return raw0;
+      }
+
       // eslint-disable-next-line no-console
       console.warn(`getDownloadURL FAILED: ${gsFromHttp} ${code}`);
       return raw0;
@@ -208,11 +256,23 @@ async function resolveToHttpsUrl(input) {
       const storage = getStorage();
       const r = storageRef(storage, path); // path hem gs:// hem relative kabul
       const https = await getDownloadURL(r);
-      return typeof https === "string" && /^https?:\/\//i.test(https)
-        ? https
-        : "";
+      return typeof https === "string" && /^https?:\/\//i.test(https) ? https : "";
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
+
+      // ✅ EMİR 18-7: yetki/permission spam kır (tek sefer warn)
+      if (
+        code === "permission-denied" ||
+        code === "storage/unauthorized" ||
+        code === "storage/unauthenticated"
+      ) {
+        warnOnce(
+          `dlwarn_gs_${code}`,
+          `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — default cover kullanılacak.`
+        );
+        return "";
+      }
+
       // eslint-disable-next-line no-console
       console.warn(`getDownloadURL FAILED: ${path} ${code}`);
       return "";
@@ -226,15 +286,8 @@ function useResolvedMediaUrl(input) {
   const key = (input || "").toString().trim();
   const [state, setState] = useState(() => {
     const cached = __resolvedUrlCache.get(key);
-    if (cached)
-      return { ...cached, input: key, status: cached.ok ? "ok" : "fail" };
-    return {
-      input: key,
-      status: key ? "idle" : "empty",
-      url: "",
-      ok: false,
-      errorCode: "",
-    };
+    if (cached) return { ...cached, input: key, status: cached.ok ? "ok" : "fail" };
+    return { input: key, status: key ? "idle" : "empty", url: "", ok: false, errorCode: "" };
   });
 
   useEffect(() => {
@@ -258,11 +311,7 @@ function useResolvedMediaUrl(input) {
           const url = await __inflight.get(k);
           if (cancelled) return;
           const ok = isHttpHttpsOrDataUrl(url);
-          const rec = {
-            ok,
-            url: ok ? url : "",
-            errorCode: ok ? "" : "resolve_failed",
-          };
+          const rec = { ok, url: ok ? url : "", errorCode: ok ? "" : "resolve_failed" };
           __resolvedUrlCache.set(k, rec);
           setState({ input: k, status: ok ? "ok" : "fail", ...rec });
         } catch {
@@ -356,7 +405,9 @@ function isDefaultRouteTitle(titleRaw) {
   if (!t) return true;
   if (!/^rota\b/i.test(t)) return false;
 
-  return /(\d{1,2}:\d{2})|(\d{1,2}[./-]\d{1,2})|(\d{4}[./-]\d{1,2}[./-]\d{1,2})|\d{2,}/.test(t);
+  return /(\d{1,2}:\d{2})|(\d{1,2}[./-]\d{1,2})|(\d{4}[./-]\d{1,2}[./-]\d{1,2})|\d{2,}/.test(
+    t
+  );
 }
 
 // ✅ GERÇEK VERİ YOLLARI + order/idx sort
@@ -366,9 +417,7 @@ function getStopsArray(route) {
   const take = (arr) => {
     if (!Array.isArray(arr) || arr.length === 0) return [];
     const copy = arr.slice();
-    const hasOrder = copy.some(
-      (x) => x && (x.order !== undefined || x.idx !== undefined)
-    );
+    const hasOrder = copy.some((x) => x && (x.order !== undefined || x.idx !== undefined));
     if (!hasOrder) return copy;
     copy.sort((a, b) => {
       const ao = toFiniteNumber(a?.order ?? a?.idx) ?? 0;
@@ -378,18 +427,14 @@ function getStopsArray(route) {
     return copy;
   };
 
-  if (Array.isArray(route.stopsPreview) && route.stopsPreview.length > 0)
-    return take(route.stopsPreview);
-  if (Array.isArray(route.stops) && route.stops.length > 0)
-    return take(route.stops);
+  if (Array.isArray(route.stopsPreview) && route.stopsPreview.length > 0) return take(route.stopsPreview);
+  if (Array.isArray(route.stops) && route.stops.length > 0) return take(route.stops);
 
   const raw = route.raw || route.data || route.doc || null;
   if (raw) {
-    if (Array.isArray(raw.stopsPreview) && raw.stopsPreview.length > 0)
-      return take(raw.stopsPreview);
+    if (Array.isArray(raw.stopsPreview) && raw.stopsPreview.length > 0) return take(raw.stopsPreview);
     if (Array.isArray(raw.stops) && raw.stops.length > 0) return take(raw.stops);
-    if (raw.data && Array.isArray(raw.data.stopsPreview))
-      return take(raw.data.stopsPreview);
+    if (raw.data && Array.isArray(raw.data.stopsPreview)) return take(raw.data.stopsPreview);
   }
 
   return [];
@@ -449,8 +494,7 @@ function getStopNameWithSource(stop) {
     if (typeof v === "string" && v.trim()) return { name: v.trim(), source: src };
   }
 
-  if (typeof s.place === "string" && s.place.trim())
-    return { name: s.place.trim(), source: "place(string)" };
+  if (typeof s.place === "string" && s.place.trim()) return { name: s.place.trim(), source: "place(string)" };
   if (typeof raw?.place === "string" && raw.place.trim())
     return { name: raw.place.trim(), source: "raw.place(string)" };
 
@@ -460,13 +504,7 @@ function getStopNameWithSource(stop) {
 function buildSmartTitleProof(route, fallbackTitle) {
   const title = (fallbackTitle || "").toString().trim() || "Adsız rota";
   if (!isDefaultRouteTitle(title)) {
-    return {
-      smartTitle: title,
-      startName: "",
-      endName: "",
-      startSource: "route.title",
-      endSource: "",
-    };
+    return { smartTitle: title, startName: "", endName: "", startSource: "route.title", endSource: "" };
   }
 
   const stops = getStopsArray(route);
@@ -515,34 +553,13 @@ function buildSmartTitleProof(route, fallbackTitle) {
       route?.data?.finishedAt ||
       route?.data?.createdAt
   );
-  if (!d)
-    return {
-      smartTitle: "Yeni sürüş",
-      startName: "",
-      endName: "",
-      startSource: "dateFallback",
-      endSource: "",
-    };
+  if (!d) return { smartTitle: "Yeni sürüş", startName: "", endName: "", startSource: "dateFallback", endSource: "" };
+
   try {
-    const dayMonth = d.toLocaleDateString("tr-TR", {
-      day: "numeric",
-      month: "long",
-    });
-    return {
-      smartTitle: `${dayMonth} Sürüşü`,
-      startName: "",
-      endName: "",
-      startSource: "dateFallback",
-      endSource: "",
-    };
+    const dayMonth = d.toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
+    return { smartTitle: `${dayMonth} Sürüşü`, startName: "", endName: "", startSource: "dateFallback", endSource: "" };
   } catch {
-    return {
-      smartTitle: "Yeni sürüş",
-      startName: "",
-      endName: "",
-      startSource: "dateFallback",
-      endSource: "",
-    };
+    return { smartTitle: "Yeni sürüş", startName: "", endName: "", startSource: "dateFallback", endSource: "" };
   }
 }
 
@@ -568,13 +585,7 @@ function inferStopCount(route) {
 
 function isVideoUrl(url) {
   const u = (url || "").toString().toLowerCase();
-  return (
-    u.includes(".mp4") ||
-    u.includes(".webm") ||
-    u.includes(".mov") ||
-    u.includes(".m4v") ||
-    u.includes("video/")
-  );
+  return u.includes(".mp4") || u.includes(".webm") || u.includes(".mov") || u.includes(".m4v") || u.includes("video/");
 }
 
 // legacy alanlar (read-only)
@@ -638,8 +649,6 @@ function pickFirstStopImageCandidate(stop) {
     "gsUrl",
     "url",
     "src",
-
-    // nested olasılar
     "file.url",
     "file.downloadUrl",
     "asset.url",
@@ -686,9 +695,7 @@ function pickFirstStopImageCandidate(stop) {
       }
 
       if (typeof it === "object") {
-        const typeRaw = (it.type || it.mediaType || it.kind || it.mime || "")
-          .toString()
-          .toLowerCase();
+        const typeRaw = (it.type || it.mediaType || it.kind || it.mime || "").toString().toLowerCase();
 
         const url =
           (isNonEmptyString(it.url) ? it.url : "") ||
@@ -719,11 +726,7 @@ function pickFirstStopImageCandidate(stop) {
 
         if (isVid) {
           // ✅ video varsa poster (image) kullan
-          if (
-            posterStr &&
-            !isVideoUrl(posterStr) &&
-            !isKnownAppLogoUrl(posterStr)
-          ) {
+          if (posterStr && !isVideoUrl(posterStr) && !isKnownAppLogoUrl(posterStr)) {
             return { url: posterStr, fromVideoPoster: true };
           }
           continue;
@@ -731,8 +734,7 @@ function pickFirstStopImageCandidate(stop) {
 
         // image
         const cand = urlStr || posterStr;
-        if (cand && !isVideoUrl(cand) && !isKnownAppLogoUrl(cand))
-          return { url: cand, fromVideoPoster: false };
+        if (cand && !isVideoUrl(cand) && !isKnownAppLogoUrl(cand)) return { url: cand, fromVideoPoster: false };
       }
     }
   }
@@ -770,16 +772,10 @@ function pickCoverCandidate(route) {
     };
 
   // (A0) Model cover meta’sı (useUserRoutes / routeCardModel set edebilir)
-  const coverObj =
-    route?.cover && typeof route.cover === "object" ? route.cover : null;
-  const coverMetaUrl = isNonEmptyString(coverObj?.url)
-    ? String(coverObj.url).trim()
-    : "";
-  const coverMetaField = isNonEmptyString(coverObj?.sourceField)
-    ? String(coverObj.sourceField).trim()
-    : "";
-  const coverMetaHasVideo =
-    !!coverObj?.fromVideoPoster || !!coverObj?.hasVideoPoster;
+  const coverObj = route?.cover && typeof route.cover === "object" ? route.cover : null;
+  const coverMetaUrl = isNonEmptyString(coverObj?.url) ? String(coverObj.url).trim() : "";
+  const coverMetaField = isNonEmptyString(coverObj?.sourceField) ? String(coverObj.sourceField).trim() : "";
+  const coverMetaHasVideo = !!coverObj?.fromVideoPoster || !!coverObj?.hasVideoPoster;
 
   if (coverMetaUrl && !isKnownAppLogoUrl(coverMetaUrl) && !isVideoUrl(coverMetaUrl)) {
     return {
@@ -792,16 +788,9 @@ function pickCoverCandidate(route) {
   }
 
   // (A) Yeni standart: route.cover.url (tek doğru kaynak)
-  const coverUrl = isNonEmptyString(route?.cover?.url)
-    ? String(route.cover.url).trim()
-    : "";
+  const coverUrl = isNonEmptyString(route?.cover?.url) ? String(route.cover.url).trim() : "";
   if (coverUrl && !isKnownAppLogoUrl(coverUrl) && !isVideoUrl(coverUrl)) {
-    return {
-      kind: "image",
-      url: coverUrl,
-      hasVideo: false,
-      sourceField: "cover.url",
-    };
+    return { kind: "image", url: coverUrl, hasVideo: false, sourceField: "cover.url" };
   }
 
   // (B) Legacy alanlar (read-only geriye uyum)
@@ -823,12 +812,7 @@ function pickCoverCandidate(route) {
   }
 
   // (D) Default placeholder
-  return {
-    kind: "default",
-    url: DEFAULT_ROUTE_COVER_URL,
-    hasVideo: false,
-    sourceField: "default",
-  };
+  return { kind: "default", url: DEFAULT_ROUTE_COVER_URL, hasVideo: false, sourceField: "default" };
 }
 
 function buildRoutePrefill(route) {
@@ -842,31 +826,24 @@ function buildRoutePrefill(route) {
     "Rota";
 
   const distanceMeters =
-    typeof route?.stats?.distanceMeters === "number" &&
-    Number.isFinite(route.stats.distanceMeters)
+    typeof route?.stats?.distanceMeters === "number" && Number.isFinite(route.stats.distanceMeters)
       ? route.stats.distanceMeters
-      : typeof route?.stats?.distanceM === "number" &&
-        Number.isFinite(route.stats.distanceM)
+      : typeof route?.stats?.distanceM === "number" && Number.isFinite(route.stats.distanceM)
       ? route.stats.distanceM
-      : typeof route?.totalDistanceM === "number" &&
-        Number.isFinite(route.totalDistanceM)
+      : typeof route?.totalDistanceM === "number" && Number.isFinite(route.totalDistanceM)
       ? route.totalDistanceM
-      : typeof route?.distanceMeters === "number" &&
-        Number.isFinite(route.distanceMeters)
+      : typeof route?.distanceMeters === "number" && Number.isFinite(route.distanceMeters)
       ? route.distanceMeters
       : typeof route?.distance === "number" && Number.isFinite(route.distance)
       ? route.distance
       : null;
 
   const durationSeconds =
-    typeof route?.stats?.durationSeconds === "number" &&
-    Number.isFinite(route.stats.durationSeconds)
+    typeof route?.stats?.durationSeconds === "number" && Number.isFinite(route.stats.durationSeconds)
       ? route.stats.durationSeconds
-      : typeof route?.stats?.durationMs === "number" &&
-        Number.isFinite(route.stats.durationMs)
+      : typeof route?.stats?.durationMs === "number" && Number.isFinite(route.stats.durationMs)
       ? Math.round(route.stats.durationMs / 1000)
-      : typeof route?.durationSeconds === "number" &&
-        Number.isFinite(route.durationSeconds)
+      : typeof route?.durationSeconds === "number" && Number.isFinite(route.durationSeconds)
       ? route.durationSeconds
       : typeof route?.durationMs === "number" && Number.isFinite(route.durationMs)
       ? Math.round(route.durationMs / 1000)
@@ -879,16 +856,14 @@ function buildRoutePrefill(route) {
       ? route.ratingAvg
       : typeof route?.avgRating === "number" && Number.isFinite(route.avgRating)
       ? route.avgRating
-      : typeof route?.raw?.ratingAvg === "number" &&
-        Number.isFinite(route.raw.ratingAvg)
+      : typeof route?.raw?.ratingAvg === "number" && Number.isFinite(route.raw.ratingAvg)
       ? route.raw.ratingAvg
       : null;
 
   const ratingCount =
     typeof route?.ratingCount === "number" && Number.isFinite(route.ratingCount)
       ? route.ratingCount
-      : typeof route?.raw?.ratingCount === "number" &&
-        Number.isFinite(route.raw.ratingCount)
+      : typeof route?.raw?.ratingCount === "number" && Number.isFinite(route.raw.ratingCount)
       ? route.raw.ratingCount
       : null;
 
@@ -922,11 +897,7 @@ function buildRoutePrefill(route) {
 }
 
 function isPlainObject(x) {
-  return (
-    !!x &&
-    typeof x === "object" &&
-    (x.constructor === Object || Object.getPrototypeOf(x) === Object.prototype)
-  );
+  return !!x && typeof x === "object" && (x.constructor === Object || Object.getPrototypeOf(x) === Object.prototype);
 }
 
 function buildCoverFieldsSnapshot(route) {
@@ -955,14 +926,7 @@ function buildCoverFieldsSnapshot(route) {
   };
 }
 
-function printRouteTileProof({
-  route,
-  rawTitle,
-  smartTitleProof,
-  coverCandidate,
-  imgSrc,
-  imgLoadEvent,
-}) {
+function printRouteTileProof({ route, rawTitle, smartTitleProof, coverCandidate, imgSrc, imgLoadEvent }) {
   if (!__DEV__) return;
   if (!route) return;
 
@@ -1146,11 +1110,7 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
     try {
       window.dispatchEvent(
         new CustomEvent("open-route-modal", {
-          detail: {
-            routeId: id,
-            route: routePrefill,
-            source: "profile",
-          },
+          detail: { routeId: id, route: routePrefill, source: "profile" },
         })
       );
     } catch {

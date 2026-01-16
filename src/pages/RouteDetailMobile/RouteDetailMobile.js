@@ -593,6 +593,11 @@ export default function RouteDetailMobile({
 
   const handleBackdropClick = useCallback(() => onClose(), [onClose]);
 
+  // ✅ HOTFIX — görünmez overlay click yutmasın:
+  // Kapalı overlay'ler DOM'da KALMAYACAK.
+  const showCoverPickerOverlay = !!coverPickerOpen;
+  const showCommentsOverlay = tab === "comments";
+
   // =========================
   // ✅ Early returns (access/prefill)
   // =========================
@@ -789,33 +794,39 @@ export default function RouteDetailMobile({
         </div>
       )}
 
-      <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
-        <RouteDetailCoverPickerOverlayMobile
-          open={coverPickerOpen}
-          mode={coverPickerMode}
-          state={coverPickerState}
-          upload={coverUpload}
-          onClose={closeCoverPicker}
-          onBack={backToCoverPickerMenu}
-          onChooseFromStops={chooseCoverFromStops}
-          onUploadFromDevice={uploadCoverFromDevice}
-          onPickCover={pickCover}
-          onImgLoad={handleImgLoadProof}
-          onImgError={handleImgErrorToDefault}
-        />
-      </div>
+      {/* ✅ HOTFIX: Kapalıyken DOM'da kalma YASAK → sadece açıkken mount */}
+      {showCoverPickerOverlay && (
+        <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
+          <RouteDetailCoverPickerOverlayMobile
+            open={true}
+            mode={coverPickerMode}
+            state={coverPickerState}
+            upload={coverUpload}
+            onClose={closeCoverPicker}
+            onBack={backToCoverPickerMenu}
+            onChooseFromStops={chooseCoverFromStops}
+            onUploadFromDevice={uploadCoverFromDevice}
+            onPickCover={pickCover}
+            onImgLoad={handleImgLoadProof}
+            onImgError={handleImgErrorToDefault}
+          />
+        </div>
+      )}
 
-      <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
-        <CommentsPanel
-          open={tab === "comments"}
-          targetType="route"
-          targetId={routeId}
-          placeholder="Bu rota hakkında ne düşünüyorsun?"
-          onClose={() => onTabChange("stops")}
-          // ✅ EMİR 18-6: CommentsPanel portal kullanıyorsa RouteDetail overlay root’a basabilsin
-          portalTarget={overlayRootRef.current}
-        />
-      </div>
+      {/* ✅ HOTFIX: Kapalıyken DOM'da kalma YASAK → sadece comments tab açıkken mount */}
+      {showCommentsOverlay && (
+        <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
+          <CommentsPanel
+            open={true}
+            targetType="route"
+            targetId={routeId}
+            placeholder="Bu rota hakkında ne düşünüyorsun?"
+            onClose={() => onTabChange("stops")}
+            // ✅ EMİR 18-6: CommentsPanel portal kullanıyorsa RouteDetail overlay root’a basabilsin
+            portalTarget={overlayRootRef.current || undefined}
+          />
+        </div>
+      )}
 
       {lightboxItems && (
         <Lightbox
@@ -823,7 +834,7 @@ export default function RouteDetailMobile({
           index={lightboxIndex}
           onClose={() => setLightboxItems(null)}
           // ✅ EMİR 18-6: Lightbox’ı RouteDetail overlay root’a portal’layabilir (token inherit garantisi)
-          portalTarget={overlayRootRef.current}
+          portalTarget={overlayRootRef.current || undefined}
         />
       )}
 

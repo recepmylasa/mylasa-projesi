@@ -1,4 +1,4 @@
-// src/services/reverseGeocode.js
+// FILE: src/services/reverseGeocode.js
 // Reverse geocode (kısa adres) — hatada kalıcı kapatma + konsol sessiz
 // Ek olarak getCityCountry & formatCityCountry export eder (Adım 7 ihtiyacı).
 
@@ -19,25 +19,50 @@ try {
 } catch {}
 
 /* ------------ Dev ortamında gürültüyü sustur (sadece ilgili mesajlar) ------------ */
+/**
+ * ✅ EMİR 18-7 uyumlu: permission-denied / missing permissions spam kırıcı (DEV only)
+ * - Davranış değiştirmez, sadece konsol gürültüsünü keser.
+ * - StrictMode / hot-reload tekrar patch etmesin diye global flag var.
+ */
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
-  const swallow = (msg) =>
-    /Geocoding Service: This API key is not authorized/i.test(msg) ||
-    /REQUEST_DENIED|OVER_DAILY_LIMIT|API_KEY_INVALID/i.test(msg);
+  const PATCH_FLAG = "__mylasa_console_patch_revgeo_v2";
+  try {
+    if (!window[PATCH_FLAG]) {
+      window[PATCH_FLAG] = true;
 
-  const _warn = console.warn;
-  const _error = console.error;
+      const swallow = (msg) => {
+        const s = String(msg || "");
 
-  console.warn = (...args) => {
-    const first = args?.[0] ? String(args[0]) : "";
-    if (swallow(first)) return;
-    _warn(...args);
-  };
+        // Google Geocoder / API Key gürültüsü
+        if (/Geocoding Service: This API key is not authorized/i.test(s)) return true;
+        if (/REQUEST_DENIED|OVER_DAILY_LIMIT|API_KEY_INVALID/i.test(s)) return true;
 
-  console.error = (...args) => {
-    const first = args?.[0] ? String(args[0]) : "";
-    if (swallow(first)) return;
-    _error(...args);
-  };
+        // ✅ Firestore/SDK permission spam (kırmızı hatalar)
+        if (/permission[- ]denied/i.test(s)) return true;
+        if (/missing or insufficient permissions/i.test(s)) return true;
+        if (/FirebaseError:.*permission/i.test(s)) return true;
+
+        return false;
+      };
+
+      const _warn = console.warn;
+      const _error = console.error;
+
+      console.warn = (...args) => {
+        const first = args?.[0] ? String(args[0]) : "";
+        if (swallow(first)) return;
+        _warn(...args);
+      };
+
+      console.error = (...args) => {
+        const first = args?.[0] ? String(args[0]) : "";
+        if (swallow(first)) return;
+        _error(...args);
+      };
+    }
+  } catch {
+    // no-op
+  }
 }
 
 /* --------------------------------- Cache --------------------------------- */
@@ -108,8 +133,8 @@ function _pickShort(results) {
   if (!comps) return "";
 
   const get = (type) =>
-    (comps.find((c) => Array.isArray(c.types) && c.types.includes(type))
-      ?.short_name) || "";
+    comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.short_name ||
+    "";
 
   const part1 =
     get("neighborhood") ||
@@ -133,15 +158,19 @@ export function getCityCountry(results) {
   }
 
   const comps =
-    results.find((x) => Array.isArray(x.address_components) && x.address_components.length)?.address_components ||
+    results.find(
+      (x) => Array.isArray(x.address_components) && x.address_components.length
+    )?.address_components ||
     results[0]?.address_components ||
     [];
 
   const getLong = (type) =>
-    (comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.long_name) || "";
+    comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.long_name ||
+    "";
 
   const getShort = (type) =>
-    (comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.short_name) || "";
+    comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.short_name ||
+    "";
 
   const city =
     getLong("locality") ||
@@ -283,11 +312,7 @@ export async function reverseGeocodeShort(a, b, c) {
 
   _inflight = (async () => {
     try {
-      const { results, status } = await _geocodePromise(
-        geocoder,
-        { lat, lng },
-        signal
-      );
+      const { results, status } = await _geocodePromise(geocoder, { lat, lng }, signal);
 
       if (status !== "OK") {
         // OK değilse bile cache’e boş yazma: kısa süre sonra tekrar deneyebilsin.
@@ -300,7 +325,7 @@ export async function reverseGeocodeShort(a, b, c) {
       _cache.set(k, { v: short || "", t: _now(), meta });
 
       return short || "";
-    } catch (e) {
+    } catch {
       return "";
     } finally {
       _inflight = null;
