@@ -24,6 +24,18 @@
   --rd-copper-glow: #fb923c;
   --rd-shadow: 0 30px 60px rgba(0, 0, 0, 0.65);
   --rd-radius-sheet: 28px;
+
+  /* =========================================================
+     EMİR 3 — Vitreous token + cam yüzey dili (DARK only)
+     (Layout-safe: sadece renk/blur/border/shadow)
+     ========================================================= */
+  --rd-ink: var(--rd-text);
+  --rd-glass2: var(--rd-glass-2);
+  --rd-accent: #22d3ee; /* cyan */
+  --rd-accent-soft: rgba(34, 211, 238, 0.22);
+  --rd-accent-border: rgba(34, 211, 238, 0.38);
+  --rd-blur: 18px;
+  --rd-shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.55);
 }
 
 /* Light tokens (scoped) */
@@ -87,4 +99,332 @@
 .route-detail-backdrop::before,
 .route-detail-backdrop::after {
   pointer-events: none;
+}
+
+/* =========================================================
+   EMİR 2 — Sağ üstte tema toggle (layout-safe)
+   - Var olan ikonların yerini DEĞİŞTİRMEZ (absolute)
+   - Menü içine saklanmaz, her an görünür
+   ========================================================= */
+.route-detail-backdrop .route-detail-hero__nav .rd-hero-theme-toggle {
+  position: absolute;
+  top: 0;
+  right: calc(38px * 2 + 10px * 2); /* sağdaki (share+menu) grubunun soluna, çakışmadan */
+  z-index: 10;
+}
+
+/* =========================================================
+   EMİR 3 — Vitreous CAM yüzey dili (DARK only, layout-safe)
+   Not: Bu blok margin/padding/height DEĞİŞTİRMEZ.
+   ========================================================= */
+.route-detail-backdrop.route-detail-dark .rd-author-hub,
+.route-detail-backdrop[data-theme="dark"] .rd-author-hub,
+.route-detail-backdrop.route-detail-dark .rd-pills-block,
+.route-detail-backdrop[data-theme="dark"] .rd-pills-block,
+.route-detail-backdrop.route-detail-dark .rd-map-card,
+.route-detail-backdrop[data-theme="dark"] .rd-map-card,
+.route-detail-backdrop.route-detail-dark .route-detail-map,
+.route-detail-backdrop[data-theme="dark"] .route-detail-map {
+  background: var(--rd-glass2);
+  border: 1px solid var(--rd-border);
+  box-shadow: var(--rd-shadow-soft);
+  backdrop-filter: blur(var(--rd-blur));
+  -webkit-backdrop-filter: blur(var(--rd-blur));
+}
+
+/* Hero iç metin netlik (DARK only) */
+.route-detail-backdrop.route-detail-dark .rd-hero-title,
+.route-detail-backdrop[data-theme="dark"] .rd-hero-title {
+  color: var(--rd-ink);
+}
+
+.route-detail-backdrop.route-detail-dark .rd-hero-meta,
+.route-detail-backdrop[data-theme="dark"] .rd-hero-meta,
+.route-detail-backdrop.route-detail-dark .rd-author-sub,
+.route-detail-backdrop[data-theme="dark"] .rd-author-sub,
+.route-detail-backdrop.route-detail-dark .rd-route-desc,
+.route-detail-backdrop[data-theme="dark"] .rd-route-desc,
+.route-detail-backdrop.route-detail-dark .rd-hero-tag,
+.route-detail-backdrop[data-theme="dark"] .rd-hero-tag {
+  color: var(--rd-muted);
+}
+
+/* Tabs/Pills — pasif muted, aktif cyan vurgulu (DARK only)
+   (Sınıf isimleri farklı olabilir; bu yüzden güvenli selector seti)
+*/
+.route-detail-backdrop.route-detail-dark .rd-pills-block button,
+.route-detail-backdrop[data-theme="dark"] .rd-pills-block button {
+  color: var(--rd-ink);
+}
+
+/* Aktif durum varyantları */
+.route-detail-backdrop.route-detail-dark .rd-pills-block button[aria-selected="true"],
+.route-detail-backdrop[data-theme="dark"] .rd-pills-block button[aria-selected="true"],
+.route-detail-backdrop.route-detail-dark .rd-pills-block button[aria-current="true"],
+.route-detail-backdrop[data-theme="dark"] .rd-pills-block button[aria-current="true"],
+.route-detail-backdrop.route-detail-dark .rd-pills-block .is-active,
+.route-detail-backdrop[data-theme="dark"] .rd-pills-block .is-active,
+.route-detail-backdrop.route-detail-dark .rd-pills-block .active,
+.route-detail-backdrop[data-theme="dark"] .rd-pills-block .active {
+  color: var(--rd-accent);
+  border-color: var(--rd-accent-border);
+  box-shadow: 0 0 0 1px var(--rd-accent-soft), 0 0 18px rgba(34, 211, 238, 0.10);
+}
+
+/* Küçük vurgu: yıldız/ikonlar cyan'a yaklaşsın (DARK only, davranış yok) */
+.route-detail-backdrop.route-detail-dark .rd-author-fav__icon,
+.route-detail-backdrop[data-theme="dark"] .rd-author-fav__icon,
+.route-detail-backdrop.route-detail-dark .rd-hero-ratingline__star,
+.route-detail-backdrop[data-theme="dark"] .rd-hero-ratingline__star {
+  color: var(--rd-accent);
+}
+
+/* Backdrop-filter destek yoksa: daha opak cam fallback (DARK only) */
+@supports not ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
+  .route-detail-backdrop.route-detail-dark .rd-author-hub,
+  .route-detail-backdrop[data-theme="dark"] .rd-author-hub,
+  .route-detail-backdrop.route-detail-dark .rd-pills-block,
+  .route-detail-backdrop[data-theme="dark"] .rd-pills-block,
+  .route-detail-backdrop.route-detail-dark .rd-map-card,
+  .route-detail-backdrop[data-theme="dark"] .rd-map-card,
+  .route-detail-backdrop.route-detail-dark .route-detail-map,
+  .route-detail-backdrop[data-theme="dark"] .route-detail-map {
+    background: rgba(18, 18, 22, 0.88);
+  }
+}
+
+/* Reduced transparency: blur’u azalt/kap (DARK only) */
+@media (prefers-reduced-transparency: reduce) {
+  .route-detail-backdrop.route-detail-dark .rd-author-hub,
+  .route-detail-backdrop[data-theme="dark"] .rd-author-hub,
+  .route-detail-backdrop.route-detail-dark .rd-pills-block,
+  .route-detail-backdrop[data-theme="dark"] .rd-pills-block,
+  .route-detail-backdrop.route-detail-dark .rd-map-card,
+  .route-detail-backdrop[data-theme="dark"] .rd-map-card,
+  .route-detail-backdrop.route-detail-dark .route-detail-map,
+  .route-detail-backdrop[data-theme="dark"] .route-detail-map {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(18, 18, 22, 0.90);
+  }
+}
+
+/* =========================================================
+   EMİR 5 — Duraklar: Flash UI Timeline / "Sıra 01" (RouteDetail scope)
+   - Sadece stops tab stilleri
+   ========================================================= */
+
+.route-detail-backdrop .rdtab--stops .rd-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Stop item: cam yüzey (tokenlarla) */
+.route-detail-backdrop .rdtab--stops .rd-stop {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--rd-glass2, var(--rd-glass-2, rgba(18, 18, 22, 0.55)));
+  border: 1px solid var(--rd-border, rgba(255, 255, 255, 0.12));
+  box-shadow: var(--rd-shadow-soft, 0 18px 40px rgba(0, 0, 0, 0.35));
+  backdrop-filter: blur(var(--rd-blur, 14px));
+  -webkit-backdrop-filter: blur(var(--rd-blur, 14px));
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-rail {
+  position: relative;
+  width: 64px;
+  flex: 0 0 64px;
+  display: flex;
+  justify-content: center;
+}
+
+/* Dikey timeline çizgisi */
+.route-detail-backdrop .rdtab--stops .rd-stop-rail::after {
+  content: "";
+  position: absolute;
+  top: 46px; /* badge altından başla */
+  bottom: -18px; /* kartlar arası boşluğa sark */
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to bottom,
+    var(--rd-accent-soft, rgba(34, 211, 238, 0.18)),
+    rgba(148, 163, 184, 0.18)
+  );
+  border-radius: 2px;
+}
+
+/* Son stop'ta çizgi uzamasın */
+.route-detail-backdrop .rdtab--stops .rd-stop:last-child .rd-stop-rail::after {
+  display: none;
+}
+
+/* "Sıra 01" kapsülü */
+.route-detail-backdrop .rdtab--stops .rd-stop-badge {
+  position: relative;
+  margin-top: 2px;
+  min-width: 54px;
+  height: 40px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  background: var(--rd-glass, rgba(18, 18, 22, 0.72));
+  border: 1px solid var(--rd-accent-border, rgba(34, 211, 238, 0.28));
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 10px 20px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(calc(var(--rd-blur, 14px) - 6px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 14px) - 6px));
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-badge__label {
+  font-size: 10px;
+  line-height: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rd-muted, rgba(148, 163, 184, 0.9));
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-badge__num {
+  font-size: 14px;
+  line-height: 14px;
+  font-weight: 800;
+  color: var(--rd-accent, #22d3ee);
+}
+
+/* İç content */
+.route-detail-backdrop .rdtab--stops .rd-stop-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-title {
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--rd-ink, var(--rd-text, #f4f4f5));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-desc {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--rd-muted, #94a3b8);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Aksiyonlar */
+.route-detail-backdrop .rdtab--stops .rd-stop-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-agg {
+  min-width: 120px;
+}
+
+/* Medya row */
+.route-detail-backdrop .rdtab--stops .rd-stop-media {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem {
+  position: relative;
+  width: 78px;
+  height: 78px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.10);
+  border: 1px solid var(--rd-border, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.18);
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem img,
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem__videoBadge {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--rd-ink, #fff);
+  background: rgba(0, 0, 0, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaEmpty {
+  font-size: 12px;
+  padding: 6px 0;
+}
+
+/* Upload row */
+.route-detail-backdrop .rdtab--stops .rd-stop-upload {
+  padding-top: 2px;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadFill {
+  height: 100%;
+  background: var(--rd-accent, #22d3ee);
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadPct {
+  font-size: 12px;
+  width: 40px;
+  text-align: right;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadCancel {
+  height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+  margin-left: auto;
 }

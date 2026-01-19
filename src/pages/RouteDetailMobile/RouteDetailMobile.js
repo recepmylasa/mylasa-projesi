@@ -80,17 +80,19 @@ export default function RouteDetailMobile({
   const rateRowAnchorRef = useRef(null);
 
   // =========================
-  // ✅ EMİR 18-5 — Dark/Light Toggle + data-theme bağlama (persist’li)
+  // ✅ EMİR 4 — Dark/Light Toggle (RouteDetail scope) + persist + prefers-color-scheme fallback
+  // - Diğer ekranların temasını bozmaz (sadece RouteDetail backdrop’ta data-theme/class)
   // =========================
-  const THEME_KEY = "rd_theme";
-  const LEGACY_THEME_KEY = "mylasa:rdm_theme";
+  const THEME_KEY = "mylasa_rd_theme";
+  const LEGACY_THEME_KEY_1 = "rd_theme";
+  const LEGACY_THEME_KEY_2 = "mylasa:rdm_theme";
 
-  const readDocTheme = () => {
+  const getPreferredTheme = () => {
     try {
-      const v = document?.documentElement?.getAttribute?.("data-theme");
-      return v === "light" ? "light" : v === "dark" ? "dark" : null;
+      if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "dark";
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     } catch {
-      return null;
+      return "dark";
     }
   };
 
@@ -100,14 +102,15 @@ export default function RouteDetailMobile({
       const v = window.localStorage.getItem(THEME_KEY);
       if (v === "light" || v === "dark") return v;
 
-      // Legacy (18-2) uyumluluk
-      const legacy = window.localStorage.getItem(LEGACY_THEME_KEY);
-      if (legacy === "light" || legacy === "dark") return legacy;
+      // legacy read (yazmıyoruz → diğer ekranları etkilemesin)
+      const legacy1 = window.localStorage.getItem(LEGACY_THEME_KEY_1);
+      if (legacy1 === "light" || legacy1 === "dark") return legacy1;
 
-      const docTheme = readDocTheme();
-      if (docTheme) return docTheme;
+      const legacy2 = window.localStorage.getItem(LEGACY_THEME_KEY_2);
+      if (legacy2 === "light" || legacy2 === "dark") return legacy2;
 
-      return "dark";
+      // fallback: system preference
+      return getPreferredTheme();
     } catch {
       return "dark";
     }
@@ -117,8 +120,6 @@ export default function RouteDetailMobile({
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(THEME_KEY, rdTheme);
-      // Legacy key’i de güncel tut (regresyon önlemi)
-      window.localStorage.setItem(LEGACY_THEME_KEY, rdTheme);
     } catch {}
   }, [rdTheme]);
 
@@ -890,6 +891,23 @@ export default function RouteDetailMobile({
               </button>
             </div>
 
+            {/* ✅ EMİR 4 — Tema toggle (menü dışı, layout bozmaz) */}
+            <button
+              type="button"
+              className="rd-hero-nav-btn rd-hero-nav-btn--icononly rd-hero-theme-toggle"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleTheme();
+              }}
+              aria-label="Temayı değiştir"
+              aria-pressed={rdTheme === "dark"}
+              title={rdTheme === "dark" ? "Açık tema" : "Koyu tema"}
+            >
+              <span className="rd-hero-nav-btn__icon" aria-hidden="true">
+                {rdTheme === "dark" ? "☾" : "☀"}
+              </span>
+            </button>
+
             {heroMenuOpen && (
               <div className="rd-hero-menu" onClick={(e) => e.stopPropagation()}>
                 <button
@@ -960,7 +978,11 @@ export default function RouteDetailMobile({
           {/* ✅ EMIR 3 — Author hub: hero’dan taşar + sağda TEK YILDIZ butonu (kalp yok) */}
           <div className="rd-author-hub" onClick={(e) => e.stopPropagation()}>
             <div className="rd-author-avatar" aria-label="Yazar">
-              {ownerAvatarUrl ? <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" /> : ownerName?.[0] || "Y"}
+              {ownerAvatarUrl ? (
+                <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" />
+              ) : (
+                ownerName?.[0] || "Y"
+              )}
             </div>
 
             <div className="rd-author-mid">
