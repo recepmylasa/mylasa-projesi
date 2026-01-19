@@ -1,0 +1,368 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.hero.css */
+/* EMIR 1 — Flash UI “Hero Cover” + Üst Navigasyon + Başlık/Rating + Yazar Hub (Cam Pill) */
+/* ✅ EMİR 3 (V2) — Hero gerçekten büyük + Author hub dışarı taşar */
+
+.route-detail-hero {
+  position: relative;
+  width: 100%;
+
+  /* ✅ EMİR 3: Flash hissi → 52–62vh bandı */
+  height: clamp(300px, 56vh, 540px);
+
+  /* ✅ EMİR 3: Author hub taşacağı için hero clipping KAPALI */
+  overflow: visible;
+
+  border-bottom: 1px solid var(--rd-border);
+  transform: translateZ(0);
+
+  /* ✅ Author hub overlap payı */
+  margin-bottom: 28px;
+}
+
+/* iOS/modern tarayıcılarda dinamik viewport ile daha stabil */
+@supports (height: 100dvh) {
+  .route-detail-hero {
+    height: clamp(300px, 56dvh, 540px);
+  }
+}
+
+/* ✅ hero üstünde çok hafif copper glow (decor only) */
+.route-detail-hero::before {
+  content: "";
+  position: absolute;
+  inset: -24px -24px -24px -24px;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.20;
+  background:
+    radial-gradient(720px 320px at 18% 6%, rgba(251, 146, 60, 0.14), transparent 72%),
+    radial-gradient(640px 280px at 82% 10%, rgba(184, 115, 51, 0.12), transparent 70%);
+}
+
+.route-detail-hero__media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.route-detail-hero__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+
+  /* “afiş” crop → biraz yukarı */
+  object-position: 50% 34%;
+
+  display: block;
+
+  /* hafif sinema zoom */
+  transform: scale(1.04);
+}
+
+/* yazı kontrastı biraz daha güçlü (dark) */
+.route-detail-hero__gradient {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.06) 0%,
+    rgba(0, 0, 0, 0.56) 62%,
+    rgba(0, 0, 0, 0.86) 100%
+  );
+}
+
+/* Light theme: alt kısım aydınlık, siyah metin okunur */
+.route-detail-backdrop[data-theme="light"] .route-detail-hero__gradient,
+.route-detail-backdrop.route-detail-light .route-detail-hero__gradient {
+  background: linear-gradient(
+    180deg,
+    rgba(248, 250, 252, 0.06) 0%,
+    rgba(248, 250, 252, 0.72) 62%,
+    rgba(248, 250, 252, 0.96) 100%
+  );
+}
+
+.route-detail-hero__nav {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rd-hero-nav-left,
+.rd-hero-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rd-hero-nav-btn {
+  height: 38px;
+  min-width: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass-2);
+  color: var(--rd-text);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: var(--rd-nav-shadow, 0 12px 26px rgba(0, 0, 0, 0.22));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rd-hero-nav-btn:active {
+  transform: translateY(1px);
+}
+
+.rd-hero-nav-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--rd-nav-shadow, 0 12px 26px rgba(0, 0, 0, 0.22)), var(--rd-focus-ring, none);
+}
+
+.rd-hero-nav-btn__icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.rd-hero-nav-btn--icononly {
+  padding: 0;
+  width: 38px;
+}
+
+.rd-hero-menu {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  z-index: 6;
+  width: 200px;
+  border-radius: 18px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: var(--rd-card-shadow, var(--rd-shadow));
+  overflow: hidden;
+}
+
+.rd-hero-menu__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px;
+  background: transparent;
+  border: 0;
+  color: var(--rd-text);
+  cursor: pointer;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rd-hero-menu__item + .rd-hero-menu__item {
+  border-top: 1px solid var(--rd-border);
+}
+
+.rd-hero-menu__item:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.route-detail-backdrop[data-theme="light"] .rd-hero-menu__item:active,
+.route-detail-backdrop.route-detail-light .rd-hero-menu__item:active {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.rd-hero-menu__hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rd-muted);
+}
+
+.route-detail-hero__content {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 22px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.rd-hero-tag {
+  align-self: flex-start;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass-2);
+  color: var(--rd-text);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+.rd-hero-title {
+  font-size: clamp(22px, 2.9vh, 26px);
+  line-height: 1.12;
+  font-weight: 900;
+  color: var(--rd-text);
+  text-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
+  pointer-events: none;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.route-detail-backdrop[data-theme="light"] .rd-hero-title,
+.route-detail-backdrop.route-detail-light .rd-hero-title {
+  text-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+}
+
+.rd-hero-ratingline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rd-text);
+  font-weight: 800;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.rd-hero-ratingline__star {
+  color: var(--rd-copper-glow);
+  text-shadow: 0 0 18px rgba(251, 146, 60, 0.22);
+}
+
+.rd-hero-meta {
+  color: var(--rd-muted);
+  font-weight: 700;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* Author hub (glass pill) */
+.rd-author-hub {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+
+  /* ✅ taşma (overlap) */
+  bottom: -18px;
+
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: var(--rd-card-shadow, var(--rd-shadow));
+}
+
+.rd-author-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  overflow: hidden;
+  flex: 0 0 36px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  color: var(--rd-text);
+}
+
+.rd-author-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rd-author-mid {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.rd-author-name {
+  font-weight: 900;
+  color: var(--rd-text);
+  font-size: 13px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rd-author-sub {
+  font-weight: 700;
+  color: var(--rd-muted);
+  font-size: 12px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rd-author-fav {
+  height: 36px;
+  width: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass-2);
+  color: var(--rd-text);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rd-author-fav:active {
+  transform: translateY(1px);
+}
+
+.rd-author-fav:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.rd-author-fav:focus-visible {
+  outline: none;
+  box-shadow: var(--rd-focus-ring, none);
+}
+
+.rd-author-fav__icon {
+  font-size: 16px;
+  line-height: 1;
+}

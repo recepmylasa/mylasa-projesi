@@ -1,0 +1,90 @@
+/* FILE: src/pages/RouteDetailMobile/RouteDetailMobileVitreous.css */
+/* EMIR 2A - Vitreous Copper Override (RouteDetail scope only) */
+
+.route-detail-backdrop {
+  /* Premium deep background */
+  background:
+    radial-gradient(1200px 700px at 50% -10%, rgba(184, 115, 51, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 20% 20%, rgba(251, 146, 60, 0.08), transparent 60%),
+    var(--rd-bg, #0a0a0c);
+  color: var(--rd-text, #f4f4f5);
+}
+
+/* Dark tokens (scoped) */
+.route-detail-backdrop.route-detail-dark,
+.route-detail-backdrop[data-theme="dark"] {
+  --rd-bg: #0a0a0c;
+  --rd-glass: rgba(18, 18, 22, 0.72);
+  --rd-glass-2: rgba(18, 18, 22, 0.55);
+  --rd-border: rgba(184, 115, 51, 0.18);
+  --rd-border-strong: rgba(184, 115, 51, 0.28);
+  --rd-text: #f4f4f5;
+  --rd-muted: #94a3b8;
+  --rd-copper: #b87333;
+  --rd-copper-glow: #fb923c;
+  --rd-shadow: 0 30px 60px rgba(0, 0, 0, 0.65);
+  --rd-radius-sheet: 28px;
+}
+
+/* Light tokens (scoped) */
+.route-detail-backdrop.route-detail-light,
+.route-detail-backdrop[data-theme="light"] {
+  --rd-bg: #f8fafc;
+  --rd-glass: rgba(255, 255, 255, 0.78);
+  --rd-glass-2: rgba(255, 255, 255, 0.60);
+  --rd-border: rgba(0, 0, 0, 0.10);
+  --rd-border-strong: rgba(0, 0, 0, 0.16);
+  --rd-text: #0a0a0c;
+  --rd-muted: #64748b;
+  --rd-copper: #b87333;
+  --rd-copper-glow: #fb923c;
+  --rd-shadow: 0 30px 60px rgba(0, 0, 0, 0.18);
+  --rd-radius-sheet: 28px;
+}
+
+/* Glass sheet surface */
+.route-detail-backdrop .route-detail-sheet {
+  background: var(--rd-glass);
+  border: 1px solid var(--rd-border);
+  box-shadow: var(--rd-shadow);
+  border-radius: var(--rd-radius-sheet) var(--rd-radius-sheet) 0 0;
+  overflow: hidden;
+  transform: translateZ(0);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Grab handle copper */
+.route-detail-backdrop .route-detail-grab {
+  background: rgba(184, 115, 51, 0.35);
+  box-shadow: 0 0 0 1px rgba(184, 115, 51, 0.16), 0 0 18px rgba(251, 146, 60, 0.12);
+}
+
+/* Text helpers (safe) */
+.route-detail-backdrop .is-muted,
+.route-detail-backdrop .muted,
+.route-detail-backdrop .route-detail-muted {
+  color: var(--rd-muted);
+}
+
+/* Share overlay glass (existing classes in JS) */
+.route-detail-backdrop .rdglass-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.route-detail-backdrop .rdglass-overlay__inner {
+  background: var(--rd-glass);
+  border: 1px solid var(--rd-border);
+  border-radius: 20px;
+  box-shadow: var(--rd-shadow);
+}
+
+/* Safety: decorative layers should never eat clicks */
+.route-detail-backdrop::before,
+.route-detail-backdrop::after {
+  pointer-events: none;
+}

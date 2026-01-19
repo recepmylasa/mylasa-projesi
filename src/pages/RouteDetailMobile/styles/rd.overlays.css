@@ -1,0 +1,299 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.overlays.css */
+
+/* =========================================================
+   EMİR 18-6 — Overlay Portal Root (Theme parity inherit)
+   Not: Global theme yok; sadece RouteDetail scope.
+   ========================================================= */
+
+.rd-overlay-root {
+  position: fixed;
+  inset: 0;
+  z-index: 6900; /* RouteDetail sheet (6000) üstü, overlay’ler için güvenli */
+  pointer-events: none; /* root click yakalamasın */
+}
+
+/* ✅ KRİTİK FIX:
+   rd-overlay-root içine yanlışlıkla full-screen bir wrapper düşerse (kapalı bile olsa),
+   eski kural ( > * { pointer-events:auto } ) tüm tıklamaları öldürür.
+   Bu yüzden çocuklar default NONE, sadece gerçek overlay sınıfları AUTO.
+*/
+.rd-overlay-root > * {
+  pointer-events: none;
+}
+
+/* ✅ Gerçek overlay’ler tıklanabilir (sadece bunlar)
+   NOT: RouteDetailAccessSheet aynı class’ları (route-detail-backdrop/sheet) kullanıyor.
+   Bu yüzden overlay root içinde route-detail-backdrop da whitelist'e alınmalı.
+*/
+.rd-overlay-root .route-detail-share-overlay,
+.rd-overlay-root .route-detail-cover-picker-overlay,
+.rd-overlay-root .rdglass-overlay,
+.rd-overlay-root .mylasa-lightbox,
+.rd-overlay-root .route-detail-backdrop {
+  pointer-events: auto;
+}
+
+/* CommentsPanel: sadece açıkken tıklanabilir kalsın (kapalıyken asla bloklamasın) */
+.rd-overlay-root .cp-backdrop.open {
+  pointer-events: auto;
+}
+.rd-overlay-root .cp-backdrop.open * {
+  pointer-events: auto;
+}
+
+/* Overlay içerikleri de tıklanabilir */
+.rd-overlay-root .route-detail-share-overlay *,
+.rd-overlay-root .route-detail-cover-picker-overlay *,
+.rd-overlay-root .rdglass-overlay *,
+.rd-overlay-root .mylasa-lightbox *,
+.rd-overlay-root .route-detail-backdrop * {
+  pointer-events: auto;
+}
+
+/* Token + text inherit garantisi */
+.route-detail-backdrop .rd-overlay-root {
+  color: var(--text-main, #111);
+}
+
+/* RouteDetail scope’unda overlay backdrop token’ı zorla */
+.route-detail-backdrop .rd-overlay-root .rdglass-overlay,
+.route-detail-backdrop .rd-overlay-root .route-detail-share-overlay,
+.route-detail-backdrop .rd-overlay-root .route-detail-cover-picker-overlay {
+  background: var(--overlay-bg, rgba(0, 0, 0, 0.55));
+}
+
+/* Eğer portal içerik role="dialog" gibi render ediyorsa, default beyazı kır */
+.route-detail-backdrop .rd-overlay-root [role="dialog"],
+.route-detail-backdrop .rd-overlay-root dialog {
+  color: var(--text-main, #111);
+}
+
+/* =========================================================
+   EMİR 18-4 — Overlay Vitreous Parite + Click-sızıntı kilidi
+   (Logic yok: sadece className/wrapper + token)
+   ========================================================= */
+
+.rdglass-overlay {
+  /* ✅ token’a bağlı backdrop rengi */
+  background: var(--overlay-bg, rgba(0, 0, 0, 0.55));
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.rdglass-overlay__inner {
+  width: 100%;
+  max-width: 720px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ✅ Share overlay */
+.route-detail-share-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6500;
+  background: var(--overlay-bg, rgba(0, 0, 0, 0.55));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+/* ✅ ShareSheet iç tıklarında overlay kapanmasın + layout sabit kalsın */
+.route-detail-share-overlay__inner {
+  width: 100%;
+  max-width: 720px;
+}
+
+/* ✅ Genel overlay stop helper (layout bozmasın diye minimal) */
+.route-detail-overlay-stop {
+  position: relative;
+}
+
+/* ✅ Cover picker overlay */
+.route-detail-cover-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6800;
+  background: var(--overlay-bg, rgba(0, 0, 0, 0.55));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+.route-detail-cover-picker-sheet {
+  width: 100%;
+  max-width: 720px;
+
+  /* ✅ EMİR 6 — base sheet’i de vitreous token’la (theme override varsa yine çalışır) */
+  background: var(--sheet-bg, #fff);
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.12));
+  box-shadow: var(--sheet-shadow, 0 -10px 40px rgba(0, 0, 0, 0.25));
+  backdrop-filter: blur(var(--blur, 0px)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur, 0px)) saturate(160%);
+
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  overflow: hidden;
+  max-height: calc(100vh - 44px);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@supports (height: 100dvh) {
+  .route-detail-cover-picker-sheet {
+    max-height: calc(100dvh - 44px);
+  }
+}
+
+.route-detail-cover-picker-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-detail-cover-picker-title {
+  font-weight: 900;
+  color: var(--text-main, #111);
+  font-size: 14px;
+}
+
+.route-detail-cover-picker-back {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid #e3e3e3;
+  background: #fff;
+  font-weight: 900;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-cover-picker-back:active {
+  transform: scale(0.98);
+}
+
+.route-detail-cover-picker-close {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid #e3e3e3;
+  background: #fff;
+  font-weight: 900;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-cover-picker-close:active {
+  transform: scale(0.98);
+}
+
+.route-detail-cover-picker-loading {
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #666;
+}
+
+.route-detail-cover-picker-error {
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #ffe2e2;
+  background: #fff6f6;
+  color: #8b1a1a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.route-detail-cover-picker-actions {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.route-detail-cover-picker-actionBtn {
+  height: 46px;
+  border-radius: 14px;
+  border: 1px solid #e3e3e3;
+  background: #fff;
+  font-weight: 900;
+  font-size: 13px;
+  color: var(--text-main, #111);
+  cursor: pointer;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-cover-picker-actionBtn:active {
+  transform: scale(0.99);
+}
+
+.route-detail-cover-picker-actionBtn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.route-detail-cover-picker-hint {
+  padding: 0 14px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #777;
+}
+
+.route-detail-cover-grid {
+  padding: 12px 14px 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.route-detail-cover-grid-item {
+  border: none;
+  padding: 0;
+  background: #f3f4f6;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  aspect-ratio: 1 / 1;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-cover-grid-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.route-detail-cover-grid-item:active {
+  transform: scale(0.99);
+}
+
+.route-detail-cover-picker-empty {
+  grid-column: 1 / -1;
+  padding: 12px 4px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #777;
+}
+
+/* ✅ EMİR 6 — prefers-reduced-transparency: overlay blur düşür */
+@media (prefers-reduced-transparency: reduce) {
+  .rdglass-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .route-detail-cover-picker-sheet {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}

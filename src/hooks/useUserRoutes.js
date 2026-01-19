@@ -1,4 +1,4 @@
-// src/hooks/useUserRoutes.js
+// FILE: src/hooks/useUserRoutes.js
 // Profil “Rotalarım” sekmesi için rota listesi hook’u
 // RouteCardMobile için standardize model (buildRouteCardModel).
 // Grid’e PREVIEW veri bind edilecek (stopsPreview/cover/thumbnail). Gerekirse HYDRATE (lazy fetch).
@@ -7,6 +7,8 @@
 // - stopsPreview içinden "coverUrl" türetip modele yazma YOK (sadece gösterimde kullanılacak).
 // - Yani coverUrl/thumbnailUrl yalnızca doc/model legacy alanlardan gelirse doldurulur.
 // - Fallback (ilk durak görseli) UI tarafında pickCoverCandidate ile yapılır.
+//
+// EMİR 5 — permission-denied spam guard + UI lock mode (rules'a dokunmadan)
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -31,7 +33,43 @@ import {
   applyRouteCoverPatchToList,
 } from "../utils/routeCoverEvents";
 
+const __DEV__ = process.env.NODE_ENV !== "production";
 const DEFAULT_PAGE_SIZE = 20;
+
+// ✅ EMİR 5: dev log spam kırıcı (tek sefer)
+const __permWarnOnce = new Set();
+function warnPermOnce(key, msg, err) {
+  if (!__DEV__) return;
+  const k = String(key || "perm_once");
+  if (__permWarnOnce.has(k)) return;
+  __permWarnOnce.add(k);
+  // eslint-disable-next-line no-console
+  console.warn(msg, err || "");
+}
+
+function getErrCode(err) {
+  const c = err?.code ? String(err.code) : "";
+  return c || "";
+}
+
+function isPermissionDeniedError(err) {
+  const code = getErrCode(err);
+  if (code === "permission-denied") return true;
+
+  const msg = err?.message ? String(err.message) : "";
+  if (/missing or insufficient permissions/i.test(msg)) return true;
+  if (/permission[- ]denied/i.test(msg)) return true;
+
+  return false;
+}
+
+function isUnauthenticatedError(err) {
+  const code = getErrCode(err);
+  if (code === "unauthenticated") return true;
+  const msg = err?.message ? String(err.message) : "";
+  if (/unauthenticated/i.test(msg)) return true;
+  return false;
+}
 
 // ---------- helpers (preview binding + hydrate) ----------
 function isNonEmptyString(v) {
@@ -211,7 +249,7 @@ function extractStopMediaUrl(s) {
     const u = String(v).trim();
     if (isGoodImageCandidate(u)) return u;
 
-    // video çıktıysa poster araması (bazı verilerde mediaUrl video, poster ayrı)
+    // video çıktıysa poster araması
     if (isVideoUrl(u)) {
       const posterTry = pickFirst(s, [
         "posterUrl",
@@ -250,7 +288,6 @@ function extractStopMediaUrl(s) {
     for (const it of arr) {
       if (!it) continue;
 
-      // string item
       if (typeof it === "string") {
         const u = it.trim();
         if (isGoodImageCandidate(u)) return u;
@@ -290,7 +327,6 @@ function extractStopMediaUrl(s) {
           (urlStr ? isVideoUrl(urlStr) : false);
 
         if (isVid) {
-          // ✅ video varsa poster’ı kullan
           if (isGoodImageCandidate(posterStr)) return posterStr;
 
           const nestedPoster = pickFirst(it, [
@@ -301,17 +337,12 @@ function extractStopMediaUrl(s) {
             "asset.downloadUrl",
             "asset.downloadURL",
           ]);
-          if (
-            isNonEmptyString(nestedPoster) &&
-            isGoodImageCandidate(nestedPoster)
-          ) {
+          if (isNonEmptyString(nestedPoster) && isGoodImageCandidate(nestedPoster)) {
             return String(nestedPoster).trim();
           }
-
           continue;
         }
 
-        // image (url > poster)
         if (isGoodImageCandidate(urlStr)) return urlStr;
         if (isGoodImageCandidate(posterStr)) return posterStr;
 
@@ -354,8 +385,6 @@ function normalizeStopsPreviewValue(v) {
       if (typeof s === "object") {
         const title = normalizeStopTitle(s);
         const { lat, lng } = extractStopLatLng(s);
-
-        // ✅ burada artık “image/poster öncelikli, video değil” garantisi var
         const mediaUrl = extractStopMediaUrl(s);
 
         const out = {};
@@ -424,7 +453,7 @@ function extractPreviewFromRouteDoc(raw) {
   ]);
 
   let coverUrl = normalizeCoverUrl(coverUrlVal);
-  if (coverUrl && isVideoUrl(coverUrl)) coverUrl = ""; // ✅ video cover yasak
+  if (coverUrl && isVideoUrl(coverUrl)) coverUrl = "";
 
   const thumbVal = pickFirst(raw, [
     "thumbnailUrl",
@@ -440,7 +469,6 @@ function extractPreviewFromRouteDoc(raw) {
   let thumbnailUrl = normalizeCoverUrl(thumbVal);
   if (thumbnailUrl && isVideoUrl(thumbnailUrl)) thumbnailUrl = "";
 
-  // ✅ EMİR-1: coverUrl'ü stopsPreview’den TÜRETME (write yok). UI fallback yapacak.
   if (!isNonEmptyString(thumbnailUrl)) {
     thumbnailUrl = coverUrl || "";
   }
@@ -473,11 +501,20 @@ function needsHydratePreview(route) {
   return !hasStopsPreview || !hasCover;
 }
 
-// ✅ Create-index linkini GİZLEME: detaylı log helper
+// ✅ Create-index linkini GİZLEME: ama permission-denied spam yapma
 function logFirestoreQueryError(tag, err) {
-  const code = err?.code ? String(err.code) : "unknown";
+  const code = getErrCode(err) || "unknown";
   const message = err?.message ? String(err.message) : "";
   const stack = err?.stack ? String(err.stack) : "";
+
+  if (isPermissionDeniedError(err) || isUnauthenticatedError(err)) {
+    warnPermOnce(
+      `perm_${tag}_${code}`,
+      `[useUserRoutes] ${tag} — erişim yok (${code})`,
+      __DEV__ ? err : null
+    );
+    return;
+  }
 
   // eslint-disable-next-line no-console
   console.groupCollapsed(`${tag} (${code})`);
@@ -514,6 +551,10 @@ export default function useUserRoutes(ownerId, options = {}) {
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(false);
 
+  // ✅ EMİR 5: erişim durumu
+  const [accessStatus, setAccessStatus] = useState("idle"); // idle | loading | ready | login_required | forbidden | error
+  const lockRef = useRef({ key: "", reason: "" }); // reason: login_required | forbidden
+
   const cursorRef = useRef(null);
   const isMountedRef = useRef(true);
   const requestIdRef = useRef(0);
@@ -536,8 +577,6 @@ export default function useUserRoutes(ownerId, options = {}) {
   useEffect(() => {
     const unsub = onRouteCoverUpdated((payload) => {
       if (!payload?.routeId || !payload?.cover) return;
-
-      // Perf: helper değişiklik yoksa aynı array ref döndürür
       setRoutes((prev) => applyRouteCoverPatchToList(prev, payload));
     });
 
@@ -548,11 +587,15 @@ export default function useUserRoutes(ownerId, options = {}) {
     };
   }, []);
 
-  // owner değişince hydrate cache + query mode sıfırla
+  // owner değişince hydrate cache + query mode + lock sıfırla
   useEffect(() => {
     hydrateCacheRef.current = new Map();
     hydrateJobIdRef.current += 1;
     queryModeRef.current = "unknown";
+
+    lockRef.current = { key: "", reason: "" };
+    setAccessStatus("idle");
+    setError(null);
   }, [ownerId]);
 
   const runQueryPage = useCallback(
@@ -586,6 +629,11 @@ export default function useUserRoutes(ownerId, options = {}) {
         const snap = await getDocs(mkOptimized());
         return { snap, used: "optimized" };
       } catch (e) {
+        // ✅ permission/unauthenticated ise gereksiz fallback deneme (spam ve ekstra istek yok)
+        if (isPermissionDeniedError(e) || isUnauthenticatedError(e)) {
+          throw e;
+        }
+
         logFirestoreQueryError("[useUserRoutes] optimized query failed", e);
 
         try {
@@ -609,13 +657,38 @@ export default function useUserRoutes(ownerId, options = {}) {
           setError(null);
           setInitialLoading(false);
           setLoadingMore(false);
+          setAccessStatus("idle");
         }
+        return;
+      }
+
+      const ownerKey = String(ownerId);
+      const lockKey = `${ownerKey}|${viewerId ? String(viewerId) : "anon"}`;
+
+      // ✅ EMİR 5: login yoksa hiç sorgu başlatma → UI "giriş gerekli"
+      if (!viewerId) {
+        if (lockRef.current.key === lockKey && lockRef.current.reason === "login_required") return;
+
+        lockRef.current = { key: lockKey, reason: "login_required" };
+        setAccessStatus("login_required");
+        setError(null);
+        setRoutes([]);
+        setHasMore(false);
+        cursorRef.current = null;
+        setInitialLoading(false);
+        setLoadingMore(false);
+        return;
+      }
+
+      // ✅ EMİR 5: aynı kullanıcı+profil için permission-denied kilidi varsa tekrar deneme (spam yok)
+      if (lockRef.current.key === lockKey && lockRef.current.reason === "forbidden") {
         return;
       }
 
       const reqId = ++requestIdRef.current;
 
       if (mode === "reset") {
+        setAccessStatus("loading");
         setInitialLoading(true);
         setLoadingMore(false);
         setError(null);
@@ -631,7 +704,6 @@ export default function useUserRoutes(ownerId, options = {}) {
         setLoadingMore(true);
       }
 
-      const ownerKey = String(ownerId);
       const maxAutoPages = mode === "reset" ? 3 : 1;
 
       try {
@@ -678,9 +750,7 @@ export default function useUserRoutes(ownerId, options = {}) {
             queryModeRef.current = used;
           }
 
-          const nextCursor = pageDocs.length
-            ? pageDocs[pageDocs.length - 1]
-            : null;
+          const nextCursor = pageDocs.length ? pageDocs[pageDocs.length - 1] : null;
           localHasMore = docs.length > pageSize;
 
           const mapped = pageDocs
@@ -716,10 +786,8 @@ export default function useUserRoutes(ownerId, options = {}) {
                 viewerId,
               });
 
-              const { stopsPreview, coverUrl, thumbnailUrl } =
-                extractPreviewFromRouteDoc(raw);
+              const { stopsPreview, coverUrl, thumbnailUrl } = extractPreviewFromRouteDoc(raw);
 
-              // ✅ placeholder cover'ları yok say
               const modelCover = normalizeCoverUrl(model?.coverUrl);
               const modelPreview = normalizeCoverUrl(model?.previewUrl);
               const modelThumb = normalizeCoverUrl(model?.thumbnailUrl);
@@ -730,16 +798,12 @@ export default function useUserRoutes(ownerId, options = {}) {
               const docCover = normalizeCoverUrl(coverUrl);
               const docThumb = normalizeCoverUrl(thumbnailUrl);
 
-              // ✅ EMİR-1: stopsPreview media’dan coverUrl türetme YOK
               const finalCoverRaw =
                 modelCover || modelPreview || modelImage || modelMedia || docCover || "";
-              const finalCover =
-                finalCoverRaw && !isVideoUrl(finalCoverRaw) ? finalCoverRaw : "";
+              const finalCover = finalCoverRaw && !isVideoUrl(finalCoverRaw) ? finalCoverRaw : "";
 
-              const finalThumbRaw =
-                modelThumb || modelThumb2 || docThumb || finalCover || "";
-              const finalThumb =
-                finalThumbRaw && !isVideoUrl(finalThumbRaw) ? finalThumbRaw : "";
+              const finalThumbRaw = modelThumb || modelThumb2 || docThumb || finalCover || "";
+              const finalThumb = finalThumbRaw && !isVideoUrl(finalThumbRaw) ? finalThumbRaw : "";
 
               const patched = {
                 ...model,
@@ -766,7 +830,6 @@ export default function useUserRoutes(ownerId, options = {}) {
             .filter(Boolean);
 
           collected = mode === "reset" ? collected.concat(mapped) : mapped;
-
           localCursor = nextCursor;
 
           if (mode === "reset") {
@@ -781,19 +844,48 @@ export default function useUserRoutes(ownerId, options = {}) {
 
         if (!isMountedRef.current || reqId !== requestIdRef.current) return;
 
-        setRoutes((prev) =>
-          mode === "reset" ? collected : prev.concat(collected)
-        );
+        // ✅ başarı → lock kaldır
+        lockRef.current = { key: "", reason: "" };
+        setAccessStatus("ready");
+        setRoutes((prev) => (mode === "reset" ? collected : prev.concat(collected)));
         cursorRef.current = localCursor;
         setHasMore(!!(localHasMore && localCursor));
       } catch (err) {
         if (!isMountedRef.current || reqId !== requestIdRef.current) return;
+
+        // ✅ EMİR 5: permission-denied / unauthenticated → UI lock, log spam yok
+        if (isPermissionDeniedError(err)) {
+          lockRef.current = { key: lockKey, reason: "forbidden" };
+          setAccessStatus("forbidden");
+          setError(null);
+          setRoutes([]);
+          setHasMore(false);
+          cursorRef.current = null;
+
+          warnPermOnce(
+            `forbidden_${lockKey}`,
+            "[useUserRoutes] permission-denied — UI locked (no spam).",
+            __DEV__ ? err : null
+          );
+          return;
+        }
+
+        if (isUnauthenticatedError(err)) {
+          lockRef.current = { key: lockKey, reason: "login_required" };
+          setAccessStatus("login_required");
+          setError(null);
+          setRoutes([]);
+          setHasMore(false);
+          cursorRef.current = null;
+          return;
+        }
 
         // eslint-disable-next-line no-console
         console.warn("[useUserRoutes] load error", err);
         if (mode === "reset") setRoutes([]);
         setHasMore(false);
         setError(err || new Error("Rotalar yüklenirken bir hata oluştu."));
+        setAccessStatus("error");
       } finally {
         if (!isMountedRef.current || reqId !== requestIdRef.current) return;
         setInitialLoading(false);
@@ -853,8 +945,6 @@ export default function useUserRoutes(ownerId, options = {}) {
 
         const title = normalizeStopTitle(s);
         const { lat, lng } = extractStopLatLng(s);
-
-        // ✅ artık poster/image öncelikli + video değil
         const mediaUrl = extractStopMediaUrl(s);
 
         const out = { id: s.id };
@@ -879,7 +969,6 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       const result = {
         stopsPreview,
-        // ✅ EMİR-1: hydrate coverUrl yazma yok; UI stopMedia fallback kullanacak
         coverUrl: "",
         thumbnailUrl: "",
       };
@@ -899,10 +988,11 @@ export default function useUserRoutes(ownerId, options = {}) {
       setError(null);
       setInitialLoading(false);
       setLoadingMore(false);
+      setAccessStatus("idle");
       return;
     }
     loadPage("reset");
-  }, [ownerId, isSelf, isFollowing, loadPage]);
+  }, [ownerId, isSelf, isFollowing, viewerId, loadPage]);
 
   // ✅ Lazy hydrate runner (max 3 concurrent)
   useEffect(() => {
@@ -993,11 +1083,14 @@ export default function useUserRoutes(ownerId, options = {}) {
   }, [routes, hydrateOneRoutePreview]);
 
   const loadMore = useCallback(() => {
+    // ✅ kilit modunda loadMore yok
+    if (accessStatus === "forbidden" || accessStatus === "login_required") return;
     if (loadingMore || !hasMore || initialLoading) return;
     loadPage("more");
-  }, [hasMore, loadingMore, initialLoading, loadPage]);
+  }, [hasMore, loadingMore, initialLoading, loadPage, accessStatus]);
 
-  const isEmpty = !initialLoading && routes.length === 0 && !hasMore;
+  const isEmpty =
+    accessStatus === "ready" && !initialLoading && routes.length === 0 && !hasMore;
 
   return {
     routes,
@@ -1007,5 +1100,8 @@ export default function useUserRoutes(ownerId, options = {}) {
     error,
     loadMore,
     isEmpty,
+
+    // ✅ EMİR 5
+    accessStatus,
   };
 }

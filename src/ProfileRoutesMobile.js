@@ -19,41 +19,6 @@ import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage"
 const __DEV__ = process.env.NODE_ENV !== "production";
 const DEFAULT_ROUTE_COVER_URL = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
 
-// ✅ EMİR 18-7: DEV console “permission-denied” spam kırıcı (hedefli, tek sefer patch)
-if (typeof window !== "undefined" && __DEV__) {
-  const PATCH_FLAG = "__mylasa_console_permspam_breaker_v1";
-  try {
-    if (!window[PATCH_FLAG]) {
-      window[PATCH_FLAG] = true;
-
-      const swallow = (msg) => {
-        const s = String(msg || "");
-        if (/permission[- ]denied/i.test(s)) return true;
-        if (/missing or insufficient permissions/i.test(s)) return true;
-        if (/FirebaseError:.*permission/i.test(s)) return true;
-        return false;
-      };
-
-      const _warn = console.warn;
-      const _error = console.error;
-
-      console.warn = (...args) => {
-        const first = args?.[0] ? String(args[0]) : "";
-        if (swallow(first)) return;
-        _warn(...args);
-      };
-
-      console.error = (...args) => {
-        const first = args?.[0] ? String(args[0]) : "";
-        if (swallow(first)) return;
-        _error(...args);
-      };
-    }
-  } catch {
-    // no-op
-  }
-}
-
 // StrictMode / remount spamını kesmek için (DEV only) modül seviyesinde tek sefer log
 const __devProofLoggedRouteIds = new Set();
 
@@ -227,7 +192,7 @@ async function resolveToHttpsUrl(input) {
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
 
-      // ✅ EMİR 18-7: yetki/permission spam kır (tek sefer warn)
+      // ✅ yetki/permission spam kır (tek sefer warn)
       if (
         code === "permission-denied" ||
         code === "storage/unauthorized" ||
@@ -260,7 +225,7 @@ async function resolveToHttpsUrl(input) {
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
 
-      // ✅ EMİR 18-7: yetki/permission spam kır (tek sefer warn)
+      // ✅ yetki/permission spam kır (tek sefer warn)
       if (
         code === "permission-denied" ||
         code === "storage/unauthorized" ||
@@ -613,19 +578,19 @@ function resolveLegacyCoverUrl(route) {
   return isNonEmptyString(cand) ? String(cand).trim() : "";
 }
 
-function getByPath(obj, path) {
-  if (!obj || !path) return undefined;
-  const parts = String(path).split(".");
-  let cur = obj;
-  for (const p of parts) {
-    if (!cur || typeof cur !== "object") return undefined;
-    cur = cur[p];
-  }
-  return cur;
-}
-
 function pickFirstStopImageCandidate(stop) {
   if (!stop) return { url: "", fromVideoPoster: false };
+
+  const getByPath = (obj, path) => {
+    if (!obj || !path) return undefined;
+    const parts = String(path).split(".");
+    let cur = obj;
+    for (const p of parts) {
+      if (!cur || typeof cur !== "object") return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  };
 
   const candidates = [
     "imageUrl",
@@ -660,14 +625,10 @@ function pickFirstStopImageCandidate(stop) {
     if (!isNonEmptyString(v)) continue;
     const u = String(v).trim();
     if (!u || isKnownAppLogoUrl(u)) continue;
-
-    // ✅ video kapak yasak: video url gördüysek bunu cover olarak kullanma
     if (isVideoUrl(u)) continue;
-
     return { url: u, fromVideoPoster: false };
   }
 
-  // media packs
   const packs = [
     stop.media,
     stop.medias,
@@ -725,14 +686,12 @@ function pickFirstStopImageCandidate(stop) {
           (urlStr ? isVideoUrl(urlStr) : false);
 
         if (isVid) {
-          // ✅ video varsa poster (image) kullan
           if (posterStr && !isVideoUrl(posterStr) && !isKnownAppLogoUrl(posterStr)) {
             return { url: posterStr, fromVideoPoster: true };
           }
           continue;
         }
 
-        // image
         const cand = urlStr || posterStr;
         if (cand && !isVideoUrl(cand) && !isKnownAppLogoUrl(cand)) return { url: cand, fromVideoPoster: false };
       }
@@ -1089,8 +1048,54 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
   );
 }
 
+function LockedRoutesCard({ variant = "login_required" }) {
+  const title = "Rotalar gizli";
+  const subtitle =
+    variant === "login_required"
+      ? "Görmek için giriş yap."
+      : "Bu rotaları görüntülemek için yetkin yok.";
+
+  const mediaWrapStyle = {
+    position: "relative",
+    width: "100%",
+    height: 220,
+    overflow: "hidden",
+    borderRadius: 14,
+    backgroundColor: "#f2f2f2",
+  };
+
+  const placeholderStyle = {
+    position: "absolute",
+    inset: 0,
+    borderRadius: 14,
+    background:
+      "linear-gradient(135deg, rgba(245,245,245,1) 0%, rgba(235,235,235,1) 40%, rgba(250,250,250,1) 100%)",
+  };
+
+  return (
+    <div className="profile-routes-list" aria-label="Rotalar kilitli">
+      <div className="profile-route-tile" role="note" aria-label={`${title}. ${subtitle}`}>
+        <div className="profile-route-tile-media" aria-hidden="true" style={mediaWrapStyle}>
+          <div className="profile-route-tile-placeholder" style={placeholderStyle} />
+        </div>
+
+        <div className="profile-route-tile-badges" aria-hidden="true">
+          <div className="profile-route-tile-badge profile-route-tile-badge--left">
+            <span className="profile-route-tile-emoji">🔒</span>
+          </div>
+        </div>
+
+        <div className="profile-route-tile-overlay" aria-hidden="true">
+          <div className="profile-route-tile-meta">{title}</div>
+          <div className="profile-route-tile-title">{subtitle}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId = null, isFollowing = false }) {
-  const { routes, loading, loadingMore, hasMore, error, loadMore, isEmpty } = useUserRoutes(userId, {
+  const { routes, loading, loadingMore, hasMore, error, loadMore, isEmpty, accessStatus } = useUserRoutes(userId, {
     pageSize: 20,
     isSelf,
     isFollowing,
@@ -1166,6 +1171,14 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
         <span>Profil yükleniyor…</span>
       </div>
     );
+  }
+
+  // ✅ EMİR 5 — kilit modları
+  if (accessStatus === "login_required") {
+    return <LockedRoutesCard variant="login_required" />;
+  }
+  if (accessStatus === "forbidden") {
+    return <LockedRoutesCard variant="forbidden" />;
   }
 
   if (error) {

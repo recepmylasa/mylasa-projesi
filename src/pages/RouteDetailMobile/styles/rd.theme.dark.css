@@ -1,0 +1,401 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.theme.dark.css */
+
+/* =========================================================
+   EMİR 1 (Faz 1) — RouteDetailMobile "koyu glass skin"
+   Scope: sadece .route-detail-dark altında
+   ========================================================= */
+
+.route-detail-dark {
+  --rd-ink: var(--text-main);
+  --rd-muted: var(--text-dim);
+  --rd-muted2: var(--text-dim2);
+
+  --rd-glass: var(--sheet-bg);
+  --rd-glass-2: var(--glass-2);
+
+  --rd-border: var(--glass-border);
+  --rd-divider: var(--glass-divider);
+
+  /* ✅ EMİR 6 — Copper accent + glow tokens (dark) */
+  --rd-copper: #b87333;
+  --rd-copper-glow: #fb923c;
+
+  /* Active accent (pills vb.) copper’dan beslensin */
+  --rd-accent: var(--rd-copper-glow);
+  --rd-accent-glow: rgba(251, 146, 60, 0.18);
+
+  --rd-border-strong: rgba(184, 115, 51, 0.28);
+
+  /* Dotted glow control */
+  --rd-dot-color: rgba(255, 255, 255, 0.10);
+  --rd-dot-size: 18px;
+
+  --rd-tracery-1: rgba(184, 115, 51, 0.16);
+  --rd-tracery-2: rgba(251, 146, 60, 0.10);
+  --rd-tracery-opacity: 0.34;
+
+  --rd-noise-opacity: 0.055;
+
+  --rd-glow-soft: rgba(251, 146, 60, 0.12);
+  --rd-glow-strong: rgba(251, 146, 60, 0.18);
+
+  /* Premium shadows (surface bazlı) */
+  --rd-shadow:
+    0 -26px 78px rgba(0, 0, 0, 0.70),
+    0 0 0 1px rgba(184, 115, 51, 0.10),
+    0 0 44px rgba(251, 146, 60, 0.06);
+
+  --rd-card-shadow: 0 22px 54px rgba(0, 0, 0, 0.42);
+  --rd-pill-shadow: 0 16px 34px rgba(0, 0, 0, 0.34);
+  --rd-nav-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+  --rd-focus-ring: 0 0 0 2px rgba(251, 146, 60, 0.18), 0 0 18px rgba(251, 146, 60, 0.14);
+}
+
+.route-detail-dark.route-detail-backdrop {
+  background: var(--bg);
+}
+
+.route-detail-dark .route-detail-sheet {
+  background: var(--rd-glass);
+  color: var(--rd-ink);
+
+  /* ✅ premium cam derinliği */
+  border: 1px solid var(--rd-border-strong);
+  box-shadow: var(--rd-shadow);
+  backdrop-filter: blur(20px) saturate(170%);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
+}
+
+.route-detail-dark .route-detail-grab {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.route-detail-dark .route-detail-header {
+  border-bottom-color: var(--rd-divider);
+}
+
+.route-detail-dark .route-detail-title {
+  color: var(--rd-ink);
+}
+
+.route-detail-dark .route-detail-header-rating {
+  color: var(--rd-ink);
+  opacity: 0.95;
+}
+
+.route-detail-dark .route-detail-meta {
+  color: var(--rd-muted2);
+}
+
+.route-detail-dark .route-detail-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--rd-muted);
+}
+
+.route-detail-dark .route-detail-chip--public {
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.22);
+  color: rgba(215, 255, 235, 0.92);
+}
+
+.route-detail-dark .route-detail-chip--followers {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(59, 130, 246, 0.22);
+  color: rgba(220, 235, 255, 0.92);
+}
+
+.route-detail-dark .route-detail-chip--private {
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(244, 63, 94, 0.22);
+  color: rgba(255, 225, 232, 0.92);
+}
+
+.route-detail-dark .route-detail-chip--unknown {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--rd-muted);
+}
+
+.route-detail-dark .route-detail-pill-btn,
+.route-detail-dark .route-detail-close-icon,
+.route-detail-dark .route-detail-cover-btn,
+.route-detail-dark .route-detail-cover-picker-back,
+.route-detail-dark .route-detail-cover-picker-close,
+.route-detail-dark .route-detail-cover-picker-actionBtn,
+.route-detail-dark .route-detail-close-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--rd-ink);
+}
+
+.route-detail-dark .route-detail-pill-btn:active,
+.route-detail-dark .route-detail-close-icon:active,
+.route-detail-dark .route-detail-cover-btn:active,
+.route-detail-dark .route-detail-cover-picker-back:active,
+.route-detail-dark .route-detail-cover-picker-close:active,
+.route-detail-dark .route-detail-cover-picker-actionBtn:active,
+.route-detail-dark .route-detail-close-btn:active {
+  transform: scale(0.98);
+}
+
+.route-detail-dark .route-detail-footer {
+  border-top-color: var(--rd-divider);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.route-detail-dark .route-detail-body {
+  color: var(--rd-ink);
+}
+
+.route-detail-dark .route-detail-map {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+}
+
+.route-detail-dark .route-detail-map-error {
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.route-detail-dark .route-detail-map-note {
+  color: var(--rd-muted2);
+}
+
+.route-detail-dark .route-detail-cover-row,
+.route-detail-dark .route-detail-rate-row,
+.route-detail-dark .route-detail-quest {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.route-detail-dark .route-detail-cover-title,
+.route-detail-dark .route-detail-rate-label {
+  color: var(--rd-ink);
+}
+
+.route-detail-dark .route-detail-cover-sub {
+  color: var(--rd-muted2);
+}
+
+.route-detail-dark .route-detail-cover-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.route-detail-dark .route-detail-tabs {
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.route-detail-dark .route-detail-tab-button {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.route-detail-dark .route-detail-tab-button--active {
+  border-color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* Quest dark tweaks */
+.route-detail-dark .route-detail-quest-title {
+  color: #fff;
+}
+
+.route-detail-dark .route-detail-quest-sub,
+.route-detail-dark .route-detail-quest-line.is-muted,
+.route-detail-dark .route-detail-quest-hint {
+  color: var(--rd-muted2);
+}
+
+.route-detail-dark .route-detail-quest-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.route-detail-dark .route-detail-quest-badge.is-active {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.route-detail-dark .route-detail-quest-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.route-detail-dark .route-detail-quest-pill--warn {
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(244, 63, 94, 0.22);
+  color: rgba(255, 225, 232, 0.92);
+}
+
+.route-detail-dark .route-detail-quest-progressTrack {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.route-detail-dark .route-detail-quest-progressFill {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.route-detail-dark .route-detail-quest-progressPct {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.route-detail-dark .route-detail-quest-primary {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.route-detail-dark .route-detail-quest-stop {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.route-detail-dark .route-detail-cover-picker-sheet {
+  background: var(--rd-glass);
+  border: 1px solid var(--rd-border-strong);
+  box-shadow: var(--rd-shadow);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
+}
+
+.route-detail-dark .route-detail-cover-picker-head {
+  border-bottom-color: var(--rd-divider);
+}
+
+.route-detail-dark .route-detail-cover-picker-title {
+  color: var(--rd-ink);
+}
+
+.route-detail-dark .route-detail-cover-picker-loading {
+  color: var(--rd-muted2);
+}
+
+.route-detail-dark .route-detail-cover-picker-hint {
+  color: var(--rd-muted2);
+}
+
+.route-detail-dark .route-detail-cover-grid-item {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.route-detail-dark .route-detail-cover-picker-empty {
+  color: var(--rd-muted2);
+}
+
+/* Input/textarea okunabilirlik (RouteDetail sheet içinde) */
+.route-detail-dark .route-detail-sheet input,
+.route-detail-dark .route-detail-sheet textarea,
+.route-detail-dark .route-detail-sheet select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.route-detail-dark .route-detail-sheet input::placeholder,
+.route-detail-dark .route-detail-sheet textarea::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* =========================================================
+   EMİR 2 (Faz 1.1) — RouteDetailMapPreviewShell overlay "dark glass card"
+   Scope: sadece .route-detail-dark altında
+   ========================================================= */
+
+.route-detail-dark .rdmps-overlay {
+  --rdmps-overlay-bg: rgba(0, 0, 0, 0.1);
+
+  --rdmps-card-bg: var(--rd-glass);
+  --rdmps-card-border: var(--rd-border-strong);
+  --rdmps-card-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+
+  --rdmps-title: #fff;
+  --rdmps-sub: var(--rd-muted2);
+
+  --rdmps-spin-track: rgba(255, 255, 255, 0.22);
+  --rdmps-spin-head: rgba(255, 255, 255, 0.88);
+
+  --rdmps-btn-h: 44px;
+
+  --rdmps-btn-primary-bg: rgba(255, 255, 255, 0.14);
+  --rdmps-btn-primary-border: rgba(255, 255, 255, 0.22);
+  --rdmps-btn-primary-fg: #fff;
+  --rdmps-btn-primary-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+
+  --rdmps-btn-ghost-bg: rgba(255, 255, 255, 0.07);
+  --rdmps-btn-ghost-border: rgba(255, 255, 255, 0.16);
+  --rdmps-btn-ghost-fg: #fff;
+  --rdmps-btn-ghost-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+.route-detail-dark .rdmps-card {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.route-detail-dark .rdmps-btn {
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.route-detail-dark .rdmps-btn:active {
+  transform: scale(0.98);
+}
+
+.route-detail-dark .rdmps-btn:focus-visible {
+  outline: none;
+  filter: brightness(1.05);
+}
+
+/* -------------------- DARK OVERRIDES (scope: .route-detail-dark) -------------------- */
+
+.route-detail-dark .route-detail-sheet .rdglass-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.route-detail-dark .route-detail-sheet .rdglass-muted {
+  color: var(--rd-muted2);
+}
+
+.route-detail-dark .route-detail-sheet .rdglass-row {
+  border-top-color: var(--rd-divider);
+}
+
+.route-detail-dark .route-detail-sheet .rdglass-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--rd-border);
+  color: #fff;
+}
+
+.route-detail-dark .route-detail-sheet .rdglass-btn:active {
+  transform: scale(0.98);
+}
+
+.route-detail-dark .route-detail-sheet .rdglass-progress-track {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.route-detail-dark .route-detail-sheet .rdglass-tile {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Gallery tile: dark’ta glass border + blur */
+.route-detail-dark .route-detail-sheet .rdglass-gallery-tile {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}

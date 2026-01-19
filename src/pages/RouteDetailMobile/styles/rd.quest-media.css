@@ -1,0 +1,208 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.quest-media.css */
+
+/* ✅ EMİR 38 — Video badge + tile positioning */
+.route-detail-media-tile {
+  position: relative;
+}
+
+.route-detail-video-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-weight: 900;
+  font-size: 12px;
+  line-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+
+/* ✅ EMİR 38.1 — Video thumb dokunuşu tile'a gitsin (native play engeli) */
+.route-detail-media-tile video {
+  pointer-events: none;
+}
+
+/* ✅ EMİR 02 — Quest Layer UI (local only) */
+.route-detail-quest {
+  margin-top: 10px;
+  margin-bottom: 12px;
+  border: 1px solid #eee;
+  border-radius: 16px;
+  background: #fff;
+  padding: 12px;
+}
+
+.route-detail-quest-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.route-detail-quest-left {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.route-detail-quest-title {
+  font-weight: 900;
+  font-size: 14px;
+  color: var(--text-main, #111);
+  line-height: 1.2;
+}
+
+.route-detail-quest-sub {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-dim, #777);
+  line-height: 1.35;
+}
+
+.route-detail-quest-badge {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #e3e3e3;
+  background: #fafafa;
+  color: var(--text-main, #111);
+  font-size: 12px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.route-detail-quest-badge.is-active {
+  border-color: #111;
+}
+
+.route-detail-quest-line {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #333;
+}
+
+.route-detail-quest-line.is-muted {
+  color: #777;
+}
+
+.route-detail-quest-line.is-warn {
+  color: #a31919;
+}
+
+.route-detail-quest-metrics {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.route-detail-quest-pill {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #eee;
+  background: #fafafa;
+  color: var(--text-main, #111);
+  font-size: 12px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.route-detail-quest-pill--warn {
+  border-color: #f0caca;
+  background: #fff6f6;
+  color: #a31919;
+}
+
+.route-detail-quest-progress {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-detail-quest-progressTrack {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 999px;
+  background: #eee;
+  overflow: hidden;
+}
+
+.route-detail-quest-progressFill {
+  height: 100%;
+  width: 0%;
+  background: #111;
+  border-radius: 999px;
+}
+
+.route-detail-quest-progressPct {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 900;
+  color: #333;
+  min-width: 44px;
+  text-align: right;
+}
+
+.route-detail-quest-primary {
+  width: 100%;
+  margin-top: 12px;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid #111;
+  background: #111;
+  color: #fff;
+  font-weight: 900;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.route-detail-quest-primary:active {
+  transform: scale(0.99);
+}
+
+.route-detail-quest-primary[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.route-detail-quest-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #777;
+}
+
+.route-detail-quest-stop {
+  width: 100%;
+  margin-top: 10px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid #dbdbdb;
+  background: #fff;
+  color: var(--text-main, #111);
+  font-weight: 900;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.route-detail-quest-stop:active {
+  transform: scale(0.99);
+}

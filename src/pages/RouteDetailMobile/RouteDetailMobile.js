@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import "./RouteDetailMobile.css";
+import "./RouteDetailMobileVitreous.css";
 
 import { auth } from "../../firebase";
 
@@ -13,7 +14,6 @@ import RouteDetailMapPreviewShell from "./components/RouteDetailMapPreviewShell"
 
 import RouteDetailAccessSheet from "./components/RouteDetailAccessSheet";
 import RouteDetailPrefillSheet from "./components/RouteDetailPrefillSheet";
-import RouteDetailHeaderMobile from "./components/RouteDetailHeaderMobile";
 import RouteDetailCoverRow from "./components/RouteDetailCoverRow";
 import RouteDetailRateRow from "./components/RouteDetailRateRow";
 import RouteDetailTabs from "./components/RouteDetailTabs";
@@ -43,6 +43,7 @@ import {
   formatDistanceFromStats,
   formatDurationFromStats,
   formatStopsFromStats,
+  formatTimeAgo,
   getAudienceFromRoute,
   getRouteRatingLabelSafe,
   getRouteTitleSafe,
@@ -74,6 +75,9 @@ export default function RouteDetailMobile({
 
   // ✅ EMİR 18-6 — RouteDetail scoped overlay portal root (theme token inherit)
   const overlayRootRef = useRef(null);
+
+  // ✅ EMİR 3 — Hero’daki tek yıldız butonu: Rating alanına kaydır (safe)
+  const rateRowAnchorRef = useRef(null);
 
   // =========================
   // ✅ EMİR 18-5 — Dark/Light Toggle + data-theme bağlama (persist’li)
@@ -162,13 +166,22 @@ export default function RouteDetailMobile({
   }, []);
 
   // ✅ data (route/stops/owner/perm/comments/lockedOwner)
-  const { routeDoc, stops, stopsLoaded, owner, permError, commentsCount, ownerIdForProfile, lockedOwnerDoc, retryPermCheck } =
-    useRouteDetailData({
-      routeId,
-      initialRoute,
-      followInitially,
-      ownerFromLink,
-    });
+  const {
+    routeDoc,
+    stops,
+    stopsLoaded,
+    owner,
+    permError,
+    commentsCount,
+    ownerIdForProfile,
+    lockedOwnerDoc,
+    retryPermCheck,
+  } = useRouteDetailData({
+    routeId,
+    initialRoute,
+    followInitially,
+    ownerFromLink,
+  });
 
   const routeModel = routeDoc || initialRoute;
 
@@ -302,7 +315,9 @@ export default function RouteDetailMobile({
         )}
 
         <div className="route-detail-quest-metrics">
-          <span className={`route-detail-quest-pill ${offRoute ? "route-detail-quest-pill--warn" : ""}`}>Sapma: {distText}</span>
+          <span className={`route-detail-quest-pill ${offRoute ? "route-detail-quest-pill--warn" : ""}`}>
+            Sapma: {distText}
+          </span>
           <span className="route-detail-quest-pill">
             Checkpoint: {visitedCount}/{total || "—"}
           </span>
@@ -404,16 +419,19 @@ export default function RouteDetailMobile({
   const [routeAgg, setRouteAgg] = useState(null);
   const [stopAgg, setStopAgg] = useState(null);
 
-  const loadReportAgg = useCallback(async () => {
-    if (reportLoaded || !routeId) return;
-    const [rAgg, sAgg] = await Promise.all([
-      getRouteStarsAgg(routeId, 1000).catch(() => null),
-      getStopsStarsAgg(routeId, 1000).catch(() => null),
-    ]);
-    setRouteAgg(rAgg);
-    setStopAgg(sAgg);
-    setReportLoaded(true);
-  }, [reportLoaded, routeId]);
+  const loadReportAgg = useCallback(
+    async () => {
+      if (reportLoaded || !routeId) return;
+      const [rAgg, sAgg] = await Promise.all([
+        getRouteStarsAgg(routeId, 1000).catch(() => null),
+        getStopsStarsAgg(routeId, 1000).catch(() => null),
+      ]);
+      setRouteAgg(rAgg);
+      setStopAgg(sAgg);
+      setReportLoaded(true);
+    },
+    [reportLoaded, routeId]
+  );
 
   useEffect(() => {
     if (tab === "report") loadReportAgg();
@@ -466,6 +484,83 @@ export default function RouteDetailMobile({
   }, [dateText, distanceText, durationText, stopsText, avgSpeedText]);
 
   const title = useMemo(() => getRouteTitleSafe(routeModel), [routeModel]);
+
+  // ✅ EMIR 3 — Hero title: route.title/name öncelikli, süre gibi string’leri reddet
+  const heroTitle = useMemo(() => {
+    try {
+      const m = routeModel || {};
+      const candidates = [m?.title, m?.name, m?.routeTitle, m?.routeName, m?.displayTitle, m?.caption, m?.heading]
+        .filter(Boolean)
+        .map((x) => String(x).trim())
+        .filter(Boolean);
+
+      const normalize = (s) => String(s || "").replace(/\s+/g, " ").trim();
+      const looksLikeDurationOnly = (s) => {
+        const x = normalize(s).toLowerCase();
+        if (!x) return true;
+        // "00:42" / "00:42:21" / "Rota 00:42:21"
+        if (/^(rota\s*)?\d{1,2}:\d{2}(:\d{2})?$/.test(x)) return true;
+        return false;
+      };
+
+      for (const c of candidates) {
+        const s = normalize(c);
+        if (!s) continue;
+        if (looksLikeDurationOnly(s)) continue;
+        return s;
+      }
+
+      const fb = normalize(title);
+      if (fb && !looksLikeDurationOnly(fb)) return fb;
+
+      return "Rota";
+    } catch {
+      return title || "Rota";
+    }
+  }, [routeModel, title]);
+
+  // ✅ EMIR 3 — kısa açıklama (pill altı)
+  const routeDescText = useMemo(() => {
+    try {
+      const m = routeModel || {};
+      const raw = m?.description || m?.summary || m?.text || m?.about || m?.notes || "";
+      if (typeof raw !== "string") return "";
+      const s = raw.trim();
+      return s;
+    } catch {
+      return "";
+    }
+  }, [routeModel]);
+
+  // ✅ EMIR 2 — Map label (BODRUM / MUĞLA gibi) + badges (1,2)
+  const mapAreaLabel = useMemo(() => {
+    try {
+      const m = routeModel || {};
+      const cityRaw =
+        m?.city || m?.province || m?.il || m?.state || m?.region || m?.locationCity || m?.location?.city || "";
+      const districtRaw = m?.district || m?.ilce || m?.town || m?.locationDistrict || m?.location?.district || "";
+
+      const city = String(cityRaw || "").trim();
+      const district = String(districtRaw || "").trim();
+
+      const a = district || city;
+      const b = district && city && city.toLowerCase() !== district.toLowerCase() ? city : "";
+
+      const out = [a, b].filter(Boolean).join(" / ");
+      return out ? out.toUpperCase() : "";
+    } catch {
+      return "";
+    }
+  }, [routeModel]);
+
+  const mapBadgeCount = useMemo(() => {
+    try {
+      const n = Array.isArray(stopsForPreview) ? stopsForPreview.length : 0;
+      return Math.max(0, Math.min(2, n));
+    } catch {
+      return 0;
+    }
+  }, [stopsForPreview]);
 
   // ✅ share / gpx / rate
   const onShare = useCallback(async () => {
@@ -523,6 +618,18 @@ export default function RouteDetailMobile({
       } catch {}
     },
     [routeId, routeDoc]
+  );
+
+  // ✅ EMIR 3 — Hero yıldızı: rating bölümüne kaydır (kalp yok)
+  const onHeroStarClick = useCallback(
+    (e) => {
+      e?.stopPropagation?.();
+      try {
+        if (!rateRowAnchorRef.current) return;
+        rateRowAnchorRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch {}
+    },
+    [rateRowAnchorRef]
   );
 
   // ✅ cover resolve (picked / auto / default)
@@ -599,6 +706,71 @@ export default function RouteDetailMobile({
   const showCommentsOverlay = tab === "comments";
 
   // =========================
+  // ✅ EMIR 1 — Hero / Nav / Author Hub (cam pill)
+  // (Hook kuralı için early return öncesi)
+  // =========================
+  const heroCategory = useMemo(() => {
+    try {
+      const m = routeModel || {};
+      const raw =
+        m?.category ||
+        m?.routeCategory ||
+        m?.type ||
+        m?.routeType ||
+        m?.activity ||
+        m?.kind ||
+        (Array.isArray(m?.tags) && m.tags.length ? m.tags[0] : "") ||
+        "";
+
+      const s = String(raw || "").trim();
+      if (!s) return "";
+      return s.toUpperCase();
+    } catch {
+      return "";
+    }
+  }, [routeModel]);
+
+  const ownerName = useMemo(() => {
+    const o = owner || lockedOwnerDoc || {};
+    const s =
+      (o?.name && String(o.name).trim()) ||
+      (o?.fullName && String(o.fullName).trim()) ||
+      (o?.username && String(o.username).trim()) ||
+      (o?.userName && String(o.userName).trim()) ||
+      (o?.handle && String(o.handle).trim()) ||
+      (routeModel?.ownerName && String(routeModel.ownerName).trim()) ||
+      (routeModel?.ownerUsername && String(routeModel.ownerUsername).trim()) ||
+      "Yazar";
+    return s || "Yazar";
+  }, [owner, lockedOwnerDoc, routeModel]);
+
+  const ownerAvatarUrl = useMemo(() => {
+    const o = owner || lockedOwnerDoc || {};
+    const s =
+      (o?.photoURL && String(o.photoURL).trim()) ||
+      (o?.profilFoto && String(o.profilFoto).trim()) ||
+      (o?.avatar && String(o.avatar).trim()) ||
+      (routeModel?.ownerAvatar && String(routeModel.ownerAvatar).trim()) ||
+      "";
+    return s || "";
+  }, [owner, lockedOwnerDoc, routeModel]);
+
+  const timeAgoText = useMemo(() => formatTimeAgo(routeModel?.finishedAt || routeModel?.createdAt), [routeModel]);
+
+  const [heroMenuOpen, setHeroMenuOpen] = useState(false);
+
+  const closeHeroMenu = useCallback(() => setHeroMenuOpen(false), []);
+  const toggleHeroMenu = useCallback((e) => {
+    e?.stopPropagation?.();
+    setHeroMenuOpen((x) => !x);
+  }, []);
+
+  useEffect(() => {
+    // theme değişince menü açık kalmasın
+    setHeroMenuOpen(false);
+  }, [rdTheme]);
+
+  // =========================
   // ✅ Early returns (access/prefill)
   // =========================
   if (!routeId)
@@ -667,33 +839,186 @@ export default function RouteDetailMobile({
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
-        <RouteDetailHeaderMobile
-          title={title || "Rota"}
-          audienceKey={audienceKey}
-          audienceLabel={audienceLabel}
-          ratingAvgLabel={ratingAvgLabel}
-          metaLine={metaLine}
-          onShare={onShare}
-          onOpenVisualShare={() => setShowShareSheet(true)}
-          onExportGpx={onExportGpx}
-          onClose={onClose}
-          theme={rdTheme}
-          onToggleTheme={onToggleTheme}
-        />
-
-        <div className="route-detail-body" ref={routeBodyRef}>
-          {questUi}
-
-          <div className="route-detail-map" style={{ position: "relative" }}>
-            <RouteDetailMapPreviewShell
-              key={mapsRetryTick}
-              routeId={routeId}
-              path={pathPts}
-              stops={stopsForPreview || []}
-              stopsLoaded={stopsLoaded}
-              onRetry={() => retryMap()}
+        {/* ✅ EMIR 3 — FLASH UI PARİTESİ: HERO (büyük) + Author Hub (overlap) */}
+        <div
+          className="route-detail-hero"
+          onClick={() => {
+            if (heroMenuOpen) closeHeroMenu();
+          }}
+        >
+          <div className="route-detail-hero__media">
+            <img
+              className="route-detail-hero__img"
+              src={coverResolved || (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg"}
+              alt="Rota kapağı"
+              loading="eager"
+              decoding="async"
+              onLoad={(e) => handleImgLoadProof(e, { scope: "hero_cover" })}
+              onError={(e) => handleImgErrorToDefault(e, { scope: "hero_cover" })}
             />
           </div>
+
+          <div className="route-detail-hero__gradient" />
+
+          <div className="route-detail-hero__nav" onClick={(e) => e.stopPropagation()}>
+            <div className="rd-hero-nav-left">
+              <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onClose} title="Geri">
+                <span className="rd-hero-nav-btn__icon" aria-hidden="true">
+                  ←
+                </span>
+              </button>
+            </div>
+
+            <div className="rd-hero-nav-right">
+              <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onShare} title="Paylaş">
+                <span className="rd-hero-nav-btn__icon" aria-hidden="true">
+                  ⤴
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="rd-hero-nav-btn rd-hero-nav-btn--icononly"
+                onClick={toggleHeroMenu}
+                aria-expanded={heroMenuOpen}
+                aria-label="Menü"
+                title="Menü"
+              >
+                <span className="rd-hero-nav-btn__icon" aria-hidden="true">
+                  ⋯
+                </span>
+              </button>
+            </div>
+
+            {heroMenuOpen && (
+              <div className="rd-hero-menu" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="rd-hero-menu__item"
+                  onClick={() => {
+                    setShowShareSheet(true);
+                    closeHeroMenu();
+                  }}
+                >
+                  <span>Görsel paylaş</span>
+                  <span className="rd-hero-menu__hint">Sheet</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="rd-hero-menu__item"
+                  onClick={() => {
+                    onExportGpx();
+                    closeHeroMenu();
+                  }}
+                >
+                  <span>GPX indir</span>
+                  <span className="rd-hero-menu__hint">.gpx</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="rd-hero-menu__item"
+                  onClick={() => {
+                    onTabChange("report");
+                    closeHeroMenu();
+                  }}
+                >
+                  <span>Rapor</span>
+                  <span className="rd-hero-menu__hint">İstatistik</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="rd-hero-menu__item"
+                  onClick={() => {
+                    onToggleTheme();
+                    closeHeroMenu();
+                  }}
+                >
+                  <span>Tema</span>
+                  <span className="rd-hero-menu__hint">{rdTheme === "dark" ? "Açık" : "Koyu"}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="route-detail-hero__content">
+            {heroCategory ? <div className="rd-hero-tag">{heroCategory}</div> : null}
+            <div className="rd-hero-title" title={heroTitle || "Rota"}>
+              {heroTitle || "Rota"}
+            </div>
+            <div className="rd-hero-ratingline">
+              <span className="rd-hero-ratingline__star" aria-hidden="true">
+                ★
+              </span>
+              <span>{ratingAvgLabel}</span>
+            </div>
+            {metaLine ? <div className="rd-hero-meta">{metaLine}</div> : null}
+          </div>
+
+          {/* ✅ EMIR 3 — Author hub: hero’dan taşar + sağda TEK YILDIZ butonu (kalp yok) */}
+          <div className="rd-author-hub" onClick={(e) => e.stopPropagation()}>
+            <div className="rd-author-avatar" aria-label="Yazar">
+              {ownerAvatarUrl ? <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" /> : ownerName?.[0] || "Y"}
+            </div>
+
+            <div className="rd-author-mid">
+              <div className="rd-author-name" title={ownerName}>
+                {ownerName}
+              </div>
+              <div className="rd-author-sub">{timeAgoText || ""}</div>
+            </div>
+
+            <button
+              type="button"
+              className="rd-author-fav"
+              onClick={onHeroStarClick}
+              aria-label="Yıldız ver"
+              title={canRateRoute ? "Yıldız ver" : "Puanlamak için giriş yap / sahibi değilsen puanlayabilirsin"}
+              disabled={!canRateRoute}
+            >
+              <span className="rd-author-fav__icon" aria-hidden="true">
+                ★
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div className="route-detail-body" ref={routeBodyRef}>
+          {/* ✅ EMIR 3 — Tab pill row (Author hub’ın hemen altında) + Açıklama */}
+          <div className="rd-pills-block">
+            <RouteDetailTabs tab={tab} onTabChange={onTabChange} commentsCount={commentsCount} onGpx={onExportGpx} />
+            {routeDescText ? <div className="rd-route-desc">{routeDescText}</div> : null}
+          </div>
+
+          {/* ✅ EMIR 3 — Harita: Açıklamanın altında, daha aşağıda (artık ilk büyük blok değil) */}
+          <div className="route-detail-map rd-map-card">
+            <div className="rd-map-card__canvas">
+              <RouteDetailMapPreviewShell
+                key={mapsRetryTick}
+                routeId={routeId}
+                path={pathPts}
+                stops={stopsForPreview || []}
+                stopsLoaded={stopsLoaded}
+                onRetry={() => retryMap()}
+              />
+            </div>
+
+            {mapBadgeCount > 0 && (
+              <div className="rd-map-card__badges" aria-hidden="true">
+                {Array.from({ length: mapBadgeCount }).map((_, i) => (
+                  <span key={i} className="rd-map-badge">
+                    {i + 1}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {mapAreaLabel ? <div className="rd-map-card__label">{mapAreaLabel}</div> : null}
+          </div>
+
+          {questUi}
 
           <RouteDetailCoverRow
             coverResolved={coverResolved}
@@ -704,14 +1029,22 @@ export default function RouteDetailMobile({
             coverUpload={coverUpload}
             coverKindUi={coverKindUi}
             onOpenPicker={openCoverPicker}
-            onClearCover={() => {}}
+            // ✅ EMİR 4 — “Kapağı kaldır” gerçekten kaldırsın (owner değilse no-op)
+            onClearCover={(e) => {
+              e?.stopPropagation?.();
+              if (!isOwner) return;
+              try {
+                clearCover();
+              } catch {}
+            }}
             onImgLoad={(e) => handleImgLoadProof(e, { scope: "cover_thumb" })}
             onImgError={(e) => handleImgErrorToDefault(e, { scope: "cover_thumb" })}
           />
 
-          <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />
-
-          <RouteDetailTabs tab={tab} onTabChange={onTabChange} commentsCount={commentsCount} />
+          {/* ✅ EMIR 3 — Hero yıldızı buraya kaydırır */}
+          <div ref={rateRowAnchorRef}>
+            <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />
+          </div>
 
           <div className="route-detail-tabpanel">
             {tab === "stops" && (

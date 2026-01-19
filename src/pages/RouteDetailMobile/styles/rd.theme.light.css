@@ -1,0 +1,208 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.theme.light.css */
+
+/* =========================================================
+   EMİR 18-2 — Light Theme Vitreous Overrides
+   Scope: sadece .route-detail-light altında
+   ========================================================= */
+
+.route-detail-light {
+  --rd-ink: var(--text-main);
+  --rd-text: var(--text-main);
+  --rd-muted: var(--text-dim);
+  --rd-muted2: var(--text-dim2);
+
+  --rd-glass: rgba(255, 255, 255, 0.78);
+  --rd-glass-2: rgba(255, 255, 255, 0.60);
+
+  --rd-border: var(--glass-border);
+  --rd-divider: var(--glass-divider);
+
+  /* ✅ EMİR 6 — Copper accent + glow tokens (light) */
+  --rd-copper: #b87333;
+  --rd-copper-glow: #fb923c;
+
+  /* Active accent (pills vb.) copper’dan beslensin */
+  --rd-accent: var(--rd-copper);
+  --rd-accent-glow: rgba(184, 115, 51, 0.14);
+
+  --rd-border-strong: rgba(0, 0, 0, 0.16);
+
+  /* Dotted glow control */
+  --rd-dot-color: rgba(15, 23, 42, 0.07);
+  --rd-dot-size: 20px;
+
+  --rd-tracery-1: rgba(184, 115, 51, 0.14);
+  --rd-tracery-2: rgba(251, 146, 60, 0.09);
+  --rd-tracery-opacity: 0.18;
+
+  --rd-noise-opacity: 0.035;
+
+  --rd-glow-soft: rgba(251, 146, 60, 0.10);
+  --rd-glow-strong: rgba(251, 146, 60, 0.14);
+
+  --rd-shadow:
+    0 -18px 58px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.05),
+    0 0 36px rgba(251, 146, 60, 0.05);
+
+  --rd-card-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+  --rd-pill-shadow: 0 14px 30px rgba(0, 0, 0, 0.10);
+  --rd-nav-shadow: 0 12px 26px rgba(0, 0, 0, 0.12);
+  --rd-focus-ring: 0 0 0 2px rgba(184, 115, 51, 0.14), 0 0 18px rgba(251, 146, 60, 0.10);
+}
+
+.route-detail-light.route-detail-backdrop {
+  background: var(--bg);
+}
+
+.route-detail-light .route-detail-grab {
+  background: rgba(30, 41, 59, 0.18);
+}
+
+.route-detail-light .route-detail-sheet {
+  background: var(--sheet-bg);
+  color: var(--text-main);
+
+  /* ✅ premium cam derinliği */
+  border: 1px solid var(--rd-border-strong);
+  box-shadow: var(--rd-shadow);
+  backdrop-filter: blur(var(--blur)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(170%);
+
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
+}
+
+.route-detail-light .route-detail-header {
+  background: var(--nav-bg);
+  border-bottom-color: var(--glass-divider);
+}
+
+.route-detail-light .route-detail-meta {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-pill-btn,
+.route-detail-light .route-detail-close-icon,
+.route-detail-light .route-detail-cover-btn,
+.route-detail-light .route-detail-cover-picker-back,
+.route-detail-light .route-detail-cover-picker-close,
+.route-detail-light .route-detail-cover-picker-actionBtn,
+.route-detail-light .route-detail-close-btn {
+  background: var(--glass);
+  border-color: var(--glass-border);
+  color: var(--text-main);
+}
+
+.route-detail-light .route-detail-footer {
+  border-top-color: var(--glass-divider);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.route-detail-light .route-detail-map {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: var(--glass-border);
+  border-radius: 16px;
+}
+
+.route-detail-light .route-detail-map-error {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.route-detail-light .route-detail-map-note {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-cover-row,
+.route-detail-light .route-detail-rate-row,
+.route-detail-light .route-detail-quest {
+  background: var(--glass);
+  border-color: var(--glass-border);
+}
+
+.route-detail-light .route-detail-cover-sub {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-cover-thumb {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: var(--glass-border);
+}
+
+.route-detail-light .route-detail-tab-button {
+  background: var(--glass);
+  border-color: var(--glass-border);
+  color: var(--text-main);
+}
+
+.route-detail-light .route-detail-tab-button--active {
+  border-color: rgba(30, 41, 59, 0.85);
+}
+
+/* Quest light tweaks */
+.route-detail-light .route-detail-quest-sub,
+.route-detail-light .route-detail-quest-line.is-muted,
+.route-detail-light .route-detail-quest-hint {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-quest-badge {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--glass-border);
+  color: var(--text-main);
+}
+
+.route-detail-light .route-detail-quest-progressTrack {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.route-detail-light .route-detail-quest-progressFill {
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.route-detail-light .route-detail-quest-progressPct {
+  color: var(--text-main);
+}
+
+.route-detail-light .route-detail-quest-primary {
+  border-color: rgba(15, 23, 42, 0.22);
+  background: rgba(15, 23, 42, 0.86);
+  color: #fff;
+}
+
+.route-detail-light .route-detail-quest-stop {
+  border-color: var(--glass-border);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-main);
+}
+
+/* Cover picker light vitreous */
+.route-detail-light .route-detail-cover-picker-overlay {
+  background: rgba(15, 23, 42, 0.24);
+}
+
+.route-detail-light .route-detail-cover-picker-sheet {
+  background: var(--sheet-bg);
+  border: 1px solid var(--rd-border-strong);
+  box-shadow: var(--rd-shadow);
+  backdrop-filter: blur(var(--blur)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(170%);
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
+}
+
+.route-detail-light .route-detail-cover-picker-head {
+  border-bottom-color: var(--glass-divider);
+}
+
+.route-detail-light .route-detail-cover-picker-loading,
+.route-detail-light .route-detail-cover-picker-hint,
+.route-detail-light .route-detail-cover-picker-empty {
+  color: var(--text-dim);
+}
+
+.route-detail-light .route-detail-cover-grid-item {
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--glass-border);
+}

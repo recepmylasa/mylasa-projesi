@@ -1,0 +1,133 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.map.css */
+/* EMIR 2/3 — Map Card (Açıklama altında) + Flash UI Map Card (World-map look) */
+/* Scope: RouteDetailMobile only */
+
+.route-detail-sheet .rd-map-card {
+  position: relative;
+  width: 100%;
+
+  /* ✅ EMİR 3: Daha kısa harita (devasa blok olmayacak) */
+  height: clamp(170px, 24vh, 220px);
+
+  border-radius: 20px;
+  overflow: hidden;
+
+  border: 1px solid var(--rd-border, var(--glass-border, rgba(0, 0, 0, 0.08)));
+  background: var(--rd-glass, var(--glass, rgba(255, 255, 255, 0.86)));
+  box-shadow: var(--rd-card-shadow, 0 18px 40px rgba(0, 0, 0, 0.12));
+
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+
+  transform: translateZ(0);
+
+  /* ✅ Açıklamadan sonra nefes */
+  margin-top: 12px;
+}
+
+/* “World-map look” hissi: çok hafif grid/dot + sıcak highlight */
+.route-detail-sheet .rd-map-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background:
+    radial-gradient(900px 520px at 20% 20%, rgba(251, 146, 60, 0.12), transparent 60%),
+    radial-gradient(1100px 640px at 70% 10%, rgba(184, 115, 51, 0.10), transparent 58%),
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.14) 0, rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+  background-size: auto, auto, 14px 14px;
+}
+
+.route-detail-sheet .rd-map-card::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 0;
+  height: 1px;
+  background: var(--glass-highlight, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Map shell canvas full bleed */
+.route-detail-sheet .rd-map-card__canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* Ensure map internals match card radius (inline style override) */
+.route-detail-sheet .rd-map-card .rdmps-map {
+  border-radius: 20px !important;
+}
+
+.route-detail-sheet .rd-map-card .rdmps-overlay {
+  border-radius: 20px !important;
+}
+
+.route-detail-sheet .rd-map-card .rdmps-card {
+  border-radius: 16px !important;
+}
+
+/* Bottom-right location label (BODRUM / MUĞLA gibi) */
+.route-detail-sheet .rd-map-card__label {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 7px 10px;
+  border-radius: 999px;
+
+  background: var(--rd-glass-2, var(--nav-bg, rgba(255, 255, 255, 0.78)));
+  border: 1px solid var(--rd-border, var(--glass-border, rgba(0, 0, 0, 0.10)));
+  color: var(--rd-text, var(--text-main, #111));
+
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+
+  backdrop-filter: blur(var(--blur, 10px)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur, 10px)) saturate(160%);
+
+  box-shadow: var(--rd-pill-shadow, 0 10px 24px rgba(0, 0, 0, 0.12));
+
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+/* Top-left marker badges (1,2) — dekoratif/legend */
+.route-detail-sheet .rd-map-card__badges {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.route-detail-sheet .rd-map-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--rd-glass-2, var(--nav-bg, rgba(255, 255, 255, 0.78)));
+  border: 1px solid var(--rd-border, var(--glass-border, rgba(0, 0, 0, 0.10)));
+  color: var(--rd-text, var(--text-main, #111));
+  font-weight: 900;
+  font-size: 12px;
+
+  backdrop-filter: blur(var(--blur, 10px)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur, 10px)) saturate(160%);
+
+  box-shadow: var(--rd-pill-shadow, 0 10px 24px rgba(0, 0, 0, 0.12));
+}
+
+/* Safety: hiçbir dekoratif layer click yutmasın */
+.route-detail-sheet .rd-map-card::before,
+.route-detail-sheet .rd-map-card::after {
+  pointer-events: none;
+}

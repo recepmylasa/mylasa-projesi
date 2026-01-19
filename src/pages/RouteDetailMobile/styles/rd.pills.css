@@ -1,0 +1,78 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.pills.css */
+/* EMIR 3 — Flash UI “Pill Tabs + Açıklama” (Author hub altı) */
+
+.rd-pills-block {
+  padding: 10px 14px 10px;
+
+  border-radius: 20px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass);
+  box-shadow: var(--rd-card-shadow, 0 18px 40px rgba(0, 0, 0, 0.12));
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+}
+
+.rd-pill-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 2px;
+}
+
+.rd-pill-row::-webkit-scrollbar {
+  display: none;
+}
+
+.rd-pill {
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass-2);
+  color: var(--rd-text);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: var(--rd-pill-shadow, 0 14px 30px rgba(0, 0, 0, 0.10));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rd-pill:active {
+  transform: translateY(1px);
+}
+
+.rd-pill.is-active {
+  color: var(--rd-accent, var(--rd-copper-glow));
+  border-color: rgba(184, 115, 51, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(184, 115, 51, 0.14),
+    0 0 18px var(--rd-accent-glow, rgba(251, 146, 60, 0.12)),
+    var(--rd-pill-shadow, 0 14px 30px rgba(0, 0, 0, 0.10));
+}
+
+.rd-pill--gpx {
+  letter-spacing: 0.02em;
+}
+
+.rd-route-desc {
+  margin-top: 10px;
+  color: var(--rd-muted);
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.45;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
