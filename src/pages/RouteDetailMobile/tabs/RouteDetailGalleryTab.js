@@ -10,21 +10,37 @@ export default function RouteDetailGalleryTab({
   openLightbox,
   onImgError,
 }) {
+  const items = Array.isArray(galleryItems) ? galleryItems : [];
+  const isLoading = !!galleryState?.loading;
+
+  // Loading + içerik azsa 6–8 skeleton
+  const showSkeleton = isLoading && items.length < 6;
+  const skeletonCount = showSkeleton ? Math.max(6, Math.min(8, 8 - items.length)) : 0;
+
+  const openAt = (idx) => {
+    try {
+      openLightbox(buildLightboxItems(items), idx);
+    } catch {}
+  };
+
   return (
     <div className="rdtab rdtab--gallery">
-      <div className="rdglass-gallery-grid">
-        {(galleryItems || []).map((it, idx) => {
+      <div className="rd-gallery" aria-busy={isLoading ? "true" : "false"}>
+        {items.map((it, idx) => {
           const isVideo = normalizeMediaType(it) === "video";
+          const key = `${it.stopId || "s"}_${it.id || idx}`;
+
           return (
             <button
-              key={`${it.stopId || "s"}_${it.id || idx}`}
+              key={key}
               type="button"
-              className="rdglass-gallery-tile route-detail-media-tile"
-              onClick={() => openLightbox(buildLightboxItems(galleryItems), idx)}
+              className="rd-galleryItem"
+              onClick={() => openAt(idx)}
               title={isVideo ? "Video" : "Fotoğraf"}
+              aria-label={isVideo ? "Galeride video" : "Galeride fotoğraf"}
             >
               {isVideo && (
-                <div className="route-detail-video-badge" aria-hidden="true">
+                <div className="rd-galleryItem__videoBadge" aria-hidden="true">
                   ▶︎
                 </div>
               )}
@@ -37,7 +53,6 @@ export default function RouteDetailGalleryTab({
                   preload="metadata"
                   disablePictureInPicture
                   controlsList="nodownload noplaybackrate"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               ) : (
                 <img
@@ -45,39 +60,31 @@ export default function RouteDetailGalleryTab({
                   alt=""
                   loading="lazy"
                   decoding="async"
-                  onError={(e) => onImgError?.(e, { scope: "gallery_grid", stopId: it.stopId || null, mediaId: it.id || null })}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={(e) =>
+                    onImgError?.(e, {
+                      scope: "gallery_grid",
+                      stopId: it.stopId || null,
+                      mediaId: it.id || null,
+                    })
+                  }
                 />
               )}
             </button>
           );
         })}
+
+        {showSkeleton &&
+          Array.from({ length: skeletonCount }).map((_, i) => (
+            <div key={`sk_${i}`} className="rd-gallerySkeleton" aria-hidden="true" />
+          ))}
       </div>
 
-      {(galleryItems || []).length === 0 && (
-        <div className="rdglass-card rdglass-card--pad rdglass-empty">
-          <div className="rdglass-muted" style={{ fontSize: 13 }}>
-            Henüz galeri medyası yok.
-          </div>
-        </div>
-      )}
+      {items.length === 0 && !isLoading && <div className="rd-galleryEmpty">Galeride medya yok.</div>}
 
-      <div ref={gallerySentinelRef} className="rdglass-row" style={{ height: 1 }} />
+      <div ref={gallerySentinelRef} className="rd-gallerySentinel" />
 
-      {galleryState?.loading && (
-        <div className="rdglass-card rdglass-card--pad rdglass-empty">
-          <div className="rdglass-muted" style={{ fontSize: 12 }}>
-            Yükleniyor…
-          </div>
-        </div>
-      )}
-
-      {galleryState?.done && (galleryItems || []).length > 0 && (
-        <div className="rdglass-card rdglass-card--pad rdglass-empty">
-          <div className="rdglass-muted" style={{ fontSize: 12 }}>
-            Hepsi bu kadar.
-          </div>
-        </div>
+      {galleryState?.done && items.length > 0 && !isLoading && (
+        <div className="rd-galleryEmpty rd-galleryEmpty--foot">Hepsi bu kadar.</div>
       )}
     </div>
   );
