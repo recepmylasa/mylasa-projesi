@@ -83,19 +83,13 @@ export default function RouteDetailStopsTab({
                   {media.slice(0, 4).map((m, mIdx) => {
                     const isVideo = normalizeMediaType(m) === "video";
                     return (
-                      <div
+                      <button
                         key={m.id || mIdx}
+                        type="button"
                         className="rd-stop-mediaItem"
                         onClick={() => openLightbox(buildLightboxItems(media), mIdx)}
                         title={isVideo ? "Video" : "Fotoğraf"}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            openLightbox(buildLightboxItems(media), mIdx);
-                          }
-                        }}
+                        aria-label={isVideo ? "Videoyu görüntüle" : "Fotoğrafı görüntüle"}
                       >
                         {isVideo && (
                           <div className="rd-stop-mediaItem__videoBadge" aria-hidden="true">
@@ -111,6 +105,8 @@ export default function RouteDetailStopsTab({
                             preload="metadata"
                             disablePictureInPicture
                             controlsList="nodownload noplaybackrate"
+                            tabIndex={-1}
+                            aria-hidden="true"
                           />
                         ) : (
                           <img
@@ -118,10 +114,11 @@ export default function RouteDetailStopsTab({
                             alt="Durak medyası"
                             loading="lazy"
                             decoding="async"
+                            draggable={false}
                             onError={(e) => onImgError?.(e, { scope: "stop_media", stopId: s.id, mediaId: m?.id || null })}
                           />
                         )}
-                      </div>
+                      </button>
                     );
                   })}
 

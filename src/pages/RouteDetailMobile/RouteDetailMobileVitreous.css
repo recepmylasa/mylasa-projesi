@@ -41,17 +41,433 @@
 /* Light tokens (scoped) */
 .route-detail-backdrop.route-detail-light,
 .route-detail-backdrop[data-theme="light"] {
+  /* =========================================================
+     EMİR 10.4 — Light radial’ları softlaştır (light selector only)
+     ========================================================= */
+  background:
+    radial-gradient(1200px 700px at 50% -10%, rgba(184, 115, 51, 0.06), transparent 58%),
+    radial-gradient(900px 500px at 20% 20%, rgba(251, 146, 60, 0.045), transparent 62%),
+    var(--rd-bg, #f8fafc);
+
   --rd-bg: #f8fafc;
-  --rd-glass: rgba(255, 255, 255, 0.78);
-  --rd-glass-2: rgba(255, 255, 255, 0.60);
-  --rd-border: rgba(0, 0, 0, 0.10);
-  --rd-border-strong: rgba(0, 0, 0, 0.16);
+
+  /* =========================================================
+     EMİR 10.2 — Light cam opaklığı “premium”
+     ========================================================= */
+  --rd-glass: rgba(255, 255, 255, 0.88);
+  --rd-glass-2: rgba(255, 255, 255, 0.72);
+
+  /* Border: slate/ink yönünde (tam siyah değil) */
+  --rd-border: rgba(15, 23, 42, 0.10);
+  --rd-border-strong: rgba(15, 23, 42, 0.16);
+
   --rd-text: #0a0a0c;
   --rd-muted: #64748b;
+
   --rd-copper: #b87333;
   --rd-copper-glow: #fb923c;
-  --rd-shadow: 0 30px 60px rgba(0, 0, 0, 0.18);
+
+  /* Shadow: light’ta “premium” ama fazla ağır değil */
+  --rd-shadow: 0 30px 60px rgba(2, 6, 23, 0.14);
   --rd-radius-sheet: 28px;
+
+  /* =========================================================
+     EMİR 10.1 — Light token setini “tam vitreous” yap
+     (Dark ile parite: rdglass-card/btn + pills active çalışsın)
+     ========================================================= */
+  --rd-ink: var(--rd-text);
+  --rd-glass2: var(--rd-glass-2);
+
+  --rd-accent: #22d3ee; /* cyan parite */
+  --rd-accent-soft: rgba(34, 211, 238, 0.18);
+  --rd-accent-border: rgba(34, 211, 238, 0.40);
+
+  --rd-blur: 18px;
+  --rd-shadow-soft: 0 18px 42px rgba(2, 6, 23, 0.14);
+}
+
+/* =========================================================
+   EMİR 3 (V2) — “Flash / Vitreous” üst blok piksel paritesi
+   Hero + Author Hub + Tabs Pills + Map Card chrome
+   - JS mantığına dokunmadan, sadece CSS (RouteDetail scope)
+   ========================================================= */
+.route-detail-backdrop {
+  --rd-hero-h: clamp(300px, 44vw, 340px);
+  --rd-hero-pad: 14px;
+  --rd-hero-navbtn: 40px;
+  --rd-author-overlap: 20px;
+  --rd-author-avatar: 46px;
+  --rd-pill-h: 36px;
+  --rd-map-h: clamp(160px, 24vw, 190px);
+  --rd-map-radius: 22px;
+  --rd-chip-h: 26px;
+  --rd-chip-pad: 0 10px;
+}
+
+/* -------------------- HERO (üst görsel alan) -------------------- */
+.route-detail-backdrop .route-detail-hero,
+.route-detail-backdrop .rd-hero {
+  position: relative;
+  width: 100%;
+  height: var(--rd-hero-h) !important;
+  min-height: var(--rd-hero-h) !important;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+/* Full-bleed cover */
+.route-detail-backdrop .route-detail-hero img,
+.route-detail-backdrop .rd-hero img,
+.route-detail-backdrop .route-detail-hero video,
+.route-detail-backdrop .rd-hero video,
+.route-detail-backdrop .route-detail-hero__cover,
+.route-detail-backdrop .rd-hero-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Hero readability gradient (alt + üstte hafif) */
+.route-detail-backdrop .route-detail-hero::after,
+.route-detail-backdrop .rd-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0.06) 32%, rgba(0, 0, 0, 0.0) 55%),
+    linear-gradient(to top, rgba(0, 0, 0, 0.60), rgba(0, 0, 0, 0.06) 55%, rgba(0, 0, 0, 0.0));
+}
+
+/* Hero content block (başlık/tag/meta) — varsa */
+.route-detail-backdrop .route-detail-hero__content,
+.route-detail-backdrop .rd-hero-content {
+  position: absolute;
+  left: var(--rd-hero-pad);
+  right: var(--rd-hero-pad);
+  bottom: calc(var(--rd-hero-pad) + 10px);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+/* Tag pill */
+.route-detail-backdrop .rd-hero-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rd-ink);
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+}
+
+/* Title */
+.route-detail-backdrop .rd-hero-title {
+  font-size: clamp(22px, 5.8vw, 26px);
+  line-height: 1.12;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  text-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+/* Rating line */
+.route-detail-backdrop .rd-hero-ratingline,
+.route-detail-backdrop .rd-hero-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 10px 26px rgba(0, 0, 0, 0.30);
+}
+
+/* -------------------- HERO NAV (üst ikonlar) -------------------- */
+.route-detail-backdrop .route-detail-hero__nav {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 3;
+  pointer-events: none; /* butonlar kendi pointer-events ile açılır */
+}
+
+/* Nav butonları: cam/blur, min 40px hit-area */
+.route-detail-backdrop .route-detail-hero__nav button,
+.route-detail-backdrop .route-detail-hero__nav .rd-hero-theme-toggle,
+.route-detail-backdrop .route-detail-hero__nav .rd-hero-navbtn,
+.route-detail-backdrop .route-detail-hero__nav .rd-hero-navBtn,
+.route-detail-backdrop .route-detail-hero__nav .rd-hero-btn {
+  pointer-events: auto;
+  width: var(--rd-hero-navbtn);
+  height: var(--rd-hero-navbtn);
+  min-width: var(--rd-hero-navbtn);
+  min-height: var(--rd-hero-navbtn);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(18, 18, 22, 0.44);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-backdrop.route-detail-light .route-detail-hero__nav button,
+.route-detail-backdrop[data-theme="light"] .route-detail-hero__nav button,
+.route-detail-backdrop.route-detail-light .route-detail-hero__nav .rd-hero-theme-toggle,
+.route-detail-backdrop[data-theme="light"] .route-detail-hero__nav .rd-hero-theme-toggle {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(15, 23, 42, 0.14);
+  color: rgba(2, 6, 23, 0.92);
+  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.12);
+}
+
+/* -------------------- AUTHOR HUB (Hero’dan taşan cam pill) -------------------- */
+.route-detail-backdrop .rd-author-hub {
+  position: relative;
+  z-index: 10;
+  margin: calc(-1 * var(--rd-author-overlap)) 14px 10px !important;
+  padding: 12px 12px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Avatar */
+.route-detail-backdrop .rd-author-hub .rd-author-avatar,
+.route-detail-backdrop .rd-author-hub img {
+  width: var(--rd-author-avatar);
+  height: var(--rd-author-avatar);
+  border-radius: 999px;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+/* Name + sub */
+.route-detail-backdrop .rd-author-name,
+.route-detail-backdrop .rd-author-hub .rd-author-name {
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1.15;
+  color: var(--rd-ink);
+}
+
+.route-detail-backdrop .rd-author-sub {
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--rd-muted);
+}
+
+/* Sağdaki tek yıldız butonu: min 40px */
+.route-detail-backdrop .rd-author-hub .rd-author-fav,
+.route-detail-backdrop .rd-author-hub .rd-author-favBtn,
+.route-detail-backdrop .rd-author-hub .rd-author-fav__btn,
+.route-detail-backdrop .rd-author-hub .rd-author-action,
+.route-detail-backdrop .rd-author-hub button.rd-author-fav {
+  margin-left: auto;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border-strong);
+  background: var(--rd-glass2);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.20);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-backdrop .rd-author-hub .rd-author-fav:focus-visible,
+.route-detail-backdrop .rd-author-hub .rd-author-favBtn:focus-visible,
+.route-detail-backdrop .rd-author-hub .rd-author-fav__btn:focus-visible {
+  outline: 2px solid var(--rd-accent-border);
+  outline-offset: 2px;
+}
+
+/* -------------------- Tabs Pills + Açıklama -------------------- */
+.route-detail-backdrop .rd-pills-block {
+  margin: 0 14px 8px !important;
+  padding: 10px 10px;
+  border-radius: 18px;
+}
+
+.route-detail-backdrop .rd-pills-block .rd-pills-row,
+.route-detail-backdrop .rd-pills-block .rd-pills,
+.route-detail-backdrop .rd-pills-block nav,
+.route-detail-backdrop .rd-pills-block .rd-pills-inner {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 4 pill sığsın: flex:1 */
+.route-detail-backdrop .rd-pills-block button {
+  height: var(--rd-pill-h);
+  line-height: var(--rd-pill-h);
+  border-radius: 999px;
+  padding: 0 10px;
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  border: 1px solid var(--rd-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--rd-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-backdrop.route-detail-light .rd-pills-block button,
+.route-detail-backdrop[data-theme="light"] .rd-pills-block button {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+/* Aktif pill (aria-selected/current veya .active/.is-active) — background ekle */
+.route-detail-backdrop .rd-pills-block button[aria-selected="true"],
+.route-detail-backdrop .rd-pills-block button[aria-current="true"],
+.route-detail-backdrop .rd-pills-block .is-active,
+.route-detail-backdrop .rd-pills-block .active {
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.18), rgba(34, 211, 238, 0.06));
+}
+
+/* Açıklama metni */
+.route-detail-backdrop .rd-route-desc {
+  margin: 8px 14px 12px !important;
+  font-size: 13px;
+  line-height: 1.42;
+  color: var(--rd-muted);
+}
+
+/* -------------------- Map Card chrome -------------------- */
+.route-detail-backdrop .rd-map-card {
+  position: relative;
+  margin: 10px 14px 0 !important;
+  border-radius: var(--rd-map-radius);
+  overflow: hidden;
+}
+
+/* Map canvas alanı */
+.route-detail-backdrop .rd-map-card .route-detail-map,
+.route-detail-backdrop .rd-map-card .rd-map,
+.route-detail-backdrop .rd-map-card .rdmps,
+.route-detail-backdrop .rd-map-card .rdmps-shell,
+.route-detail-backdrop .rd-map-card .rdmps-root {
+  height: var(--rd-map-h) !important;
+  min-height: var(--rd-map-h) !important;
+}
+
+/* Shell iç map div: radius parent ile parite */
+.route-detail-backdrop .rd-map-card .rdmps-map {
+  border-radius: inherit !important; /* inline 14px’i override */
+}
+
+/* Badge row (sol üst) */
+.route-detail-backdrop .rd-map-card .rd-map-badges,
+.route-detail-backdrop .rd-map-card .rd-map-badgeRow,
+.route-detail-backdrop .rd-map-card .rd-map-chips {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 6;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+
+.route-detail-backdrop .rd-map-card .rd-map-badge,
+.route-detail-backdrop .rd-map-card .rd-map-chip,
+.route-detail-backdrop .rd-map-card .rd-map-pill {
+  height: var(--rd-chip-h);
+  padding: var(--rd-chip-pad);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rd-ink);
+  background: rgba(18, 18, 22, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.20);
+  pointer-events: none;
+}
+
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-badge,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-badge,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-chip,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-chip,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-pill,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-pill {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow: 0 14px 26px rgba(2, 6, 23, 0.10);
+}
+
+/* Sağ alt lokasyon pill (BODRUM / MUĞLA) */
+.route-detail-backdrop .rd-map-card .rd-map-loc,
+.route-detail-backdrop .rd-map-card .rd-map-label,
+.route-detail-backdrop .rd-map-card .rd-map-region,
+.route-detail-backdrop .rd-map-card .rd-map-locPill {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 6;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--rd-ink);
+  background: rgba(18, 18, 22, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.20);
+  pointer-events: none;
+}
+
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-loc,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-loc,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-label,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-label,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-region,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-region,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-locPill,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-locPill {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow: 0 14px 26px rgba(2, 6, 23, 0.10);
 }
 
 /* Glass sheet surface */
@@ -86,6 +502,16 @@
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
+}
+
+/* =========================================================
+   EMİR 11.1 — Theme-aware overlay (LIGHT) — Share overlay
+   Light: rgba(2, 6, 23, 0.22 ~ 0.28)
+   Dark: mevcut rgba(0,0,0,0.45) aynen
+   ========================================================= */
+.route-detail-backdrop.route-detail-light .rdglass-overlay,
+.route-detail-backdrop[data-theme="light"] .rdglass-overlay {
+  background: rgba(2, 6, 23, 0.24);
 }
 
 .route-detail-backdrop .rdglass-overlay__inner {
@@ -132,6 +558,24 @@
   -webkit-backdrop-filter: blur(var(--rd-blur));
 }
 
+/* =========================================================
+   EMİR 10 — Light’ta da “premium vitreous” cam yüzey (layout-safe)
+   ========================================================= */
+.route-detail-backdrop.route-detail-light .rd-author-hub,
+.route-detail-backdrop[data-theme="light"] .rd-author-hub,
+.route-detail-backdrop.route-detail-light .rd-pills-block,
+.route-detail-backdrop[data-theme="light"] .rd-pills-block,
+.route-detail-backdrop.route-detail-light .rd-map-card,
+.route-detail-backdrop[data-theme="light"] .rd-map-card,
+.route-detail-backdrop.route-detail-light .route-detail-map,
+.route-detail-backdrop[data-theme="light"] .route-detail-map {
+  background: var(--rd-glass2);
+  border: 1px solid var(--rd-border);
+  box-shadow: var(--rd-shadow-soft);
+  backdrop-filter: blur(var(--rd-blur));
+  -webkit-backdrop-filter: blur(var(--rd-blur));
+}
+
 /* Hero iç metin netlik (DARK only) */
 .route-detail-backdrop.route-detail-dark .rd-hero-title,
 .route-detail-backdrop[data-theme="dark"] .rd-hero-title {
@@ -146,6 +590,25 @@
 .route-detail-backdrop[data-theme="dark"] .rd-route-desc,
 .route-detail-backdrop.route-detail-dark .rd-hero-tag,
 .route-detail-backdrop[data-theme="dark"] .rd-hero-tag {
+  color: var(--rd-muted);
+}
+
+/* =========================================================
+   EMİR 10.3 — Hero iç metin netlik (LIGHT only, CSS-only)
+   ========================================================= */
+.route-detail-backdrop.route-detail-light .rd-hero-title,
+.route-detail-backdrop[data-theme="light"] .rd-hero-title {
+  color: var(--rd-ink);
+}
+
+.route-detail-backdrop.route-detail-light .rd-hero-meta,
+.route-detail-backdrop[data-theme="light"] .rd-hero-meta,
+.route-detail-backdrop.route-detail-light .rd-author-sub,
+.route-detail-backdrop[data-theme="light"] .rd-author-sub,
+.route-detail-backdrop.route-detail-light .rd-route-desc,
+.route-detail-backdrop[data-theme="light"] .rd-route-desc,
+.route-detail-backdrop.route-detail-light .rd-hero-tag,
+.route-detail-backdrop[data-theme="light"] .rd-hero-tag {
   color: var(--rd-muted);
 }
 
@@ -171,11 +634,40 @@
   box-shadow: 0 0 0 1px var(--rd-accent-soft), 0 0 18px rgba(34, 211, 238, 0.10);
 }
 
+/* =========================================================
+   EMİR 10 — Pills paritesi (LIGHT)
+   ========================================================= */
+.route-detail-backdrop.route-detail-light .rd-pills-block button,
+.route-detail-backdrop[data-theme="light"] .rd-pills-block button {
+  color: var(--rd-ink);
+}
+
+.route-detail-backdrop.route-detail-light .rd-pills-block button[aria-selected="true"],
+.route-detail-backdrop[data-theme="light"] .rd-pills-block button[aria-selected="true"],
+.route-detail-backdrop.route-detail-light .rd-pills-block button[aria-current="true"],
+.route-detail-backdrop[data-theme="light"] .rd-pills-block button[aria-current="true"],
+.route-detail-backdrop.route-detail-light .rd-pills-block .is-active,
+.route-detail-backdrop[data-theme="light"] .rd-pills-block .is-active,
+.route-detail-backdrop.route-detail-light .rd-pills-block .active,
+.route-detail-backdrop[data-theme="light"] .rd-pills-block .active {
+  color: var(--rd-accent);
+  border-color: var(--rd-accent-border);
+  box-shadow: 0 0 0 1px var(--rd-accent-soft), 0 0 18px rgba(34, 211, 238, 0.10);
+}
+
 /* Küçük vurgu: yıldız/ikonlar cyan'a yaklaşsın (DARK only, davranış yok) */
 .route-detail-backdrop.route-detail-dark .rd-author-fav__icon,
 .route-detail-backdrop[data-theme="dark"] .rd-author-fav__icon,
 .route-detail-backdrop.route-detail-dark .rd-hero-ratingline__star,
 .route-detail-backdrop[data-theme="dark"] .rd-hero-ratingline__star {
+  color: var(--rd-accent);
+}
+
+/* Light parite: yıldız/ikon cyan vurgusu (layout-safe) */
+.route-detail-backdrop.route-detail-light .rd-author-fav__icon,
+.route-detail-backdrop[data-theme="light"] .rd-author-fav__icon,
+.route-detail-backdrop.route-detail-light .rd-hero-ratingline__star,
+.route-detail-backdrop[data-theme="light"] .rd-hero-ratingline__star {
   color: var(--rd-accent);
 }
 
@@ -190,6 +682,18 @@
   .route-detail-backdrop.route-detail-dark .route-detail-map,
   .route-detail-backdrop[data-theme="dark"] .route-detail-map {
     background: rgba(18, 18, 22, 0.88);
+  }
+
+  /* EMİR 10.5 — Light fallback: blur yoksa da premium kalsın */
+  .route-detail-backdrop.route-detail-light .rd-author-hub,
+  .route-detail-backdrop[data-theme="light"] .rd-author-hub,
+  .route-detail-backdrop.route-detail-light .rd-pills-block,
+  .route-detail-backdrop[data-theme="light"] .rd-pills-block,
+  .route-detail-backdrop.route-detail-light .rd-map-card,
+  .route-detail-backdrop[data-theme="light"] .rd-map-card,
+  .route-detail-backdrop.route-detail-light .route-detail-map,
+  .route-detail-backdrop[data-theme="light"] .route-detail-map {
+    background: rgba(255, 255, 255, 0.92);
   }
 }
 
@@ -206,6 +710,20 @@
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: rgba(18, 18, 22, 0.90);
+  }
+
+  /* EMİR 10.5 — Light reduced transparency */
+  .route-detail-backdrop.route-detail-light .rd-author-hub,
+  .route-detail-backdrop[data-theme="light"] .rd-author-hub,
+  .route-detail-backdrop.route-detail-light .rd-pills-block,
+  .route-detail-backdrop[data-theme="light"] .rd-pills-block,
+  .route-detail-backdrop.route-detail-light .rd-map-card,
+  .route-detail-backdrop[data-theme="light"] .rd-map-card,
+  .route-detail-backdrop.route-detail-light .route-detail-map,
+  .route-detail-backdrop[data-theme="light"] .route-detail-map {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.94);
   }
 }
 
@@ -357,6 +875,15 @@
   overflow-x: auto;
   padding: 2px 0;
   -webkit-overflow-scrolling: touch;
+
+  /* EMİR 9.2 — pırıl pırıl: scrollbar gizle, scroll kalsın */
+  scrollbar-width: none; /* Firefox */
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-media::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* WebKit */
 }
 
 .route-detail-backdrop .rdtab--stops .rd-stop-mediaItem {
@@ -370,6 +897,19 @@
   background: rgba(0, 0, 0, 0.10);
   border: 1px solid var(--rd-border, rgba(255, 255, 255, 0.12));
   box-shadow: 0 10px 18px rgba(0, 0, 0, 0.18);
+
+  /* EMİR 9.1 — button normalize (layout-safe) */
+  padding: 0;
+  margin: 0;
+  display: block;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem:focus-visible {
+  outline: 2px solid var(--rd-accent-border, rgba(34, 211, 238, 0.38));
+  outline-offset: 2px;
 }
 
 .route-detail-backdrop .rdtab--stops .rd-stop-mediaItem img,
@@ -378,6 +918,12 @@
   height: 100%;
   object-fit: cover;
   display: block;
+
+  /* EMİR 9.2 — click yutma / ghost click fix */
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
 }
 
 .route-detail-backdrop .rdtab--stops .rd-stop-mediaItem__videoBadge {
@@ -514,6 +1060,22 @@
   animation: rdGalleryShimmer 1.15s ease-in-out infinite;
 }
 
+/* =========================================================
+   EMİR 11.2 — Skeleton shimmer (LIGHT) netleştirme
+   Dark skeleton: aynen
+   Light: slate/ink alpha (0.04 -> 0.08) görünür shimmer
+   ========================================================= */
+.route-detail-backdrop.route-detail-light .rdtab--gallery .rd-gallerySkeleton,
+.route-detail-backdrop[data-theme="light"] .rdtab--gallery .rd-gallerySkeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(15, 23, 42, 0.04),
+    rgba(15, 23, 42, 0.08),
+    rgba(15, 23, 42, 0.04)
+  );
+  background-size: 200% 100%;
+}
+
 @keyframes rdGalleryShimmer {
   0% {
     background-position: 0% 0%;
@@ -562,6 +1124,16 @@
   touch-action: manipulation; /* drag/scroll'u bozmaz, "ghost click" riskini azaltır */
 }
 
+/* =========================================================
+   EMİR 11.1 — Theme-aware overlay (LIGHT) — Comments overlay
+   Light: rgba(2, 6, 23, 0.22 ~ 0.28)
+   Dark: mevcut rgba(0,0,0,0.45) aynen
+   ========================================================= */
+.route-detail-backdrop.route-detail-light .route-detail-overlay-stop,
+.route-detail-backdrop[data-theme="light"] .route-detail-overlay-stop {
+  background: rgba(2, 6, 23, 0.24);
+}
+
 /* Panel içi tıklamalar yutulmasın: overlay iç content her zaman üstte */
 .route-detail-backdrop .route-detail-overlay-stop > * {
   position: relative;
@@ -569,18 +1141,157 @@
   pointer-events: auto;
 }
 
-/* Blur destek yoksa degrade fallback */
+/* Blur destek yoksa degrade fallback (theme-aware) */
 @supports not ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
-  .route-detail-backdrop .route-detail-overlay-stop {
+  .route-detail-backdrop.route-detail-dark .route-detail-overlay-stop,
+  .route-detail-backdrop[data-theme="dark"] .route-detail-overlay-stop {
     background: rgba(0, 0, 0, 0.58);
+  }
+
+  .route-detail-backdrop.route-detail-light .route-detail-overlay-stop,
+  .route-detail-backdrop[data-theme="light"] .route-detail-overlay-stop {
+    background: rgba(2, 6, 23, 0.28);
   }
 }
 
-/* Reduced transparency: blur’u azalt/kap */
+/* Reduced transparency: blur’u azalt/kap (theme-aware) */
 @media (prefers-reduced-transparency: reduce) {
-  .route-detail-backdrop .route-detail-overlay-stop {
+  .route-detail-backdrop.route-detail-dark .route-detail-overlay-stop,
+  .route-detail-backdrop[data-theme="dark"] .route-detail-overlay-stop {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: rgba(0, 0, 0, 0.62);
+  }
+
+  .route-detail-backdrop.route-detail-light .route-detail-overlay-stop,
+  .route-detail-backdrop[data-theme="light"] .route-detail-overlay-stop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(2, 6, 23, 0.28);
+  }
+}
+
+/* =========================================================
+   EMİR 8 — RDGLASS Utility Kit (RouteDetail scope)
+   - rdglass-card / rdglass-btn / rdglass-muted / progress / empty
+   - Layout-safe: sadece renk/border/shadow/typography/hover/focus
+   ========================================================= */
+
+.route-detail-backdrop .rdglass-muted {
+  color: var(--rd-muted, #94a3b8);
+}
+
+.route-detail-backdrop .rdglass-card {
+  background: var(--rd-glass2, var(--rd-glass-2, rgba(18, 18, 22, 0.55)));
+  border: 1px solid var(--rd-border, rgba(255, 255, 255, 0.12));
+  box-shadow: var(--rd-shadow-soft, 0 18px 40px rgba(0, 0, 0, 0.35));
+  border-radius: 16px;
+  backdrop-filter: blur(var(--rd-blur, 14px));
+  -webkit-backdrop-filter: blur(var(--rd-blur, 14px));
+  transform: translateZ(0);
+}
+
+.route-detail-backdrop .rdglass-card--pad {
+  padding: 12px;
+}
+
+.route-detail-backdrop .rdglass-empty {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  min-height: 56px;
+}
+
+/* Cam buton (neutral) */
+.route-detail-backdrop .rdglass-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--rd-border-strong, rgba(255, 255, 255, 0.18));
+  background: var(--rd-glass, rgba(18, 18, 22, 0.72));
+  color: var(--rd-ink, var(--rd-text, #f4f4f5));
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 34px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.18);
+}
+
+.route-detail-backdrop .rdglass-btn:hover {
+  border-color: var(--rd-accent-border, rgba(34, 211, 238, 0.28));
+}
+
+.route-detail-backdrop .rdglass-btn:active {
+  transform: translateY(0.5px);
+}
+
+.route-detail-backdrop .rdglass-btn:focus-visible {
+  outline: 2px solid var(--rd-accent-border, rgba(34, 211, 238, 0.38));
+  outline-offset: 2px;
+}
+
+.route-detail-backdrop .rdglass-btn:disabled,
+.route-detail-backdrop .rdglass-btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Progress track (upload) */
+.route-detail-backdrop .rdglass-progress-track {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--rd-border, rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+/* =========================================================
+   EMİR 11.3 — Progress track (LIGHT) görünürlük
+   Light: rgba(15, 23, 42, 0.06 ~ 0.08)
+   Dark: mevcut background aynen
+   ========================================================= */
+.route-detail-backdrop.route-detail-light .rdglass-progress-track,
+.route-detail-backdrop[data-theme="light"] .rdglass-progress-track {
+  background: rgba(15, 23, 42, 0.07);
+}
+
+/* Motion reduce */
+@media (prefers-reduced-motion: reduce) {
+  .route-detail-backdrop .rdglass-btn:active {
+    transform: none;
+  }
+}
+
+/* Backdrop-filter yoksa: theme-aware fallback (EMİR 10.5) */
+@supports not ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
+  .route-detail-backdrop.route-detail-dark .rdglass-card,
+  .route-detail-backdrop[data-theme="dark"] .rdglass-card {
+    background: rgba(18, 18, 22, 0.88);
+  }
+  .route-detail-backdrop.route-detail-dark .rdglass-btn,
+  .route-detail-backdrop[data-theme="dark"] .rdglass-btn {
+    background: rgba(18, 18, 22, 0.88);
+  }
+
+  .route-detail-backdrop.route-detail-light .rdglass-card,
+  .route-detail-backdrop[data-theme="light"] .rdglass-card {
+    background: rgba(255, 255, 255, 0.92);
+  }
+  .route-detail-backdrop.route-detail-light .rdglass-btn,
+  .route-detail-backdrop[data-theme="light"] .rdglass-btn {
+    background: rgba(255, 255, 255, 0.92);
+  }
+}
+
+/* Reduced transparency */
+@media (prefers-reduced-transparency: reduce) {
+  .route-detail-backdrop .rdglass-card,
+  .route-detail-backdrop .rdglass-btn {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }

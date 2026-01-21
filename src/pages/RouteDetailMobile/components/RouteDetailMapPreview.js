@@ -21,6 +21,34 @@ function inRangeLatLng(lat, lng) {
   );
 }
 
+/**
+ * Ambiguous [a,b] that could be [lat,lng] OR [lng,lat]
+ * Heuristic (TR-friendly):
+ * - If abs(a) > abs(b) → assume [lat,lng]
+ * - Else → assume GeoJSON [lng,lat]
+ */
+function parseArrayLatLng(arr) {
+  try {
+    if (!Array.isArray(arr) || arr.length < 2) return null;
+    const a = toNum(arr[0]);
+    const b = toNum(arr[1]);
+    if (a == null || b == null) return null;
+
+    const candLatLng = inRangeLatLng(a, b) ? { lat: a, lng: b } : null; // [lat,lng]
+    const candLngLat = inRangeLatLng(b, a) ? { lat: b, lng: a } : null; // [lng,lat] => {lat:b,lng:a}
+
+    if (candLatLng && !candLngLat) return candLatLng;
+    if (!candLatLng && candLngLat) return candLngLat;
+    if (!candLatLng && !candLngLat) return null;
+
+    // both valid: decide
+    if (Math.abs(a) > Math.abs(b)) return candLatLng; // [lat,lng]
+    return candLngLat; // prefer GeoJSON [lng,lat]
+  } catch {
+    return null;
+  }
+}
+
 function parseCoordString(str) {
   try {
     if (!str || typeof str !== "string") return null;
@@ -35,9 +63,16 @@ function parseCoordString(str) {
     const b = toNum(parts[1]);
     if (a == null || b == null) return null;
 
-    if (inRangeLatLng(a, b)) return { lat: a, lng: b };
-    if (inRangeLatLng(b, a)) return { lat: b, lng: a };
-    return null;
+    const candLatLng = inRangeLatLng(a, b) ? { lat: a, lng: b } : null;
+    const candLngLat = inRangeLatLng(b, a) ? { lat: b, lng: a } : null;
+
+    if (candLatLng && !candLngLat) return candLatLng;
+    if (!candLatLng && candLngLat) return candLngLat;
+    if (!candLatLng && !candLngLat) return null;
+
+    // both valid: same heuristic as arrays
+    if (Math.abs(a) > Math.abs(b)) return candLatLng;
+    return candLngLat;
   } catch {
     return null;
   }
@@ -52,12 +87,7 @@ function parseLL(value, depth = 0) {
 
     // [lat,lng] / [lng,lat]
     if (Array.isArray(value) && value.length >= 2) {
-      const a = toNum(value[0]);
-      const b = toNum(value[1]);
-      if (a == null || b == null) return null;
-      if (inRangeLatLng(a, b)) return { lat: a, lng: b };
-      if (inRangeLatLng(b, a)) return { lat: b, lng: a };
-      return null;
+      return parseArrayLatLng(value);
     }
 
     // Google LatLng: lat()/lng()
@@ -77,7 +107,7 @@ function parseLL(value, depth = 0) {
       if (out) return out;
     }
 
-    // GeoPoint variants
+    // GeoPoint variants / common objects
     const la =
       toNum(value?.lat) ??
       toNum(value?.latitude) ??
@@ -104,6 +134,12 @@ function parseLL(value, depth = 0) {
 
     const strParsed = parseCoordString(s1 || s2 || s3 || s4);
     if (strParsed) return strParsed;
+
+    // array fields like GeoJSON coords: coordinates: [lng,lat] / [lat,lng]
+    if (Array.isArray(value?.coordinates)) {
+      const out = parseArrayLatLng(value.coordinates);
+      if (out) return out;
+    }
 
     return null;
   } catch {
@@ -158,6 +194,10 @@ function getLL(v) {
       v?.place?.location,
       v?.place?.geometry?.location,
       v?.geometry?.location,
+      v?.stop?.location,
+      v?.stop?.coords,
+      v?.stop?.geo,
+      v?.stop?.point,
     ].filter(Boolean);
 
     for (const c of candidates) {
@@ -165,21 +205,6 @@ function getLL(v) {
       if (out) return out;
     }
 
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * mapRef bazen React ref (mapRef.current), bazen direkt Map instance gelebiliyor.
- */
-function getMapInstance(mapRefLike) {
-  try {
-    if (!mapRefLike) return null;
-    const m = mapRefLike?.current ? mapRefLike.current : mapRefLike;
-    if (!m) return null;
-    if (typeof m.setCenter === "function" && typeof m.fitBounds === "function") return m;
     return null;
   } catch {
     return null;
@@ -244,16 +269,44 @@ function buildPathSignature(pathPts) {
   return `${valid.length}|${bbox}|${ends}|${sample}`;
 }
 
-function buildFitSignature(pathPts, stopPts) {
-  const keys = [];
+function pickFitPoints(pathPts, stopPts) {
+  const pathArr = Array.isArray(pathPts) ? pathPts : [];
+  const stopArr = Array.isArray(stopPts) ? stopPts : [];
+
+  const pathValid = pathArr
+    .map((p) => ({ lat: Number(p?.lat), lng: Number(p?.lng) }))
+    .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng) && inRangeLatLng(p.lat, p.lng));
+
+  const stopValid = stopArr
+    .map((s) => getLL(s) || (Number.isFinite(s?.lat) && Number.isFinite(s?.lng) ? { lat: s.lat, lng: s.lng } : null))
+    .filter(Boolean)
+    .map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }))
+    .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng) && inRangeLatLng(p.lat, p.lng));
+
+  // ✅ EMİR 2: Bounds kaynağı sırası
+  if (pathValid.length >= 2) return { pts: pathValid, source: "path" };
+  if (stopValid.length >= 1) return { pts: stopValid, source: "stops" };
+
+  // fallback: tek nokta varsa onu merkez yap
+  if (pathValid.length === 1) return { pts: pathValid, source: "path_one" };
+  if (stopValid.length === 1) return { pts: stopValid, source: "stops_one" };
+
+  return { pts: [], source: "none" };
+}
+
+function buildFitSignatureV2(pathPts, stopPts) {
+  const { pts, source } = pickFitPoints(pathPts, stopPts);
+  if (!pts.length) return "";
+
   let minLat = Infinity,
     minLng = Infinity,
     maxLat = -Infinity,
     maxLng = -Infinity;
 
-  const add = (ll) => {
-    const la = Number(ll?.lat);
-    const ln = Number(ll?.lng);
+  const keys = [];
+  pts.forEach((p) => {
+    const la = Number(p.lat);
+    const ln = Number(p.lng);
     if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
     const k = `${la.toFixed(5)},${ln.toFixed(5)}`;
     keys.push(k);
@@ -261,20 +314,32 @@ function buildFitSignature(pathPts, stopPts) {
     if (ln < minLng) minLng = ln;
     if (la > maxLat) maxLat = la;
     if (ln > maxLng) maxLng = ln;
-  };
-
-  (Array.isArray(pathPts) ? pathPts : []).forEach(add);
-  (Array.isArray(stopPts) ? stopPts : []).forEach(add);
+  });
 
   if (!keys.length) return "";
-
   const uniq = Array.from(new Set(keys)).sort((a, b) => a.localeCompare(b));
   const a = uniq[0] || "";
   const b = uniq[1] || "";
   const y = uniq.length >= 2 ? uniq[uniq.length - 2] : "";
   const z = uniq[uniq.length - 1] || "";
   const bbox = `${minLat.toFixed(5)},${minLng.toFixed(5)},${maxLat.toFixed(5)},${maxLng.toFixed(5)}`;
-  return `${uniq.length}|${bbox}|${a}|${b}|${y}|${z}`;
+
+  return `${source}|${uniq.length}|${bbox}|${a}|${b}|${y}|${z}`;
+}
+
+/**
+ * mapRef bazen React ref (mapRef.current), bazen direkt Map instance gelebiliyor.
+ */
+function getMapInstance(mapRefLike) {
+  try {
+    if (!mapRefLike) return null;
+    const m = mapRefLike?.current ? mapRefLike.current : mapRefLike;
+    if (!m) return null;
+    if (typeof m.setCenter === "function" && typeof m.fitBounds === "function") return m;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function getBestMapDiv(map, mapDivRef) {
@@ -314,69 +379,18 @@ export default function RouteDetailMapPreview({
   const stopMarkersRef = useRef([]);
   const lastStopsSigRef = useRef(null);
   const lastPathSigRef = useRef(null);
-  const lastFitKeyRef = useRef(null);
-  const lastMapInstanceRef = useRef(null);
-  const rafRef = useRef(0);
 
+  // ✅ EMİR 2: StrictMode / tekrar fit guard
+  const didFitKeyRef = useRef(null);
+  const lastMapInstanceRef = useRef(null);
+
+  const rafRef = useRef(0);
   const fitTimersRef = useRef([]);
   const idleListenerRef = useRef(null);
 
   const isReady = gmapsStatus === "ready" || gmapsStatus === "loaded";
 
-  // ✅ Canonical normalize (EMİR 17/18)
-  const pathNorm = useMemo(() => {
-    try {
-      if (typeof routeDetailUtils.normalizePathForPreview === "function") {
-        const out = routeDetailUtils.normalizePathForPreview(path);
-        if (Array.isArray(out)) return { pts: out, dropped: 0 };
-        if (out && Array.isArray(out.pts)) return { pts: out.pts, dropped: Number(out.dropped) || 0 };
-      }
-    } catch {}
-    // fallback
-    const list = Array.isArray(path) ? path : [];
-    const pts = [];
-    let dropped = 0;
-    for (const p of list) {
-      const ll = getLL(p);
-      if (ll) pts.push(ll);
-      else dropped += 1;
-    }
-    return { pts, dropped };
-  }, [path]);
-
-  const stopsNorm = useMemo(() => {
-    try {
-      if (typeof routeDetailUtils.normalizeStopsForPreview === "function") {
-        const out = routeDetailUtils.normalizeStopsForPreview(stops);
-        if (Array.isArray(out)) return { stops: out, dropped: 0 };
-        if (out && Array.isArray(out.stops)) return { stops: out.stops, dropped: Number(out.dropped) || 0 };
-      }
-    } catch {}
-    // fallback
-    const list = Array.isArray(stops) ? stops : [];
-    const out = [];
-    let dropped = 0;
-    for (const s of list) {
-      const ll = getLL(s);
-      if (ll) out.push({ ...(s || {}), lat: ll.lat, lng: ll.lng });
-      else {
-        dropped += 1;
-        out.push({ ...(s || {}) });
-      }
-    }
-    return { stops: out, dropped };
-  }, [stops]);
-
-  // markers/fit için stopsLoaded kontrolü (partial state world-view riskini azaltır)
-  const stopsForMap = stopsLoaded ? stopsNorm.stops : [];
-
-  const stopsSig = useMemo(() => buildStopsSignature(stopsForMap), [stopsForMap]);
-  const pathSig = useMemo(() => buildPathSignature(pathNorm.pts), [pathNorm.pts]);
-  const fitSig = useMemo(() => buildFitSignature(pathNorm.pts, stopsForMap), [pathNorm.pts, stopsForMap]);
-
-  // ✅ mapReadyTick değişince fit tekrar denensin (shell resize/ready/instance swap)
-  const fitKey = useMemo(() => `${fitSig}::${Number(mapReadyTick) || 0}`, [fitSig, mapReadyTick]);
-
+  /* -------------------- cleanup helpers -------------------- */
   const cancelRaf = () => {
     try {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -428,11 +442,72 @@ export default function RouteDetailMapPreview({
     polylineRef.current = null;
   };
 
+  // ✅ Canonical normalize (fallback safe)
+  const pathNorm = useMemo(() => {
+    try {
+      if (typeof routeDetailUtils.normalizePathForPreview === "function") {
+        const out = routeDetailUtils.normalizePathForPreview(path);
+        if (Array.isArray(out)) return { pts: out, dropped: 0 };
+        if (out && Array.isArray(out.pts)) return { pts: out.pts, dropped: Number(out.dropped) || 0 };
+      }
+    } catch {}
+
+    const list = Array.isArray(path) ? path : [];
+    const pts = [];
+    let dropped = 0;
+
+    for (const p of list) {
+      const ll = getLL(p);
+      if (ll) pts.push(ll);
+      else dropped += 1;
+    }
+    return { pts, dropped };
+  }, [path]);
+
+  const stopsNorm = useMemo(() => {
+    try {
+      if (typeof routeDetailUtils.normalizeStopsForPreview === "function") {
+        const out = routeDetailUtils.normalizeStopsForPreview(stops);
+        if (Array.isArray(out)) return { stops: out, dropped: 0 };
+        if (out && Array.isArray(out.stops)) return { stops: out.stops, dropped: Number(out.dropped) || 0 };
+      }
+    } catch {}
+
+    const list = Array.isArray(stops) ? stops : [];
+    const out = [];
+    let dropped = 0;
+
+    for (const s of list) {
+      const ll = getLL(s);
+      if (ll) out.push({ ...(s || {}), lat: ll.lat, lng: ll.lng });
+      else {
+        dropped += 1;
+        out.push({ ...(s || {}) });
+      }
+    }
+    return { stops: out, dropped };
+  }, [stops]);
+
+  // markers/fit için stopsLoaded kontrolü
+  const stopsForMap = stopsLoaded ? stopsNorm.stops : [];
+
+  const stopsSig = useMemo(() => buildStopsSignature(stopsForMap), [stopsForMap]);
+  const pathSig = useMemo(() => buildPathSignature(pathNorm.pts), [pathNorm.pts]);
+
+  // ✅ EMİR 2: fit sig priority path>=2 else stops>=1
+  const fitSig = useMemo(() => buildFitSignatureV2(pathNorm.pts, stopsForMap), [pathNorm.pts, stopsForMap]);
+  const fitKey = useMemo(() => `${fitSig}::${Number(mapReadyTick) || 0}`, [fitSig, mapReadyTick]);
+
+  const map = useMemo(() => {
+    const m = mapInstance || getMapInstance(mapRef);
+    return m || null;
+  }, [mapInstance, mapRef, mapReadyTick]);
+
   // ✅ route değişince reset
   useEffect(() => {
     lastStopsSigRef.current = null;
     lastPathSigRef.current = null;
-    lastFitKeyRef.current = null;
+    didFitKeyRef.current = null;
     lastMapInstanceRef.current = null;
     clearArtifacts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -443,19 +518,14 @@ export default function RouteDetailMapPreview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const map = useMemo(() => {
-    const m = mapInstance || getMapInstance(mapRef);
-    return m || null;
-  }, [mapInstance, mapRef, mapReadyTick]);
-
-  // ✅ Map instance değiştiyse artifacts reset (eski polyline/marker kalıntısı engeli)
+  // ✅ Map instance değiştiyse artifacts + fit guard reset
   useEffect(() => {
     if (!map) return;
     if (lastMapInstanceRef.current !== map) {
       lastMapInstanceRef.current = map;
       lastStopsSigRef.current = null;
       lastPathSigRef.current = null;
-      lastFitKeyRef.current = null;
+      didFitKeyRef.current = null;
       clearArtifacts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -472,7 +542,7 @@ export default function RouteDetailMapPreview({
 
     const pts = (Array.isArray(pathNorm.pts) ? pathNorm.pts : [])
       .map((ll) => ({ lat: Number(ll.lat), lng: Number(ll.lng) }))
-      .filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng));
+      .filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng) && inRangeLatLng(x.lat, x.lng));
 
     if (!pts.length) {
       if (polylineRef.current) {
@@ -524,7 +594,6 @@ export default function RouteDetailMapPreview({
     stopMarkersRef.current = [];
 
     const gm = window.google.maps;
-
     const arr = Array.isArray(stopsForMap) ? stopsForMap : [];
     const ordered = arr.slice().sort((a, b) => (Number(a?.order) || 0) - (Number(b?.order) || 0));
 
@@ -564,96 +633,115 @@ export default function RouteDetailMapPreview({
     });
   }, [isReady, map, stopsSig, stopsLoaded, stopsForMap]);
 
-  // ✅ Fit bounds (container-size + idle + retry) + shell mapReadyTick ile yeniden deneme
+  // ✅ EMİR 2: Fit bounds (priority + padding + zoom clamp + 0px retry + strict guard)
   useEffect(() => {
     if (!isReady) return;
     if (!(window.google && window.google.maps)) return;
     if (!map) return;
 
-    if (lastFitKeyRef.current === fitKey) return;
-    lastFitKeyRef.current = fitKey;
+    // guard (StrictMode double-init / re-render)
+    if (didFitKeyRef.current === fitKey) return;
+    didFitKeyRef.current = fitKey;
 
     const gm = window.google.maps;
 
-    // path + stops → dedupe + finite
-    const ptsRaw = []
-      .concat(Array.isArray(pathNorm.pts) ? pathNorm.pts : [])
-      .concat(Array.isArray(stopsForMap) ? stopsForMap : [])
-      .map((x) => getLL(x) || (Number.isFinite(x?.lat) && Number.isFinite(x?.lng) ? { lat: x.lat, lng: x.lng } : null))
-      .filter(Boolean)
-      .map((x) => ({ lat: Number(x.lat), lng: Number(x.lng) }))
-      .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    const { pts: fitPts } = pickFitPoints(pathNorm.pts, stopsForMap);
+    if (!Array.isArray(fitPts) || !fitPts.length) return;
 
-    if (!ptsRaw.length) return;
-
+    // dedupe (avoid NaN bounds)
     const uniqMap = new Map();
-    ptsRaw.forEach((p) => {
-      const k = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
-      if (!uniqMap.has(k)) uniqMap.set(k, p);
+    fitPts.forEach((p) => {
+      const la = Number(p?.lat);
+      const ln = Number(p?.lng);
+      if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
+      if (!inRangeLatLng(la, ln)) return;
+      const k = `${la.toFixed(6)},${ln.toFixed(6)}`;
+      if (!uniqMap.has(k)) uniqMap.set(k, { lat: la, lng: ln });
     });
     const pts = Array.from(uniqMap.values());
+    if (!pts.length) return;
 
-    const padding = { top: 24, bottom: 24, left: 24, right: 24 };
+    // padding: 42–56 bandı
+    const paddingPx = 52;
+    const padding = { top: paddingPx, bottom: paddingPx, left: paddingPx, right: paddingPx };
 
+    // cleanup previous scheduled stuff
     clearFitTimers();
     clearIdleListener();
     cancelRaf();
 
-    const doApply = (attempt) => {
+    const clampZoomOnIdleOnce = () => {
       try {
-        // container ölçüsü 0 ise fitBounds boşa gider → retry
+        if (window.google?.maps?.event?.addListenerOnce) {
+          idleListenerRef.current = window.google.maps.event.addListenerOnce(map, "idle", () => {
+            try {
+              const z = typeof map.getZoom === "function" ? map.getZoom() : null;
+              if (typeof z === "number" && Number.isFinite(z) && z > 17) {
+                map.setZoom(17);
+              }
+            } catch {}
+          });
+        }
+      } catch {}
+    };
+
+    const applyFit = (attempt) => {
+      try {
         const div = getBestMapDiv(map, mapDivRef);
+
+        // container 0px → retry (max 6)
         if (!divHasSize(div)) {
           if (attempt < 6) {
-            const t = setTimeout(() => doApply(attempt + 1), 80 + attempt * 120);
+            const t = setTimeout(() => applyFit(attempt + 1), 70 + attempt * 110);
             fitTimersRef.current.push(t);
           }
           return;
         }
 
         if (pts.length === 1) {
+          // default center: mümkünse ilk valid nokta
           map.setCenter(pts[0]);
           map.setZoom(15);
-        } else {
-          const bounds = new gm.LatLngBounds();
-          pts.forEach((p) => bounds.extend(p));
-          map.fitBounds(bounds, padding);
+          clampZoomOnIdleOnce();
+          return;
         }
 
-        // “idle” sonrası bir kez daha uygula (bazı cihazlarda ilk fit yutuluyor)
+        const bounds = new gm.LatLngBounds();
+        pts.forEach((p) => bounds.extend(p));
+
+        // bounds boşsa fit çağırma
         try {
-          if (window.google?.maps?.event?.addListenerOnce) {
-            idleListenerRef.current = window.google.maps.event.addListenerOnce(map, "idle", () => {
-              try {
-                if (pts.length === 1) {
-                  map.setCenter(pts[0]);
-                  map.setZoom(15);
-                } else {
-                  const bounds2 = new gm.LatLngBounds();
-                  pts.forEach((p) => bounds2.extend(p));
-                  map.fitBounds(bounds2, padding);
-                }
-              } catch {}
-            });
-          }
+          if (typeof bounds.isEmpty === "function" && bounds.isEmpty()) return;
         } catch {}
 
-        // minimal backoff retries
-        if (attempt < 2) {
-          const delays = [140, 420];
-          const t = setTimeout(() => doApply(attempt + 1), delays[attempt] || 240);
+        map.fitBounds(bounds, padding);
+
+        // idle'da zoom clamp
+        clampZoomOnIdleOnce();
+
+        // swallow ihtimali için 1 ekstra backoff denemesi (hafif)
+        if (attempt === 0) {
+          const t = setTimeout(() => applyFit(1), 180);
           fitTimersRef.current.push(t);
         }
       } catch {}
     };
 
+    // 1–2 frame gecikme (first render 0px riskini kırar)
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = 0;
-      doApply(0);
+      applyFit(0);
     });
 
+    return () => {
+      // local cleanup (unmount / key change)
+      cancelRaf();
+      clearFitTimers();
+      clearIdleListener();
+    };
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, map, fitKey, pathNorm.pts, stopsForMap, mapDivRef]);
+  }, [isReady, map, fitKey]);
 
   return null;
 }

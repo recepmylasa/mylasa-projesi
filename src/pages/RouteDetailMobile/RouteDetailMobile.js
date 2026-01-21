@@ -404,6 +404,48 @@ export default function RouteDetailMobile({
     bumpMediaTick,
   });
 
+  // =========================
+  // ✅ EMİR 1 — Viewer/Edit ayrımı (mode)
+  // - Varsayılan: view
+  // - Edit’e geçiş: sadece owner + “Düzenle” aksiyonu
+  // - Viewer’da edit blokları render edilmez
+  // =========================
+  const [mode, setMode] = useState("view"); // "view" | "edit"
+
+  const isEditMode = useMemo(() => {
+    // Owner değilse edit’e asla izin verme
+    return !!isOwner && mode === "edit";
+  }, [isOwner, mode]);
+
+  const enterEdit = useCallback(() => {
+    if (!isOwner) return;
+    setMode("edit");
+  }, [isOwner]);
+
+  const exitEdit = useCallback(() => {
+    setMode("view");
+  }, []);
+
+  // route değişince/yeniden açılınca viewer’a dön
+  useEffect(() => {
+    setMode("view");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId]);
+
+  // Owner değilken edit state’te kalmasın
+  useEffect(() => {
+    if (!isOwner && mode !== "view") setMode("view");
+  }, [isOwner, mode]);
+
+  // Viewer’a dönünce edit overlay açık kalmasın
+  useEffect(() => {
+    if (mode !== "view") return;
+    if (!coverPickerOpen) return;
+    try {
+      closeCoverPicker();
+    } catch {}
+  }, [mode, coverPickerOpen, closeCoverPicker]);
+
   // ✅ Map retry
   const [mapsRetryTick, setMapsRetryTick] = useState(0);
   const retryMap = useCallback(() => setMapsRetryTick((x) => x + 1), []);
@@ -455,11 +497,16 @@ export default function RouteDetailMobile({
         closeCoverPicker();
         return;
       }
+      // edit moddayken ESC: önce viewer’a dön
+      if (isEditMode) {
+        exitEdit();
+        return;
+      }
       onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose, lightboxItems, coverPickerOpen, closeCoverPicker]);
+  }, [onClose, lightboxItems, coverPickerOpen, closeCoverPicker, isEditMode, exitEdit]);
 
   // ✅ header computed
   const ratingAvgLabel = useMemo(() => getRouteRatingLabelSafe(routeModel), [routeModel]);
@@ -703,7 +750,8 @@ export default function RouteDetailMobile({
 
   // ✅ HOTFIX — görünmez overlay click yutmasın:
   // Kapalı overlay'ler DOM'da KALMAYACAK.
-  const showCoverPickerOverlay = !!coverPickerOpen;
+  // ✅ EMİR 1 — Cover picker sadece edit modda mount edilsin.
+  const showCoverPickerOverlay = !!(isEditMode && coverPickerOpen);
   const showCommentsOverlay = tab === "comments";
 
   // =========================
@@ -840,7 +888,7 @@ export default function RouteDetailMobile({
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
-        {/* ✅ EMIR 3 — FLASH UI PARİTESİ: HERO (büyük) + Author Hub (overlap) */}
+        {/* ✅ EMİR 3 (V3) — HERO (başlık üstte) + Author Hub (HERO altında, overlap) */}
         <div
           className="route-detail-hero"
           onClick={() => {
@@ -910,6 +958,35 @@ export default function RouteDetailMobile({
 
             {heroMenuOpen && (
               <div className="rd-hero-menu" onClick={(e) => e.stopPropagation()}>
+                {/* ✅ EMİR 1 — Owner için “Düzenle” aksiyonu */}
+                {!!isOwner && !isEditMode && (
+                  <button
+                    type="button"
+                    className="rd-hero-menu__item"
+                    onClick={() => {
+                      enterEdit();
+                      closeHeroMenu();
+                    }}
+                  >
+                    <span>Düzenle</span>
+                    <span className="rd-hero-menu__hint">Edit</span>
+                  </button>
+                )}
+
+                {!!isOwner && isEditMode && (
+                  <button
+                    type="button"
+                    className="rd-hero-menu__item"
+                    onClick={() => {
+                      exitEdit();
+                      closeHeroMenu();
+                    }}
+                  >
+                    <span>Düzenlemeyi bitir</span>
+                    <span className="rd-hero-menu__hint">View</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   className="rd-hero-menu__item"
@@ -974,37 +1051,34 @@ export default function RouteDetailMobile({
             </div>
             {metaLine ? <div className="rd-hero-meta">{metaLine}</div> : null}
           </div>
+        </div>
 
-          {/* ✅ EMIR 3 — Author hub: hero’dan taşar + sağda TEK YILDIZ butonu (kalp yok) */}
-          <div className="rd-author-hub" onClick={(e) => e.stopPropagation()}>
-            <div className="rd-author-avatar" aria-label="Yazar">
-              {ownerAvatarUrl ? (
-                <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" />
-              ) : (
-                ownerName?.[0] || "Y"
-              )}
-            </div>
-
-            <div className="rd-author-mid">
-              <div className="rd-author-name" title={ownerName}>
-                {ownerName}
-              </div>
-              <div className="rd-author-sub">{timeAgoText || ""}</div>
-            </div>
-
-            <button
-              type="button"
-              className="rd-author-fav"
-              onClick={onHeroStarClick}
-              aria-label="Yıldız ver"
-              title={canRateRoute ? "Yıldız ver" : "Puanlamak için giriş yap / sahibi değilsen puanlayabilirsin"}
-              disabled={!canRateRoute}
-            >
-              <span className="rd-author-fav__icon" aria-hidden="true">
-                ★
-              </span>
-            </button>
+        {/* ✅ EMİR 3 (V3) — Author hub artık HERO NAV içinde DEĞİL.
+            HERO’nun hemen altında, sheet üstünde, hero’ya overlap ederek durur. */}
+        <div className="rd-author-hub" onClick={(e) => e.stopPropagation()}>
+          <div className="rd-author-avatar" aria-label="Yazar">
+            {ownerAvatarUrl ? <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" /> : ownerName?.[0] || "Y"}
           </div>
+
+          <div className="rd-author-mid">
+            <div className="rd-author-name" title={ownerName}>
+              {ownerName}
+            </div>
+            <div className="rd-author-sub">{timeAgoText || ""}</div>
+          </div>
+
+          <button
+            type="button"
+            className="rd-author-fav"
+            onClick={onHeroStarClick}
+            aria-label="Yıldız ver"
+            title={canRateRoute ? "Yıldız ver" : "Puanlamak için giriş yap / sahibi değilsen puanlayabilirsin"}
+            disabled={!canRateRoute}
+          >
+            <span className="rd-author-fav__icon" aria-hidden="true">
+              ★
+            </span>
+          </button>
         </div>
 
         <div className="route-detail-body" ref={routeBodyRef}>
@@ -1042,28 +1116,31 @@ export default function RouteDetailMobile({
 
           {questUi}
 
-          <RouteDetailCoverRow
-            coverResolved={coverResolved}
-            coverIsPlaceholder={coverIsPlaceholder}
-            isOwner={isOwner}
-            coverPickBtnLabel={coverPickBtnLabel}
-            coverStatusText={coverStatusText}
-            coverUpload={coverUpload}
-            coverKindUi={coverKindUi}
-            onOpenPicker={openCoverPicker}
-            // ✅ EMİR 4 — “Kapağı kaldır” gerçekten kaldırsın (owner değilse no-op)
-            onClearCover={(e) => {
-              e?.stopPropagation?.();
-              if (!isOwner) return;
-              try {
-                clearCover();
-              } catch {}
-            }}
-            onImgLoad={(e) => handleImgLoadProof(e, { scope: "cover_thumb" })}
-            onImgError={(e) => handleImgErrorToDefault(e, { scope: "cover_thumb" })}
-          />
+          {/* ✅ EMİR 1 — Edit blokları: CoverRow sadece edit modda */}
+          {isEditMode && (
+            <RouteDetailCoverRow
+              coverResolved={coverResolved}
+              coverIsPlaceholder={coverIsPlaceholder}
+              isOwner={true}
+              coverPickBtnLabel={coverPickBtnLabel}
+              coverStatusText={coverStatusText}
+              coverUpload={coverUpload}
+              coverKindUi={coverKindUi}
+              onOpenPicker={openCoverPicker}
+              // ✅ EMİR 4 — “Kapağı kaldır” gerçekten kaldırsın (owner değilse no-op)
+              onClearCover={(e) => {
+                e?.stopPropagation?.();
+                if (!isOwner) return;
+                try {
+                  clearCover();
+                } catch {}
+              }}
+              onImgLoad={(e) => handleImgLoadProof(e, { scope: "cover_thumb" })}
+              onImgError={(e) => handleImgErrorToDefault(e, { scope: "cover_thumb" })}
+            />
+          )}
 
-          {/* ✅ EMIR 3 — Hero yıldızı buraya kaydırır */}
+          {/* ✅ Puanlama: viewer’da çalışmaya devam eder (owner zaten puanlayamaz) */}
           <div ref={rateRowAnchorRef}>
             <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />
           </div>
@@ -1073,7 +1150,8 @@ export default function RouteDetailMobile({
               <RouteDetailStopsTab
                 stops={stops}
                 stopAgg={stopAgg}
-                isOwner={isOwner}
+                // ✅ EMİR 1 — Viewer’da owner bile olsa edit yok: isOwner sadece edit modda true
+                isOwner={!!isEditMode}
                 uploadState={uploadState}
                 mediaCacheRef={mediaCacheRef}
                 ensureStopThumbs={ensureStopThumbs}
@@ -1120,11 +1198,21 @@ export default function RouteDetailMobile({
           </div>
         </div>
 
-        <div className="route-detail-footer">
-          <button type="button" className="route-detail-close-btn" onClick={onClose}>
-            Kapat
-          </button>
-        </div>
+        {/* ✅ EMİR 1 — Viewer’da alttaki “Kapat” CTA yok.
+            Edit modda “Düzenlemeyi bitir” olarak viewer’a döndür. */}
+        {isEditMode && (
+          <div className="route-detail-footer">
+            <button
+              type="button"
+              className="route-detail-close-btn"
+              onClick={() => {
+                exitEdit();
+              }}
+            >
+              Düzenlemeyi bitir
+            </button>
+          </div>
+        )}
       </div>
 
       {showShareSheet && (
@@ -1149,7 +1237,7 @@ export default function RouteDetailMobile({
         </div>
       )}
 
-      {/* ✅ HOTFIX: Kapalıyken DOM'da kalma YASAK → sadece açıkken mount */}
+      {/* ✅ EMİR 1: Cover picker overlay sadece edit modda mount */}
       {showCoverPickerOverlay && (
         <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
           <RouteDetailCoverPickerOverlayMobile

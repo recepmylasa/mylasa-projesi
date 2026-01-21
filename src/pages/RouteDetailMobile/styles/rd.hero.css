@@ -1,22 +1,22 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.hero.css */
-/* EMIR 1 — Flash UI “Hero Cover” + Üst Navigasyon + Başlık/Rating + Yazar Hub (Cam Pill) */
-/* ✅ EMİR 3 (V2) — Hero gerçekten büyük + Author hub dışarı taşar */
+/* EMIR 1 — Flash UI “Hero Cover” + Üst Navigasyon + Başlık/Rating + Yazar Hub (Cam Card) */
+/* ✅ EMİR 3 (V3) — Başlık yukarı + Author hub HERO altında (DOM dışı) overlap */
 
 .route-detail-hero {
   position: relative;
   width: 100%;
 
-  /* ✅ EMİR 3: Flash hissi → 52–62vh bandı */
+  /* ✅ Flash hissi → 52–62vh bandı */
   height: clamp(300px, 56vh, 540px);
 
-  /* ✅ EMİR 3: Author hub taşacağı için hero clipping KAPALI */
+  /* ✅ Overlap için clipping KAPALI */
   overflow: visible;
 
   border-bottom: 1px solid var(--rd-border);
   transform: translateZ(0);
 
-  /* ✅ Author hub overlap payı */
-  margin-bottom: 28px;
+  /* V3: author hub artık sibling → hero kendi altında ekstra boşluk taşımaz */
+  margin-bottom: 0;
 }
 
 /* iOS/modern tarayıcılarda dinamik viewport ile daha stabil */
@@ -59,7 +59,7 @@
   transform: scale(1.04);
 }
 
-/* yazı kontrastı biraz daha güçlü (dark) */
+/* ✅ V3: Başlık yukarı taşındı → üstte de okunurluk için shade */
 .route-detail-hero__gradient {
   position: absolute;
   inset: 0;
@@ -67,19 +67,23 @@
   pointer-events: none;
   background: linear-gradient(
     180deg,
-    rgba(0, 0, 0, 0.06) 0%,
-    rgba(0, 0, 0, 0.56) 62%,
+    rgba(0, 0, 0, 0.72) 0%,
+    rgba(0, 0, 0, 0.38) 18%,
+    rgba(0, 0, 0, 0.10) 40%,
+    rgba(0, 0, 0, 0.56) 72%,
     rgba(0, 0, 0, 0.86) 100%
   );
 }
 
-/* Light theme: alt kısım aydınlık, siyah metin okunur */
+/* Light theme: üstte aydınlık band + altta aydınlık */
 .route-detail-backdrop[data-theme="light"] .route-detail-hero__gradient,
 .route-detail-backdrop.route-detail-light .route-detail-hero__gradient {
   background: linear-gradient(
     180deg,
-    rgba(248, 250, 252, 0.06) 0%,
-    rgba(248, 250, 252, 0.72) 62%,
+    rgba(248, 250, 252, 0.92) 0%,
+    rgba(248, 250, 252, 0.66) 22%,
+    rgba(248, 250, 252, 0.10) 44%,
+    rgba(248, 250, 252, 0.78) 72%,
     rgba(248, 250, 252, 0.96) 100%
   );
 }
@@ -191,11 +195,16 @@
   color: var(--rd-muted);
 }
 
+/* ✅ V3: hero content artık TOP-LEFT */
 .route-detail-hero__content {
   position: absolute;
   left: 14px;
   right: 14px;
-  bottom: 22px;
+
+  /* nav + safe top padding */
+  top: calc(12px + env(safe-area-inset-top) + 46px);
+  bottom: auto;
+
   z-index: 3;
   display: flex;
   flex-direction: column;
@@ -257,23 +266,28 @@
   font-weight: 700;
   font-size: 12px;
   pointer-events: none;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-/* Author hub (glass pill) */
+/* ✅ V3 — Author hub: HERO dışına alındı (DOM), hero altına overlap eden CAM KART */
 .rd-author-hub {
-  position: absolute;
-  left: 14px;
-  right: 14px;
+  position: relative;
+  z-index: 7;
 
-  /* ✅ taşma (overlap) */
-  bottom: -18px;
+  /* HERO alt kenarına overlap */
+  margin: -22px 14px 10px 14px;
 
-  z-index: 5;
   display: flex;
   align-items: center;
   gap: 12px;
+
   padding: 12px 12px;
-  border-radius: 999px;
+  border-radius: 18px;
+
   border: 1px solid var(--rd-border);
   background: var(--rd-glass);
   backdrop-filter: blur(18px) saturate(160%);
@@ -331,18 +345,23 @@
   text-overflow: ellipsis;
 }
 
+/* ✅ V3: Favori butonu “rounded square/soft” (yuvarlak değil) */
 .rd-author-fav {
   height: 36px;
-  width: 44px;
-  border-radius: 999px;
+  width: 42px;
+  border-radius: 14px;
+
   border: 1px solid var(--rd-border);
   background: var(--rd-glass-2);
   color: var(--rd-text);
+
   backdrop-filter: blur(14px) saturate(150%);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
+
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
