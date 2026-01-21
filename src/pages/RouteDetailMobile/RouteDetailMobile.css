@@ -2,10 +2,16 @@
 
 /* Aggregator (parçalanmış) — RouteDetailMobile stilleri */
 @import "./styles/rd.foundation.css";
-@import "./styles/rd.hero.css";
 @import "./styles/rd.pills.css";
 @import "./styles/rd.map.css";
 @import "./styles/rd.overlays.css";
 @import "./styles/rd.quest-media.css";
 @import "./styles/rd.theme.dark.css";
 @import "./styles/rd.theme.light.css";
+
+/*
+  ✅ EMİR 3 (REVİZE)
+  rd.hero.css yüklenmeme/override bug’ını kesin kapatmak için:
+  - rd.hero.css artık RouteDetailMobile.js içinde import ediliyor (JS import → garanti, yükleme sırası net).
+  - Bu dosyada @import yok (çift yükleme/çakışma olmasın).
+*/

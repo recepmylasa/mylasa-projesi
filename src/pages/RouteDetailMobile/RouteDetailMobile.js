@@ -4,6 +4,9 @@ import { createPortal } from "react-dom";
 import "./RouteDetailMobile.css";
 import "./RouteDetailMobileVitreous.css";
 
+// ✅ EMİR 3 (REVİZE): hero/yazar stillerinin kesin yüklendiğini + sırasının en sonda olduğunu garanti et
+import "./styles/rd.hero.css";
+
 import { auth } from "../../firebase";
 
 import CommentsPanel from "../../components/CommentsPanel/CommentsPanel";
@@ -76,12 +79,8 @@ export default function RouteDetailMobile({
   // ✅ EMİR 18-6 — RouteDetail scoped overlay portal root (theme token inherit)
   const overlayRootRef = useRef(null);
 
-  // ✅ EMİR 3 — Hero’daki tek yıldız butonu: Rating alanına kaydır (safe)
-  const rateRowAnchorRef = useRef(null);
-
   // =========================
   // ✅ EMİR 4 — Dark/Light Toggle (RouteDetail scope) + persist + prefers-color-scheme fallback
-  // - Diğer ekranların temasını bozmaz (sadece RouteDetail backdrop’ta data-theme/class)
   // =========================
   const THEME_KEY = "mylasa_rd_theme";
   const LEGACY_THEME_KEY_1 = "rd_theme";
@@ -406,9 +405,6 @@ export default function RouteDetailMobile({
 
   // =========================
   // ✅ EMİR 1 — Viewer/Edit ayrımı (mode)
-  // - Varsayılan: view
-  // - Edit’e geçiş: sadece owner + “Düzenle” aksiyonu
-  // - Viewer’da edit blokları render edilmez
   // =========================
   const [mode, setMode] = useState("view"); // "view" | "edit"
 
@@ -668,16 +664,21 @@ export default function RouteDetailMobile({
     [routeId, routeDoc]
   );
 
-  // ✅ EMIR 3 — Hero yıldızı: rating bölümüne kaydır (kalp yok)
-  const onHeroStarClick = useCallback(
+  // ✅ EMİR 3 (REVİZE) — Favori kalp (backend yok → UI state)
+  const [isFav, setIsFav] = useState(false);
+  useEffect(() => {
+    setIsFav(false);
+  }, [routeId]);
+
+  const canToggleFav = !!auth.currentUser;
+
+  const onToggleFav = useCallback(
     (e) => {
       e?.stopPropagation?.();
-      try {
-        if (!rateRowAnchorRef.current) return;
-        rateRowAnchorRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-      } catch {}
+      if (!canToggleFav) return;
+      setIsFav((x) => !x);
     },
-    [rateRowAnchorRef]
+    [canToggleFav]
   );
 
   // ✅ cover resolve (picked / auto / default)
@@ -755,8 +756,7 @@ export default function RouteDetailMobile({
   const showCommentsOverlay = tab === "comments";
 
   // =========================
-  // ✅ EMIR 1 — Hero / Nav / Author Hub (cam pill)
-  // (Hook kuralı için early return öncesi)
+  // ✅ EMIR 3 — Hero / Nav / Author Hub (cam card)
   // =========================
   const heroCategory = useMemo(() => {
     try {
@@ -888,7 +888,7 @@ export default function RouteDetailMobile({
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
-        {/* ✅ EMİR 3 (V3) — HERO (başlık üstte) + Author Hub (HERO altında, overlap) */}
+        {/* ✅ EMİR 3 (REVİZE) — HERO (başlık üstte) + Yazar Hub (HERO altında, overlap) */}
         <div
           className="route-detail-hero"
           onClick={() => {
@@ -1053,8 +1053,8 @@ export default function RouteDetailMobile({
           </div>
         </div>
 
-        {/* ✅ EMİR 3 (V3) — Author hub artık HERO NAV içinde DEĞİL.
-            HERO’nun hemen altında, sheet üstünde, hero’ya overlap ederek durur. */}
+        {/* ✅ EMİR 3 (REVİZE) — Yazar hub HERO altında overlap:
+            Favori butonu: kalp + UI state (rating’e scroll YOK) */}
         <div className="rd-author-hub" onClick={(e) => e.stopPropagation()}>
           <div className="rd-author-avatar" aria-label="Yazar">
             {ownerAvatarUrl ? <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" /> : ownerName?.[0] || "Y"}
@@ -1069,26 +1069,27 @@ export default function RouteDetailMobile({
 
           <button
             type="button"
-            className="rd-author-fav"
-            onClick={onHeroStarClick}
-            aria-label="Yıldız ver"
-            title={canRateRoute ? "Yıldız ver" : "Puanlamak için giriş yap / sahibi değilsen puanlayabilirsin"}
-            disabled={!canRateRoute}
+            className={`rd-author-fav ${isFav ? "is-active" : ""}`}
+            onClick={onToggleFav}
+            aria-label={isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+            aria-pressed={!!isFav}
+            title={!canToggleFav ? "Favorilere eklemek için giriş yapmalısın." : isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+            disabled={!canToggleFav}
           >
             <span className="rd-author-fav__icon" aria-hidden="true">
-              ★
+              {isFav ? "♥" : "♡"}
             </span>
           </button>
         </div>
 
         <div className="route-detail-body" ref={routeBodyRef}>
-          {/* ✅ EMIR 3 — Tab pill row (Author hub’ın hemen altında) + Açıklama */}
+          {/* ✅ Tab pill row (Author hub’ın hemen altında) + Açıklama */}
           <div className="rd-pills-block">
             <RouteDetailTabs tab={tab} onTabChange={onTabChange} commentsCount={commentsCount} onGpx={onExportGpx} />
             {routeDescText ? <div className="rd-route-desc">{routeDescText}</div> : null}
           </div>
 
-          {/* ✅ EMIR 3 — Harita: Açıklamanın altında, daha aşağıda (artık ilk büyük blok değil) */}
+          {/* ✅ Harita: Açıklamanın altında */}
           <div className="route-detail-map rd-map-card">
             <div className="rd-map-card__canvas">
               <RouteDetailMapPreviewShell
@@ -1127,7 +1128,6 @@ export default function RouteDetailMobile({
               coverUpload={coverUpload}
               coverKindUi={coverKindUi}
               onOpenPicker={openCoverPicker}
-              // ✅ EMİR 4 — “Kapağı kaldır” gerçekten kaldırsın (owner değilse no-op)
               onClearCover={(e) => {
                 e?.stopPropagation?.();
                 if (!isOwner) return;
@@ -1141,16 +1141,13 @@ export default function RouteDetailMobile({
           )}
 
           {/* ✅ Puanlama: viewer’da çalışmaya devam eder (owner zaten puanlayamaz) */}
-          <div ref={rateRowAnchorRef}>
-            <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />
-          </div>
+          <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />
 
           <div className="route-detail-tabpanel">
             {tab === "stops" && (
               <RouteDetailStopsTab
                 stops={stops}
                 stopAgg={stopAgg}
-                // ✅ EMİR 1 — Viewer’da owner bile olsa edit yok: isOwner sadece edit modda true
                 isOwner={!!isEditMode}
                 uploadState={uploadState}
                 mediaCacheRef={mediaCacheRef}
@@ -1198,8 +1195,7 @@ export default function RouteDetailMobile({
           </div>
         </div>
 
-        {/* ✅ EMİR 1 — Viewer’da alttaki “Kapat” CTA yok.
-            Edit modda “Düzenlemeyi bitir” olarak viewer’a döndür. */}
+        {/* ✅ Viewer’da alttaki “Kapat” CTA yok. Edit modda “Düzenlemeyi bitir” */}
         {isEditMode && (
           <div className="route-detail-footer">
             <button
@@ -1237,7 +1233,7 @@ export default function RouteDetailMobile({
         </div>
       )}
 
-      {/* ✅ EMİR 1: Cover picker overlay sadece edit modda mount */}
+      {/* ✅ Cover picker overlay sadece edit modda mount */}
       {showCoverPickerOverlay && (
         <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
           <RouteDetailCoverPickerOverlayMobile
@@ -1256,7 +1252,7 @@ export default function RouteDetailMobile({
         </div>
       )}
 
-      {/* ✅ HOTFIX: Kapalıyken DOM'da kalma YASAK → sadece comments tab açıkken mount */}
+      {/* ✅ Kapalıyken DOM'da kalma YASAK → sadece comments tab açıkken mount */}
       {showCommentsOverlay && (
         <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
           <CommentsPanel
@@ -1265,7 +1261,6 @@ export default function RouteDetailMobile({
             targetId={routeId}
             placeholder="Bu rota hakkında ne düşünüyorsun?"
             onClose={() => onTabChange("stops")}
-            // ✅ EMİR 18-6: CommentsPanel portal kullanıyorsa RouteDetail overlay root’a basabilsin
             portalTarget={overlayRootRef.current || undefined}
           />
         </div>
@@ -1276,12 +1271,11 @@ export default function RouteDetailMobile({
           items={lightboxItems}
           index={lightboxIndex}
           onClose={() => setLightboxItems(null)}
-          // ✅ EMİR 18-6: Lightbox’ı RouteDetail overlay root’a portal’layabilir (token inherit garantisi)
           portalTarget={overlayRootRef.current || undefined}
         />
       )}
 
-      {/* ✅ EMİR 18-6 — Scoped overlay portal root (RouteDetail tokenları inherit eder) */}
+      {/* ✅ Scoped overlay portal root */}
       <div ref={overlayRootRef} className="rd-overlay-root" />
     </div>
   );

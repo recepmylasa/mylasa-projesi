@@ -1,5 +1,5 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.pills.css */
-/* EMIR 3 — Flash UI “Pill Tabs + Açıklama” (Author hub altı) */
+/* EMIR 4 — Sekmeler (pills) piksel paritesi (Duraklar / Galeri / Yorumlar / GPX) */
 
 .rd-pills-block {
   padding: 10px 14px 10px;
@@ -19,6 +19,9 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   padding: 2px 2px;
+
+  /* scrollbar hide (Firefox) */
+  scrollbar-width: none;
 }
 
 .rd-pill-row::-webkit-scrollbar {
@@ -27,31 +30,51 @@
 
 .rd-pill {
   flex: 0 0 auto;
+
+  /* hit-area */
   height: 36px;
+  min-height: 36px;
+
   padding: 0 14px;
   border-radius: 999px;
+
   border: 1px solid var(--rd-border);
   background: var(--rd-glass-2);
   color: var(--rd-text);
+
   backdrop-filter: blur(14px) saturate(150%);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
+
   box-shadow: var(--rd-pill-shadow, 0 14px 30px rgba(0, 0, 0, 0.10));
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 900;
+  gap: 8px;
+
+  font-weight: 700; /* EMIR 4: 600–700 bandı */
   font-size: 13px;
+
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
+
+  transition: transform 120ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
 }
 
 .rd-pill:active {
   transform: translateY(1px);
 }
 
+.rd-pill:focus-visible {
+  outline: none;
+  box-shadow: var(--rd-pill-shadow, 0 14px 30px rgba(0, 0, 0, 0.10)), var(--rd-focus-ring, none);
+}
+
 .rd-pill.is-active {
+  /* aktif: daha dolu + border daha belirgin */
+  background: var(--rd-glass);
   color: var(--rd-accent, var(--rd-copper-glow));
   border-color: rgba(184, 115, 51, 0.42);
   box-shadow:
@@ -60,10 +83,40 @@
     var(--rd-pill-shadow, 0 14px 30px rgba(0, 0, 0, 0.10));
 }
 
+.rd-pill__label {
+  line-height: 1;
+}
+
+.rd-pill__badge {
+  /* EMIR 4: 18–20px, radius 999px, ortalı */
+  height: 18px;
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass);
+  color: var(--rd-text);
+}
+
+.rd-pill.is-active .rd-pill__badge {
+  border-color: rgba(184, 115, 51, 0.42);
+  background: rgba(184, 115, 51, 0.16);
+}
+
 .rd-pill--gpx {
   letter-spacing: 0.02em;
 }
 
+/* açıklama (pills altında) */
 .rd-route-desc {
   margin-top: 10px;
   color: var(--rd-muted);

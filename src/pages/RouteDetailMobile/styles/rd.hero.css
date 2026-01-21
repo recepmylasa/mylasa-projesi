@@ -1,21 +1,21 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.hero.css */
-/* EMIR 1 — Flash UI “Hero Cover” + Üst Navigasyon + Başlık/Rating + Yazar Hub (Cam Card) */
-/* ✅ EMİR 3 (V3) — Başlık yukarı + Author hub HERO altında (DOM dışı) overlap */
+/* EMIR 3 — REVİZE (Yazar Hub altta + Favori kalp) — Flash UI referansına birebir */
+/* ✅ Başlık + rating hero üstte (nav altı) | ✅ Yazar hub hero altına overlap | ✅ Favori: kalp + aktif state */
 
 .route-detail-hero {
   position: relative;
   width: 100%;
 
-  /* ✅ Flash hissi → 52–62vh bandı */
+  /* Flash hissi → 52–62vh bandı */
   height: clamp(300px, 56vh, 540px);
 
-  /* ✅ Overlap için clipping KAPALI */
+  /* Overlap için clipping KAPALI */
   overflow: visible;
 
   border-bottom: 1px solid var(--rd-border);
   transform: translateZ(0);
 
-  /* V3: author hub artık sibling → hero kendi altında ekstra boşluk taşımaz */
+  /* author hub sibling → hero kendi altında ekstra boşluk taşımaz */
   margin-bottom: 0;
 }
 
@@ -26,7 +26,7 @@
   }
 }
 
-/* ✅ hero üstünde çok hafif copper glow (decor only) */
+/* hero üstünde çok hafif copper glow (decor only) */
 .route-detail-hero::before {
   content: "";
   position: absolute;
@@ -59,7 +59,7 @@
   transform: scale(1.04);
 }
 
-/* ✅ V3: Başlık yukarı taşındı → üstte de okunurluk için shade */
+/* Başlık üstte → üstte okunurluk shade */
 .route-detail-hero__gradient {
   position: absolute;
   inset: 0;
@@ -195,7 +195,7 @@
   color: var(--rd-muted);
 }
 
-/* ✅ V3: hero content artık TOP-LEFT */
+/* hero content TOP-LEFT (nav altı) */
 .route-detail-hero__content {
   position: absolute;
   left: 14px;
@@ -273,13 +273,19 @@
   overflow: hidden;
 }
 
-/* ✅ V3 — Author hub: HERO dışına alındı (DOM), hero altına overlap eden CAM KART */
+/* ✅ Yazar hub: HERO dışı sibling (DOM) + hero altına overlap eden CAM KART */
+/* ✅ Bug-fix: override/legacy sticky/absolute kaçışlarını sert kilitle */
 .rd-author-hub {
-  position: relative;
-  z-index: 7;
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+
+  z-index: 7 !important;
 
   /* HERO alt kenarına overlap */
-  margin: -22px 14px 10px 14px;
+  margin: -22px 14px 10px 14px !important;
 
   display: flex;
   align-items: center;
@@ -345,7 +351,7 @@
   text-overflow: ellipsis;
 }
 
-/* ✅ V3: Favori butonu “rounded square/soft” (yuvarlak değil) */
+/* ✅ Favori butonu: kalp + aktif state (backend yok → UI state) */
 .rd-author-fav {
   height: 36px;
   width: 42px;
@@ -365,10 +371,12 @@
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+
+  transition: transform 120ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .rd-author-fav:active {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(0.98);
 }
 
 .rd-author-fav:disabled {
@@ -382,6 +390,26 @@
 }
 
 .rd-author-fav__icon {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
+  transform: translateY(-0.5px);
+}
+
+/* Aktif favori görünümü */
+.rd-author-fav.is-active {
+  background: rgba(251, 146, 60, 0.18);
+  border-color: rgba(251, 146, 60, 0.42);
+  box-shadow: 0 14px 30px rgba(251, 146, 60, 0.12), var(--rd-card-shadow, var(--rd-shadow));
+}
+
+.rd-author-fav.is-active .rd-author-fav__icon {
+  color: var(--rd-copper-glow);
+  text-shadow: 0 0 18px rgba(251, 146, 60, 0.24);
+}
+
+.route-detail-backdrop[data-theme="light"] .rd-author-fav.is-active,
+.route-detail-backdrop.route-detail-light .rd-author-fav.is-active {
+  background: rgba(184, 115, 51, 0.14);
+  border-color: rgba(184, 115, 51, 0.32);
+  box-shadow: 0 14px 28px rgba(184, 115, 51, 0.10), var(--rd-card-shadow, var(--rd-shadow));
 }
