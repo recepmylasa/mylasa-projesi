@@ -76,8 +76,9 @@ export default function RouteDetailMobile({
 }) {
   const V3_ENABLED = ROUTES_V3_ENABLED;
 
-  // ✅ EMİR 18-6 — RouteDetail scoped overlay portal root (theme token inherit)
-  const overlayRootRef = useRef(null);
+  // ✅ FIX — Overlay portal target’ları: her overlay kendi wrapper’ına portal eder (click yutma / arkada kalma biter)
+  const commentsOverlayRef = useRef(null);
+  const lightboxOverlayRef = useRef(null);
 
   // =========================
   // ✅ EMİR 4 — Dark/Light Toggle (RouteDetail scope) + persist + prefers-color-scheme fallback
@@ -1252,31 +1253,32 @@ export default function RouteDetailMobile({
         </div>
       )}
 
-      {/* ✅ Kapalıyken DOM'da kalma YASAK → sadece comments tab açıkken mount */}
+      {/* ✅ Kapalıyken DOM'da kalma YASAK → sadece comments tab açıkken mount
+          FIX: portalTarget wrapper'ın kendisi (arkada kalma / tıklama yutma biter) */}
       {showCommentsOverlay && (
-        <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
+        <div ref={commentsOverlayRef} className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
           <CommentsPanel
             open={true}
             targetType="route"
             targetId={routeId}
             placeholder="Bu rota hakkında ne düşünüyorsun?"
             onClose={() => onTabChange("stops")}
-            portalTarget={overlayRootRef.current || undefined}
+            portalTarget={commentsOverlayRef.current || undefined}
           />
         </div>
       )}
 
+      {/* ✅ Lightbox FIX: kendi overlay wrapper’ına portal et (z-index/click güvenli) */}
       {lightboxItems && (
-        <Lightbox
-          items={lightboxItems}
-          index={lightboxIndex}
-          onClose={() => setLightboxItems(null)}
-          portalTarget={overlayRootRef.current || undefined}
-        />
+        <div ref={lightboxOverlayRef} className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
+          <Lightbox
+            items={lightboxItems}
+            index={lightboxIndex}
+            onClose={() => setLightboxItems(null)}
+            portalTarget={lightboxOverlayRef.current || undefined}
+          />
+        </div>
       )}
-
-      {/* ✅ Scoped overlay portal root */}
-      <div ref={overlayRootRef} className="rd-overlay-root" />
     </div>
   );
 
