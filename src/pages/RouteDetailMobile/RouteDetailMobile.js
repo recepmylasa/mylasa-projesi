@@ -1,5 +1,5 @@
 // FILE: src/pages/RouteDetailMobile/RouteDetailMobile.js
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import "./RouteDetailMobile.css";
 import "./RouteDetailMobileVitreous.css";
@@ -76,9 +76,34 @@ export default function RouteDetailMobile({
 }) {
   const V3_ENABLED = ROUTES_V3_ENABLED;
 
-  // ✅ FIX — Overlay portal target’ları: her overlay kendi wrapper’ına portal eder (click yutma / arkada kalma biter)
-  const commentsOverlayRef = useRef(null);
-  const lightboxOverlayRef = useRef(null);
+  // ✅ FIX — Overlay portal target’ları: ref.current ilk render’da null → state ile garanti (click yutma biter)
+  const [commentsPortalEl, setCommentsPortalEl] = useState(null);
+  const [lightboxPortalEl, setLightboxPortalEl] = useState(null);
+
+  // ✅ EMİR 13 — Ghost click kırıcı: overlay kapanınca kısa süre etkileşimi blokla
+  const [interactionBlocked, setInteractionBlocked] = useState(false);
+  const blockTimerRef = React.useRef(null);
+
+  const blockInteractionsBriefly = useCallback((ms = 220) => {
+    if (typeof window === "undefined") return;
+    try {
+      if (blockTimerRef.current) window.clearTimeout(blockTimerRef.current);
+    } catch {}
+    setInteractionBlocked(true);
+    blockTimerRef.current = window.setTimeout(() => {
+      setInteractionBlocked(false);
+      blockTimerRef.current = null;
+    }, ms);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      try {
+        if (blockTimerRef.current) window.clearTimeout(blockTimerRef.current);
+      } catch {}
+      blockTimerRef.current = null;
+    };
+  }, []);
 
   // =========================
   // ✅ EMİR 4 — Dark/Light Toggle (RouteDetail scope) + persist + prefers-color-scheme fallback
@@ -414,6 +439,8 @@ export default function RouteDetailMobile({
     return !!isOwner && mode === "edit";
   }, [isOwner, mode]);
 
+  const modeForTabs = isEditMode ? "edit" : "view";
+
   const enterEdit = useCallback(() => {
     if (!isOwner) return;
     setMode("edit");
@@ -421,7 +448,8 @@ export default function RouteDetailMobile({
 
   const exitEdit = useCallback(() => {
     setMode("view");
-  }, []);
+    blockInteractionsBriefly(240);
+  }, [blockInteractionsBriefly]);
 
   // route değişince/yeniden açılınca viewer’a dön
   useEffect(() => {
@@ -482,18 +510,37 @@ export default function RouteDetailMobile({
     setGalleryTabActive(tab === "gallery");
   }, [tab, setGalleryTabActive]);
 
+  // ✅ Edit modda view-only tab’lar (comments/report) açık kalmasın
+  useEffect(() => {
+    if (!isEditMode) return;
+    if (tab === "comments" || tab === "report") {
+      onTabChange("stops");
+    }
+  }, [isEditMode, tab, onTabChange]);
+
   // ✅ ESC behavior
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== "Escape") return;
+
       if (lightboxItems) {
         setLightboxItems(null);
+        blockInteractionsBriefly(260);
         return;
       }
       if (coverPickerOpen) {
-        closeCoverPicker();
+        try {
+          closeCoverPicker();
+        } catch {}
+        blockInteractionsBriefly(260);
         return;
       }
+      if (showShareSheet) {
+        setShowShareSheet(false);
+        blockInteractionsBriefly(260);
+        return;
+      }
+
       // edit moddayken ESC: önce viewer’a dön
       if (isEditMode) {
         exitEdit();
@@ -503,7 +550,7 @@ export default function RouteDetailMobile({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose, lightboxItems, coverPickerOpen, closeCoverPicker, isEditMode, exitEdit]);
+  }, [onClose, lightboxItems, coverPickerOpen, closeCoverPicker, isEditMode, exitEdit, showShareSheet, blockInteractionsBriefly]);
 
   // ✅ header computed
   const ratingAvgLabel = useMemo(() => getRouteRatingLabelSafe(routeModel), [routeModel]);
@@ -754,7 +801,16 @@ export default function RouteDetailMobile({
   // Kapalı overlay'ler DOM'da KALMAYACAK.
   // ✅ EMİR 1 — Cover picker sadece edit modda mount edilsin.
   const showCoverPickerOverlay = !!(isEditMode && coverPickerOpen);
-  const showCommentsOverlay = tab === "comments";
+
+  // ✅ EMİR 12 — CTA “gated” state
+  const isCommentsOpen = tab === "comments" && !isEditMode;
+  const showCommentsOverlay = isCommentsOpen;
+
+  // ✅ Overlay open → canInteract false (tab’lara tek truth)
+  const overlayOpen = !!(lightboxItems || showShareSheet || showCoverPickerOverlay || showCommentsOverlay);
+  const canInteract = !overlayOpen && !interactionBlocked;
+
+  const showCta = modeForTabs === "view" && !isCommentsOpen;
 
   // =========================
   // ✅ EMIR 3 — Hero / Nav / Author Hub (cam card)
@@ -820,6 +876,12 @@ export default function RouteDetailMobile({
     setHeroMenuOpen(false);
   }, [rdTheme]);
 
+  // ✅ Edit mod açılınca view overlay’leri kapat (parite)
+  useEffect(() => {
+    if (!isEditMode) return;
+    if (showShareSheet) setShowShareSheet(false);
+  }, [isEditMode, showShareSheet]);
+
   // =========================
   // ✅ Early returns (access/prefill)
   // =========================
@@ -877,12 +939,17 @@ export default function RouteDetailMobile({
       />
     );
 
+  // ✅ Overlay wrapper style (CSS’e güvenmeden sabitle)
+  const overlayWrapStyle = { position: "fixed", inset: 0, zIndex: 975, pointerEvents: "auto" };
+
   // =========================
   // ✅ Main UI
   // =========================
   const content = (
     <div
-      className={`route-detail-backdrop ${rdTheme === "light" ? "route-detail-light" : "route-detail-dark"}`}
+      className={`route-detail-backdrop ${rdTheme === "light" ? "route-detail-light" : "route-detail-dark"}${
+        showCta ? " has-cta" : ""
+      }${overlayOpen ? " rd-overlay-open" : ""}`}
       data-theme={rdTheme}
       onClick={handleBackdropClick}
     >
@@ -920,11 +987,14 @@ export default function RouteDetailMobile({
             </div>
 
             <div className="rd-hero-nav-right">
-              <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onShare} title="Paylaş">
-                <span className="rd-hero-nav-btn__icon" aria-hidden="true">
-                  ⤴
-                </span>
-              </button>
+              {/* ✅ EMİR 13: Edit modda view aksiyonları gizli (share) */}
+              {!isEditMode && (
+                <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onShare} title="Paylaş">
+                  <span className="rd-hero-nav-btn__icon" aria-hidden="true">
+                    ⤴
+                  </span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -988,41 +1058,48 @@ export default function RouteDetailMobile({
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  className="rd-hero-menu__item"
-                  onClick={() => {
-                    setShowShareSheet(true);
-                    closeHeroMenu();
-                  }}
-                >
-                  <span>Görsel paylaş</span>
-                  <span className="rd-hero-menu__hint">Sheet</span>
-                </button>
+                {/* ✅ EMİR 13: Edit modda view aksiyonları gizli (share/gpx/report) */}
+                {!isEditMode && (
+                  <button
+                    type="button"
+                    className="rd-hero-menu__item"
+                    onClick={() => {
+                      setShowShareSheet(true);
+                      closeHeroMenu();
+                    }}
+                  >
+                    <span>Görsel paylaş</span>
+                    <span className="rd-hero-menu__hint">Sheet</span>
+                  </button>
+                )}
 
-                <button
-                  type="button"
-                  className="rd-hero-menu__item"
-                  onClick={() => {
-                    onExportGpx();
-                    closeHeroMenu();
-                  }}
-                >
-                  <span>GPX indir</span>
-                  <span className="rd-hero-menu__hint">.gpx</span>
-                </button>
+                {!isEditMode && (
+                  <button
+                    type="button"
+                    className="rd-hero-menu__item"
+                    onClick={() => {
+                      onExportGpx();
+                      closeHeroMenu();
+                    }}
+                  >
+                    <span>GPX indir</span>
+                    <span className="rd-hero-menu__hint">.gpx</span>
+                  </button>
+                )}
 
-                <button
-                  type="button"
-                  className="rd-hero-menu__item"
-                  onClick={() => {
-                    onTabChange("report");
-                    closeHeroMenu();
-                  }}
-                >
-                  <span>Rapor</span>
-                  <span className="rd-hero-menu__hint">İstatistik</span>
-                </button>
+                {!isEditMode && (
+                  <button
+                    type="button"
+                    className="rd-hero-menu__item"
+                    onClick={() => {
+                      onTabChange("report");
+                      closeHeroMenu();
+                    }}
+                  >
+                    <span>Rapor</span>
+                    <span className="rd-hero-menu__hint">İstatistik</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1054,8 +1131,8 @@ export default function RouteDetailMobile({
           </div>
         </div>
 
-        {/* ✅ EMİR 3 (REVİZE) — Yazar hub HERO altında overlap:
-            Favori butonu: kalp + UI state (rating’e scroll YOK) */}
+        {/* ✅ EMİR 3 (REVİZE) — Yazar hub HERO altında overlap
+            ✅ EMİR 13: Edit modda view aksiyonları gizli (fav) */}
         <div className="rd-author-hub" onClick={(e) => e.stopPropagation()}>
           <div className="rd-author-avatar" aria-label="Yazar">
             {ownerAvatarUrl ? <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" /> : ownerName?.[0] || "Y"}
@@ -1068,25 +1145,35 @@ export default function RouteDetailMobile({
             <div className="rd-author-sub">{timeAgoText || ""}</div>
           </div>
 
-          <button
-            type="button"
-            className={`rd-author-fav ${isFav ? "is-active" : ""}`}
-            onClick={onToggleFav}
-            aria-label={isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
-            aria-pressed={!!isFav}
-            title={!canToggleFav ? "Favorilere eklemek için giriş yapmalısın." : isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
-            disabled={!canToggleFav}
-          >
-            <span className="rd-author-fav__icon" aria-hidden="true">
-              {isFav ? "♥" : "♡"}
-            </span>
-          </button>
+          {!isEditMode && (
+            <button
+              type="button"
+              className={`rd-author-fav ${isFav ? "is-active" : ""}`}
+              onClick={onToggleFav}
+              aria-label={isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+              aria-pressed={!!isFav}
+              title={!canToggleFav ? "Favorilere eklemek için giriş yapmalısın." : isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+              disabled={!canToggleFav}
+            >
+              <span className="rd-author-fav__icon" aria-hidden="true">
+                {isFav ? "♥" : "♡"}
+              </span>
+            </button>
+          )}
         </div>
 
         <div className="route-detail-body" ref={routeBodyRef}>
           {/* ✅ Tab pill row (Author hub’ın hemen altında) + Açıklama */}
           <div className="rd-pills-block">
-            <RouteDetailTabs tab={tab} onTabChange={onTabChange} commentsCount={commentsCount} onGpx={onExportGpx} />
+            <RouteDetailTabs
+              tab={tab}
+              onTabChange={onTabChange}
+              commentsCount={commentsCount}
+              onGpx={onExportGpx}
+              mode={modeForTabs}
+              isOwner={!!isOwner}
+              canInteract={canInteract}
+            />
             {routeDescText ? <div className="rd-route-desc">{routeDescText}</div> : null}
           </div>
 
@@ -1141,15 +1228,17 @@ export default function RouteDetailMobile({
             />
           )}
 
-          {/* ✅ Puanlama: viewer’da çalışmaya devam eder (owner zaten puanlayamaz) */}
-          <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />
+          {/* ✅ EMİR 13: Edit modda view-only row’ları gizle (owner zaten puanlayamaz) */}
+          {!isEditMode && <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />}
 
           <div className="route-detail-tabpanel">
             {tab === "stops" && (
               <RouteDetailStopsTab
+                mode={modeForTabs}
+                isOwner={!!isOwner}
+                canInteract={canInteract}
                 stops={stops}
                 stopAgg={stopAgg}
-                isOwner={!!isEditMode}
                 uploadState={uploadState}
                 mediaCacheRef={mediaCacheRef}
                 ensureStopThumbs={ensureStopThumbs}
@@ -1168,6 +1257,9 @@ export default function RouteDetailMobile({
 
             {tab === "gallery" && (
               <RouteDetailGalleryTab
+                mode={modeForTabs}
+                isOwner={!!isOwner}
+                canInteract={canInteract}
                 galleryItems={galleryItems}
                 galleryState={galleryState}
                 gallerySentinelRef={gallerySentinelRef}
@@ -1181,7 +1273,7 @@ export default function RouteDetailMobile({
               />
             )}
 
-            {tab === "report" && (
+            {tab === "report" && !isEditMode && (
               <RouteDetailReportTab
                 reportLoaded={reportLoaded}
                 routeAgg={routeAgg}
@@ -1195,6 +1287,15 @@ export default function RouteDetailMobile({
             )}
           </div>
         </div>
+
+        {/* ✅ EMİR 12 — CTA (viewer + no overlay + not edit) */}
+        {showCta && (
+          <div className="rd-cta-bar" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="rd-cta-primary" onClick={onExportGpx}>
+              GPX indir
+            </button>
+          </div>
+        )}
 
         {/* ✅ Viewer’da alttaki “Kapat” CTA yok. Edit modda “Düzenlemeyi bitir” */}
         {isEditMode && (
@@ -1212,12 +1313,14 @@ export default function RouteDetailMobile({
         )}
       </div>
 
-      {showShareSheet && (
+      {showShareSheet && !isEditMode && (
         <div
           className="route-detail-share-overlay rdglass-overlay"
+          style={{ position: "fixed", inset: 0, zIndex: 975, pointerEvents: "auto" }}
           onClick={(e) => {
             e.stopPropagation();
             setShowShareSheet(false);
+            blockInteractionsBriefly(260);
           }}
         >
           <div className="route-detail-share-overlay__inner rdglass-overlay__inner" onClick={(e) => e.stopPropagation()}>
@@ -1228,7 +1331,10 @@ export default function RouteDetailMobile({
                 routeId
               )}
               stops={stops}
-              onClose={() => setShowShareSheet(false)}
+              onClose={() => {
+                setShowShareSheet(false);
+                blockInteractionsBriefly(260);
+              }}
             />
           </div>
         </div>
@@ -1236,13 +1342,18 @@ export default function RouteDetailMobile({
 
       {/* ✅ Cover picker overlay sadece edit modda mount */}
       {showCoverPickerOverlay && (
-        <div className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
+        <div className="route-detail-overlay-stop" style={overlayWrapStyle} onClick={(e) => e.stopPropagation()}>
           <RouteDetailCoverPickerOverlayMobile
             open={true}
             mode={coverPickerMode}
             state={coverPickerState}
             upload={coverUpload}
-            onClose={closeCoverPicker}
+            onClose={() => {
+              try {
+                closeCoverPicker();
+              } catch {}
+              blockInteractionsBriefly(260);
+            }}
             onBack={backToCoverPickerMenu}
             onChooseFromStops={chooseCoverFromStops}
             onUploadFromDevice={uploadCoverFromDevice}
@@ -1253,29 +1364,44 @@ export default function RouteDetailMobile({
         </div>
       )}
 
-      {/* ✅ Kapalıyken DOM'da kalma YASAK → sadece comments tab açıkken mount
-          FIX: portalTarget wrapper'ın kendisi (arkada kalma / tıklama yutma biter) */}
-      {showCommentsOverlay && (
-        <div ref={commentsOverlayRef} className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
+      {/* ✅ Kapalıyken DOM'da kalma YASAK → sadece comments tab açıkken mount */}
+      {showCommentsOverlay && !isEditMode && (
+        <div
+          ref={setCommentsPortalEl}
+          className="route-detail-overlay-stop"
+          style={overlayWrapStyle}
+          onClick={(e) => e.stopPropagation()}
+        >
           <CommentsPanel
             open={true}
             targetType="route"
             targetId={routeId}
             placeholder="Bu rota hakkında ne düşünüyorsun?"
-            onClose={() => onTabChange("stops")}
-            portalTarget={commentsOverlayRef.current || undefined}
+            onClose={() => {
+              onTabChange("stops");
+              blockInteractionsBriefly(260);
+            }}
+            portalTarget={commentsPortalEl || undefined}
           />
         </div>
       )}
 
       {/* ✅ Lightbox FIX: kendi overlay wrapper’ına portal et (z-index/click güvenli) */}
       {lightboxItems && (
-        <div ref={lightboxOverlayRef} className="route-detail-overlay-stop" onClick={(e) => e.stopPropagation()}>
+        <div
+          ref={setLightboxPortalEl}
+          className="route-detail-overlay-stop"
+          style={overlayWrapStyle}
+          onClick={(e) => e.stopPropagation()}
+        >
           <Lightbox
             items={lightboxItems}
             index={lightboxIndex}
-            onClose={() => setLightboxItems(null)}
-            portalTarget={lightboxOverlayRef.current || undefined}
+            onClose={() => {
+              setLightboxItems(null);
+              blockInteractionsBriefly(260);
+            }}
+            portalTarget={lightboxPortalEl || undefined}
           />
         </div>
       )}

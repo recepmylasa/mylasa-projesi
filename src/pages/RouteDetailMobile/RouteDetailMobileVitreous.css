@@ -1077,12 +1077,8 @@
 }
 
 @keyframes rdGalleryShimmer {
-  0% {
-    background-position: 0% 0%;
-  }
-  100% {
-    background-position: 200% 0%;
-  }
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1126,8 +1122,6 @@
 
 /* =========================================================
    EMİR 11.1 — Theme-aware overlay (LIGHT) — Comments overlay
-   Light: rgba(2, 6, 23, 0.22 ~ 0.28)
-   Dark: mevcut rgba(0,0,0,0.45) aynen
    ========================================================= */
 .route-detail-backdrop.route-detail-light .route-detail-overlay-stop,
 .route-detail-backdrop[data-theme="light"] .route-detail-overlay-stop {
@@ -1173,13 +1167,9 @@
 
 /* =========================================================
    EMİR 8 — RDGLASS Utility Kit (RouteDetail scope)
-   - rdglass-card / rdglass-btn / rdglass-muted / progress / empty
-   - Layout-safe: sadece renk/border/shadow/typography/hover/focus
    ========================================================= */
 
-.route-detail-backdrop .rdglass-muted {
-  color: var(--rd-muted, #94a3b8);
-}
+.route-detail-backdrop .rdglass-muted { color: var(--rd-muted, #94a3b8); }
 
 .route-detail-backdrop .rdglass-card {
   background: var(--rd-glass2, var(--rd-glass-2, rgba(18, 18, 22, 0.55)));
@@ -1191,9 +1181,7 @@
   transform: translateZ(0);
 }
 
-.route-detail-backdrop .rdglass-card--pad {
-  padding: 12px;
-}
+.route-detail-backdrop .rdglass-card--pad { padding: 12px; }
 
 .route-detail-backdrop .rdglass-empty {
   display: grid;
@@ -1219,14 +1207,8 @@
   box-shadow: 0 10px 18px rgba(0, 0, 0, 0.18);
 }
 
-.route-detail-backdrop .rdglass-btn:hover {
-  border-color: var(--rd-accent-border, rgba(34, 211, 238, 0.28));
-}
-
-.route-detail-backdrop .rdglass-btn:active {
-  transform: translateY(0.5px);
-}
-
+.route-detail-backdrop .rdglass-btn:hover { border-color: var(--rd-accent-border, rgba(34, 211, 238, 0.28)); }
+.route-detail-backdrop .rdglass-btn:active { transform: translateY(0.5px); }
 .route-detail-backdrop .rdglass-btn:focus-visible {
   outline: 2px solid var(--rd-accent-border, rgba(34, 211, 238, 0.38));
   outline-offset: 2px;
@@ -1249,11 +1231,7 @@
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-/* =========================================================
-   EMİR 11.3 — Progress track (LIGHT) görünürlük
-   Light: rgba(15, 23, 42, 0.06 ~ 0.08)
-   Dark: mevcut background aynen
-   ========================================================= */
+/* Light progress görünürlük */
 .route-detail-backdrop.route-detail-light .rdglass-progress-track,
 .route-detail-backdrop[data-theme="light"] .rdglass-progress-track {
   background: rgba(15, 23, 42, 0.07);
@@ -1261,36 +1239,264 @@
 
 /* Motion reduce */
 @media (prefers-reduced-motion: reduce) {
-  .route-detail-backdrop .rdglass-btn:active {
-    transform: none;
-  }
+  .route-detail-backdrop .rdglass-btn:active { transform: none; }
 }
 
-/* Backdrop-filter yoksa: theme-aware fallback (EMİR 10.5) */
+/* Backdrop-filter yoksa: theme-aware fallback */
 @supports not ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
   .route-detail-backdrop.route-detail-dark .rdglass-card,
-  .route-detail-backdrop[data-theme="dark"] .rdglass-card {
-    background: rgba(18, 18, 22, 0.88);
-  }
+  .route-detail-backdrop[data-theme="dark"] .rdglass-card { background: rgba(18, 18, 22, 0.88); }
+
   .route-detail-backdrop.route-detail-dark .rdglass-btn,
-  .route-detail-backdrop[data-theme="dark"] .rdglass-btn {
-    background: rgba(18, 18, 22, 0.88);
-  }
+  .route-detail-backdrop[data-theme="dark"] .rdglass-btn { background: rgba(18, 18, 22, 0.88); }
 
   .route-detail-backdrop.route-detail-light .rdglass-card,
-  .route-detail-backdrop[data-theme="light"] .rdglass-card {
-    background: rgba(255, 255, 255, 0.92);
-  }
+  .route-detail-backdrop[data-theme="light"] .rdglass-card { background: rgba(255, 255, 255, 0.92); }
+
   .route-detail-backdrop.route-detail-light .rdglass-btn,
-  .route-detail-backdrop[data-theme="light"] .rdglass-btn {
-    background: rgba(255, 255, 255, 0.92);
-  }
+  .route-detail-backdrop[data-theme="light"] .rdglass-btn { background: rgba(255, 255, 255, 0.92); }
 }
 
 /* Reduced transparency */
 @media (prefers-reduced-transparency: reduce) {
   .route-detail-backdrop .rdglass-card,
   .route-detail-backdrop .rdglass-btn {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* =========================================================
+   ✅ EMİR 9C — CTA BAR (Flash UI) — "GPX indir" + "Rotayı başlat"
+   - Cam bar (blur + hafif parlama)
+   - Üstte ince divider
+   - Safe-area (iPhone) nefes payı
+   - İçerik CTA altında kalmasın (padding/scroll-padding)
+   ========================================================= */
+
+.route-detail-backdrop {
+  --rd-cta-safe-b: max(env(safe-area-inset-bottom), 10px);
+  --rd-cta-h: 74px;                 /* bar yaklaşık yüksekliği */
+  --rd-cta-inset: calc(var(--rd-cta-h) + var(--rd-cta-safe-b) + 18px);
+}
+
+/* CTA container: farklı class ihtimallerini kapsa */
+.route-detail-backdrop .rd-cta-bar,
+.route-detail-backdrop .route-detail-cta,
+.route-detail-backdrop .route-detail-ctaBar,
+.route-detail-backdrop .route-detail-cta-bar,
+.route-detail-backdrop .route-detail-cta__bar {
+  position: fixed;
+  left: calc(12px + env(safe-area-inset-left));
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: calc(10px + var(--rd-cta-safe-b));
+  z-index: 860;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+
+  border-radius: 20px;
+  border: 1px solid var(--rd-border-strong);
+  background:
+    radial-gradient(260px 140px at 18% 0%, rgba(34, 211, 238, 0.20), transparent 60%),
+    radial-gradient(260px 160px at 82% 120%, rgba(251, 146, 60, 0.14), transparent 62%),
+    var(--rd-glass);
+
+  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) + 8px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) + 8px));
+  transform: translateZ(0);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* üst divider (ince çizgi) */
+.route-detail-backdrop .rd-cta-bar::before,
+.route-detail-backdrop .route-detail-cta::before,
+.route-detail-backdrop .route-detail-ctaBar::before,
+.route-detail-backdrop .route-detail-cta-bar::before,
+.route-detail-backdrop .route-detail-cta__bar::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 0;
+  height: 1px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+  pointer-events: none;
+}
+
+.route-detail-backdrop.route-detail-light .rd-cta-bar::before,
+.route-detail-backdrop[data-theme="light"] .rd-cta-bar::before,
+.route-detail-backdrop.route-detail-light .route-detail-cta::before,
+.route-detail-backdrop[data-theme="light"] .route-detail-cta::before,
+.route-detail-backdrop.route-detail-light .route-detail-ctaBar::before,
+.route-detail-backdrop[data-theme="light"] .route-detail-ctaBar::before,
+.route-detail-backdrop.route-detail-light .route-detail-cta-bar::before,
+.route-detail-backdrop[data-theme="light"] .route-detail-cta-bar::before,
+.route-detail-backdrop.route-detail-light .route-detail-cta__bar::before,
+.route-detail-backdrop[data-theme="light"] .route-detail-cta__bar::before {
+  background: linear-gradient(90deg, transparent, rgba(15, 23, 42, 0.16), transparent);
+}
+
+/* hafif parlama (glass glow) */
+.route-detail-backdrop .rd-cta-bar::after,
+.route-detail-backdrop .route-detail-cta::after,
+.route-detail-backdrop .route-detail-ctaBar::after,
+.route-detail-backdrop .route-detail-cta-bar::after,
+.route-detail-backdrop .route-detail-cta__bar::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(300px 90px at 50% 0%, rgba(255, 255, 255, 0.10), transparent 65%);
+  opacity: 0.9;
+}
+
+/* CTA iç butonlar */
+.route-detail-backdrop .rd-cta-bar button,
+.route-detail-backdrop .route-detail-cta button,
+.route-detail-backdrop .route-detail-ctaBar button,
+.route-detail-backdrop .route-detail-cta-bar button,
+.route-detail-backdrop .route-detail-cta__bar button {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+
+  height: 48px;
+  border-radius: 14px;
+  padding: 0 12px;
+
+  font-size: 14px;
+  font-weight: 950;
+  letter-spacing: -0.01em;
+  text-transform: none;
+
+  border: 1px solid var(--rd-border);
+  background: var(--rd-glass2);
+  color: var(--rd-ink);
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.18);
+
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+/* Sol buton (GPX indir) - nötr */
+.route-detail-backdrop .rd-cta-bar button:first-child,
+.route-detail-backdrop .route-detail-cta button:first-child,
+.route-detail-backdrop .route-detail-ctaBar button:first-child,
+.route-detail-backdrop .route-detail-cta-bar button:first-child,
+.route-detail-backdrop .route-detail-cta__bar button:first-child {
+  border-color: var(--rd-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+}
+
+/* Sağ buton (Rotayı başlat) - primary */
+.route-detail-backdrop .rd-cta-bar .rd-cta-primary,
+.route-detail-backdrop .route-detail-cta .rd-cta-primary,
+.route-detail-backdrop .route-detail-ctaBar .rd-cta-primary,
+.route-detail-backdrop .route-detail-cta-bar .rd-cta-primary,
+.route-detail-backdrop .route-detail-cta__bar .rd-cta-primary,
+.route-detail-backdrop .rd-cta-bar button:last-child,
+.route-detail-backdrop .route-detail-cta button:last-child,
+.route-detail-backdrop .route-detail-ctaBar button:last-child,
+.route-detail-backdrop .route-detail-cta-bar button:last-child,
+.route-detail-backdrop .route-detail-cta__bar button:last-child {
+  border-color: var(--rd-accent-border);
+  background:
+    linear-gradient(180deg, rgba(34, 211, 238, 0.22), rgba(34, 211, 238, 0.08)),
+    var(--rd-glass2);
+  box-shadow:
+    0 0 0 1px var(--rd-accent-soft),
+    0 18px 34px rgba(0, 0, 0, 0.20);
+}
+
+/* hover/focus */
+.route-detail-backdrop .rd-cta-bar button:hover,
+.route-detail-backdrop .route-detail-cta button:hover,
+.route-detail-backdrop .route-detail-ctaBar button:hover,
+.route-detail-backdrop .route-detail-cta-bar button:hover,
+.route-detail-backdrop .route-detail-cta__bar button:hover {
+  border-color: var(--rd-accent-border);
+}
+
+.route-detail-backdrop .rd-cta-bar button:focus-visible,
+.route-detail-backdrop .route-detail-cta button:focus-visible,
+.route-detail-backdrop .route-detail-ctaBar button:focus-visible,
+.route-detail-backdrop .route-detail-cta-bar button:focus-visible,
+.route-detail-backdrop .route-detail-cta__bar button:focus-visible {
+  outline: 2px solid var(--rd-accent-border);
+  outline-offset: 2px;
+}
+
+/* disabled (path yoksa / opsiyonel comments tab) */
+.route-detail-backdrop .rd-cta-bar button:disabled,
+.route-detail-backdrop .route-detail-cta button:disabled,
+.route-detail-backdrop .route-detail-ctaBar button:disabled,
+.route-detail-backdrop .route-detail-cta-bar button:disabled,
+.route-detail-backdrop .route-detail-cta__bar button:disabled,
+.route-detail-backdrop .rd-cta-bar button[disabled],
+.route-detail-backdrop .route-detail-cta button[disabled],
+.route-detail-backdrop .route-detail-ctaBar button[disabled],
+.route-detail-backdrop .route-detail-cta-bar button[disabled],
+.route-detail-backdrop .route-detail-cta__bar button[disabled] {
+  opacity: 0.55;
+  filter: saturate(0.7);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* İçerik CTA altında kalmasın: en güvenli set (scroll/panel/tab içerikleri) */
+.route-detail-backdrop .route-detail-sheet .route-detail-body,
+.route-detail-backdrop .route-detail-sheet .route-detail-content,
+.route-detail-backdrop .route-detail-sheet .route-detail-scroll,
+.route-detail-backdrop .route-detail-sheet .route-detail-tabpanel,
+.route-detail-backdrop .route-detail-sheet .rdtab,
+.route-detail-backdrop .rdtab,
+.route-detail-backdrop .rdtab--stops,
+.route-detail-backdrop .rdtab--gallery,
+.route-detail-backdrop .rdtab--comments {
+  padding-bottom: var(--rd-cta-inset) !important;
+  scroll-padding-bottom: var(--rd-cta-inset);
+}
+
+/* blur yoksa: CTA daha opak kalsın */
+@supports not ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
+  .route-detail-backdrop .rd-cta-bar,
+  .route-detail-backdrop .route-detail-cta,
+  .route-detail-backdrop .route-detail-ctaBar,
+  .route-detail-backdrop .route-detail-cta-bar,
+  .route-detail-backdrop .route-detail-cta__bar {
+    background: rgba(18, 18, 22, 0.88);
+  }
+
+  .route-detail-backdrop.route-detail-light .rd-cta-bar,
+  .route-detail-backdrop[data-theme="light"] .rd-cta-bar,
+  .route-detail-backdrop.route-detail-light .route-detail-cta,
+  .route-detail-backdrop[data-theme="light"] .route-detail-cta,
+  .route-detail-backdrop.route-detail-light .route-detail-ctaBar,
+  .route-detail-backdrop[data-theme="light"] .route-detail-ctaBar,
+  .route-detail-backdrop.route-detail-light .route-detail-cta-bar,
+  .route-detail-backdrop[data-theme="light"] .route-detail-cta-bar,
+  .route-detail-backdrop.route-detail-light .route-detail-cta__bar,
+  .route-detail-backdrop[data-theme="light"] .route-detail-cta__bar {
+    background: rgba(255, 255, 255, 0.92);
+  }
+}
+
+/* reduced transparency */
+@media (prefers-reduced-transparency: reduce) {
+  .route-detail-backdrop .rd-cta-bar,
+  .route-detail-backdrop .route-detail-cta,
+  .route-detail-backdrop .route-detail-ctaBar,
+  .route-detail-backdrop .route-detail-cta-bar,
+  .route-detail-backdrop .route-detail-cta__bar {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }

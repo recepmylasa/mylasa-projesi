@@ -413,3 +413,47 @@
   border-color: rgba(184, 115, 51, 0.32);
   box-shadow: 0 14px 28px rgba(184, 115, 51, 0.10), var(--rd-card-shadow, var(--rd-shadow));
 }
+
+/* =========================================================
+   ✅ HARD OVERRIDES — Vitreous.css daha spesifik selector’ları ez
+   (Hero height/overflow, nav click, content position, after-gradient)
+   ========================================================= */
+
+/* Vitreous: .route-detail-backdrop .route-detail-hero { height: ... !important; overflow:hidden; } */
+.route-detail-backdrop .route-detail-hero {
+  height: clamp(300px, 56vh, 540px) !important;
+  min-height: clamp(300px, 56vh, 540px) !important;
+  overflow: visible !important;
+}
+
+@supports (height: 100dvh) {
+  .route-detail-backdrop .route-detail-hero {
+    height: clamp(300px, 56dvh, 540px) !important;
+    min-height: clamp(300px, 56dvh, 540px) !important;
+  }
+}
+
+/* Vitreous pseudo gradient’i kapat (biz DOM gradient kullanıyoruz) */
+.route-detail-backdrop .route-detail-hero::after {
+  content: none !important;
+  background: none !important;
+}
+
+/* Vitreous: hero content bottom’a çekiyor → üstte kilitle */
+.route-detail-backdrop .route-detail-hero__content {
+  top: calc(12px + env(safe-area-inset-top) + 46px) !important;
+  bottom: auto !important;
+  left: 14px !important;
+  right: 14px !important;
+}
+
+/* Vitreous nav “pointer-events: none” oyunlarını kesinle */
+.route-detail-backdrop .route-detail-hero__nav {
+  pointer-events: auto !important;
+}
+
+/* Author hub overlap margin’i kilitle (Vitreous’te farklı overlap var) */
+.route-detail-backdrop .rd-author-hub {
+  margin: -22px 14px 10px 14px !important;
+  z-index: 7 !important;
+}

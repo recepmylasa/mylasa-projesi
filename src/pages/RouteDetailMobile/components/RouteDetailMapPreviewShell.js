@@ -49,41 +49,97 @@ function toFiniteNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function isValidLat(n) {
+  return typeof n === "number" && Number.isFinite(n) && n >= -90 && n <= 90;
+}
+
+function isValidLng(n) {
+  return typeof n === "number" && Number.isFinite(n) && n >= -180 && n <= 180;
+}
+
 function extractLatLng(any) {
   if (!any) return null;
+
+  // Array: [lat,lng] OR [lng,lat]
+  try {
+    if (Array.isArray(any) && any.length >= 2) {
+      const a = toFiniteNumber(any[0]);
+      const b = toFiniteNumber(any[1]);
+      if (a != null && b != null) {
+        // prefer [lat,lng]
+        if (isValidLat(a) && isValidLng(b)) return { lat: a, lng: b };
+        // fallback [lng,lat]
+        if (isValidLat(b) && isValidLng(a)) return { lat: b, lng: a };
+      }
+    }
+  } catch {}
 
   // google.maps.LatLng
   try {
     if (typeof any.lat === "function" && typeof any.lng === "function") {
       const lat = toFiniteNumber(any.lat());
       const lng = toFiniteNumber(any.lng());
-      if (lat != null && lng != null) return { lat, lng };
+      if (lat != null && lng != null && isValidLat(lat) && isValidLng(lng)) return { lat, lng };
     }
   } catch {}
 
-  // Firestore GeoPoint
+  // Firestore GeoPoint (public)
   try {
     if (typeof any.latitude === "number" && typeof any.longitude === "number") {
       const lat = toFiniteNumber(any.latitude);
       const lng = toFiniteNumber(any.longitude);
-      if (lat != null && lng != null) return { lat, lng };
+      if (lat != null && lng != null && isValidLat(lat) && isValidLng(lng)) return { lat, lng };
     }
   } catch {}
 
-  // Plain object {lat,lng}
+  // Firestore GeoPoint (internal-ish variants): {_lat,_long} etc.
   try {
-    const lat = toFiniteNumber(any.lat ?? any.latitude ?? any?.coords?.lat ?? any?.coords?.latitude);
-    const lng = toFiniteNumber(any.lng ?? any.longitude ?? any?.coords?.lng ?? any?.coords?.longitude);
-    if (lat != null && lng != null) return { lat, lng };
+    const lat = toFiniteNumber(any._lat ?? any._latitude);
+    const lng = toFiniteNumber(any._long ?? any._lng ?? any._longitude);
+    if (lat != null && lng != null && isValidLat(lat) && isValidLng(lng)) return { lat, lng };
+  } catch {}
+
+  // Plain object {lat,lng} (+ variants)
+  try {
+    const lat = toFiniteNumber(
+      any.lat ??
+        any.latitude ??
+        any._lat ??
+        any._latitude ??
+        any?.coords?.lat ??
+        any?.coords?.latitude ??
+        any?.coord?.lat ??
+        any?.coord?.latitude
+    );
+
+    const lng = toFiniteNumber(
+      any.lng ??
+        any.longitude ??
+        any.lon ??
+        any.long ??
+        any._lng ??
+        any._long ??
+        any._longitude ??
+        any?.coords?.lng ??
+        any?.coords?.longitude ??
+        any?.coord?.lng ??
+        any?.coord?.longitude
+    );
+
+    if (lat != null && lng != null && isValidLat(lat) && isValidLng(lng)) return { lat, lng };
   } catch {}
 
   // Nested candidates
   const candidates = [
     any?.location,
     any?.geo,
+    any?.geopoint,
+    any?.geoPoint,
     any?.point,
     any?.position,
+    any?.center,
     any?.coord,
+    any?.coords,
     any?.coordinates,
     any?.place?.location,
     any?.place?.geometry?.location,
@@ -99,6 +155,22 @@ function extractLatLng(any) {
   return null;
 }
 
+function dedupConsecutive(points) {
+  const dedup = [];
+  const EPS = 1e-7;
+  for (const p of points) {
+    const prev = dedup[dedup.length - 1];
+    if (!prev) {
+      dedup.push(p);
+      continue;
+    }
+    const sameLat = Math.abs(prev.lat - p.lat) < EPS;
+    const sameLng = Math.abs(prev.lng - p.lng) < EPS;
+    if (!(sameLat && sameLng)) dedup.push(p);
+  }
+  return dedup;
+}
+
 function normalizePointsFromPath(path) {
   const arr = Array.isArray(path) ? path : [];
   const out = [];
@@ -106,28 +178,30 @@ function normalizePointsFromPath(path) {
     const ll = extractLatLng(p);
     if (ll) out.push(ll);
   }
-  // de-dup consecutive
-  const dedup = [];
-  for (const p of out) {
-    const prev = dedup[dedup.length - 1];
-    if (!prev || prev.lat !== p.lat || prev.lng !== p.lng) dedup.push(p);
-  }
-  return dedup;
+  return dedupConsecutive(out);
 }
 
 function normalizePointsFromStops(stops) {
-  const arr = Array.isArray(stops) ? stops : [];
+  const arr = Array.isArray(stops) ? stops.slice() : [];
+
+  // Prefer deterministic order if present
+  try {
+    arr.sort((a, b) => {
+      const ao = Number.isFinite(Number(a?.order)) ? Number(a.order) : Number.isFinite(Number(a?.index)) ? Number(a.index) : null;
+      const bo = Number.isFinite(Number(b?.order)) ? Number(b.order) : Number.isFinite(Number(b?.index)) ? Number(b.index) : null;
+      if (ao == null && bo == null) return 0;
+      if (ao == null) return 1;
+      if (bo == null) return -1;
+      return ao - bo;
+    });
+  } catch {}
+
   const out = [];
   for (const s of arr) {
     const ll = extractLatLng(s);
     if (ll) out.push(ll);
   }
-  const dedup = [];
-  for (const p of out) {
-    const prev = dedup[dedup.length - 1];
-    if (!prev || prev.lat !== p.lat || prev.lng !== p.lng) dedup.push(p);
-  }
-  return dedup;
+  return dedupConsecutive(out);
 }
 
 function makePinSvg({ fill = "#00E5FF", stroke = "rgba(0,0,0,0.65)" } = {}) {
@@ -146,6 +220,20 @@ function makePinSvg({ fill = "#00E5FF", stroke = "rgba(0,0,0,0.65)" } = {}) {
     </g>
   </svg>`;
   return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg.trim());
+}
+
+function sampleForBounds(points) {
+  // bounds için örnekleme (polyline full kalsın)
+  const arr = Array.isArray(points) ? points : [];
+  const n = arr.length;
+  if (n <= 420) return arr;
+
+  const step = Math.ceil(n / 360); // ~360 nokta hedef
+  const out = [];
+  for (let i = 0; i < n; i += step) out.push(arr[i]);
+  // son noktayı garanti et
+  if (out[out.length - 1] !== arr[n - 1]) out.push(arr[n - 1]);
+  return out;
 }
 
 export default function RouteDetailMapPreviewShell({
@@ -270,7 +358,6 @@ export default function RouteDetailMapPreviewShell({
   useEffect(() => {
     if (!mapInstance) return;
 
-    // setOptions(styles) bazı MAP_ID konfiglerinde etkisiz kalabilir — ama denemek zararsız.
     try {
       if (appliedStyleRef.current.map !== mapInstance || !appliedStyleRef.current.did) {
         appliedStyleRef.current = { map: mapInstance, did: true };
@@ -283,23 +370,25 @@ export default function RouteDetailMapPreviewShell({
   const points = useMemo(() => {
     const ptsFromPath = normalizePointsFromPath(path);
     if (ptsFromPath.length >= 2) return ptsFromPath;
+
     const ptsFromStops = normalizePointsFromStops(stops);
     if (ptsFromStops.length >= 2) return ptsFromStops;
+
     return [];
   }, [path, stops]);
+
+  const boundsPts = useMemo(() => sampleForBounds(points), [points]);
 
   const polylineRef = useRef(null);
   const glowRef = useRef(null);
   const startMarkerRef = useRef(null);
   const endMarkerRef = useRef(null);
 
-  // marker/polyline create + update
   useEffect(() => {
     const map = mapInstance;
     const g = window.google;
     if (!map || !g?.maps) return;
 
-    // cleanup if no points
     if (!points || points.length < 2) {
       try {
         if (polylineRef.current) polylineRef.current.setMap(null);
@@ -398,6 +487,7 @@ export default function RouteDetailMapPreviewShell({
   const fitStateRef = useRef({
     rafs: [],
     t: null,
+    t2: null,
     lastSig: "",
     lastAt: 0,
   });
@@ -424,23 +514,26 @@ export default function RouteDetailMapPreviewShell({
       const h = rect?.height || 0;
       if (w <= 4 || h <= 4) return;
 
-      const sig = `${points.length}:${points[0]?.lat},${points[0]?.lng}:${points[points.length - 1]?.lat},${
-        points[points.length - 1]?.lng
-      }:${Math.round(w)}x${Math.round(h)}`;
+      const first = points[0];
+      const last = points[points.length - 1];
 
-      // agresif loop kırıcı
+      const sig = `${points.length}:${first?.lat},${first?.lng}:${last?.lat},${last?.lng}:${Math.round(w)}x${Math.round(h)}`;
+
       const now = Date.now();
       if (fitStateRef.current.lastSig === sig && now - fitStateRef.current.lastAt < 700) return;
 
       fitStateRef.current.lastSig = sig;
       fitStateRef.current.lastAt = now;
 
-      // throttle (tek sefer)
-      if (fitStateRef.current.t) {
-        try {
-          clearTimeout(fitStateRef.current.t);
-        } catch {}
-      }
+      // clear old timers
+      try {
+        if (fitStateRef.current.t) clearTimeout(fitStateRef.current.t);
+      } catch {}
+      try {
+        if (fitStateRef.current.t2) clearTimeout(fitStateRef.current.t2);
+      } catch {}
+      fitStateRef.current.t = null;
+      fitStateRef.current.t2 = null;
 
       fitStateRef.current.t = setTimeout(() => {
         try {
@@ -449,30 +542,44 @@ export default function RouteDetailMapPreviewShell({
 
         try {
           const bounds = new g.maps.LatLngBounds();
-          for (const p of points) bounds.extend(p);
-          // padding mobil için
+          for (const p of boundsPts) bounds.extend(p);
           map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
         } catch {}
 
-        // bir kez daha küçük gecikmeyle (tile timing)
-        try {
-          setTimeout(() => {
-            try {
-              safeTriggerResize();
-            } catch {}
+        // Büyük path’lerde ikinci fit pahalı olabilir → sadece hafif düzeltme yap
+        fitStateRef.current.t2 = setTimeout(() => {
+          try {
+            safeTriggerResize();
+          } catch {}
+
+          // küçük/orta points’te ikinci fit faydalı olabiliyor
+          if (points.length <= 900) {
             try {
               const bounds = new g.maps.LatLngBounds();
-              for (const p of points) bounds.extend(p);
+              for (const p of boundsPts) bounds.extend(p);
               map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
             } catch {}
-          }, 120);
-        } catch {}
+          }
+        }, 120);
       }, reason === "resize" ? 60 : 40);
     },
-    [mapInstance, points, safeTriggerResize]
+    [mapInstance, points, boundsPts, safeTriggerResize]
   );
 
-  // ResizeObserver: bumpTick + scheduleFit
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        if (fitStateRef.current.t) clearTimeout(fitStateRef.current.t);
+      } catch {}
+      try {
+        if (fitStateRef.current.t2) clearTimeout(fitStateRef.current.t2);
+      } catch {}
+      fitStateRef.current.t = null;
+      fitStateRef.current.t2 = null;
+    };
+  }, []);
+
   useEffect(() => {
     const el = localDivRef.current;
     if (!el) return;
@@ -506,11 +613,9 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [bumpTick, scheduleFit]);
 
-  // initial RAF “2–3 frame sonra” stabilize
   useEffect(() => {
     if (!isReady || !mapInstance) return;
 
-    // cleanup old rafs
     try {
       for (const id of fitStateRef.current.rafs) cancelAnimationFrame(id);
     } catch {}
@@ -535,7 +640,6 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [isReady, mapInstance, scheduleFit]);
 
-  // tick’lerde de bir kez fit dene
   useEffect(() => {
     if (!mapInstance) return;
     scheduleFit("tick");
@@ -638,7 +742,6 @@ export default function RouteDetailMapPreviewShell({
     return "Harita yüklenemedi.";
   };
 
-  // MAP_ID varsa styles etkisiz kalabilir → hafif CSS filter fallback (polyline’ı öldürmeyecek kadar hafif)
   const cssFilterFallback = useMemo(() => {
     if (!MAP_ID) return "none";
     return "grayscale(0.95) brightness(0.78) contrast(1.12) saturate(0.72)";
@@ -646,7 +749,6 @@ export default function RouteDetailMapPreviewShell({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      {/* EMİR 8: Flash UI map görünümü (dark/grayscale + stabilize) */}
       <div
         ref={setDivRef}
         className="rdmps-map"

@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import "./Lightbox.css";
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+const OVERLAY_Z = 980;
 
 export default function Lightbox({
   items = [],
@@ -57,6 +58,64 @@ export default function Lightbox({
     onClose();
   }, [onClose, pauseVideoAt]);
 
+  // ✅ EMİR 13: Overlay açıkken body scroll kilitle (iOS dahil) + geri yükle
+  useEffect(() => {
+    let scrollY = 0;
+
+    const body = document.body;
+    const docEl = document.documentElement;
+
+    const prev = {
+      bodyOverflow: body.style.overflow,
+      bodyPosition: body.style.position,
+      bodyTop: body.style.top,
+      bodyLeft: body.style.left,
+      bodyRight: body.style.right,
+      bodyWidth: body.style.width,
+      docOverflow: docEl.style.overflow,
+      docOverscroll: docEl.style.overscrollBehavior,
+    };
+
+    try {
+      scrollY = window.scrollY || window.pageYOffset || 0;
+    } catch {
+      scrollY = 0;
+    }
+
+    try {
+      // iOS-safe: body fixed
+      body.style.position = "fixed";
+      body.style.top = `-${scrollY}px`;
+      body.style.left = "0";
+      body.style.right = "0";
+      body.style.width = "100%";
+      body.style.overflow = "hidden";
+
+      docEl.style.overflow = "hidden";
+      docEl.style.overscrollBehavior = "none";
+    } catch {
+      // no-op
+    }
+
+    return () => {
+      try {
+        body.style.overflow = prev.bodyOverflow;
+        body.style.position = prev.bodyPosition;
+        body.style.top = prev.bodyTop;
+        body.style.left = prev.bodyLeft;
+        body.style.right = prev.bodyRight;
+        body.style.width = prev.bodyWidth;
+
+        docEl.style.overflow = prev.docOverflow;
+        docEl.style.overscrollBehavior = prev.docOverscroll;
+      } catch {}
+
+      try {
+        window.scrollTo(0, scrollY);
+      } catch {}
+    };
+  }, []);
+
   // Focus management (a11y): open -> focus close button, close -> restore previous focus
   useEffect(() => {
     try {
@@ -104,14 +163,12 @@ export default function Lightbox({
   // resize/orientationchange: keep slide aligned
   useEffect(() => {
     const onResize = () => {
-      // Re-align current slide without animation
       scrollToIndex(activeRef.current, false);
     };
 
     window.addEventListener("resize", onResize, { passive: true });
     window.addEventListener("orientationchange", onResize, { passive: true });
 
-    // Also do a first align after mount (in case of initial layout shift)
     setTimeout(() => onResize(), 0);
 
     return () => {
@@ -188,11 +245,37 @@ export default function Lightbox({
     }
   }, [targetEl]);
 
+  // ✅ EMİR 13: Overlay root style (fixed/inset/z-index/pointer-events) + iOS touch-action
+  const overlayStyle = useMemo(
+    () => ({
+      position: "fixed",
+      inset: 0,
+      zIndex: OVERLAY_Z,
+      pointerEvents: "auto",
+      // iOS: alttaki scroll’u kilitledik; overlay içinde dikey pan "kibar"
+      touchAction: "pan-y",
+      overscrollBehavior: "contain",
+      WebkitOverflowScrolling: "touch",
+    }),
+    []
+  );
+
+  const sliderStyle = useMemo(
+    () => ({
+      touchAction: "pan-x",
+      overscrollBehavior: "contain",
+      WebkitOverflowScrolling: "touch",
+    }),
+    []
+  );
+
   const node = !len ? (
     <div
       className="mylasa-lightbox"
       role="dialog"
       aria-modal="true"
+      aria-label="Medya görüntüleyici"
+      style={overlayStyle}
       onClick={(e) => {
         e.stopPropagation();
         close();
@@ -220,6 +303,8 @@ export default function Lightbox({
       className="mylasa-lightbox"
       role="dialog"
       aria-modal="true"
+      aria-label="Medya görüntüleyici"
+      style={overlayStyle}
       onClick={(e) => {
         e.stopPropagation();
         close();
@@ -245,7 +330,12 @@ export default function Lightbox({
         </div>
 
         <div className="mylasa-lightbox__sliderWrap">
-          <div className="mylasa-lightbox__slider" ref={scrollerRef} onScroll={onScroll}>
+          <div
+            className="mylasa-lightbox__slider"
+            ref={scrollerRef}
+            onScroll={onScroll}
+            style={sliderStyle}
+          >
             {safeItems.map((it, idx) => {
               const url = it?.url ? String(it.url) : "";
               const type = it?.type === "video" ? "video" : "image";
@@ -265,7 +355,13 @@ export default function Lightbox({
                       }}
                     />
                   ) : (
-                    <img className="mylasa-lightbox__media" src={url} alt="" draggable={false} loading="eager" />
+                    <img
+                      className="mylasa-lightbox__media"
+                      src={url}
+                      alt=""
+                      draggable={false}
+                      loading="eager"
+                    />
                   )}
                 </div>
               );

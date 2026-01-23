@@ -2,6 +2,10 @@
 import React from "react";
 
 export default function RouteDetailGalleryTab({
+  mode = "view", // "view" | "edit"
+  isOwner = false,
+  canInteract = true,
+
   galleryItems,
   galleryState,
   gallerySentinelRef,
@@ -18,13 +22,14 @@ export default function RouteDetailGalleryTab({
   const skeletonCount = showSkeleton ? Math.max(6, Math.min(8, 8 - items.length)) : 0;
 
   const openAt = (idx) => {
+    if (!canInteract) return;
     try {
       openLightbox(buildLightboxItems(items), idx);
     } catch {}
   };
 
   return (
-    <div className="rdtab rdtab--gallery">
+    <div className="rdtab rdtab--gallery" data-mode={mode} data-owner={isOwner ? "1" : "0"} data-interact={canInteract ? "1" : "0"}>
       <div className="rd-gallery" aria-busy={isLoading ? "true" : "false"}>
         {items.map((it, idx) => {
           const isVideo = normalizeMediaType(it) === "video";
@@ -38,6 +43,7 @@ export default function RouteDetailGalleryTab({
               onClick={() => openAt(idx)}
               title={isVideo ? "Video" : "Fotoğraf"}
               aria-label={isVideo ? "Galeride video" : "Galeride fotoğraf"}
+              disabled={!canInteract}
             >
               {isVideo && (
                 <div className="rd-galleryItem__videoBadge" aria-hidden="true">
@@ -45,6 +51,7 @@ export default function RouteDetailGalleryTab({
                 </div>
               )}
 
+              {/* ✅ Ghost click/video click-yutma kırıcı: preview elementleri pointer-events:none */}
               {isVideo ? (
                 <video
                   src={it.url}
@@ -53,6 +60,7 @@ export default function RouteDetailGalleryTab({
                   preload="metadata"
                   disablePictureInPicture
                   controlsList="nodownload noplaybackrate"
+                  style={{ pointerEvents: "none" }}
                 />
               ) : (
                 <img
@@ -60,6 +68,7 @@ export default function RouteDetailGalleryTab({
                   alt=""
                   loading="lazy"
                   decoding="async"
+                  style={{ pointerEvents: "none" }}
                   onError={(e) =>
                     onImgError?.(e, {
                       scope: "gallery_grid",

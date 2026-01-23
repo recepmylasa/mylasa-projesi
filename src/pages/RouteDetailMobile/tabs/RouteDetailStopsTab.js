@@ -1,12 +1,15 @@
 // FILE: src/pages/RouteDetailMobile/tabs/RouteDetailStopsTab.js
-import React from "react";
+import React, { useMemo } from "react";
 import StarBars from "../components/StarBars";
 import StarRatingV2 from "../../../components/StarRatingV2/StarRatingV2";
 
 export default function RouteDetailStopsTab({
+  mode = "view", // "view" | "edit"
+  isOwner = false,
+  canInteract = true,
+
   stops,
   stopAgg,
-  isOwner,
   uploadState,
   mediaCacheRef,
   ensureStopThumbs,
@@ -18,8 +21,24 @@ export default function RouteDetailStopsTab({
   openLightbox,
   onImgError,
 }) {
+  const isEdit = useMemo(() => !!isOwner && mode === "edit", [isOwner, mode]);
+
+  const safeOpenLightbox = (items, idx) => {
+    if (!canInteract) return;
+    try {
+      openLightbox(items, idx);
+    } catch {}
+  };
+
+  const safePickMedia = (stopId) => {
+    if (!canInteract) return;
+    try {
+      onPickMedia(stopId);
+    } catch {}
+  };
+
   return (
-    <div className="rdtab rdtab--stops">
+    <div className="rdtab rdtab--stops" data-mode={mode} data-owner={isOwner ? "1" : "0"} data-interact={canInteract ? "1" : "0"}>
       <div className="rd-stops">
         {(stops || []).map((s, idx) => {
           const cache = mediaCacheRef.current.get(s.id) || {};
@@ -44,11 +63,7 @@ export default function RouteDetailStopsTab({
               {/* İç içerik */}
               <div className="rd-stop-content">
                 <div className="rd-stop-head">
-                  <div className="rd-stop-title">
-                    {s.title || `Durak ${nLabel}`}
-                    {s.order ? null : null}
-                  </div>
-
+                  <div className="rd-stop-title">{s.title || `Durak ${nLabel}`}</div>
                   {s.note ? <div className="rd-stop-desc">{s.note}</div> : null}
                 </div>
 
@@ -65,10 +80,21 @@ export default function RouteDetailStopsTab({
                     </div>
                   )}
 
-                  <StarRatingV2 onRated={(v) => onStopRate(s.id, v)} size={22} disabled={isOwner} />
+                  {/* ✅ EMİR 13: Owner ve edit modda rating UI pasif (pırıl pırıl parite) */}
+                  <StarRatingV2
+                    onRated={(v) => {
+                      if (!canInteract) return;
+                      if (isOwner) return;
+                      if (isEdit) return;
+                      onStopRate(s.id, v);
+                    }}
+                    size={22}
+                    disabled={!canInteract || isOwner || isEdit}
+                  />
 
-                  {isOwner && (
-                    <button type="button" onClick={() => onPickMedia(s.id)} className="rdglass-btn">
+                  {/* ✅ EMİR 13: Edit modda yalnızca owner için “Medya Ekle” */}
+                  {isEdit && (
+                    <button type="button" onClick={() => safePickMedia(s.id)} className="rdglass-btn" disabled={!canInteract}>
                       Medya Ekle
                     </button>
                   )}
@@ -77,8 +103,8 @@ export default function RouteDetailStopsTab({
                 {/* Medya satırı */}
                 <div
                   className="rd-stop-media"
-                  onMouseEnter={() => ensureStopThumbs(s.id)}
-                  onTouchStart={() => ensureStopThumbs(s.id)}
+                  onMouseEnter={() => (canInteract ? ensureStopThumbs(s.id) : null)}
+                  onTouchStart={() => (canInteract ? ensureStopThumbs(s.id) : null)}
                 >
                   {media.slice(0, 4).map((m, mIdx) => {
                     const isVideo = normalizeMediaType(m) === "video";
@@ -87,9 +113,10 @@ export default function RouteDetailStopsTab({
                         key={m.id || mIdx}
                         type="button"
                         className="rd-stop-mediaItem"
-                        onClick={() => openLightbox(buildLightboxItems(media), mIdx)}
+                        onClick={() => safeOpenLightbox(buildLightboxItems(media), mIdx)}
                         title={isVideo ? "Video" : "Fotoğraf"}
                         aria-label={isVideo ? "Videoyu görüntüle" : "Fotoğrafı görüntüle"}
+                        disabled={!canInteract}
                       >
                         {isVideo && (
                           <div className="rd-stop-mediaItem__videoBadge" aria-hidden="true">
@@ -97,6 +124,7 @@ export default function RouteDetailStopsTab({
                           </div>
                         )}
 
+                        {/* ✅ Ghost click/video click-yutma kırıcı: preview elementleri pointer-events:none */}
                         {isVideo ? (
                           <video
                             src={m.url}
@@ -107,6 +135,7 @@ export default function RouteDetailStopsTab({
                             controlsList="nodownload noplaybackrate"
                             tabIndex={-1}
                             aria-hidden="true"
+                            style={{ pointerEvents: "none" }}
                           />
                         ) : (
                           <img
@@ -115,6 +144,7 @@ export default function RouteDetailStopsTab({
                             loading="lazy"
                             decoding="async"
                             draggable={false}
+                            style={{ pointerEvents: "none" }}
                             onError={(e) => onImgError?.(e, { scope: "stop_media", stopId: s.id, mediaId: m?.id || null })}
                           />
                         )}
@@ -123,9 +153,7 @@ export default function RouteDetailStopsTab({
                   })}
 
                   {media.length === 0 && (
-                    <div className="rd-stop-mediaEmpty rdglass-muted">
-                      {hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}
-                    </div>
+                    <div className="rd-stop-mediaEmpty rdglass-muted">{hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}</div>
                   )}
                 </div>
 
@@ -139,7 +167,12 @@ export default function RouteDetailStopsTab({
 
                       <div className="rd-stop-uploadPct rdglass-muted">{up.p || 0}%</div>
 
-                      <button type="button" onClick={() => cancelUpload(s.id)} className="rdglass-btn rd-stop-uploadCancel">
+                      <button
+                        type="button"
+                        onClick={() => (canInteract ? cancelUpload(s.id) : null)}
+                        className="rdglass-btn rd-stop-uploadCancel"
+                        disabled={!canInteract}
+                      >
                         İptal
                       </button>
                     </div>
