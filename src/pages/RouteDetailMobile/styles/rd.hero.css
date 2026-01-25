@@ -1,39 +1,44 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.hero.css */
-/* EMIR 3 — REVİZE (Yazar Hub altta + Favori kalp) — Flash UI referansına birebir */
-/* ✅ Başlık + rating hero üstte (nav altı) | ✅ Yazar hub hero altına overlap | ✅ Favori: kalp + aktif state */
+/* EMİR 1 (GENİŞLETİLMİŞ) — RouteDetailMobile Hero + Floating Interaction Hub (Flash paritesi)
+   - Cover ~%55 (56vh band)
+   - 2 katman overlay (top + bottom)
+   - Hero info: pill + title + 5★ + badge
+   - Floating Interaction Hub: tek cam bar (avatar+name+time+fav) hero içinde
+   - Nav: kompakt glass, radius 12, sağda 2 aksiyon
+   - EMİR 1 FIX: safe-area, hub overlap, scale fallback, double-hub killer
+   - ✅ EMİR (YENİ): 3 nokta menü item’ları global button stillerinden etkilenmeyecek (all: unset + hard reset)
+*/
+
+/* ✅ EMİR 1 — Tuning knobs (scoped) */
+.route-detail-backdrop {
+  --rd-hero-hub-overlap: 22px; /* hub, hero altından bu kadar taşsın */
+  --rd-hero-nav-top: 12px;     /* safe-area hariç offset */
+}
 
 .route-detail-hero {
   position: relative;
   width: 100%;
-
-  /* Flash hissi → 52–62vh bandı */
   height: clamp(300px, 56vh, 540px);
-
-  /* Overlap için clipping KAPALI */
   overflow: visible;
-
   border-bottom: 1px solid var(--rd-border);
   transform: translateZ(0);
-
-  /* author hub sibling → hero kendi altında ekstra boşluk taşımaz */
   margin-bottom: 0;
 }
 
-/* iOS/modern tarayıcılarda dinamik viewport ile daha stabil */
 @supports (height: 100dvh) {
   .route-detail-hero {
     height: clamp(300px, 56dvh, 540px);
   }
 }
 
-/* hero üstünde çok hafif copper glow (decor only) */
+/* dekor: hafif glow */
 .route-detail-hero::before {
   content: "";
   position: absolute;
   inset: -24px -24px -24px -24px;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.20;
+  opacity: 0.18;
   background:
     radial-gradient(720px 320px at 18% 6%, rgba(251, 146, 60, 0.14), transparent 72%),
     radial-gradient(640px 280px at 82% 10%, rgba(184, 115, 51, 0.12), transparent 70%);
@@ -49,54 +54,78 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-
-  /* “afiş” crop → biraz yukarı */
   object-position: 50% 34%;
-
   display: block;
-
-  /* hafif sinema zoom */
-  transform: scale(1.04);
+  transform: scale(1.045);
 }
 
-/* Başlık üstte → üstte okunurluk shade */
-.route-detail-hero__gradient {
+/* ✅ EMİR 1 — Scale class gelmezse bile “Flash hissi” kaçmasın */
+.route-detail-hero__media img {
+  transform: scale(1.045);
+}
+
+/* ✅ 2 katman overlay */
+.rd-hero__overlay {
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
+}
+
+.rd-hero__overlay--top {
   background: linear-gradient(
     180deg,
-    rgba(0, 0, 0, 0.72) 0%,
-    rgba(0, 0, 0, 0.38) 18%,
-    rgba(0, 0, 0, 0.10) 40%,
-    rgba(0, 0, 0, 0.56) 72%,
+    rgba(0, 0, 0, 0.74) 0%,
+    rgba(0, 0, 0, 0.44) 20%,
+    rgba(0, 0, 0, 0.10) 48%,
+    rgba(0, 0, 0, 0.00) 62%
+  );
+}
+
+.rd-hero__overlay--bottom {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.00) 38%,
+    rgba(0, 0, 0, 0.18) 54%,
+    rgba(0, 0, 0, 0.62) 78%,
     rgba(0, 0, 0, 0.86) 100%
   );
 }
 
-/* Light theme: üstte aydınlık band + altta aydınlık */
-.route-detail-backdrop[data-theme="light"] .route-detail-hero__gradient,
-.route-detail-backdrop.route-detail-light .route-detail-hero__gradient {
+/* Light theme overlay */
+.route-detail-backdrop[data-theme="light"] .rd-hero__overlay--top,
+.route-detail-backdrop.route-detail-light .rd-hero__overlay--top {
   background: linear-gradient(
     180deg,
-    rgba(248, 250, 252, 0.92) 0%,
-    rgba(248, 250, 252, 0.66) 22%,
-    rgba(248, 250, 252, 0.10) 44%,
-    rgba(248, 250, 252, 0.78) 72%,
-    rgba(248, 250, 252, 0.96) 100%
+    rgba(248, 250, 252, 0.94) 0%,
+    rgba(248, 250, 252, 0.70) 22%,
+    rgba(248, 250, 252, 0.12) 50%,
+    rgba(248, 250, 252, 0.00) 62%
   );
 }
 
+.route-detail-backdrop[data-theme="light"] .rd-hero__overlay--bottom,
+.route-detail-backdrop.route-detail-light .rd-hero__overlay--bottom {
+  background: linear-gradient(
+    180deg,
+    rgba(248, 250, 252, 0.00) 38%,
+    rgba(248, 250, 252, 0.18) 54%,
+    rgba(248, 250, 252, 0.72) 82%,
+    rgba(248, 250, 252, 0.94) 100%
+  );
+}
+
+/* ✅ Nav bar */
 .route-detail-hero__nav {
   position: absolute;
-  top: 12px;
+  top: 12px; /* override aşağıda safe-area ile yapılacak */
   left: 12px;
   right: 12px;
-  z-index: 4;
+  z-index: 6;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  pointer-events: auto;
 }
 
 .rd-hero-nav-left,
@@ -107,21 +136,19 @@
 }
 
 .rd-hero-nav-btn {
-  height: 38px;
-  min-width: 38px;
-  padding: 0 12px;
-  border-radius: 999px;
+  height: 40px;
+  width: 40px;
+  padding: 10px;
+  border-radius: 12px;
   border: 1px solid var(--rd-border);
-  background: var(--rd-glass-2);
+  background: rgba(255, 255, 255, 0.07);
   color: var(--rd-text);
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
   box-shadow: var(--rd-nav-shadow, 0 12px 26px rgba(0, 0, 0, 0.22));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  font-weight: 700;
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -142,16 +169,16 @@
 }
 
 .rd-hero-nav-btn--icononly {
-  padding: 0;
-  width: 38px;
+  min-width: 40px;
 }
 
+/* ✅ Menu */
 .rd-hero-menu {
   position: absolute;
   top: 56px;
   right: 12px;
-  z-index: 6;
-  width: 200px;
+  z-index: 7;
+  width: min(240px, calc(100vw - 24px));
   border-radius: 18px;
   border: 1px solid var(--rd-border);
   background: var(--rd-glass);
@@ -159,81 +186,103 @@
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   box-shadow: var(--rd-card-shadow, var(--rd-shadow));
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
 }
 
-.rd-hero-menu__item {
+/* ✅ KRİTİK: global button stillerini tamamen sıfırla (menü item’ları “yuvarlak/üst üste binme” yapmasın) */
+.route-detail-backdrop .rd-hero-menu .rd-hero-menu__item {
+  all: unset;
+  box-sizing: border-box;
+
   width: 100%;
+  min-height: 44px;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 12px 12px;
-  background: transparent;
-  border: 0;
-  color: var(--rd-text);
+  gap: 12px;
+
+  padding: 12px 14px;
+
   cursor: pointer;
-  font-weight: 700;
+  user-select: none;
   -webkit-tap-highlight-color: transparent;
+
+  font: inherit;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--rd-text);
 }
 
-.rd-hero-menu__item + .rd-hero-menu__item {
-  border-top: 1px solid var(--rd-border);
+.route-detail-backdrop .rd-hero-menu .rd-hero-menu__item > span:first-child {
+  flex: 1;
+  min-width: 0;
 }
 
-.rd-hero-menu__item:active {
+.route-detail-backdrop .rd-hero-menu .rd-hero-menu__item:active {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.route-detail-backdrop[data-theme="light"] .rd-hero-menu__item:active,
-.route-detail-backdrop.route-detail-light .rd-hero-menu__item:active {
+.route-detail-backdrop[data-theme="light"] .rd-hero-menu .rd-hero-menu__item:active,
+.route-detail-backdrop.route-detail-light .rd-hero-menu .rd-hero-menu__item:active {
   background: rgba(0, 0, 0, 0.04);
+}
+
+.route-detail-backdrop .rd-hero-menu .rd-hero-menu__item:focus-visible {
+  outline: none;
+  box-shadow: var(--rd-focus-ring, none);
+}
+
+.route-detail-backdrop .rd-hero-menu .rd-hero-menu__item + .rd-hero-menu__item {
+  border-top: 1px solid var(--rd-border);
 }
 
 .rd-hero-menu__hint {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--rd-muted);
+  white-space: nowrap;
 }
 
-/* hero content TOP-LEFT (nav altı) */
-.route-detail-hero__content {
+/* ✅ Hero info (sol alt/orta band) */
+.rd-hero__info {
   position: absolute;
-  left: 14px;
-  right: 14px;
-
-  /* nav + safe top padding */
-  top: calc(12px + env(safe-area-inset-top) + 46px);
-  bottom: auto;
-
-  z-index: 3;
+  left: 20px;
+  right: 20px;
+  /* ✅ EMİR 1 — hub overlap sonrası info konumu: hub top + 26px boşluk kalsın */
+  bottom: calc(90px - var(--rd-hero-hub-overlap, 22px));
+  z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   pointer-events: none;
 }
 
-.rd-hero-tag {
+.rd-hero__pill {
   align-self: flex-start;
-  padding: 6px 10px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid var(--rd-border);
-  background: var(--rd-glass-2);
-  color: var(--rd-text);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  pointer-events: none;
+  border: 1px solid rgba(251, 146, 60, 0.55);
+  background: rgba(251, 146, 60, 0.10);
+  color: var(--rd-copper-glow, rgba(251, 146, 60, 1));
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
-.rd-hero-title {
-  font-size: clamp(22px, 2.9vh, 26px);
+.rd-hero__title {
+  margin: 0;
+  font-size: clamp(28px, 5.6vw, 34px);
   line-height: 1.12;
   font-weight: 900;
+  letter-spacing: -0.5px;
   color: var(--rd-text);
-  text-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
-  pointer-events: none;
+  text-shadow: 0 10px 26px rgba(0, 0, 0, 0.38);
 
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -241,185 +290,223 @@
   overflow: hidden;
 }
 
-.route-detail-backdrop[data-theme="light"] .rd-hero-title,
-.route-detail-backdrop.route-detail-light .rd-hero-title {
+.route-detail-backdrop[data-theme="light"] .rd-hero__title,
+.route-detail-backdrop.route-detail-light .rd-hero__title {
   text-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
 }
 
-.rd-hero-ratingline {
+.rd-hero__ratingRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--rd-text);
-  font-weight: 800;
-  font-size: 13px;
-  pointer-events: none;
+  gap: 10px;
 }
 
-.rd-hero-ratingline__star {
-  color: var(--rd-copper-glow);
-  text-shadow: 0 0 18px rgba(251, 146, 60, 0.22);
+.rd-hero__stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.rd-hero-meta {
-  color: var(--rd-muted);
-  font-weight: 700;
+.rd-hero__star {
+  font-size: 14px;
+  line-height: 1;
+  display: inline-block;
+}
+
+.rd-hero__star--full {
+  color: var(--rd-copper-glow, rgba(251, 146, 60, 1));
+  text-shadow: 0 0 18px rgba(251, 146, 60, 0.20);
+}
+
+.rd-hero__star--half {
+  background: linear-gradient(90deg, var(--rd-copper-glow, rgba(251, 146, 60, 1)) 50%, rgba(255, 255, 255, 0.25) 50%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 18px rgba(251, 146, 60, 0.14);
+}
+
+.rd-hero__star--empty {
+  color: rgba(255, 255, 255, 0.30);
+}
+
+.route-detail-backdrop[data-theme="light"] .rd-hero__star--empty,
+.route-detail-backdrop.route-detail-light .rd-hero__star--empty {
+  color: rgba(0, 0, 0, 0.22);
+}
+
+.rd-hero__ratingBadge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
-  pointer-events: none;
-
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-weight: 700;
+  color: var(--rd-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--rd-border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
-/* ✅ Yazar hub: HERO dışı sibling (DOM) + hero altına overlap eden CAM KART */
-/* ✅ Bug-fix: override/legacy sticky/absolute kaçışlarını sert kilitle */
-.rd-author-hub {
-  position: relative !important;
-  top: auto !important;
-  left: auto !important;
-  right: auto !important;
-  bottom: auto !important;
+/* ✅ Floating Interaction Hub (tek cam bar) */
+.rd-hero__hub {
+  position: absolute;
+  left: 20px;
+  right: 20px;
 
-  z-index: 7 !important;
+  /* ✅ EMİR 1 — Floating Hub “cover’ın altına taşsın” */
+  bottom: calc(0px - var(--rd-hero-hub-overlap, 22px));
 
-  /* HERO alt kenarına overlap */
-  margin: -22px 14px 10px 14px !important;
+  height: 64px;
+  z-index: 6;
 
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 14px;
 
-  padding: 12px 12px;
-  border-radius: 18px;
-
-  border: 1px solid var(--rd-border);
-  background: var(--rd-glass);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  padding: 14px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
   box-shadow: var(--rd-card-shadow, var(--rd-shadow));
+  pointer-events: auto;
 }
 
-.rd-author-avatar {
-  width: 36px;
-  height: 36px;
+.route-detail-backdrop[data-theme="light"] .rd-hero__hub,
+.route-detail-backdrop.route-detail-light .rd-hero__hub {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.rd-hero__hubProfile {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rd-hero__hubProfile:focus-visible {
+  outline: none;
+  box-shadow: var(--rd-focus-ring, none);
+}
+
+.rd-hero__avatar {
+  width: 40px;
+  height: 40px;
   border-radius: 999px;
   overflow: hidden;
-  flex: 0 0 36px;
-  border: 1px solid var(--rd-border);
-  background: var(--rd-glass-2);
+  flex: 0 0 40px;
+
+  border: 2px solid rgba(251, 146, 60, 0.55);
+  background: rgba(255, 255, 255, 0.06);
+
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 900;
-  color: var(--rd-text);
 }
 
-.rd-author-avatar img {
+.rd-hero__avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.rd-author-mid {
+.rd-hero__avatarFallback {
+  font-weight: 900;
+  color: var(--rd-text);
+}
+
+.rd-hero__authorMeta {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 1;
 }
 
-.rd-author-name {
-  font-weight: 900;
-  color: var(--rd-text);
-  font-size: 13px;
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.rd-author-sub {
+.rd-hero__authorName {
+  font-size: 14px;
   font-weight: 700;
-  color: var(--rd-muted);
-  font-size: 12px;
+  color: var(--rd-text);
   line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* ✅ Favori butonu: kalp + aktif state (backend yok → UI state) */
-.rd-author-fav {
-  height: 36px;
-  width: 42px;
+.rd-hero__time {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rd-muted);
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ✅ Favori: Flash kırmızı kalp */
+.rd-hero__favBtn {
+  height: 40px;
+  width: 40px;
   border-radius: 14px;
-
-  border: 1px solid var(--rd-border);
-  background: var(--rd-glass-2);
-  color: var(--rd-text);
-
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-
   transition: transform 120ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
-.rd-author-fav:active {
+.rd-hero__favBtn:active {
   transform: translateY(1px) scale(0.98);
 }
 
-.rd-author-fav:disabled {
+.rd-hero__favBtn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.rd-author-fav:focus-visible {
+.rd-hero__favBtn:focus-visible {
   outline: none;
   box-shadow: var(--rd-focus-ring, none);
 }
 
-.rd-author-fav__icon {
+.rd-hero__favIcon {
   font-size: 18px;
   line-height: 1;
   transform: translateY(-0.5px);
 }
 
-/* Aktif favori görünümü */
-.rd-author-fav.is-active {
-  background: rgba(251, 146, 60, 0.18);
-  border-color: rgba(251, 146, 60, 0.42);
-  box-shadow: 0 14px 30px rgba(251, 146, 60, 0.12), var(--rd-card-shadow, var(--rd-shadow));
+.rd-hero__favBtn.is-active {
+  background: rgba(255, 59, 95, 0.16);
+  border-color: rgba(255, 59, 95, 0.32);
+  box-shadow: 0 14px 30px rgba(255, 59, 95, 0.10), var(--rd-card-shadow, var(--rd-shadow));
 }
 
-.rd-author-fav.is-active .rd-author-fav__icon {
-  color: var(--rd-copper-glow);
-  text-shadow: 0 0 18px rgba(251, 146, 60, 0.24);
-}
-
-.route-detail-backdrop[data-theme="light"] .rd-author-fav.is-active,
-.route-detail-backdrop.route-detail-light .rd-author-fav.is-active {
-  background: rgba(184, 115, 51, 0.14);
-  border-color: rgba(184, 115, 51, 0.32);
-  box-shadow: 0 14px 28px rgba(184, 115, 51, 0.10), var(--rd-card-shadow, var(--rd-shadow));
+.rd-hero__favBtn.is-active .rd-hero__favIcon {
+  color: rgba(255, 59, 95, 1);
+  text-shadow: 0 0 18px rgba(255, 59, 95, 0.18);
 }
 
 /* =========================================================
    ✅ HARD OVERRIDES — Vitreous.css daha spesifik selector’ları ez
-   (Hero height/overflow, nav click, content position, after-gradient)
    ========================================================= */
-
-/* Vitreous: .route-detail-backdrop .route-detail-hero { height: ... !important; overflow:hidden; } */
 .route-detail-backdrop .route-detail-hero {
   height: clamp(300px, 56vh, 540px) !important;
   min-height: clamp(300px, 56vh, 540px) !important;
@@ -433,27 +520,24 @@
   }
 }
 
-/* Vitreous pseudo gradient’i kapat (biz DOM gradient kullanıyoruz) */
+/* ✅ EMİR 1 — Safe-area (notch) */
+.route-detail-backdrop .route-detail-hero__nav {
+  top: calc(env(safe-area-inset-top, 0px) + var(--rd-hero-nav-top, 12px)) !important;
+  pointer-events: auto !important;
+}
+
+/* ✅ EMİR 1 — Hub overlap sonrası içerik hub’ın altına girmesin (sheet üstü boşluk) */
+.route-detail-backdrop .route-detail-body {
+  padding-top: var(--rd-hero-hub-overlap, 22px) !important;
+}
+
+/* Vitreous pseudo gradient’i kapat (biz 2 overlay kullanıyoruz) */
 .route-detail-backdrop .route-detail-hero::after {
   content: none !important;
   background: none !important;
 }
 
-/* Vitreous: hero content bottom’a çekiyor → üstte kilitle */
-.route-detail-backdrop .route-detail-hero__content {
-  top: calc(12px + env(safe-area-inset-top) + 46px) !important;
-  bottom: auto !important;
-  left: 14px !important;
-  right: 14px !important;
-}
-
-/* Vitreous nav “pointer-events: none” oyunlarını kesinle */
-.route-detail-backdrop .route-detail-hero__nav {
-  pointer-events: auto !important;
-}
-
-/* Author hub overlap margin’i kilitle (Vitreous’te farklı overlap var) */
+/* ✅ EMİR 1 — ÇİFT HUB KIRICI (JS’te yok ama olur da kalırsa görünmesin) */
 .route-detail-backdrop .rd-author-hub {
-  margin: -22px 14px 10px 14px !important;
-  z-index: 7 !important;
+  display: none !important;
 }

@@ -810,8 +810,6 @@ export default function RouteDetailMobile({
   const overlayOpen = !!(lightboxItems || showShareSheet || showCoverPickerOverlay || showCommentsOverlay);
   const canInteract = !overlayOpen && !interactionBlocked;
 
-  const showCta = modeForTabs === "view" && !isCommentsOpen;
-
   // =========================
   // ✅ EMIR 3 — Hero / Nav / Author Hub (cam card)
   // =========================
@@ -862,6 +860,84 @@ export default function RouteDetailMobile({
   }, [owner, lockedOwnerDoc, routeModel]);
 
   const timeAgoText = useMemo(() => formatTimeAgo(routeModel?.finishedAt || routeModel?.createdAt), [routeModel]);
+
+  const timeAgoLine = useMemo(() => {
+    const t = String(timeAgoText || "").trim();
+    if (!t) return "";
+    if (t.toLowerCase().includes("paylaşıldı")) return t;
+    return `${t} paylaşıldı`;
+  }, [timeAgoText]);
+
+  // ✅ EMİR 1 (GENİŞLETİLMİŞ) — Hero rating parse + 5★ visual
+  const heroRatingInfo = useMemo(() => {
+    try {
+      const labelRaw = String(ratingAvgLabel || "").trim();
+      const label = labelRaw.replace(",", ".");
+      let avg = null;
+      let count = null;
+
+      const mAvg = label.match(/(\d+(?:\.\d+)?)/);
+      if (mAvg && mAvg[1]) {
+        const v = parseFloat(mAvg[1]);
+        if (Number.isFinite(v)) avg = v;
+      }
+
+      const mCountParen = label.match(/\((\d+)\)/);
+      if (mCountParen && mCountParen[1]) {
+        const n = parseInt(mCountParen[1], 10);
+        if (Number.isFinite(n)) count = n;
+      } else {
+        const mCountAlt = label.match(/(\d+)\s*(?:oy|vote|değerlendirme)/i);
+        if (mCountAlt && mCountAlt[1]) {
+          const n = parseInt(mCountAlt[1], 10);
+          if (Number.isFinite(n)) count = n;
+        }
+      }
+
+      let badgeText = "";
+      if (typeof avg === "number" && Number.isFinite(avg)) {
+        const a = Math.max(0, Math.min(5, avg));
+        badgeText = count != null ? `${a.toFixed(1)} (${count})` : `${a.toFixed(1)}`;
+      } else {
+        badgeText = labelRaw || "—";
+      }
+
+      return { avg, count, badgeText };
+    } catch {
+      return { avg: null, count: null, badgeText: String(ratingAvgLabel || "—") };
+    }
+  }, [ratingAvgLabel]);
+
+  const heroStarsModel = useMemo(() => {
+    const avg = heroRatingInfo?.avg;
+    if (typeof avg !== "number" || !Number.isFinite(avg)) return { full: 0, half: false, empty: 5 };
+    const a = Math.max(0, Math.min(5, avg));
+    const baseFull = Math.floor(a);
+    const rem = a - baseFull;
+
+    const bumpFull = rem >= 0.75 ? 1 : 0;
+    const half = rem >= 0.25 && rem < 0.75;
+
+    const full = Math.min(5, baseFull + bumpFull);
+    const halfOn = full < 5 && half;
+
+    const empty = Math.max(0, 5 - full - (halfOn ? 1 : 0));
+    return { full, half: halfOn, empty };
+  }, [heroRatingInfo]);
+
+  const requestOpenProfile = useCallback(
+    (e) => {
+      e?.stopPropagation?.();
+      const uid = ownerIdForProfile || routeDoc?.ownerId || routeModel?.ownerId || null;
+      if (!uid) return;
+
+      try {
+        const ev = new CustomEvent("mylasa:openProfile", { detail: { uid }, bubbles: true });
+        window.dispatchEvent(ev);
+      } catch {}
+    },
+    [ownerIdForProfile, routeDoc, routeModel]
+  );
 
   const [heroMenuOpen, setHeroMenuOpen] = useState(false);
 
@@ -948,15 +1024,15 @@ export default function RouteDetailMobile({
   const content = (
     <div
       className={`route-detail-backdrop ${rdTheme === "light" ? "route-detail-light" : "route-detail-dark"}${
-        showCta ? " has-cta" : ""
-      }${overlayOpen ? " rd-overlay-open" : ""}`}
+        overlayOpen ? " rd-overlay-open" : ""
+      }`}
       data-theme={rdTheme}
       onClick={handleBackdropClick}
     >
       <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
-        {/* ✅ EMİR 3 (REVİZE) — HERO (başlık üstte) + Yazar Hub (HERO altında, overlap) */}
+        {/* ✅ EMİR 1 (GENİŞLETİLMİŞ) — HERO + Floating Interaction Hub (Flash paritesi) */}
         <div
           className="route-detail-hero"
           onClick={() => {
@@ -975,8 +1051,11 @@ export default function RouteDetailMobile({
             />
           </div>
 
-          <div className="route-detail-hero__gradient" />
+          {/* ✅ 2 katman overlay: top + bottom (okunurluk garantisi) */}
+          <div className="rd-hero__overlay rd-hero__overlay--top" />
+          <div className="rd-hero__overlay rd-hero__overlay--bottom" />
 
+          {/* ✅ Nav: sol geri | sağ 2 aksiyon (paylaş + menü) */}
           <div className="route-detail-hero__nav" onClick={(e) => e.stopPropagation()}>
             <div className="rd-hero-nav-left">
               <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onClose} title="Geri">
@@ -987,7 +1066,6 @@ export default function RouteDetailMobile({
             </div>
 
             <div className="rd-hero-nav-right">
-              {/* ✅ EMİR 13: Edit modda view aksiyonları gizli (share) */}
               {!isEditMode && (
                 <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onShare} title="Paylaş">
                   <span className="rd-hero-nav-btn__icon" aria-hidden="true">
@@ -1010,26 +1088,8 @@ export default function RouteDetailMobile({
               </button>
             </div>
 
-            {/* ✅ EMİR 4 — Tema toggle (menü dışı, layout bozmaz) */}
-            <button
-              type="button"
-              className="rd-hero-nav-btn rd-hero-nav-btn--icononly rd-hero-theme-toggle"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleTheme();
-              }}
-              aria-label="Temayı değiştir"
-              aria-pressed={rdTheme === "dark"}
-              title={rdTheme === "dark" ? "Açık tema" : "Koyu tema"}
-            >
-              <span className="rd-hero-nav-btn__icon" aria-hidden="true">
-                {rdTheme === "dark" ? "☾" : "☀"}
-              </span>
-            </button>
-
             {heroMenuOpen && (
               <div className="rd-hero-menu" onClick={(e) => e.stopPropagation()}>
-                {/* ✅ EMİR 1 — Owner için “Düzenle” aksiyonu */}
                 {!!isOwner && !isEditMode && (
                   <button
                     type="button"
@@ -1058,7 +1118,6 @@ export default function RouteDetailMobile({
                   </button>
                 )}
 
-                {/* ✅ EMİR 13: Edit modda view aksiyonları gizli (share/gpx/report) */}
                 {!isEditMode && (
                   <button
                     type="button"
@@ -1116,54 +1175,82 @@ export default function RouteDetailMobile({
             )}
           </div>
 
-          <div className="route-detail-hero__content">
-            {heroCategory ? <div className="rd-hero-tag">{heroCategory}</div> : null}
-            <div className="rd-hero-title" title={heroTitle || "Rota"}>
+          {/* ✅ Hero info: kategori pill + başlık + rating row */}
+          <div className="rd-hero__info" aria-label="Rota özeti">
+            {heroCategory ? <div className="rd-hero__pill">{heroCategory}</div> : null}
+
+            <h1 className="rd-hero__title" title={heroTitle || "Rota"}>
               {heroTitle || "Rota"}
-            </div>
-            <div className="rd-hero-ratingline">
-              <span className="rd-hero-ratingline__star" aria-hidden="true">
-                ★
-              </span>
-              <span>{ratingAvgLabel}</span>
-            </div>
-            {metaLine ? <div className="rd-hero-meta">{metaLine}</div> : null}
-          </div>
-        </div>
+            </h1>
 
-        {/* ✅ EMİR 3 (REVİZE) — Yazar hub HERO altında overlap
-            ✅ EMİR 13: Edit modda view aksiyonları gizli (fav) */}
-        <div className="rd-author-hub" onClick={(e) => e.stopPropagation()}>
-          <div className="rd-author-avatar" aria-label="Yazar">
-            {ownerAvatarUrl ? <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" /> : ownerName?.[0] || "Y"}
-          </div>
+            <div className="rd-hero__ratingRow" aria-label="Rota puanı">
+              <div className="rd-hero__stars" aria-hidden="true">
+                {Array.from({ length: heroStarsModel.full }).map((_, i) => (
+                  <span key={`f${i}`} className="rd-hero__star rd-hero__star--full">
+                    ★
+                  </span>
+                ))}
+                {heroStarsModel.half ? (
+                  <span key="h" className="rd-hero__star rd-hero__star--half">
+                    ★
+                  </span>
+                ) : null}
+                {Array.from({ length: heroStarsModel.empty }).map((_, i) => (
+                  <span key={`e${i}`} className="rd-hero__star rd-hero__star--empty">
+                    ★
+                  </span>
+                ))}
+              </div>
 
-          <div className="rd-author-mid">
-            <div className="rd-author-name" title={ownerName}>
-              {ownerName}
+              <span className="rd-hero__ratingBadge">{heroRatingInfo?.badgeText || ratingAvgLabel || "—"}</span>
             </div>
-            <div className="rd-author-sub">{timeAgoText || ""}</div>
           </div>
 
-          {!isEditMode && (
+          {/* ✅ Floating Interaction Hub: hero içinde, cover üstünde yüzen tek cam bar */}
+          <div className="rd-hero__hub" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              className={`rd-author-fav ${isFav ? "is-active" : ""}`}
-              onClick={onToggleFav}
-              aria-label={isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
-              aria-pressed={!!isFav}
-              title={!canToggleFav ? "Favorilere eklemek için giriş yapmalısın." : isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
-              disabled={!canToggleFav}
+              className="rd-hero__hubProfile"
+              onClick={requestOpenProfile}
+              title="Profili aç"
+              aria-label="Profili aç"
             >
-              <span className="rd-author-fav__icon" aria-hidden="true">
-                {isFav ? "♥" : "♡"}
-              </span>
+              <div className="rd-hero__avatar" aria-hidden="true">
+                {ownerAvatarUrl ? (
+                  <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" />
+                ) : (
+                  <span className="rd-hero__avatarFallback">{ownerName?.[0] || "Y"}</span>
+                )}
+              </div>
+
+              <div className="rd-hero__authorMeta">
+                <div className="rd-hero__authorName" title={ownerName}>
+                  {ownerName}
+                </div>
+                <div className="rd-hero__time">{timeAgoLine || ""}</div>
+              </div>
             </button>
-          )}
+
+            {!isEditMode && (
+              <button
+                type="button"
+                className={`rd-hero__favBtn ${isFav ? "is-active" : ""}`}
+                onClick={onToggleFav}
+                aria-label={isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+                aria-pressed={!!isFav}
+                title={!canToggleFav ? "Favorilere eklemek için giriş yapmalısın." : isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+                disabled={!canToggleFav}
+              >
+                <span className="rd-hero__favIcon" aria-hidden="true">
+                  {isFav ? "♥" : "♡"}
+                </span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="route-detail-body" ref={routeBodyRef}>
-          {/* ✅ Tab pill row (Author hub’ın hemen altında) + Açıklama */}
+          {/* ✅ Tab pill row (Hero altında) + Açıklama */}
           <div className="rd-pills-block">
             <RouteDetailTabs
               tab={tab}
@@ -1177,7 +1264,7 @@ export default function RouteDetailMobile({
             {routeDescText ? <div className="rd-route-desc">{routeDescText}</div> : null}
           </div>
 
-          {/* ✅ Harita: Açıklamanın altında */}
+          {/* ✅ Harita */}
           <div className="route-detail-map rd-map-card">
             <div className="rd-map-card__canvas">
               <RouteDetailMapPreviewShell
@@ -1228,7 +1315,6 @@ export default function RouteDetailMobile({
             />
           )}
 
-          {/* ✅ EMİR 13: Edit modda view-only row’ları gizle (owner zaten puanlayamaz) */}
           {!isEditMode && <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />}
 
           <div className="route-detail-tabpanel">
@@ -1288,16 +1374,7 @@ export default function RouteDetailMobile({
           </div>
         </div>
 
-        {/* ✅ EMİR 12 — CTA (viewer + no overlay + not edit) */}
-        {showCta && (
-          <div className="rd-cta-bar" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="rd-cta-primary" onClick={onExportGpx}>
-              GPX indir
-            </button>
-          </div>
-        )}
-
-        {/* ✅ Viewer’da alttaki “Kapat” CTA yok. Edit modda “Düzenlemeyi bitir” */}
+        {/* ✅ Edit modda “Düzenlemeyi bitir” */}
         {isEditMode && (
           <div className="route-detail-footer">
             <button

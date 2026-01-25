@@ -102,6 +102,10 @@
   --rd-map-radius: 22px;
   --rd-chip-h: 26px;
   --rd-chip-pad: 0 10px;
+
+  --rd-cta-safe-b: max(env(safe-area-inset-bottom), 10px);
+  --rd-cta-h: 74px;                 /* bar yaklaşık yüksekliği */
+  --rd-cta-inset: calc(var(--rd-cta-h) + var(--rd-cta-safe-b) + 18px);
 }
 
 /* -------------------- HERO (üst görsel alan) -------------------- */
@@ -248,9 +252,10 @@
   gap: 12px;
 }
 
-/* Avatar */
+/* Avatar (daraltılmış selector: sadece direkt avatar img) */
 .route-detail-backdrop .rd-author-hub .rd-author-avatar,
-.route-detail-backdrop .rd-author-hub img {
+.route-detail-backdrop .rd-author-hub > img,
+.route-detail-backdrop .rd-author-hub > a > img {
   width: var(--rd-author-avatar);
   height: var(--rd-author-avatar);
   border-radius: 999px;
@@ -314,7 +319,8 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start; /* FIX: space-between çıkarıldı (stabil) */
+  width: 100%;
 }
 
 /* 4 pill sığsın: flex:1 */
@@ -499,6 +505,7 @@
 .route-detail-backdrop .rdglass-overlay {
   position: fixed;
   inset: 0;
+  z-index: 910; /* FIX: CTA (860) üstüne çıksın, Comments (920) altı */
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
@@ -535,7 +542,7 @@
 .route-detail-backdrop .route-detail-hero__nav .rd-hero-theme-toggle {
   position: absolute;
   top: 0;
-  right: calc(38px * 2 + 10px * 2); /* sağdaki (share+menu) grubunun soluna, çakışmadan */
+  right: calc(var(--rd-hero-navbtn) * 2 + 10px * 2); /* FIX: 38px hardcode kaldırıldı */
   z-index: 10;
 }
 
@@ -582,14 +589,11 @@
   color: var(--rd-ink);
 }
 
-.route-detail-backdrop.route-detail-dark .rd-hero-meta,
-.route-detail-backdrop[data-theme="dark"] .rd-hero-meta,
+/* FIX: rd-hero-meta ve rd-hero-tag muted'a çekilmesin (hero üstünde okunurluk) */
 .route-detail-backdrop.route-detail-dark .rd-author-sub,
 .route-detail-backdrop[data-theme="dark"] .rd-author-sub,
 .route-detail-backdrop.route-detail-dark .rd-route-desc,
-.route-detail-backdrop[data-theme="dark"] .rd-route-desc,
-.route-detail-backdrop.route-detail-dark .rd-hero-tag,
-.route-detail-backdrop[data-theme="dark"] .rd-hero-tag {
+.route-detail-backdrop[data-theme="dark"] .rd-route-desc {
   color: var(--rd-muted);
 }
 
@@ -601,14 +605,11 @@
   color: var(--rd-ink);
 }
 
-.route-detail-backdrop.route-detail-light .rd-hero-meta,
-.route-detail-backdrop[data-theme="light"] .rd-hero-meta,
+/* FIX: rd-hero-meta ve rd-hero-tag muted'a çekilmesin (hero üstünde okunurluk) */
 .route-detail-backdrop.route-detail-light .rd-author-sub,
 .route-detail-backdrop[data-theme="light"] .rd-author-sub,
 .route-detail-backdrop.route-detail-light .rd-route-desc,
-.route-detail-backdrop[data-theme="light"] .rd-route-desc,
-.route-detail-backdrop.route-detail-light .rd-hero-tag,
-.route-detail-backdrop[data-theme="light"] .rd-hero-tag {
+.route-detail-backdrop[data-theme="light"] .rd-route-desc {
   color: var(--rd-muted);
 }
 
@@ -1273,12 +1274,6 @@
    - Safe-area (iPhone) nefes payı
    - İçerik CTA altında kalmasın (padding/scroll-padding)
    ========================================================= */
-
-.route-detail-backdrop {
-  --rd-cta-safe-b: max(env(safe-area-inset-bottom), 10px);
-  --rd-cta-h: 74px;                 /* bar yaklaşık yüksekliği */
-  --rd-cta-inset: calc(var(--rd-cta-h) + var(--rd-cta-safe-b) + 18px);
-}
 
 /* CTA container: farklı class ihtimallerini kapsa */
 .route-detail-backdrop .rd-cta-bar,

@@ -49,28 +49,88 @@ function toFiniteNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-function isValidLat(n) {
-  return typeof n === "number" && Number.isFinite(n) && n >= -90 && n <= 90;
+function inRangeLatLng(lat, lng) {
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180
+  );
 }
 
-function isValidLng(n) {
-  return typeof n === "number" && Number.isFinite(n) && n >= -180 && n <= 180;
+/**
+ * Ambiguous [a,b] that could be [lat,lng] OR [lng,lat]
+ * Heuristic:
+ * - If abs(a) > abs(b) → assume [lat,lng]
+ * - Else → assume GeoJSON [lng,lat]
+ */
+function parseArrayLatLng(arr) {
+  try {
+    if (!Array.isArray(arr) || arr.length < 2) return null;
+
+    const a = toFiniteNumber(arr[0]);
+    const b = toFiniteNumber(arr[1]);
+    if (a == null || b == null) return null;
+
+    const candLatLng = inRangeLatLng(a, b) ? { lat: a, lng: b } : null;
+    const candLngLat = inRangeLatLng(b, a) ? { lat: b, lng: a } : null;
+
+    if (candLatLng && !candLngLat) return candLatLng;
+    if (!candLatLng && candLngLat) return candLngLat;
+    if (!candLatLng && !candLngLat) return null;
+
+    if (Math.abs(a) > Math.abs(b)) return candLatLng;
+    return candLngLat;
+  } catch {
+    return null;
+  }
+}
+
+function parseCoordString(str) {
+  try {
+    if (!str || typeof str !== "string") return null;
+    const s = str.trim();
+    if (!s) return null;
+
+    const parts = s.split(/[,\s]+/).filter(Boolean);
+    if (parts.length < 2) return null;
+
+    const a = toFiniteNumber(parts[0]);
+    const b = toFiniteNumber(parts[1]);
+    if (a == null || b == null) return null;
+
+    const candLatLng = inRangeLatLng(a, b) ? { lat: a, lng: b } : null;
+    const candLngLat = inRangeLatLng(b, a) ? { lat: b, lng: a } : null;
+
+    if (candLatLng && !candLngLat) return candLatLng;
+    if (!candLatLng && candLngLat) return candLngLat;
+    if (!candLatLng && !candLngLat) return null;
+
+    if (Math.abs(a) > Math.abs(b)) return candLatLng;
+    return candLngLat;
+  } catch {
+    return null;
+  }
 }
 
 function extractLatLng(any) {
   if (!any) return null;
 
-  // Array: [lat,lng] OR [lng,lat]
+  // string "lat,lng" / "lng lat"
+  try {
+    if (typeof any === "string") {
+      const out = parseCoordString(any);
+      if (out) return out;
+    }
+  } catch {}
+
+  // array [a,b] (could be [lat,lng] or [lng,lat])
   try {
     if (Array.isArray(any) && any.length >= 2) {
-      const a = toFiniteNumber(any[0]);
-      const b = toFiniteNumber(any[1]);
-      if (a != null && b != null) {
-        // prefer [lat,lng]
-        if (isValidLat(a) && isValidLng(b)) return { lat: a, lng: b };
-        // fallback [lng,lat]
-        if (isValidLat(b) && isValidLng(a)) return { lat: b, lng: a };
-      }
+      const out = parseArrayLatLng(any);
+      if (out) return out;
     }
   } catch {}
 
@@ -79,27 +139,20 @@ function extractLatLng(any) {
     if (typeof any.lat === "function" && typeof any.lng === "function") {
       const lat = toFiniteNumber(any.lat());
       const lng = toFiniteNumber(any.lng());
-      if (lat != null && lng != null && isValidLat(lat) && isValidLng(lng)) return { lat, lng };
+      if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
     }
   } catch {}
 
-  // Firestore GeoPoint (public)
+  // Firestore GeoPoint
   try {
     if (typeof any.latitude === "number" && typeof any.longitude === "number") {
       const lat = toFiniteNumber(any.latitude);
       const lng = toFiniteNumber(any.longitude);
-      if (lat != null && lng != null && isValidLat(lat) && isValidLng(lng)) return { lat, lng };
+      if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
     }
   } catch {}
 
-  // Firestore GeoPoint (internal-ish variants): {_lat,_long} etc.
-  try {
-    const lat = toFiniteNumber(any._lat ?? any._latitude);
-    const lng = toFiniteNumber(any._long ?? any._lng ?? any._longitude);
-    if (lat != null && lng != null && isValidLat(lat) && isValidLng(lng)) return { lat, lng };
-  } catch {}
-
-  // Plain object {lat,lng} (+ variants)
+  // Plain object variants {lat,lng} + {x,y} + {_lat,_long} + lon/long
   try {
     const lat = toFiniteNumber(
       any.lat ??
@@ -108,43 +161,49 @@ function extractLatLng(any) {
         any._latitude ??
         any?.coords?.lat ??
         any?.coords?.latitude ??
-        any?.coord?.lat ??
-        any?.coord?.latitude
+        any?.y
     );
-
     const lng = toFiniteNumber(
       any.lng ??
-        any.longitude ??
         any.lon ??
         any.long ??
-        any._lng ??
+        any.longitude ??
         any._long ??
         any._longitude ??
         any?.coords?.lng ??
         any?.coords?.longitude ??
-        any?.coord?.lng ??
-        any?.coord?.longitude
+        any?.x
     );
-
-    if (lat != null && lng != null && isValidLat(lat) && isValidLng(lng)) return { lat, lng };
+    if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
   } catch {}
 
   // Nested candidates
   const candidates = [
+    any?.latLng,
+    any?.latlng,
     any?.location,
+    any?.loc,
     any?.geo,
-    any?.geopoint,
     any?.geoPoint,
+    any?.geopoint,
     any?.point,
     any?.position,
+    any?.pos,
     any?.center,
     any?.coord,
     any?.coords,
-    any?.coordinates,
+    any?.coordinates, // could be array or string
+    any?.geometry?.location,
+    any?.geometry,
     any?.place?.location,
     any?.place?.geometry?.location,
     any?.place?.geometry,
     any?.stop?.location,
+    any?.stop?.coords,
+    any?.stop?.geo,
+    any?.stop?.point,
+    any?.place?.coord,
+    any?.place?.coords,
   ];
 
   for (const c of candidates) {
@@ -155,22 +214,6 @@ function extractLatLng(any) {
   return null;
 }
 
-function dedupConsecutive(points) {
-  const dedup = [];
-  const EPS = 1e-7;
-  for (const p of points) {
-    const prev = dedup[dedup.length - 1];
-    if (!prev) {
-      dedup.push(p);
-      continue;
-    }
-    const sameLat = Math.abs(prev.lat - p.lat) < EPS;
-    const sameLng = Math.abs(prev.lng - p.lng) < EPS;
-    if (!(sameLat && sameLng)) dedup.push(p);
-  }
-  return dedup;
-}
-
 function normalizePointsFromPath(path) {
   const arr = Array.isArray(path) ? path : [];
   const out = [];
@@ -178,30 +221,28 @@ function normalizePointsFromPath(path) {
     const ll = extractLatLng(p);
     if (ll) out.push(ll);
   }
-  return dedupConsecutive(out);
+  // de-dup consecutive
+  const dedup = [];
+  for (const p of out) {
+    const prev = dedup[dedup.length - 1];
+    if (!prev || prev.lat !== p.lat || prev.lng !== p.lng) dedup.push(p);
+  }
+  return dedup;
 }
 
 function normalizePointsFromStops(stops) {
-  const arr = Array.isArray(stops) ? stops.slice() : [];
-
-  // Prefer deterministic order if present
-  try {
-    arr.sort((a, b) => {
-      const ao = Number.isFinite(Number(a?.order)) ? Number(a.order) : Number.isFinite(Number(a?.index)) ? Number(a.index) : null;
-      const bo = Number.isFinite(Number(b?.order)) ? Number(b.order) : Number.isFinite(Number(b?.index)) ? Number(b.index) : null;
-      if (ao == null && bo == null) return 0;
-      if (ao == null) return 1;
-      if (bo == null) return -1;
-      return ao - bo;
-    });
-  } catch {}
-
+  const arr = Array.isArray(stops) ? stops : [];
   const out = [];
   for (const s of arr) {
     const ll = extractLatLng(s);
     if (ll) out.push(ll);
   }
-  return dedupConsecutive(out);
+  const dedup = [];
+  for (const p of out) {
+    const prev = dedup[dedup.length - 1];
+    if (!prev || prev.lat !== p.lat || prev.lng !== p.lng) dedup.push(p);
+  }
+  return dedup;
 }
 
 function makePinSvg({ fill = "#00E5FF", stroke = "rgba(0,0,0,0.65)" } = {}) {
@@ -220,20 +261,6 @@ function makePinSvg({ fill = "#00E5FF", stroke = "rgba(0,0,0,0.65)" } = {}) {
     </g>
   </svg>`;
   return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg.trim());
-}
-
-function sampleForBounds(points) {
-  // bounds için örnekleme (polyline full kalsın)
-  const arr = Array.isArray(points) ? points : [];
-  const n = arr.length;
-  if (n <= 420) return arr;
-
-  const step = Math.ceil(n / 360); // ~360 nokta hedef
-  const out = [];
-  for (let i = 0; i < n; i += step) out.push(arr[i]);
-  // son noktayı garanti et
-  if (out[out.length - 1] !== arr[n - 1]) out.push(arr[n - 1]);
-  return out;
 }
 
 export default function RouteDetailMapPreviewShell({
@@ -358,6 +385,7 @@ export default function RouteDetailMapPreviewShell({
   useEffect(() => {
     if (!mapInstance) return;
 
+    // setOptions(styles) bazı MAP_ID konfiglerinde etkisiz kalabilir — ama denemek zararsız.
     try {
       if (appliedStyleRef.current.map !== mapInstance || !appliedStyleRef.current.did) {
         appliedStyleRef.current = { map: mapInstance, did: true };
@@ -370,25 +398,23 @@ export default function RouteDetailMapPreviewShell({
   const points = useMemo(() => {
     const ptsFromPath = normalizePointsFromPath(path);
     if (ptsFromPath.length >= 2) return ptsFromPath;
-
     const ptsFromStops = normalizePointsFromStops(stops);
     if (ptsFromStops.length >= 2) return ptsFromStops;
-
     return [];
   }, [path, stops]);
-
-  const boundsPts = useMemo(() => sampleForBounds(points), [points]);
 
   const polylineRef = useRef(null);
   const glowRef = useRef(null);
   const startMarkerRef = useRef(null);
   const endMarkerRef = useRef(null);
 
+  // marker/polyline create + update
   useEffect(() => {
     const map = mapInstance;
     const g = window.google;
     if (!map || !g?.maps) return;
 
+    // cleanup if no points
     if (!points || points.length < 2) {
       try {
         if (polylineRef.current) polylineRef.current.setMap(null);
@@ -487,7 +513,6 @@ export default function RouteDetailMapPreviewShell({
   const fitStateRef = useRef({
     rafs: [],
     t: null,
-    t2: null,
     lastSig: "",
     lastAt: 0,
   });
@@ -514,26 +539,23 @@ export default function RouteDetailMapPreviewShell({
       const h = rect?.height || 0;
       if (w <= 4 || h <= 4) return;
 
-      const first = points[0];
-      const last = points[points.length - 1];
+      const sig = `${points.length}:${points[0]?.lat},${points[0]?.lng}:${points[points.length - 1]?.lat},${
+        points[points.length - 1]?.lng
+      }:${Math.round(w)}x${Math.round(h)}`;
 
-      const sig = `${points.length}:${first?.lat},${first?.lng}:${last?.lat},${last?.lng}:${Math.round(w)}x${Math.round(h)}`;
-
+      // agresif loop kırıcı
       const now = Date.now();
       if (fitStateRef.current.lastSig === sig && now - fitStateRef.current.lastAt < 700) return;
 
       fitStateRef.current.lastSig = sig;
       fitStateRef.current.lastAt = now;
 
-      // clear old timers
-      try {
-        if (fitStateRef.current.t) clearTimeout(fitStateRef.current.t);
-      } catch {}
-      try {
-        if (fitStateRef.current.t2) clearTimeout(fitStateRef.current.t2);
-      } catch {}
-      fitStateRef.current.t = null;
-      fitStateRef.current.t2 = null;
+      // throttle (tek sefer)
+      if (fitStateRef.current.t) {
+        try {
+          clearTimeout(fitStateRef.current.t);
+        } catch {}
+      }
 
       fitStateRef.current.t = setTimeout(() => {
         try {
@@ -542,44 +564,30 @@ export default function RouteDetailMapPreviewShell({
 
         try {
           const bounds = new g.maps.LatLngBounds();
-          for (const p of boundsPts) bounds.extend(p);
+          for (const p of points) bounds.extend(p);
+          // padding mobil için
           map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
         } catch {}
 
-        // Büyük path’lerde ikinci fit pahalı olabilir → sadece hafif düzeltme yap
-        fitStateRef.current.t2 = setTimeout(() => {
-          try {
-            safeTriggerResize();
-          } catch {}
-
-          // küçük/orta points’te ikinci fit faydalı olabiliyor
-          if (points.length <= 900) {
+        // bir kez daha küçük gecikmeyle (tile timing)
+        try {
+          setTimeout(() => {
+            try {
+              safeTriggerResize();
+            } catch {}
             try {
               const bounds = new g.maps.LatLngBounds();
-              for (const p of boundsPts) bounds.extend(p);
+              for (const p of points) bounds.extend(p);
               map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
             } catch {}
-          }
-        }, 120);
+          }, 120);
+        } catch {}
       }, reason === "resize" ? 60 : 40);
     },
-    [mapInstance, points, boundsPts, safeTriggerResize]
+    [mapInstance, points, safeTriggerResize]
   );
 
-  // Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      try {
-        if (fitStateRef.current.t) clearTimeout(fitStateRef.current.t);
-      } catch {}
-      try {
-        if (fitStateRef.current.t2) clearTimeout(fitStateRef.current.t2);
-      } catch {}
-      fitStateRef.current.t = null;
-      fitStateRef.current.t2 = null;
-    };
-  }, []);
-
+  // ResizeObserver: bumpTick + scheduleFit
   useEffect(() => {
     const el = localDivRef.current;
     if (!el) return;
@@ -613,9 +621,11 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [bumpTick, scheduleFit]);
 
+  // initial RAF “2–3 frame sonra” stabilize
   useEffect(() => {
     if (!isReady || !mapInstance) return;
 
+    // cleanup old rafs
     try {
       for (const id of fitStateRef.current.rafs) cancelAnimationFrame(id);
     } catch {}
@@ -640,6 +650,7 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [isReady, mapInstance, scheduleFit]);
 
+  // tick’lerde de bir kez fit dene
   useEffect(() => {
     if (!mapInstance) return;
     scheduleFit("tick");
@@ -742,6 +753,7 @@ export default function RouteDetailMapPreviewShell({
     return "Harita yüklenemedi.";
   };
 
+  // MAP_ID varsa styles etkisiz kalabilir → hafif CSS filter fallback (polyline’ı öldürmeyecek kadar hafif)
   const cssFilterFallback = useMemo(() => {
     if (!MAP_ID) return "none";
     return "grayscale(0.95) brightness(0.78) contrast(1.12) saturate(0.72)";
@@ -749,6 +761,7 @@ export default function RouteDetailMapPreviewShell({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      {/* EMİR 8: Flash UI map görünümü (dark/grayscale + stabilize) */}
       <div
         ref={setDivRef}
         className="rdmps-map"

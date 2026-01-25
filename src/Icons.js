@@ -1,3 +1,4 @@
+// FILE: src/icons.js
 // src/icons.js — Merkezi ikon sistemi (değişiklik yok)
 import React from "react";
 import * as Ph from "@phosphor-icons/react";
