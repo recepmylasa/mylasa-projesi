@@ -60,11 +60,18 @@ function inRangeLatLng(lat, lng) {
   );
 }
 
+function round6(n) {
+  return Math.round(n * 1e6) / 1e6;
+}
+function key6(p) {
+  return `${round6(p.lat)},${round6(p.lng)}`;
+}
+
 /**
- * Ambiguous [a,b] that could be [lat,lng] OR [lng,lat]
- * Heuristic:
- * - If abs(a) > abs(b) → assume [lat,lng]
- * - Else → assume GeoJSON [lng,lat]
+ * [a,b] can be [lat,lng] or [lng,lat]
+ * Rule (EMİR 2):
+ * - If one value is impossible as lat (|v|>90) but valid as lng -> swap accordingly
+ * - Else ambiguous -> heuristic: if abs(a) > abs(b) assume [lat,lng], else assume [lng,lat]
  */
 function parseArrayLatLng(arr) {
   try {
@@ -74,6 +81,26 @@ function parseArrayLatLng(arr) {
     const b = toFiniteNumber(arr[1]);
     if (a == null || b == null) return null;
 
+    const aLatOk = Math.abs(a) <= 90;
+    const bLatOk = Math.abs(b) <= 90;
+    const aLngOk = Math.abs(a) <= 180;
+    const bLngOk = Math.abs(b) <= 180;
+
+    // If a cannot be lat but can be lng, and b can be lat -> swap
+    if (!aLatOk && aLngOk && bLatOk) {
+      const lat = b;
+      const lng = a;
+      return inRangeLatLng(lat, lng) ? { lat, lng } : null;
+    }
+
+    // If b cannot be lat but can be lng, and a can be lat -> keep [lat,lng]
+    if (!bLatOk && bLngOk && aLatOk) {
+      const lat = a;
+      const lng = b;
+      return inRangeLatLng(lat, lng) ? { lat, lng } : null;
+    }
+
+    // Both could be lat -> ambiguous
     const candLatLng = inRangeLatLng(a, b) ? { lat: a, lng: b } : null;
     const candLngLat = inRangeLatLng(b, a) ? { lat: b, lng: a } : null;
 
@@ -101,22 +128,26 @@ function parseCoordString(str) {
     const b = toFiniteNumber(parts[1]);
     if (a == null || b == null) return null;
 
-    const candLatLng = inRangeLatLng(a, b) ? { lat: a, lng: b } : null;
-    const candLngLat = inRangeLatLng(b, a) ? { lat: b, lng: a } : null;
-
-    if (candLatLng && !candLngLat) return candLatLng;
-    if (!candLatLng && candLngLat) return candLngLat;
-    if (!candLatLng && !candLngLat) return null;
-
-    if (Math.abs(a) > Math.abs(b)) return candLatLng;
-    return candLngLat;
+    // Apply same array rules
+    return parseArrayLatLng([a, b]);
   } catch {
     return null;
   }
 }
 
-function extractLatLng(any) {
+function extractLatLng(any, depth = 0, seen) {
   if (!any) return null;
+  if (depth > 6) return null;
+
+  const _seen = seen || new Set();
+
+  // prevent cycles
+  try {
+    if (typeof any === "object") {
+      if (_seen.has(any)) return null;
+      _seen.add(any);
+    }
+  } catch {}
 
   // string "lat,lng" / "lng lat"
   try {
@@ -126,7 +157,7 @@ function extractLatLng(any) {
     }
   } catch {}
 
-  // array [a,b] (could be [lat,lng] or [lng,lat])
+  // array [a,b]
   try {
     if (Array.isArray(any) && any.length >= 2) {
       const out = parseArrayLatLng(any);
@@ -150,9 +181,15 @@ function extractLatLng(any) {
       const lng = toFiniteNumber(any.longitude);
       if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
     }
+    // some serializations
+    if (typeof any._lat === "number" && typeof any._long === "number") {
+      const lat = toFiniteNumber(any._lat);
+      const lng = toFiniteNumber(any._long);
+      if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
+    }
   } catch {}
 
-  // Plain object variants {lat,lng} + {x,y} + {_lat,_long} + lon/long
+  // Plain object variants
   try {
     const lat = toFiniteNumber(
       any.lat ??
@@ -177,6 +214,15 @@ function extractLatLng(any) {
     if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
   } catch {}
 
+  // GeoJSON-ish {type:"LineString", coordinates:[[lng,lat],...]} handled upstream, but also allow single coord
+  try {
+    if (any?.type && typeof any.type === "string" && Array.isArray(any.coordinates)) {
+      // if it's a single coord array: [lng,lat]
+      const single = extractLatLng(any.coordinates, depth + 1, _seen);
+      if (single) return single;
+    }
+  } catch {}
+
   // Nested candidates
   const candidates = [
     any?.latLng,
@@ -192,7 +238,7 @@ function extractLatLng(any) {
     any?.center,
     any?.coord,
     any?.coords,
-    any?.coordinates, // could be array or string
+    any?.coordinates,
     any?.geometry?.location,
     any?.geometry,
     any?.place?.location,
@@ -207,27 +253,60 @@ function extractLatLng(any) {
   ];
 
   for (const c of candidates) {
-    const p = extractLatLng(c);
+    const p = extractLatLng(c, depth + 1, _seen);
     if (p) return p;
   }
 
   return null;
 }
 
+function coercePointsArray(input) {
+  if (Array.isArray(input)) return input;
+
+  // GeoJSON-ish line
+  if (input && typeof input === "object") {
+    if (input?.type === "LineString" && Array.isArray(input.coordinates)) return input.coordinates;
+
+    const cands = [
+      input?.path,
+      input?.points,
+      input?.polyline,
+      input?.coordinates,
+      input?.geometry?.path,
+      input?.geometry?.points,
+      input?.geometry?.coordinates,
+      input?.geometry,
+    ];
+    for (const c of cands) {
+      if (Array.isArray(c)) return c;
+      if (c && typeof c === "object" && c?.type === "LineString" && Array.isArray(c.coordinates)) return c.coordinates;
+    }
+  }
+
+  // if string with single coord, normalizePointsFromPath will pick 1 point
+  return input ? [input] : [];
+}
+
+function dedupBy6(points) {
+  const out = [];
+  const seen = new Set();
+  for (const p of points) {
+    const k = key6(p);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ lat: round6(p.lat), lng: round6(p.lng) });
+  }
+  return out;
+}
+
 function normalizePointsFromPath(path) {
-  const arr = Array.isArray(path) ? path : [];
+  const arr = coercePointsArray(path);
   const out = [];
   for (const p of arr) {
     const ll = extractLatLng(p);
     if (ll) out.push(ll);
   }
-  // de-dup consecutive
-  const dedup = [];
-  for (const p of out) {
-    const prev = dedup[dedup.length - 1];
-    if (!prev || prev.lat !== p.lat || prev.lng !== p.lng) dedup.push(p);
-  }
-  return dedup;
+  return dedupBy6(out);
 }
 
 function normalizePointsFromStops(stops) {
@@ -237,16 +316,10 @@ function normalizePointsFromStops(stops) {
     const ll = extractLatLng(s);
     if (ll) out.push(ll);
   }
-  const dedup = [];
-  for (const p of out) {
-    const prev = dedup[dedup.length - 1];
-    if (!prev || prev.lat !== p.lat || prev.lng !== p.lng) dedup.push(p);
-  }
-  return dedup;
+  return dedupBy6(out);
 }
 
 function makePinSvg({ fill = "#00E5FF", stroke = "rgba(0,0,0,0.65)" } = {}) {
-  // small “balon” pin
   const svg = `
   <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
     <defs>
@@ -349,7 +422,7 @@ export default function RouteDetailMapPreviewShell({
     }
   }, [mapInstance, bumpTick]);
 
-  // ===== EMİR 8 — Flash UI Map Styling (dark/grayscale, toggle’dan bağımsız) =====
+  // ===== Flash UI Map Styling =====
   const flashMapStyles = useMemo(
     () => [
       { elementType: "geometry", stylers: [{ color: "#0F141A" }] },
@@ -385,7 +458,6 @@ export default function RouteDetailMapPreviewShell({
   useEffect(() => {
     if (!mapInstance) return;
 
-    // setOptions(styles) bazı MAP_ID konfiglerinde etkisiz kalabilir — ama denemek zararsız.
     try {
       if (appliedStyleRef.current.map !== mapInstance || !appliedStyleRef.current.did) {
         appliedStyleRef.current = { map: mapInstance, did: true };
@@ -394,12 +466,17 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
   }, [mapInstance, flashMapStyles]);
 
-  // ===== EMİR 8 — Cyan polyline + start/end markers (Shell içinde) =====
+  // ===== EMİR 2 — Nokta toplama önceliği (path -> stops) + 1 nokta desteği =====
   const points = useMemo(() => {
     const ptsFromPath = normalizePointsFromPath(path);
-    if (ptsFromPath.length >= 2) return ptsFromPath;
     const ptsFromStops = normalizePointsFromStops(stops);
+
+    if (ptsFromPath.length >= 2) return ptsFromPath;
     if (ptsFromStops.length >= 2) return ptsFromStops;
+
+    if (ptsFromPath.length === 1) return ptsFromStops.length ? ptsFromStops : ptsFromPath;
+    if (ptsFromStops.length === 1) return ptsFromStops;
+
     return [];
   }, [path, stops]);
 
@@ -408,14 +485,13 @@ export default function RouteDetailMapPreviewShell({
   const startMarkerRef = useRef(null);
   const endMarkerRef = useRef(null);
 
-  // marker/polyline create + update
+  // marker/polyline create + update + cleanup
   useEffect(() => {
     const map = mapInstance;
     const g = window.google;
     if (!map || !g?.maps) return;
 
-    // cleanup if no points
-    if (!points || points.length < 2) {
+    const cleanup = () => {
       try {
         if (polylineRef.current) polylineRef.current.setMap(null);
         if (glowRef.current) glowRef.current.setMap(null);
@@ -426,11 +502,59 @@ export default function RouteDetailMapPreviewShell({
       glowRef.current = null;
       startMarkerRef.current = null;
       endMarkerRef.current = null;
+    };
+
+    // no points
+    if (!points || points.length < 1) {
+      cleanup();
       return;
     }
 
     const cyan = "#00E5FF";
+    const iconUrl = makePinSvg({ fill: cyan });
 
+    const icon = {
+      url: iconUrl,
+      scaledSize: new g.maps.Size(30, 30),
+      anchor: new g.maps.Point(15, 27),
+    };
+
+    // single point: marker only (no polyline)
+    if (points.length === 1) {
+      try {
+        if (polylineRef.current) polylineRef.current.setMap(null);
+        if (glowRef.current) glowRef.current.setMap(null);
+      } catch {}
+      polylineRef.current = null;
+      glowRef.current = null;
+
+      const p0 = points[0];
+
+      try {
+        if (!startMarkerRef.current) {
+          startMarkerRef.current = new g.maps.Marker({
+            position: p0,
+            map,
+            clickable: false,
+            zIndex: 4,
+            icon,
+            title: "Konum",
+          });
+        } else {
+          startMarkerRef.current.setPosition(p0);
+          startMarkerRef.current.setMap(map);
+        }
+      } catch {}
+
+      try {
+        if (endMarkerRef.current) endMarkerRef.current.setMap(null);
+      } catch {}
+      endMarkerRef.current = null;
+
+      return () => cleanup();
+    }
+
+    // 2+ points: polyline + start/end markers
     try {
       if (!glowRef.current) {
         glowRef.current = new g.maps.Polyline({
@@ -470,15 +594,7 @@ export default function RouteDetailMapPreviewShell({
     const start = points[0];
     const end = points[points.length - 1];
 
-    const iconUrl = makePinSvg({ fill: cyan });
-
     try {
-      const icon = {
-        url: iconUrl,
-        scaledSize: new g.maps.Size(30, 30),
-        anchor: new g.maps.Point(15, 27),
-      };
-
       if (!startMarkerRef.current) {
         startMarkerRef.current = new g.maps.Marker({
           position: start,
@@ -507,14 +623,17 @@ export default function RouteDetailMapPreviewShell({
         endMarkerRef.current.setMap(map);
       }
     } catch {}
+
+    return () => cleanup();
   }, [mapInstance, points]);
 
-  // ===== EMİR 8 — FitBounds / Zoom Stabilitesi (container>0 + RO + RAF) =====
+  // ===== EMİR 2 — FitBounds / Zoom Stabilitesi (1 nokta desteği + loop-breaker + RO+RAF) =====
   const fitStateRef = useRef({
-    rafs: [],
-    t: null,
+    pendingTimer: null,
+    pendingRaf: null,
     lastSig: "",
     lastAt: 0,
+    lastAnyAt: 0,
   });
 
   const safeTriggerResize = useCallback(() => {
@@ -526,68 +645,109 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
   }, [mapInstance]);
 
-  const scheduleFit = useCallback(
-    (reason = "tick") => {
+  const computeSig = useCallback((pts, rect) => {
+    const w = rect?.width || 0;
+    const h = rect?.height || 0;
+
+    // bucket size to avoid “sheet anim” micro-jitter spam
+    const wB = Math.round(w / 40) * 40;
+    const hB = Math.round(h / 40) * 40;
+
+    if (!pts || pts.length < 1) return `0:${wB}x${hB}`;
+
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+
+    const f = `${round6(first.lat)},${round6(first.lng)}`;
+    const l = `${round6(last.lat)},${round6(last.lng)}`;
+
+    return `${pts.length}:${f}:${l}:${wB}x${hB}`;
+  }, []);
+
+  const doFitNow = useCallback(
+    (reason = "fit") => {
       const map = mapInstance;
       const el = localDivRef.current;
       const g = window.google;
+
+      if (!isReady) return;
       if (!map || !el || !g?.maps) return;
-      if (!points || points.length < 2) return;
+      if (!points || points.length < 1) return;
 
       const rect = el.getBoundingClientRect?.();
       const w = rect?.width || 0;
       const h = rect?.height || 0;
       if (w <= 4 || h <= 4) return;
 
-      const sig = `${points.length}:${points[0]?.lat},${points[0]?.lng}:${points[points.length - 1]?.lat},${
-        points[points.length - 1]?.lng
-      }:${Math.round(w)}x${Math.round(h)}`;
+      const sig = computeSig(points, rect);
 
-      // agresif loop kırıcı
       const now = Date.now();
-      if (fitStateRef.current.lastSig === sig && now - fitStateRef.current.lastAt < 700) return;
+      if (fitStateRef.current.lastSig === sig && now - fitStateRef.current.lastAt < 800) return;
+      if (now - fitStateRef.current.lastAnyAt < 180) return; // micro-throttle
 
       fitStateRef.current.lastSig = sig;
       fitStateRef.current.lastAt = now;
+      fitStateRef.current.lastAnyAt = now;
 
-      // throttle (tek sefer)
-      if (fitStateRef.current.t) {
-        try {
-          clearTimeout(fitStateRef.current.t);
-        } catch {}
-      }
+      try {
+        safeTriggerResize();
+      } catch {}
 
-      fitStateRef.current.t = setTimeout(() => {
-        try {
-          safeTriggerResize();
-        } catch {}
+      try {
+        if (points.length === 1) {
+          const p0 = points[0];
+          map.setCenter(p0);
+          // keep stable zoom (don’t spam)
+          const z = map.getZoom?.();
+          if (!Number.isFinite(z) || z < 14 || z > 18) {
+            map.setZoom(16);
+          }
+          return;
+        }
 
-        try {
-          const bounds = new g.maps.LatLngBounds();
-          for (const p of points) bounds.extend(p);
-          // padding mobil için
-          map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
-        } catch {}
+        const bounds = new g.maps.LatLngBounds();
+        for (const p of points) bounds.extend(p);
 
-        // bir kez daha küçük gecikmeyle (tile timing)
-        try {
-          setTimeout(() => {
-            try {
-              safeTriggerResize();
-            } catch {}
-            try {
-              const bounds = new g.maps.LatLngBounds();
-              for (const p of points) bounds.extend(p);
-              map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
-            } catch {}
-          }, 120);
-        } catch {}
-      }, reason === "resize" ? 60 : 40);
+        map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
+      } catch {}
     },
-    [mapInstance, points, safeTriggerResize]
+    [mapInstance, isReady, points, safeTriggerResize, computeSig]
   );
 
-  // ResizeObserver: bumpTick + scheduleFit
+  const scheduleFit = useCallback(
+    (reason = "tick") => {
+      const el = localDivRef.current;
+      if (!isReady || !mapInstance || !el) return;
+
+      // clear pending
+      try {
+        if (fitStateRef.current.pendingTimer) clearTimeout(fitStateRef.current.pendingTimer);
+      } catch {}
+      fitStateRef.current.pendingTimer = null;
+
+      try {
+        if (fitStateRef.current.pendingRaf) cancelAnimationFrame(fitStateRef.current.pendingRaf);
+      } catch {}
+      fitStateRef.current.pendingRaf = null;
+
+      const run = () => {
+        const raf = requestAnimationFrame(() => doFitNow(reason));
+        fitStateRef.current.pendingRaf = raf;
+      };
+
+      // resize: debounce until animation settles, then 1-frame RAF
+      if (reason === "resize") {
+        fitStateRef.current.pendingTimer = setTimeout(run, 90);
+        return;
+      }
+
+      // default: 1-frame RAF
+      run();
+    },
+    [isReady, mapInstance, doFitNow]
+  );
+
+  // ResizeObserver: only scheduleFit (don’t bumpTick spam)
   useEffect(() => {
     const el = localDivRef.current;
     if (!el) return;
@@ -595,7 +755,6 @@ export default function RouteDetailMapPreviewShell({
     if (typeof ResizeObserver !== "undefined") {
       try {
         const ro = new ResizeObserver(() => {
-          bumpTick();
           scheduleFit("resize");
         });
         ro.observe(el);
@@ -607,10 +766,7 @@ export default function RouteDetailMapPreviewShell({
       } catch {}
     }
 
-    const onResize = () => {
-      bumpTick();
-      scheduleFit("resize");
-    };
+    const onResize = () => scheduleFit("resize");
     try {
       window.addEventListener("resize", onResize);
     } catch {}
@@ -619,42 +775,39 @@ export default function RouteDetailMapPreviewShell({
         window.removeEventListener("resize", onResize);
       } catch {}
     };
-  }, [bumpTick, scheduleFit]);
+  }, [scheduleFit]);
 
-  // initial RAF “2–3 frame sonra” stabilize
+  // Initial fit: map ready + points ready (2–3 frame stabilize, loop-breaker blocks spam)
   useEffect(() => {
     if (!isReady || !mapInstance) return;
 
-    // cleanup old rafs
-    try {
-      for (const id of fitStateRef.current.rafs) cancelAnimationFrame(id);
-    } catch {}
-    fitStateRef.current.rafs = [];
-
     const raf1 = requestAnimationFrame(() => {
       scheduleFit("raf1");
-      const raf2 = requestAnimationFrame(() => {
-        scheduleFit("raf2");
-        const raf3 = requestAnimationFrame(() => scheduleFit("raf3"));
-        fitStateRef.current.rafs.push(raf3);
-      });
-      fitStateRef.current.rafs.push(raf2);
+      const raf2 = requestAnimationFrame(() => scheduleFit("raf2"));
+      const raf3 = requestAnimationFrame(() => scheduleFit("raf3"));
+      fitStateRef.current.pendingRaf = raf3;
+      try {
+        // keep refs cancelable
+        fitStateRef.current._r1 = raf1;
+        fitStateRef.current._r2 = raf2;
+        fitStateRef.current._r3 = raf3;
+      } catch {}
     });
-    fitStateRef.current.rafs.push(raf1);
 
     return () => {
       try {
-        for (const id of fitStateRef.current.rafs) cancelAnimationFrame(id);
+        cancelAnimationFrame(fitStateRef.current._r1);
+        cancelAnimationFrame(fitStateRef.current._r2);
+        cancelAnimationFrame(fitStateRef.current._r3);
       } catch {}
-      fitStateRef.current.rafs = [];
     };
   }, [isReady, mapInstance, scheduleFit]);
 
-  // tick’lerde de bir kez fit dene
+  // When points change, re-fit once (loop-breaker prevents repeats)
   useEffect(() => {
-    if (!mapInstance) return;
-    scheduleFit("tick");
-  }, [mapReadyTick, mapInstance, scheduleFit]);
+    if (!isReady || !mapInstance) return;
+    scheduleFit("points");
+  }, [points, isReady, mapInstance, scheduleFit]);
 
   // ===== Label =====
   const locationLabel = useMemo(() => {
@@ -746,138 +899,111 @@ export default function RouteDetailMapPreviewShell({
   const messageForError = () => {
     if (!API_KEY) return "Google Maps API anahtarı bulunamadı.";
     const errText = String(gmaps?.error?.message || gmaps?.error || "").toLowerCase();
-    if (errText.includes("billing")) return "Harita yüklenemedi (billing / proje ayarı).";
-    if (errText.includes("apikey") || errText.includes("api key")) return "Harita yüklenemedi (API anahtarı).";
-    if (errText.includes("quota")) return "Harita yüklenemedi (quota limiti).";
-    if (errText.includes("div")) return "Harita alanı oluşturulamadı.";
-    return "Harita yüklenemedi.";
+    if (errText.includes("billing")) return "Google Maps için faturalandırma (billing) etkin değil.";
+    if (errText.includes("referer") || errText.includes("referrer")) return "API anahtarı referrer kısıtına takıldı.";
+    if (errText.includes("invalid") && errText.includes("key")) return "Google Maps API anahtarı geçersiz.";
+    if (gmapsStatus === "blocked") return "Google Maps yüklemesi engellendi.";
+    if (gmapsStatus === "missing_key") return "Google Maps API anahtarı eksik.";
+    return "Harita yüklenemedi. Tekrar deneyin.";
   };
 
-  // MAP_ID varsa styles etkisiz kalabilir → hafif CSS filter fallback (polyline’ı öldürmeyecek kadar hafif)
-  const cssFilterFallback = useMemo(() => {
-    if (!MAP_ID) return "none";
-    return "grayscale(0.95) brightness(0.78) contrast(1.12) saturate(0.72)";
-  }, [MAP_ID]);
+  const showNoPoints = isReady && stopsLoaded && (!points || points.length === 0);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      {/* EMİR 8: Flash UI map görünümü (dark/grayscale + stabilize) */}
-      <div
-        ref={setDivRef}
-        className="rdmps-map"
-        style={{
-          position: "absolute",
-          inset: 0,
-          borderRadius: 14,
-          overflow: "hidden",
-          background: "#0B0F14",
-          filter: cssFilterFallback,
-          transform: "translateZ(0)",
-        }}
-      />
+    <div
+      className="rdmps-shell rdmps-root"
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        borderRadius: 14,
+        overflow: "hidden",
+        transform: "translateZ(0)",
+      }}
+      data-routeid={routeId || ""}
+      data-ready={isReady ? "1" : "0"}
+      data-error={isError ? "1" : "0"}
+      data-points={(points && points.length) || 0}
+    >
+      {/* Map preview (child mevcutsa onu kullan; ref’i mutlaka veriyoruz) */}
+      <RouteDetailMapPreview mapDivRef={setDivRef} mapReadyTick={mapReadyTick} />
 
-      <RouteDetailMapPreview
-        routeId={routeId}
-        gmapsStatus={gmapsStatus}
-        mapDivRef={localDivRef}
-        mapRef={mapRef}
-        mapInstance={mapInstance}
-        mapReadyTick={mapReadyTick}
-        path={path}
-        stops={stops}
-        stopsLoaded={stopsLoaded}
-      />
-
-      <div className="rd-map-card__label" aria-hidden="true">
-        {locationLabel}
+      {/* Badges + Location pill (CSS: .rd-map-card içindeyse otomatik oturur; değilse de zararsız) */}
+      <div className="rd-map-badges">
+        {isReady && points?.length > 0 ? (
+          <div className="rd-map-badge">{points.length} NOKTA</div>
+        ) : (
+          <div className="rd-map-badge">{isLoading ? "YÜKLENİYOR" : "HARİTA"}</div>
+        )}
       </div>
+      <div className="rd-map-loc">{locationLabel}</div>
 
-      {isLoading && (
-        <div className="rdmps-overlay" style={overlayBase} aria-live="polite" aria-busy="true">
-          <style>{`
-            @keyframes rdmpspin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-          `}</style>
-
-          <div className="rdmps-card" style={card}>
+      {/* Loading overlay */}
+      {isLoading ? (
+        <div style={overlayBase} aria-label="Harita yükleniyor">
+          <div style={card}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={spinner} />
-              <div>
-                <div className="rdmps-title" style={title}>
-                  Harita yükleniyor…
-                </div>
-                <div className="rdmps-sub" style={desc}>
-                  Bağlantı yavaşsa biraz sürebilir.
-                </div>
-              </div>
+              <div style={title}>Harita hazırlanıyor…</div>
             </div>
-
+            <div style={desc}>Bağlantı veya cihaz performansına göre birkaç saniye sürebilir.</div>
             <div style={btnRow}>
-              <button
-                type="button"
-                className="rdmps-btn rdmps-btn--ghost"
-                style={ghostBtn}
-                onClick={() => {
-                  try {
-                    onRetry();
-                  } catch {}
-                }}
-              >
-                Yenile
+              <button type="button" style={ghostBtn} onClick={onRetry}>
+                Yeniden dene
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {isError && (
-        <div className="rdmps-overlay" style={overlayBase} role="alert">
-          <div className="rdmps-card" style={card}>
-            <div>
-              <div className="rdmps-title" style={title}>
-                Harita açılamadı
-              </div>
-              <div className="rdmps-sub" style={desc}>
-                {messageForError()}
-              </div>
-            </div>
-
+      {/* Error overlay */}
+      {isError ? (
+        <div style={overlayBase} aria-label="Harita hatası">
+          <div style={card}>
+            <div style={title}>Harita yüklenemedi</div>
+            <div style={desc}>{messageForError()}</div>
             <div style={btnRow}>
-              <button
-                type="button"
-                className="rdmps-btn rdmps-btn--primary"
-                style={retryBtn}
-                onClick={() => {
-                  try {
-                    onRetry();
-                  } catch {}
-                }}
-              >
-                Tekrar dene
+              <button type="button" style={retryBtn} onClick={onRetry}>
+                Yeniden dene
               </button>
-
               <button
                 type="button"
-                className="rdmps-btn rdmps-btn--ghost"
                 style={ghostBtn}
                 onClick={() => {
                   try {
-                    onRetry();
+                    window.location.reload();
                   } catch {}
                 }}
-                title="Remount tetikler"
               >
-                Yenile
+                Sayfayı yenile
               </button>
             </div>
-
-            {process.env.NODE_ENV !== "production" && gmaps?.error && (
-              <div style={{ fontSize: 11, opacity: 0.7, wordBreak: "break-word" }}>
-                {String(gmaps?.error?.message || gmaps?.error)}
-              </div>
-            )}
           </div>
         </div>
-      )}
+      ) : null}
+
+      {/* No points overlay (ready ama rota yok) */}
+      {showNoPoints ? (
+        <div style={overlayBase} aria-label="Rota noktası yok">
+          <div style={card}>
+            <div style={title}>Rota çizgisi bulunamadı</div>
+            <div style={desc}>Bu rotada çizilecek bir path/nokta verisi görünmüyor. Durakları kontrol edin.</div>
+            <div style={btnRow}>
+              <button type="button" style={retryBtn} onClick={onRetry}>
+                Yeniden dene
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* keyframes (spinner için; yoksa da sorun değil) */}
+      <style>{`
+        @keyframes rdmpspin { 
+          0% { transform: rotate(0deg); } 
+          100% { transform: rotate(360deg); } 
+        }
+      `}</style>
     </div>
   );
 }

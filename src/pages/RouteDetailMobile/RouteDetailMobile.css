@@ -9,9 +9,37 @@
 @import "./styles/rd.theme.dark.css";
 @import "./styles/rd.theme.light.css";
 
+/* ✅ EMİR 3 — Sticky Sekme Barı + Anchor section stilleri */
+@import "./styles/rd.sectionTabs.css";
+
 /*
   ✅ EMİR 3 (REVİZE)
   rd.hero.css yüklenmeme/override bug’ını kesin kapatmak için:
   - rd.hero.css artık RouteDetailMobile.js içinde import ediliyor (JS import → garanti, yükleme sırası net).
   - Bu dosyada @import yok (çift yükleme/çakışma olmasın).
 */
+
+/* ✅ EMİR 4 — Tema geçişi (çok hafif, flash yok) — sadece RouteDetail scope */
+.route-detail-backdrop[data-theme-anim="1"] {
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.route-detail-backdrop[data-theme-anim="1"] .route-detail-sheet,
+.route-detail-backdrop[data-theme-anim="1"] .rd-sectionTabsWrap,
+.route-detail-backdrop[data-theme-anim="1"] .rd-sectionTabs,
+.route-detail-backdrop[data-theme-anim="1"] .rd-sectionTabBtn,
+.route-detail-backdrop[data-theme-anim="1"] .rd-map-card,
+.route-detail-backdrop[data-theme-anim="1"] .rd-commentsCard,
+.route-detail-backdrop[data-theme-anim="1"] .rd-gpxCard,
+.route-detail-backdrop[data-theme-anim="1"] .rd-hero__hub,
+.route-detail-backdrop[data-theme-anim="1"] .rd-hero-nav-btn,
+.route-detail-backdrop[data-theme-anim="1"] .rd-hero-menu {
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-detail-backdrop[data-theme-anim="1"],
+  .route-detail-backdrop[data-theme-anim="1"] * {
+    transition: none !important;
+  }
+}

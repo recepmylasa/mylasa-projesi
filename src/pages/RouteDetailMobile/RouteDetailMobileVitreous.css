@@ -14,8 +14,12 @@
 .route-detail-backdrop.route-detail-dark,
 .route-detail-backdrop[data-theme="dark"] {
   --rd-bg: #0a0a0c;
+
+  /* ✅ Token tekleme: rd-glass2 ana, rd-glass-2 alias */
   --rd-glass: rgba(18, 18, 22, 0.72);
-  --rd-glass-2: rgba(18, 18, 22, 0.55);
+  --rd-glass2: rgba(18, 18, 22, 0.55);
+  --rd-glass-2: var(--rd-glass2);
+
   --rd-border: rgba(184, 115, 51, 0.18);
   --rd-border-strong: rgba(184, 115, 51, 0.28);
   --rd-text: #f4f4f5;
@@ -30,7 +34,6 @@
      (Layout-safe: sadece renk/blur/border/shadow)
      ========================================================= */
   --rd-ink: var(--rd-text);
-  --rd-glass2: var(--rd-glass-2);
   --rd-accent: #22d3ee; /* cyan */
   --rd-accent-soft: rgba(34, 211, 238, 0.22);
   --rd-accent-border: rgba(34, 211, 238, 0.38);
@@ -55,7 +58,10 @@
      EMİR 10.2 — Light cam opaklığı “premium”
      ========================================================= */
   --rd-glass: rgba(255, 255, 255, 0.88);
-  --rd-glass-2: rgba(255, 255, 255, 0.72);
+
+  /* ✅ Token tekleme: rd-glass2 ana, rd-glass-2 alias */
+  --rd-glass2: rgba(255, 255, 255, 0.72);
+  --rd-glass-2: var(--rd-glass2);
 
   /* Border: slate/ink yönünde (tam siyah değil) */
   --rd-border: rgba(15, 23, 42, 0.10);
@@ -76,7 +82,6 @@
      (Dark ile parite: rdglass-card/btn + pills active çalışsın)
      ========================================================= */
   --rd-ink: var(--rd-text);
-  --rd-glass2: var(--rd-glass-2);
 
   --rd-accent: #22d3ee; /* cyan parite */
   --rd-accent-soft: rgba(34, 211, 238, 0.18);
@@ -548,16 +553,14 @@
 
 /* =========================================================
    EMİR 3 — Vitreous CAM yüzey dili (DARK only, layout-safe)
-   Not: Bu blok margin/padding/height DEĞİŞTİRMEZ.
+   ✅ Map canvas’a blur bindirme KALDIRILDI (click/freeze risk)
    ========================================================= */
 .route-detail-backdrop.route-detail-dark .rd-author-hub,
 .route-detail-backdrop[data-theme="dark"] .rd-author-hub,
 .route-detail-backdrop.route-detail-dark .rd-pills-block,
 .route-detail-backdrop[data-theme="dark"] .rd-pills-block,
 .route-detail-backdrop.route-detail-dark .rd-map-card,
-.route-detail-backdrop[data-theme="dark"] .rd-map-card,
-.route-detail-backdrop.route-detail-dark .route-detail-map,
-.route-detail-backdrop[data-theme="dark"] .route-detail-map {
+.route-detail-backdrop[data-theme="dark"] .rd-map-card {
   background: var(--rd-glass2);
   border: 1px solid var(--rd-border);
   box-shadow: var(--rd-shadow-soft);
@@ -567,15 +570,14 @@
 
 /* =========================================================
    EMİR 10 — Light’ta da “premium vitreous” cam yüzey (layout-safe)
+   ✅ Map canvas’a blur bindirme KALDIRILDI
    ========================================================= */
 .route-detail-backdrop.route-detail-light .rd-author-hub,
 .route-detail-backdrop[data-theme="light"] .rd-author-hub,
 .route-detail-backdrop.route-detail-light .rd-pills-block,
 .route-detail-backdrop[data-theme="light"] .rd-pills-block,
 .route-detail-backdrop.route-detail-light .rd-map-card,
-.route-detail-backdrop[data-theme="light"] .rd-map-card,
-.route-detail-backdrop.route-detail-light .route-detail-map,
-.route-detail-backdrop[data-theme="light"] .route-detail-map {
+.route-detail-backdrop[data-theme="light"] .rd-map-card {
   background: var(--rd-glass2);
   border: 1px solid var(--rd-border);
   box-shadow: var(--rd-shadow-soft);
@@ -672,16 +674,14 @@
   color: var(--rd-accent);
 }
 
-/* Backdrop-filter destek yoksa: daha opak cam fallback (DARK only) */
+/* Backdrop-filter destek yoksa: daha opak cam fallback (theme-aware) */
 @supports not ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
   .route-detail-backdrop.route-detail-dark .rd-author-hub,
   .route-detail-backdrop[data-theme="dark"] .rd-author-hub,
   .route-detail-backdrop.route-detail-dark .rd-pills-block,
   .route-detail-backdrop[data-theme="dark"] .rd-pills-block,
   .route-detail-backdrop.route-detail-dark .rd-map-card,
-  .route-detail-backdrop[data-theme="dark"] .rd-map-card,
-  .route-detail-backdrop.route-detail-dark .route-detail-map,
-  .route-detail-backdrop[data-theme="dark"] .route-detail-map {
+  .route-detail-backdrop[data-theme="dark"] .rd-map-card {
     background: rgba(18, 18, 22, 0.88);
   }
 
@@ -691,23 +691,19 @@
   .route-detail-backdrop.route-detail-light .rd-pills-block,
   .route-detail-backdrop[data-theme="light"] .rd-pills-block,
   .route-detail-backdrop.route-detail-light .rd-map-card,
-  .route-detail-backdrop[data-theme="light"] .rd-map-card,
-  .route-detail-backdrop.route-detail-light .route-detail-map,
-  .route-detail-backdrop[data-theme="light"] .route-detail-map {
+  .route-detail-backdrop[data-theme="light"] .rd-map-card {
     background: rgba(255, 255, 255, 0.92);
   }
 }
 
-/* Reduced transparency: blur’u azalt/kap (DARK only) */
+/* Reduced transparency: blur’u azalt/kap (theme-aware) */
 @media (prefers-reduced-transparency: reduce) {
   .route-detail-backdrop.route-detail-dark .rd-author-hub,
   .route-detail-backdrop[data-theme="dark"] .rd-author-hub,
   .route-detail-backdrop.route-detail-dark .rd-pills-block,
   .route-detail-backdrop[data-theme="dark"] .rd-pills-block,
   .route-detail-backdrop.route-detail-dark .rd-map-card,
-  .route-detail-backdrop[data-theme="dark"] .rd-map-card,
-  .route-detail-backdrop.route-detail-dark .route-detail-map,
-  .route-detail-backdrop[data-theme="dark"] .route-detail-map {
+  .route-detail-backdrop[data-theme="dark"] .rd-map-card {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: rgba(18, 18, 22, 0.90);
@@ -719,9 +715,7 @@
   .route-detail-backdrop.route-detail-light .rd-pills-block,
   .route-detail-backdrop[data-theme="light"] .rd-pills-block,
   .route-detail-backdrop.route-detail-light .rd-map-card,
-  .route-detail-backdrop[data-theme="light"] .rd-map-card,
-  .route-detail-backdrop.route-detail-light .route-detail-map,
-  .route-detail-backdrop[data-theme="light"] .route-detail-map {
+  .route-detail-backdrop[data-theme="light"] .rd-map-card {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: rgba(255, 255, 255, 0.94);
@@ -1447,16 +1441,11 @@
   box-shadow: none;
 }
 
-/* İçerik CTA altında kalmasın: en güvenli set (scroll/panel/tab içerikleri) */
-.route-detail-backdrop .route-detail-sheet .route-detail-body,
-.route-detail-backdrop .route-detail-sheet .route-detail-content,
-.route-detail-backdrop .route-detail-sheet .route-detail-scroll,
-.route-detail-backdrop .route-detail-sheet .route-detail-tabpanel,
-.route-detail-backdrop .route-detail-sheet .rdtab,
-.route-detail-backdrop .rdtab,
-.route-detail-backdrop .rdtab--stops,
-.route-detail-backdrop .rdtab--gallery,
-.route-detail-backdrop .rdtab--comments {
+/* ✅ İçerik CTA altında kalmasın: tek otorite scroll container (double padding fix) */
+.route-detail-backdrop .route-detail-sheet > .route-detail-body,
+.route-detail-backdrop .route-detail-sheet > .route-detail-content,
+.route-detail-backdrop .route-detail-sheet > .route-detail-scroll,
+.route-detail-backdrop .route-detail-sheet > .route-detail-tabpanel {
   padding-bottom: var(--rd-cta-inset) !important;
   scroll-padding-bottom: var(--rd-cta-inset);
 }

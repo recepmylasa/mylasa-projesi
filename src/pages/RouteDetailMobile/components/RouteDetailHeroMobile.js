@@ -1,0 +1,259 @@
+// FILE: src/pages/RouteDetailMobile/components/RouteDetailHeroMobile.js
+import React from "react";
+
+export default function RouteDetailHeroMobile({
+  coverResolved,
+  handleImgLoadProof,
+  handleImgErrorToDefault,
+
+  heroMenuOpen,
+  toggleHeroMenu,
+  closeHeroMenu,
+
+  enterEdit,
+  exitEdit,
+  isOwner,
+  isEditMode,
+
+  onClose,
+  onShare,
+  onExportGpx,
+  onToggleTheme,
+  onOpenReport,
+  onOpenShareSheet,
+
+  rdTheme,
+
+  heroCategory,
+  heroTitle,
+  heroStarsModel,
+  heroRatingBadgeText,
+
+  ownerName,
+  ownerAvatarUrl,
+  timeAgoLine,
+
+  isFav,
+  onToggleFav,
+  canToggleFav,
+
+  requestOpenProfile,
+}) {
+  return (
+    <div
+      className="route-detail-hero"
+      onClick={() => {
+        if (heroMenuOpen) closeHeroMenu();
+      }}
+    >
+      <div className="route-detail-hero__media">
+        <img
+          className="route-detail-hero__img"
+          src={coverResolved || (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg"}
+          alt="Rota kapağı"
+          loading="eager"
+          decoding="async"
+          onLoad={(e) => handleImgLoadProof(e, { scope: "hero_cover" })}
+          onError={(e) => handleImgErrorToDefault(e, { scope: "hero_cover" })}
+        />
+      </div>
+
+      {/* ✅ 2 katman overlay: top + bottom (okunurluk garantisi) */}
+      <div className="rd-hero__overlay rd-hero__overlay--top" />
+      <div className="rd-hero__overlay rd-hero__overlay--bottom" />
+
+      {/* ✅ Nav: sol geri | sağ 2 aksiyon (paylaş + menü) */}
+      <div className="route-detail-hero__nav" onClick={(e) => e.stopPropagation()}>
+        <div className="rd-hero-nav-left">
+          <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onClose} title="Geri">
+            <span className="rd-hero-nav-btn__icon" aria-hidden="true">
+              ←
+            </span>
+          </button>
+        </div>
+
+        <div className="rd-hero-nav-right">
+          {!isEditMode && (
+            <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onShare} title="Paylaş">
+              <span className="rd-hero-nav-btn__icon" aria-hidden="true">
+                ⤴
+              </span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="rd-hero-nav-btn rd-hero-nav-btn--icononly"
+            onClick={toggleHeroMenu}
+            aria-expanded={heroMenuOpen}
+            aria-label="Menü"
+            title="Menü"
+          >
+            <span className="rd-hero-nav-btn__icon" aria-hidden="true">
+              ⋯
+            </span>
+          </button>
+        </div>
+
+        {heroMenuOpen && (
+          <div className="rd-hero-menu" onClick={(e) => e.stopPropagation()}>
+            {!!isOwner && !isEditMode && (
+              <button
+                type="button"
+                className="rd-hero-menu__item"
+                onClick={() => {
+                  enterEdit();
+                  closeHeroMenu();
+                }}
+              >
+                <span>Düzenle</span>
+                <span className="rd-hero-menu__hint">Edit</span>
+              </button>
+            )}
+
+            {!!isOwner && isEditMode && (
+              <button
+                type="button"
+                className="rd-hero-menu__item"
+                onClick={() => {
+                  exitEdit();
+                  closeHeroMenu();
+                }}
+              >
+                <span>Düzenlemeyi bitir</span>
+                <span className="rd-hero-menu__hint">View</span>
+              </button>
+            )}
+
+            {!isEditMode && (
+              <button
+                type="button"
+                className="rd-hero-menu__item"
+                onClick={() => {
+                  onOpenShareSheet();
+                  closeHeroMenu();
+                }}
+              >
+                <span>Görsel paylaş</span>
+                <span className="rd-hero-menu__hint">Sheet</span>
+              </button>
+            )}
+
+            {!isEditMode && (
+              <button
+                type="button"
+                className="rd-hero-menu__item"
+                onClick={() => {
+                  onExportGpx();
+                  closeHeroMenu();
+                }}
+              >
+                <span>GPX indir</span>
+                <span className="rd-hero-menu__hint">.gpx</span>
+              </button>
+            )}
+
+            {!isEditMode && (
+              <button
+                type="button"
+                className="rd-hero-menu__item"
+                onClick={() => {
+                  onOpenReport();
+                  closeHeroMenu();
+                }}
+              >
+                <span>Rapor</span>
+                <span className="rd-hero-menu__hint">İstatistik</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="rd-hero-menu__item"
+              onClick={() => {
+                onToggleTheme();
+                closeHeroMenu();
+              }}
+            >
+              <span>Tema</span>
+              <span className="rd-hero-menu__hint">{rdTheme === "dark" ? "Açık" : "Koyu"}</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ✅ Hero info: kategori pill + başlık + rating row */}
+      <div className="rd-hero__info" aria-label="Rota özeti">
+        {heroCategory ? <div className="rd-hero__pill">{heroCategory}</div> : null}
+
+        <h1 className="rd-hero__title" title={heroTitle || "Rota"}>
+          {heroTitle || "Rota"}
+        </h1>
+
+        <div className="rd-hero__ratingRow" aria-label="Rota puanı">
+          <div className="rd-hero__stars" aria-hidden="true">
+            {Array.from({ length: heroStarsModel.full }).map((_, i) => (
+              <span key={`f${i}`} className="rd-hero__star rd-hero__star--full">
+                ★
+              </span>
+            ))}
+            {heroStarsModel.half ? (
+              <span key="h" className="rd-hero__star rd-hero__star--half">
+                ★
+              </span>
+            ) : null}
+            {Array.from({ length: heroStarsModel.empty }).map((_, i) => (
+              <span key={`e${i}`} className="rd-hero__star rd-hero__star--empty">
+                ★
+              </span>
+            ))}
+          </div>
+
+          <span className="rd-hero__ratingBadge">{heroRatingBadgeText || "—"}</span>
+        </div>
+      </div>
+
+      {/* ✅ Floating Interaction Hub */}
+      <div className="rd-hero__hub" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className="rd-hero__hubProfile"
+          onClick={requestOpenProfile}
+          title="Profili aç"
+          aria-label="Profili aç"
+        >
+          <div className="rd-hero__avatar" aria-hidden="true">
+            {ownerAvatarUrl ? (
+              <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" />
+            ) : (
+              <span className="rd-hero__avatarFallback">{ownerName?.[0] || "Y"}</span>
+            )}
+          </div>
+
+          <div className="rd-hero__authorMeta">
+            <div className="rd-hero__authorName" title={ownerName}>
+              {ownerName}
+            </div>
+            <div className="rd-hero__time">{timeAgoLine || ""}</div>
+          </div>
+        </button>
+
+        {!isEditMode && (
+          <button
+            type="button"
+            className={`rd-hero__favBtn ${isFav ? "is-active" : ""}`}
+            onClick={onToggleFav}
+            aria-label={isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+            aria-pressed={!!isFav}
+            title={!canToggleFav ? "Favorilere eklemek için giriş yapmalısın." : isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+            disabled={!canToggleFav}
+          >
+            <span className="rd-hero__favIcon" aria-hidden="true">
+              {isFav ? "♥" : "♡"}
+            </span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
