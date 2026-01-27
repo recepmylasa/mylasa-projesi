@@ -1,17 +1,13 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.hero.css */
 /* EMİR 1 (GENİŞLETİLMİŞ) — RouteDetailMobile Hero + Floating Interaction Hub (Flash paritesi)
-   - Cover ~%55 (56vh band)
-   - 2 katman overlay (top + bottom)
-   - Hero info: pill + title + 5★ + badge
-   - Floating Interaction Hub: tek cam bar (avatar+name+time+fav) hero içinde
-   - Nav: kompakt glass, radius 12, sağda 2 aksiyon
-   - EMİR 1 FIX: safe-area, hub overlap, scale fallback, double-hub killer
-   - ✅ EMİR (YENİ): 3 nokta menü item’ları global button stillerinden etkilenmeyecek (all: unset + hard reset)
+   - ✅ EMİR 2: Title+rating hero üstüne alındı
+   - ✅ EMİR 3: Hub full-width (20px/20px) + biraz yukarı + camdan cover görünür
+   - ✅ EMİR 4A: Kaydet ikonunu yıldızla karıştırma (bookmark)
 */
 
 /* ✅ EMİR 1 — Tuning knobs (scoped) */
 .route-detail-backdrop {
-  --rd-hero-hub-overlap: 22px; /* hub, hero altından bu kadar taşsın */
+  --rd-hero-hub-overlap: 14px; /* sheet üstü nefes */
   --rd-hero-nav-top: 12px;     /* safe-area hariç offset */
 }
 
@@ -118,7 +114,7 @@
 /* ✅ Nav bar */
 .route-detail-hero__nav {
   position: absolute;
-  top: 12px; /* override aşağıda safe-area ile yapılacak */
+  top: 12px;
   left: 12px;
   right: 12px;
   z-index: 6;
@@ -191,25 +187,19 @@
   padding: 6px 0;
 }
 
-/* ✅ KRİTİK: global button stillerini tamamen sıfırla (menü item’ları “yuvarlak/üst üste binme” yapmasın) */
 .route-detail-backdrop .rd-hero-menu .rd-hero-menu__item {
   all: unset;
   box-sizing: border-box;
-
   width: 100%;
   min-height: 44px;
-
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-
   padding: 12px 14px;
-
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-
   font: inherit;
   font-weight: 800;
   line-height: 1.15;
@@ -246,13 +236,15 @@
   white-space: nowrap;
 }
 
-/* ✅ Hero info (sol alt/orta band) */
+/* ✅ Hero info (Flash gibi ÜST SOL) — EMİR 2 */
 .rd-hero__info {
   position: absolute;
   left: 20px;
   right: 20px;
-  /* ✅ EMİR 1 — hub overlap sonrası info konumu: hub top + 26px boşluk kalsın */
-  bottom: calc(90px - var(--rd-hero-hub-overlap, 22px));
+
+  top: calc(env(safe-area-inset-top, 0px) + var(--rd-hero-nav-top, 12px) + 40px + 12px);
+  bottom: auto;
+
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -348,15 +340,17 @@
   -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
-/* ✅ Floating Interaction Hub (tek cam bar) */
+/* ✅ Floating Interaction Hub — ARGE: FULL-WIDTH + 20/20 + 64px + r20 + p16 + blur24 */
 .rd-hero__hub {
   position: absolute;
+
   left: 20px;
   right: 20px;
+  width: auto;
+  max-width: none;
+  transform: none;
 
-  /* ✅ EMİR 1 — Floating Hub “cover’ın altına taşsın” */
-  bottom: calc(0px - var(--rd-hero-hub-overlap, 22px));
-
+  bottom: 28px; /* ✅ bar biraz yukarı: altında cover görünsün */
   height: 64px;
   z-index: 6;
 
@@ -365,12 +359,13 @@
   justify-content: space-between;
   gap: 14px;
 
-  padding: 14px 14px;
+  padding: 16px;
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.10);
-  backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
+
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(12, 12, 14, 0.20);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
   box-shadow: var(--rd-card-shadow, var(--rd-shadow));
   pointer-events: auto;
 }
@@ -378,7 +373,7 @@
 .route-detail-backdrop[data-theme="light"] .rd-hero__hub,
 .route-detail-backdrop.route-detail-light .rd-hero__hub {
   border: 1px solid rgba(0, 0, 0, 0.08);
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.52);
 }
 
 .rd-hero__hubProfile {
@@ -407,10 +402,8 @@
   border-radius: 999px;
   overflow: hidden;
   flex: 0 0 40px;
-
   border: 2px solid rgba(251, 146, 60, 0.55);
   background: rgba(255, 255, 255, 0.06);
-
   display: flex;
   align-items: center;
   justify-content: center;
@@ -426,6 +419,61 @@
 .rd-hero__avatarFallback {
   font-weight: 900;
   color: var(--rd-text);
+}
+
+/* ✅ Skeleton (owner data gelene kadar “Yazar” yok) */
+.rd-hero__avatarSkeleton {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.10);
+  position: relative;
+  overflow: hidden;
+}
+
+.rd-hero__skeletonLine {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.route-detail-backdrop[data-theme="light"] .rd-hero__skeletonLine,
+.route-detail-backdrop.route-detail-light .rd-hero__skeletonLine {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.rd-hero__skeletonLine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  transform: translateX(-100%);
+  animation: rdHeroShimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes rdHeroShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rd-hero__skeletonLine::after {
+    animation: none;
+    transform: none;
+    opacity: 0.0;
+  }
+}
+
+.rd-hero__skeletonLine--name {
+  height: 14px;
+  width: 150px;
+}
+
+.rd-hero__skeletonLine--time {
+  height: 12px;
+  width: 96px;
+  opacity: 0.9;
 }
 
 .rd-hero__authorMeta {
@@ -455,7 +503,7 @@
   text-overflow: ellipsis;
 }
 
-/* ✅ Favori: Flash kırmızı kalp */
+/* ✅ Kaydet button — bookmark ikon */
 .rd-hero__favBtn {
   height: 40px;
   width: 40px;
@@ -488,20 +536,28 @@
 }
 
 .rd-hero__favIcon {
-  font-size: 18px;
-  line-height: 1;
-  transform: translateY(-0.5px);
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rd-hero__favIcon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .rd-hero__favBtn.is-active {
-  background: rgba(255, 59, 95, 0.16);
-  border-color: rgba(255, 59, 95, 0.32);
-  box-shadow: 0 14px 30px rgba(255, 59, 95, 0.10), var(--rd-card-shadow, var(--rd-shadow));
+  background: rgba(251, 146, 60, 0.16);
+  border-color: rgba(251, 146, 60, 0.32);
+  box-shadow: 0 14px 30px rgba(251, 146, 60, 0.10), var(--rd-card-shadow, var(--rd-shadow));
 }
 
 .rd-hero__favBtn.is-active .rd-hero__favIcon {
-  color: rgba(255, 59, 95, 1);
-  text-shadow: 0 0 18px rgba(255, 59, 95, 0.18);
+  color: rgba(251, 146, 60, 1);
+  text-shadow: 0 0 18px rgba(251, 146, 60, 0.18);
 }
 
 /* =========================================================
@@ -520,15 +576,15 @@
   }
 }
 
-/* ✅ EMİR 1 — Safe-area (notch) */
+/* ✅ Safe-area (notch) */
 .route-detail-backdrop .route-detail-hero__nav {
   top: calc(env(safe-area-inset-top, 0px) + var(--rd-hero-nav-top, 12px)) !important;
   pointer-events: auto !important;
 }
 
-/* ✅ EMİR 1 — Hub overlap sonrası içerik hub’ın altına girmesin (sheet üstü boşluk) */
+/* ✅ Hub sonrası sheet üstü boşluk */
 .route-detail-backdrop .route-detail-body {
-  padding-top: var(--rd-hero-hub-overlap, 22px) !important;
+  padding-top: var(--rd-hero-hub-overlap, 14px) !important;
 }
 
 /* Vitreous pseudo gradient’i kapat (biz 2 overlay kullanıyoruz) */
@@ -537,7 +593,7 @@
   background: none !important;
 }
 
-/* ✅ EMİR 1 — ÇİFT HUB KIRICI (JS’te yok ama olur da kalırsa görünmesin) */
+/* ✅ ÇİFT HUB KIRICI */
 .route-detail-backdrop .rd-author-hub {
   display: none !important;
 }

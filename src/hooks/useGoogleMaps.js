@@ -1,4 +1,4 @@
-// FILE: src/hooks/useGoogleMaps.js
+/* FILE: src/hooks/useGoogleMaps.js */
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const GMAPS_SCRIPT_ID = "gmaps-js-sdk";
@@ -28,7 +28,6 @@ function removeGMapsScriptElement() {
 
 function cleanupCallbacks() {
   try {
-    // callback
     if (window.mylasaInitMap) {
       try {
         delete window.mylasaInitMap;
@@ -38,8 +37,8 @@ function cleanupCallbacks() {
       } catch {}
     }
   } catch {}
+
   try {
-    // auth failure callback (google uses this global)
     if (window.gm_authFailure) {
       try {
         delete window.gm_authFailure;
@@ -210,7 +209,6 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
         if (MAP_ID) opts.mapId = MAP_ID;
 
         mapRef.current = new gmaps.Map(mapDivRef.current, opts);
-
         return !!mapRef.current;
       } catch {
         return false;
@@ -260,16 +258,19 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
         advancedAllowedRef.current =
           !!(window.google?.maps?.marker?.AdvancedMarkerElement) && !!MAP_ID;
 
-        // ✅ Script yüklendi ama div henüz yoksa: awaiting_div + kısa backoff ile map init
         const createdNow = ensureMapInstance(gmaps);
 
+        // ✅ Div geç gelebilir: erken "error" verme, daha uzun awaiting_div izle
         if (!createdNow) {
           if (!isMountedRef.current) return;
 
           setGmapsStatus("awaiting_div");
+          setError(null);
+          setErrorMsg("");
 
+          const startedAt = Date.now();
+          const HARD_TIMEOUT_MS = 30000; // 30s sonra gerçekten hata say
           let tries = 0;
-          const maxTries = 12;
 
           const tick = () => {
             if (!isMountedRef.current) return;
@@ -292,16 +293,19 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
               return;
             }
 
-            if (tries < maxTries) {
-              tries += 1;
-              const t = setTimeout(tick, 80 + tries * 70);
-              ensureTimersRef.current.push(t);
-            } else {
-              // div hiç gelmediyse: loading'a düşürme; user retry ile remount edebilir
+            const elapsed = Date.now() - startedAt;
+            if (elapsed >= HARD_TIMEOUT_MS) {
               setGmapsStatus("error");
               setErrorMsg("Harita alanı oluşturulamadı.");
               setError(new Error("MAP_DIV_MISSING"));
+              return;
             }
+
+            // backoff: ilk başta hızlı, sonra yavaş
+            tries += 1;
+            const delay = tries <= 20 ? 80 + tries * 70 : 500;
+            const t = setTimeout(tick, delay);
+            ensureTimersRef.current.push(t);
           };
 
           const t0 = setTimeout(tick, 80);
@@ -309,11 +313,10 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
           return;
         }
 
-        // services
         initPlacesServices();
-
         setGmapsStatus("ready");
         setError(null);
+        setErrorMsg("");
       } catch (err) {
         let msg = err?.message || "Harita yüklenemedi.";
         const finalError = err instanceof Error ? err : new Error(msg);

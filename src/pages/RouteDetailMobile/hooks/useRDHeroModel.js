@@ -71,7 +71,7 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     }
   }, [routeModel, title]);
 
-  // ✅ EMIR 3 — kısa açıklama (pill altı)
+  // ✅ EMİR 3 — kısa açıklama (pill altı)
   const routeDescText = useMemo(() => {
     try {
       const m = routeModel || {};
@@ -83,12 +83,11 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     }
   }, [routeModel]);
 
-  // ✅ EMIR 2 — Map label (BODRUM / MUĞLA gibi)
+  // ✅ EMİR 2 — Map label (BODRUM / MUĞLA gibi)
   const mapAreaLabel = useMemo(() => {
     try {
       const m = routeModel || {};
-      const cityRaw =
-        m?.city || m?.province || m?.il || m?.state || m?.region || m?.locationCity || m?.location?.city || "";
+      const cityRaw = m?.city || m?.province || m?.il || m?.state || m?.region || m?.locationCity || m?.location?.city || "";
       const districtRaw = m?.district || m?.ilce || m?.town || m?.locationDistrict || m?.location?.district || "";
 
       const city = String(cityRaw || "").trim();
@@ -135,18 +134,38 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     }
   }, [routeModel]);
 
+  // ✅ ARGE — “Yazar” placeholder YASAK: boş/skeleton gösterilecek
   const ownerName = useMemo(() => {
     const o = owner || lockedOwnerDoc || {};
-    const s =
-      (o?.name && String(o.name).trim()) ||
-      (o?.fullName && String(o.fullName).trim()) ||
-      (o?.username && String(o.username).trim()) ||
-      (o?.userName && String(o.userName).trim()) ||
-      (o?.handle && String(o.handle).trim()) ||
-      (routeModel?.ownerName && String(routeModel.ownerName).trim()) ||
-      (routeModel?.ownerUsername && String(routeModel.ownerUsername).trim()) ||
-      "Yazar";
-    return s || "Yazar";
+    const candidates = [
+      o?.name,
+      o?.fullName,
+      o?.displayName,
+      o?.username,
+      o?.userName,
+      o?.handle,
+
+      // locked/edge-case fallback (route model) — ama placeholder filtreli
+      routeModel?.ownerName,
+      routeModel?.ownerUsername,
+      routeModel?.ownerDisplayName,
+      routeModel?.ownerHandle,
+    ]
+      .filter(Boolean)
+      .map((x) => String(x).trim())
+      .filter(Boolean);
+
+    const isBad = (s) => {
+      const x = String(s || "").trim().toLowerCase();
+      if (!x) return true;
+      if (x === "yazar" || x === "author" || x === "unknown") return true;
+      return false;
+    };
+
+    for (const c of candidates) {
+      if (!isBad(c)) return c;
+    }
+    return ""; // ✅ veri gelene kadar boş → UI skeleton gösterecek
   }, [owner, lockedOwnerDoc, routeModel]);
 
   const ownerAvatarUrl = useMemo(() => {

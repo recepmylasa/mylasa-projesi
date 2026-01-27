@@ -1,4 +1,4 @@
-// FILE: src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js
+/* FILE: src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGoogleMaps } from "../../../hooks/useGoogleMaps";
 import RouteDetailMapPreview from "./RouteDetailMapPreview";
@@ -367,6 +367,9 @@ export default function RouteDetailMapPreviewShell({
   const hookMapDivRef = gmaps.mapDivRef || gmaps.containerRef || gmaps.divRef || null;
   const mapRef = gmaps.mapRef || gmaps.map || null;
 
+  const gmapsReload = gmaps.reload;
+  const gmapsAttemptLoad = gmaps.attemptLoad;
+
   const isReady = gmapsStatus === "ready" || gmapsStatus === "loaded";
   const isError =
     gmapsStatus === "error" ||
@@ -375,6 +378,20 @@ export default function RouteDetailMapPreviewShell({
     gmapsStatus === "missing_key";
 
   const isLoading = !isReady && !isError;
+
+  const handleRetry = useCallback(() => {
+    // ✅ önce maps loader'ı toparla
+    try {
+      if (typeof gmapsReload === "function") gmapsReload();
+    } catch {}
+    try {
+      if (typeof gmapsAttemptLoad === "function") gmapsAttemptLoad(true);
+    } catch {}
+    // ✅ sonra dış handler
+    try {
+      onRetry();
+    } catch {}
+  }, [gmapsReload, gmapsAttemptLoad, onRetry]);
 
   const [mapReadyTick, setMapReadyTick] = useState(0);
   const bumpTick = useCallback(() => {
@@ -697,7 +714,6 @@ export default function RouteDetailMapPreviewShell({
         if (points.length === 1) {
           const p0 = points[0];
           map.setCenter(p0);
-          // keep stable zoom (don’t spam)
           const z = map.getZoom?.();
           if (!Number.isFinite(z) || z < 14 || z > 18) {
             map.setZoom(16);
@@ -719,7 +735,6 @@ export default function RouteDetailMapPreviewShell({
       const el = localDivRef.current;
       if (!isReady || !mapInstance || !el) return;
 
-      // clear pending
       try {
         if (fitStateRef.current.pendingTimer) clearTimeout(fitStateRef.current.pendingTimer);
       } catch {}
@@ -735,19 +750,16 @@ export default function RouteDetailMapPreviewShell({
         fitStateRef.current.pendingRaf = raf;
       };
 
-      // resize: debounce until animation settles, then 1-frame RAF
       if (reason === "resize") {
         fitStateRef.current.pendingTimer = setTimeout(run, 90);
         return;
       }
 
-      // default: 1-frame RAF
       run();
     },
     [isReady, mapInstance, doFitNow]
   );
 
-  // ResizeObserver: only scheduleFit (don’t bumpTick spam)
   useEffect(() => {
     const el = localDivRef.current;
     if (!el) return;
@@ -777,7 +789,6 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [scheduleFit]);
 
-  // Initial fit: map ready + points ready (2–3 frame stabilize, loop-breaker blocks spam)
   useEffect(() => {
     if (!isReady || !mapInstance) return;
 
@@ -787,7 +798,6 @@ export default function RouteDetailMapPreviewShell({
       const raf3 = requestAnimationFrame(() => scheduleFit("raf3"));
       fitStateRef.current.pendingRaf = raf3;
       try {
-        // keep refs cancelable
         fitStateRef.current._r1 = raf1;
         fitStateRef.current._r2 = raf2;
         fitStateRef.current._r3 = raf3;
@@ -803,7 +813,6 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [isReady, mapInstance, scheduleFit]);
 
-  // When points change, re-fit once (loop-breaker prevents repeats)
   useEffect(() => {
     if (!isReady || !mapInstance) return;
     scheduleFit("points");
@@ -898,13 +907,20 @@ export default function RouteDetailMapPreviewShell({
 
   const messageForError = () => {
     if (!API_KEY) return "Google Maps API anahtarı bulunamadı.";
-    const errText = String(gmaps?.error?.message || gmaps?.error || "").toLowerCase();
-    if (errText.includes("billing")) return "Google Maps için faturalandırma (billing) etkin değil.";
-    if (errText.includes("referer") || errText.includes("referrer")) return "API anahtarı referrer kısıtına takıldı.";
-    if (errText.includes("invalid") && errText.includes("key")) return "Google Maps API anahtarı geçersiz.";
+    const base = String(gmaps?.errorMsg || gmaps?.error?.message || gmaps?.error || "")
+      .toLowerCase()
+      .trim();
+
+    if (base.includes("billing")) return "Google Maps için faturalandırma (billing) etkin değil.";
+    if (base.includes("referer") || base.includes("referrer")) return "API anahtarı referrer kısıtına takıldı.";
+    if (base.includes("invalid") && base.includes("key")) return "Google Maps API anahtarı geçersiz.";
+    if (base.includes("auth_failed")) return "Google Maps yetkilendirme hatası.";
     if (gmapsStatus === "blocked") return "Google Maps yüklemesi engellendi.";
     if (gmapsStatus === "missing_key") return "Google Maps API anahtarı eksik.";
-    return "Harita yüklenemedi. Tekrar deneyin.";
+    if (gmapsStatus === "error" && base.includes("map_div_missing")) {
+      return "Harita alanı henüz hazır değil. Biraz bekleyip tekrar deneyin.";
+    }
+    return gmaps?.errorMsg || "Harita yüklenemedi. Tekrar deneyin.";
   };
 
   const showNoPoints = isReady && stopsLoaded && (!points || points.length === 0);
@@ -925,10 +941,8 @@ export default function RouteDetailMapPreviewShell({
       data-error={isError ? "1" : "0"}
       data-points={(points && points.length) || 0}
     >
-      {/* Map preview (child mevcutsa onu kullan; ref’i mutlaka veriyoruz) */}
       <RouteDetailMapPreview mapDivRef={setDivRef} mapReadyTick={mapReadyTick} />
 
-      {/* Badges + Location pill (CSS: .rd-map-card içindeyse otomatik oturur; değilse de zararsız) */}
       <div className="rd-map-badges">
         {isReady && points?.length > 0 ? (
           <div className="rd-map-badge">{points.length} NOKTA</div>
@@ -938,7 +952,6 @@ export default function RouteDetailMapPreviewShell({
       </div>
       <div className="rd-map-loc">{locationLabel}</div>
 
-      {/* Loading overlay */}
       {isLoading ? (
         <div style={overlayBase} aria-label="Harita yükleniyor">
           <div style={card}>
@@ -948,7 +961,7 @@ export default function RouteDetailMapPreviewShell({
             </div>
             <div style={desc}>Bağlantı veya cihaz performansına göre birkaç saniye sürebilir.</div>
             <div style={btnRow}>
-              <button type="button" style={ghostBtn} onClick={onRetry}>
+              <button type="button" style={ghostBtn} onClick={handleRetry}>
                 Yeniden dene
               </button>
             </div>
@@ -956,14 +969,13 @@ export default function RouteDetailMapPreviewShell({
         </div>
       ) : null}
 
-      {/* Error overlay */}
       {isError ? (
         <div style={overlayBase} aria-label="Harita hatası">
           <div style={card}>
             <div style={title}>Harita yüklenemedi</div>
             <div style={desc}>{messageForError()}</div>
             <div style={btnRow}>
-              <button type="button" style={retryBtn} onClick={onRetry}>
+              <button type="button" style={retryBtn} onClick={handleRetry}>
                 Yeniden dene
               </button>
               <button
@@ -982,14 +994,13 @@ export default function RouteDetailMapPreviewShell({
         </div>
       ) : null}
 
-      {/* No points overlay (ready ama rota yok) */}
       {showNoPoints ? (
         <div style={overlayBase} aria-label="Rota noktası yok">
           <div style={card}>
             <div style={title}>Rota çizgisi bulunamadı</div>
             <div style={desc}>Bu rotada çizilecek bir path/nokta verisi görünmüyor. Durakları kontrol edin.</div>
             <div style={btnRow}>
-              <button type="button" style={retryBtn} onClick={onRetry}>
+              <button type="button" style={retryBtn} onClick={handleRetry}>
                 Yeniden dene
               </button>
             </div>
@@ -997,7 +1008,6 @@ export default function RouteDetailMapPreviewShell({
         </div>
       ) : null}
 
-      {/* keyframes (spinner için; yoksa da sorun değil) */}
       <style>{`
         @keyframes rdmpspin { 
           0% { transform: rotate(0deg); } 

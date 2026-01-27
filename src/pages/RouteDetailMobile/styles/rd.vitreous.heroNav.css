@@ -1,0 +1,141 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.vitreous.heroNav.css */
+/* Vitreous Hero + Nav (RouteDetail scope) — EMİR 1 split
+   EMİR 2: Title+rating bloğu TOP odaklı (legacy selectors için)
+*/
+
+/* -------------------- HERO (üst görsel alan) -------------------- */
+.route-detail-backdrop .route-detail-hero,
+.route-detail-backdrop .rd-hero {
+  position: relative;
+  width: 100%;
+  height: var(--rd-hero-h) !important;
+  min-height: var(--rd-hero-h) !important;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+/* Full-bleed cover */
+.route-detail-backdrop .route-detail-hero img,
+.route-detail-backdrop .rd-hero img,
+.route-detail-backdrop .route-detail-hero video,
+.route-detail-backdrop .rd-hero video,
+.route-detail-backdrop .route-detail-hero__cover,
+.route-detail-backdrop .rd-hero-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Hero readability gradient (alt + üstte hafif) */
+.route-detail-backdrop .route-detail-hero::after,
+.route-detail-backdrop .rd-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0.06) 32%, rgba(0, 0, 0, 0.0) 55%),
+    linear-gradient(to top, rgba(0, 0, 0, 0.60), rgba(0, 0, 0, 0.06) 55%, rgba(0, 0, 0, 0.0));
+}
+
+/* Hero content block (başlık/tag/meta) — varsa (LEGACY) */
+.route-detail-backdrop .route-detail-hero__content,
+.route-detail-backdrop .rd-hero-content {
+  position: absolute;
+  left: var(--rd-hero-pad);
+  right: var(--rd-hero-pad);
+
+  /* ✅ EMİR 2: bottom yerine top */
+  top: calc(env(safe-area-inset-top, 0px) + 12px + var(--rd-hero-navbtn, 40px) + 12px);
+  bottom: auto;
+
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 0;
+  pointer-events: none;
+}
+
+/* Tag pill */
+.route-detail-backdrop .rd-hero-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rd-ink);
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+}
+
+/* Title */
+.route-detail-backdrop .rd-hero-title {
+  font-size: clamp(22px, 5.8vw, 26px);
+  line-height: 1.12;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  text-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+/* Rating line */
+.route-detail-backdrop .rd-hero-ratingline,
+.route-detail-backdrop .rd-hero-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 10px 26px rgba(0, 0, 0, 0.30);
+}
+
+/* -------------------- HERO NAV (üst ikonlar) -------------------- */
+.route-detail-backdrop .route-detail-hero__nav {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 12px;
+  right: 12px;
+  z-index: 3;
+  pointer-events: none; /* butonlar kendi pointer-events ile açılır */
+}
+
+/* Nav butonları: cam/blur, min 40px hit-area */
+.route-detail-backdrop .route-detail-hero__nav button,
+.route-detail-backdrop .route-detail-hero__nav .rd-hero-theme-toggle,
+.route-detail-backdrop .route-detail-hero__nav .rd-hero-navbtn,
+.route-detail-backdrop .route-detail-hero__nav .rd-hero-navBtn,
+.route-detail-backdrop .route-detail-hero__nav .rd-hero-btn {
+  pointer-events: auto;
+  width: var(--rd-hero-navbtn);
+  height: var(--rd-hero-navbtn);
+  min-width: var(--rd-hero-navbtn);
+  min-height: var(--rd-hero-navbtn);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(18, 18, 22, 0.44);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-backdrop.route-detail-light .route-detail-hero__nav button,
+.route-detail-backdrop[data-theme="light"] .route-detail-hero__nav button,
+.route-detail-backdrop.route-detail-light .route-detail-hero__nav .rd-hero-theme-toggle,
+.route-detail-backdrop[data-theme="light"] .route-detail-hero__nav .rd-hero-theme-toggle {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(15, 23, 42, 0.14);
+  color: rgba(2, 6, 23, 0.92);
+  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.12);
+}

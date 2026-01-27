@@ -1,0 +1,291 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.vitreous.hubPillsMapSheet.css */
+/* Vitreous Author Hub + Pills + MapSheet chrome — EMİR 1 split
+   EMİR 3: yazar barını yukarı al + ortala + camdan cover görünsün
+   EMİR 4B (CSS fail-safe): "Yazar" alt label görünmesin
+*/
+
+/* -------------------- AUTHOR HUB (Hero’dan taşan cam pill) -------------------- */
+.route-detail-backdrop .rd-author-hub {
+  position: relative;
+  z-index: 10;
+
+  /* ✅ EMİR 3: daha fazla overlap + ortalı */
+  margin-top: calc(-1 * var(--rd-author-overlap));
+  margin-right: auto;
+  margin-left: auto;
+  margin-bottom: 14px;
+
+  width: calc(100% - 28px);
+  max-width: 520px;
+
+  padding: 12px 12px;
+  border-radius: 18px;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  /* ✅ Glass */
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(12, 12, 14, 0.22);
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) + 6px)) saturate(160%);
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) + 6px)) saturate(160%);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+}
+
+.route-detail-backdrop.route-detail-light .rd-author-hub,
+.route-detail-backdrop[data-theme="light"] .rd-author-hub {
+  border-color: rgba(15, 23, 42, 0.10);
+  background: rgba(255, 255, 255, 0.54); /* cover camın içinden görünsün */
+  box-shadow: 0 18px 34px rgba(2, 6, 23, 0.10);
+}
+
+/* Avatar */
+.route-detail-backdrop .rd-author-hub .rd-author-avatar,
+.route-detail-backdrop .rd-author-hub > img,
+.route-detail-backdrop .rd-author-hub > a > img {
+  width: var(--rd-author-avatar);
+  height: var(--rd-author-avatar);
+  border-radius: 999px;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+/* Name + sub */
+.route-detail-backdrop .rd-author-name,
+.route-detail-backdrop .rd-author-hub .rd-author-name {
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1.15;
+  color: var(--rd-ink);
+}
+
+/* ✅ EMİR 4B fail-safe: "Yazar" label genelde burada duruyor → görünmesin */
+.route-detail-backdrop .rd-author-sub {
+  display: none !important;
+}
+
+/* Sağdaki tek aksiyon butonu: min 40px */
+.route-detail-backdrop .rd-author-hub .rd-author-fav,
+.route-detail-backdrop .rd-author-hub .rd-author-favBtn,
+.route-detail-backdrop .rd-author-hub .rd-author-fav__btn,
+.route-detail-backdrop .rd-author-hub .rd-author-action,
+.route-detail-backdrop .rd-author-hub button.rd-author-fav {
+  margin-left: auto;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 999px;
+
+  border: 1px solid var(--rd-border-strong);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) - 4px)) saturate(150%);
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) - 4px)) saturate(150%);
+
+  display: grid;
+  place-items: center;
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.20);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-backdrop .rd-author-hub .rd-author-fav:focus-visible,
+.route-detail-backdrop .rd-author-hub .rd-author-favBtn:focus-visible,
+.route-detail-backdrop .rd-author-hub .rd-author-fav__btn:focus-visible {
+  outline: 2px solid var(--rd-accent-border);
+  outline-offset: 2px;
+}
+
+/* -------------------- Tabs Pills + Açıklama -------------------- */
+.route-detail-backdrop .rd-pills-block {
+  margin: 0 14px 10px !important; /* ✅ EMİR 3: hub ile nefes */
+  padding: 10px 10px;
+  border-radius: 18px;
+}
+
+.route-detail-backdrop .rd-pills-block .rd-pills-row,
+.route-detail-backdrop .rd-pills-block .rd-pills,
+.route-detail-backdrop .rd-pills-block nav,
+.route-detail-backdrop .rd-pills-block .rd-pills-inner {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.route-detail-backdrop .rd-pills-block button {
+  height: var(--rd-pill-h);
+  line-height: var(--rd-pill-h);
+  border-radius: 999px;
+  padding: 0 10px;
+  flex: 1 1 0;
+  min-width: 0;
+
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+
+  border: 1px solid var(--rd-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--rd-ink);
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-backdrop.route-detail-light .rd-pills-block button,
+.route-detail-backdrop[data-theme="light"] .rd-pills-block button {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+.route-detail-backdrop .rd-pills-block button[aria-selected="true"],
+.route-detail-backdrop .rd-pills-block button[aria-current="true"],
+.route-detail-backdrop .rd-pills-block .is-active,
+.route-detail-backdrop .rd-pills-block .active {
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.18), rgba(34, 211, 238, 0.06));
+}
+
+/* Açıklama metni */
+.route-detail-backdrop .rd-route-desc {
+  margin: 8px 14px 12px !important;
+  font-size: 13px;
+  line-height: 1.42;
+  color: var(--rd-muted);
+}
+
+/* -------------------- Map Card chrome -------------------- */
+.route-detail-backdrop .rd-map-card {
+  position: relative;
+  margin: 10px 14px 0 !important;
+  border-radius: var(--rd-map-radius);
+  overflow: hidden;
+}
+
+.route-detail-backdrop .rd-map-card .route-detail-map,
+.route-detail-backdrop .rd-map-card .rd-map,
+.route-detail-backdrop .rd-map-card .rdmps,
+.route-detail-backdrop .rd-map-card .rdmps-shell,
+.route-detail-backdrop .rd-map-card .rdmps-root {
+  height: var(--rd-map-h) !important;
+  min-height: var(--rd-map-h) !important;
+}
+
+.route-detail-backdrop .rd-map-card .rdmps-map {
+  border-radius: inherit !important;
+}
+
+.route-detail-backdrop .rd-map-card .rd-map-badges,
+.route-detail-backdrop .rd-map-card .rd-map-badgeRow,
+.route-detail-backdrop .rd-map-card .rd-map-chips {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 6;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+
+.route-detail-backdrop .rd-map-card .rd-map-badge,
+.route-detail-backdrop .rd-map-card .rd-map-chip,
+.route-detail-backdrop .rd-map-card .rd-map-pill {
+  height: var(--rd-chip-h);
+  padding: var(--rd-chip-pad);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rd-ink);
+  background: rgba(18, 18, 22, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.20);
+  pointer-events: none;
+}
+
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-badge,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-badge,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-chip,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-chip,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-pill,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-pill {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow: 0 14px 26px rgba(2, 6, 23, 0.10);
+}
+
+/* Sağ alt lokasyon pill */
+.route-detail-backdrop .rd-map-card .rd-map-loc,
+.route-detail-backdrop .rd-map-card .rd-map-label,
+.route-detail-backdrop .rd-map-card .rd-map-region,
+.route-detail-backdrop .rd-map-card .rd-map-locPill {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 6;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--rd-ink);
+  background: rgba(18, 18, 22, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  -webkit-backdrop-filter: blur(calc(var(--rd-blur, 18px) - 6px));
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.20);
+  pointer-events: none;
+}
+
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-loc,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-loc,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-label,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-label,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-region,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-region,
+.route-detail-backdrop.route-detail-light .rd-map-card .rd-map-locPill,
+.route-detail-backdrop[data-theme="light"] .rd-map-card .rd-map-locPill {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow: 0 14px 26px rgba(2, 6, 23, 0.10);
+}
+
+/* Glass sheet surface */
+.route-detail-backdrop .route-detail-sheet {
+  background: var(--rd-glass);
+  border: 1px solid var(--rd-border);
+  box-shadow: var(--rd-shadow);
+  border-radius: var(--rd-radius-sheet) var(--rd-radius-sheet) 0 0;
+  overflow: hidden;
+  transform: translateZ(0);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Grab handle copper */
+.route-detail-backdrop .route-detail-grab {
+  background: rgba(184, 115, 51, 0.35);
+  box-shadow: 0 0 0 1px rgba(184, 115, 51, 0.16), 0 0 18px rgba(251, 146, 60, 0.12);
+}
+
+/* Text helpers */
+.route-detail-backdrop .is-muted,
+.route-detail-backdrop .muted,
+.route-detail-backdrop .route-detail-muted {
+  color: var(--rd-muted);
+}

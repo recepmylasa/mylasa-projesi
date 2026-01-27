@@ -1,0 +1,21 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.vitreous.parityFallbacks.css */
+/* Dark/Light fallback — EMİR 1 split */
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .route-detail-backdrop .route-detail-sheet {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(18, 18, 22, 0.92);
+  }
+
+  .route-detail-backdrop[data-theme="light"] .route-detail-sheet,
+  .route-detail-backdrop.route-detail-light .route-detail-sheet {
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  .route-detail-backdrop .rd-author-hub,
+  .route-detail-backdrop .route-detail-hero__nav button {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}

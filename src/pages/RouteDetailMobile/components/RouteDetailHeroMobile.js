@@ -39,6 +39,12 @@ export default function RouteDetailHeroMobile({
 
   requestOpenProfile,
 }) {
+  const hasOwnerName = !!String(ownerName || "").trim();
+  const hasTime = !!String(timeAgoLine || "").trim();
+
+  const saveLabel = isFav ? "Kaydedilenlerden çıkar" : "Kaydet";
+  const saveTitle = !canToggleFav ? "Kaydetmek için giriş yapmalısın." : saveLabel;
+
   return (
     <div
       className="route-detail-hero"
@@ -224,17 +230,28 @@ export default function RouteDetailHeroMobile({
         >
           <div className="rd-hero__avatar" aria-hidden="true">
             {ownerAvatarUrl ? (
-              <img src={ownerAvatarUrl} alt={ownerName} loading="lazy" decoding="async" />
+              <img src={ownerAvatarUrl} alt={hasOwnerName ? ownerName : "Profil fotoğrafı"} loading="lazy" decoding="async" />
+            ) : hasOwnerName ? (
+              <span className="rd-hero__avatarFallback">{ownerName?.[0] || "•"}</span>
             ) : (
-              <span className="rd-hero__avatarFallback">{ownerName?.[0] || "Y"}</span>
+              <span className="rd-hero__avatarSkeleton" aria-hidden="true" />
             )}
           </div>
 
           <div className="rd-hero__authorMeta">
-            <div className="rd-hero__authorName" title={ownerName}>
-              {ownerName}
-            </div>
-            <div className="rd-hero__time">{timeAgoLine || ""}</div>
+            {hasOwnerName ? (
+              <div className="rd-hero__authorName" title={ownerName}>
+                {ownerName}
+              </div>
+            ) : (
+              <div className="rd-hero__skeletonLine rd-hero__skeletonLine--name" aria-hidden="true" />
+            )}
+
+            {hasTime ? (
+              <div className="rd-hero__time">{timeAgoLine || ""}</div>
+            ) : (
+              <div className="rd-hero__skeletonLine rd-hero__skeletonLine--time" aria-hidden="true" />
+            )}
           </div>
         </button>
 
@@ -243,13 +260,24 @@ export default function RouteDetailHeroMobile({
             type="button"
             className={`rd-hero__favBtn ${isFav ? "is-active" : ""}`}
             onClick={onToggleFav}
-            aria-label={isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+            aria-label={saveLabel}
             aria-pressed={!!isFav}
-            title={!canToggleFav ? "Favorilere eklemek için giriş yapmalısın." : isFav ? "Favorilerden çıkar" : "Favorilere ekle"}
+            title={saveTitle}
             disabled={!canToggleFav}
           >
             <span className="rd-hero__favIcon" aria-hidden="true">
-              {isFav ? "♥" : "♡"}
+              <svg
+                viewBox="0 0 24 24"
+                fill={isFav ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M6 3h12a1 1 0 0 1 1 1v18l-7-4-7 4V4a1 1 0 0 1 1-1z" />
+              </svg>
             </span>
           </button>
         )}
