@@ -3,10 +3,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./RouteDetailMobile.css";
 import "./RouteDetailMobileVitreous.css";
 
-// ✅ EMİR 3 (REVİZE): hero/yazar stillerinin kesin yüklendiğini + sırasının en sonda olduğunu garanti et
+// ✅ hero/yazar stilleri en sonda
 import "./styles/rd.hero.css";
-
-import { auth } from "../../firebase";
 
 // Existing sheets/rows stay here (risk azalt)
 import RouteDetailAccessSheet from "./components/RouteDetailAccessSheet";
@@ -69,11 +67,17 @@ export default function RouteDetailMobile({
   const V3_ENABLED = ROUTES_V3_ENABLED;
 
   // ✅ Portals + scroll lock (same behavior, always)
-  const { withPortal, commentsPortalEl, setCommentsPortalEl, lightboxPortalEl, setLightboxPortalEl } =
-    useRDPortalsAndScrollLock();
+  const {
+    withPortal,
+    commentsPortalEl,
+    setCommentsPortalEl,
+    lightboxPortalEl,
+    setLightboxPortalEl,
+  } = useRDPortalsAndScrollLock();
 
   // ✅ Ghost click blocker
-  const { interactionBlocked, blockInteractionsBriefly } = useRDInteractionBlocker();
+  const { interactionBlocked, blockInteractionsBriefly } =
+    useRDInteractionBlocker();
 
   // ✅ Theme
   const { rdTheme, rdThemeSource, themeAnimOn, onToggleTheme } = useRDTheme();
@@ -105,19 +109,31 @@ export default function RouteDetailMobile({
     ownerIdForProfile,
     lockedOwnerDoc,
     retryPermCheck,
+    authUid, // ✅ reaktif auth
   } = useRouteDetailData({ routeId, initialRoute, followInitially, ownerFromLink });
 
   const routeModel = routeDoc || initialRoute;
 
-  // ✅ EMİR 02: path canonical (tek format) + dev-only dropped log
+  // ✅ path canonical
   const rawPath = useMemo(() => {
     const m = routeDoc || initialRoute || {};
-    return m?.path || m?.routePath || m?.polyline || m?.points || m?.raw?.path || m?.raw?.polyline || [];
+    return (
+      m?.path ||
+      m?.routePath ||
+      m?.polyline ||
+      m?.points ||
+      m?.raw?.path ||
+      m?.raw?.polyline ||
+      []
+    );
   }, [routeDoc, initialRoute]);
 
-  const { pts: pathPts, dropped: pathDropped } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
+  const { pts: pathPts, dropped: pathDropped } = useMemo(
+    () => normalizePathForPreview(rawPath),
+    [rawPath]
+  );
 
-  // ✅ EMİR 17/18: stops canonical (MapPreview/Quest/GPX için)
+  // ✅ stops canonical (MapPreview/Quest/GPX için)
   const { stops: stopsForPreview, dropped: stopsDropped } = useMemo(
     () => normalizeStopsForPreview(stops || []),
     [stops]
@@ -132,12 +148,18 @@ export default function RouteDetailMobile({
       const rawLen = Array.isArray(rawPath) ? rawPath.length : 0;
       if (pathDropped > 0) {
         // eslint-disable-next-line no-console
-        console.warn(`[RouteDetailMobile] path normalize dropped ${pathDropped}/${rawLen}`, { routeId });
+        console.warn(
+          `[RouteDetailMobile] path normalize dropped ${pathDropped}/${rawLen}`,
+          { routeId }
+        );
       }
       const totalStops = (stops || []).length;
       if (totalStops > 0 && stopsDropped > 0) {
         // eslint-disable-next-line no-console
-        console.warn(`[RouteDetailMobile] stops missing coords ${stopsDropped}/${totalStops}`, { routeId });
+        console.warn(
+          `[RouteDetailMobile] stops missing coords ${stopsDropped}/${totalStops}`,
+          { routeId }
+        );
       }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +170,8 @@ export default function RouteDetailMobile({
       const t = String(it?.type || it?.mime || it?.contentType || "").toLowerCase();
       const u = String(it?.url || "").toLowerCase();
       if (t.includes("video")) return "video";
-      if (t.includes("image") || t.includes("photo") || t.includes("img")) return "image";
+      if (t.includes("image") || t.includes("photo") || t.includes("img"))
+        return "image";
       if (u.match(/\.(mp4|webm|mov|m4v|mkv)(\?|#|$)/i)) return "video";
       return "image";
     } catch {
@@ -162,7 +185,11 @@ export default function RouteDetailMobile({
       (arr || []).forEach((x) => {
         const url = x?.url ? String(x.url) : "";
         if (!url) return;
-        out.push({ url, type: normalizeMediaType(x), title: x?.title || x?.name || "" });
+        out.push({
+          url,
+          type: normalizeMediaType(x),
+          title: x?.title || x?.name || "",
+        });
       });
       return out;
     },
@@ -170,21 +197,24 @@ export default function RouteDetailMobile({
   );
 
   // ✅ img proof
-  const DEFAULT_ROUTE_COVER_URL_PUBLIC = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
-  const { isDefaultCoverUrl, handleImgLoadProof, handleImgErrorToDefault } = useRouteDetailImgProof({
-    routeId,
-    defaultPublicUrl: DEFAULT_ROUTE_COVER_URL_PUBLIC,
-    defaultConstUrl: DEFAULT_ROUTE_COVER_URL,
-    maxLogs: 80,
-  });
+  const DEFAULT_ROUTE_COVER_URL_PUBLIC =
+    (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
+  const { isDefaultCoverUrl, handleImgLoadProof, handleImgErrorToDefault } =
+    useRouteDetailImgProof({
+      routeId,
+      defaultPublicUrl: DEFAULT_ROUTE_COVER_URL_PUBLIC,
+      defaultConstUrl: DEFAULT_ROUTE_COVER_URL,
+      maxLogs: 80,
+    });
 
-  // ✅ quest (EMİR 05) — V3 gate + path/stops
-  const { questState, startQuest, stopQuest, finishQuest, questLocLine, ghostMetrics } = useRouteDetailQuest({
-    routeId,
-    enabled: V3_ENABLED,
-    path: pathPts,
-    stops: stopsForPreview || [],
-  });
+  // ✅ quest — V3 gate + path/stops
+  const { questState, startQuest, stopQuest, finishQuest, questLocLine, ghostMetrics } =
+    useRouteDetailQuest({
+      routeId,
+      enabled: V3_ENABLED,
+      path: pathPts,
+      stops: stopsForPreview || [],
+    });
 
   const questUi = useMemo(() => {
     if (!V3_ENABLED) return null;
@@ -192,21 +222,28 @@ export default function RouteDetailMobile({
     const hasPath = Array.isArray(pathPts) && pathPts.length >= 2;
     const hasStops = Array.isArray(stopsForPreview) && stopsForPreview.length >= 1;
 
-    const total = Number(ghostMetrics?.totalCheckpoints) || (hasStops ? stopsForPreview.length : 0);
+    const total =
+      Number(ghostMetrics?.totalCheckpoints) || (hasStops ? stopsForPreview.length : 0);
     const visitedCount = Number(ghostMetrics?.visitedCount) || 0;
 
     const completion =
-      typeof ghostMetrics?.completion === "number" && Number.isFinite(ghostMetrics.completion) ? ghostMetrics.completion : 0;
+      typeof ghostMetrics?.completion === "number" &&
+      Number.isFinite(ghostMetrics.completion)
+        ? ghostMetrics.completion
+        : 0;
 
     const pct = Math.max(0, Math.min(1, completion));
     const pctText = Math.round(pct * 100);
 
     const dist = ghostMetrics?.distanceToRouteM;
-    const distText = typeof dist === "number" && Number.isFinite(dist) ? `${Math.round(dist)}m` : "—";
+    const distText =
+      typeof dist === "number" && Number.isFinite(dist) ? `${Math.round(dist)}m` : "—";
 
     const offRoute = !!ghostMetrics?.offRoute;
     const canFinish = !!ghostMetrics?.canFinish;
-    const isAuthed = !!auth.currentUser;
+
+    // ✅ FIX: reaktif auth (auth.currentUser değil)
+    const isAuthed = !!String(authUid || "").trim();
 
     let disabledReason = "";
     if (!hasPath) disabledReason = "Bu rotada iz bulunamadı.";
@@ -225,7 +262,9 @@ export default function RouteDetailMobile({
             <div className="route-detail-quest-title">Ghost Mode</div>
             <div className="route-detail-quest-sub">Rotayı takip et, %85 tamamla, ödülü al.</div>
           </div>
-          <div className={`route-detail-quest-badge ${questState === "active" ? "is-active" : ""}`}>{statusText}</div>
+          <div className={`route-detail-quest-badge ${questState === "active" ? "is-active" : ""}`}>
+            {statusText}
+          </div>
         </div>
 
         {questLocLine ? (
@@ -237,7 +276,9 @@ export default function RouteDetailMobile({
         )}
 
         <div className="route-detail-quest-metrics">
-          <span className={`route-detail-quest-pill ${offRoute ? "route-detail-quest-pill--warn" : ""}`}>Sapma: {distText}</span>
+          <span className={`route-detail-quest-pill ${offRoute ? "route-detail-quest-pill--warn" : ""}`}>
+            Sapma: {distText}
+          </span>
           <span className="route-detail-quest-pill">
             Checkpoint: {visitedCount}/{total || "—"}
           </span>
@@ -262,7 +303,13 @@ export default function RouteDetailMobile({
               className="route-detail-quest-primary"
               onClick={finishQuest}
               disabled={finishDisabled}
-              title={!isAuthed ? "Ödül için giriş yapmalısın." : !canFinish ? "Bitirmek için en az %85 tamamla." : ""}
+              title={
+                !isAuthed
+                  ? "Ödül için giriş yapmalısın."
+                  : !canFinish
+                  ? "Bitirmek için en az %85 tamamla."
+                  : ""
+              }
             >
               Bitir ve ödülü al
             </button>
@@ -276,7 +323,18 @@ export default function RouteDetailMobile({
         )}
       </div>
     );
-  }, [V3_ENABLED, pathPts, stopsForPreview, ghostMetrics, questState, questLocLine, startQuest, stopQuest, finishQuest]);
+  }, [
+    V3_ENABLED,
+    pathPts,
+    stopsForPreview,
+    ghostMetrics,
+    questState,
+    questLocLine,
+    startQuest,
+    stopQuest,
+    finishQuest,
+    authUid, // ✅ önemli
+  ]);
 
   // ✅ media (cache + gallery + upload)
   const {
@@ -331,9 +389,7 @@ export default function RouteDetailMobile({
     bumpMediaTick,
   });
 
-  // =========================
-  // ✅ EMİR 1 — Viewer/Edit ayrımı (mode)
-  // =========================
+  // ✅ Viewer/Edit ayrımı (mode)
   const [mode, setMode] = useState("view"); // "view" | "edit"
   const isEditMode = useMemo(() => !!isOwner && mode === "edit", [isOwner, mode]);
   const modeForTabs = isEditMode ? "edit" : "view";
@@ -410,9 +466,16 @@ export default function RouteDetailMobile({
     if (tab === "report") onTabChange("stops");
     if (commentsOverlayOpen) setCommentsOverlayOpen(false);
     if (activeSection === "comments") setActiveSection("stops");
-  }, [isEditMode, tab, onTabChange, commentsOverlayOpen, activeSection, setActiveSection]);
+  }, [
+    isEditMode,
+    tab,
+    onTabChange,
+    commentsOverlayOpen,
+    activeSection,
+    setActiveSection,
+  ]);
 
-  // ✅ ESC behavior (risk azalt: burada kaldı)
+  // ✅ ESC behavior
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== "Escape") return;
@@ -460,21 +523,22 @@ export default function RouteDetailMobile({
     blockInteractionsBriefly,
   ]);
 
-  // ✅ Hero model + top models (single source)
+  // ✅ Hero model
   const heroModel = useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stopsForPreview });
 
-  // ✅ Actions (share/gpx/rate/fav)
-  const { onShare, onExportGpx, canRateRoute, onRouteRate, onStopRate, isFav, onToggleFav, canToggleFav } = useRDActions({
-    routeId,
-    routeDoc,
-    initialRoute,
-    source,
-    ownerFromLink,
-    stopsForPreview,
-    pathPts,
-  });
+  // ✅ Actions
+  const { onShare, onExportGpx, canRateRoute, onRouteRate, onStopRate, isFav, onToggleFav, canToggleFav } =
+    useRDActions({
+      routeId,
+      routeDoc,
+      initialRoute,
+      source,
+      ownerFromLink,
+      stopsForPreview,
+      pathPts,
+    });
 
-  // ✅ cover resolve (picked / auto / default) → utility
+  // ✅ cover resolve
   const coverUi = useMemo(
     () =>
       resolveCoverForUi({
@@ -491,12 +555,12 @@ export default function RouteDetailMobile({
 
   const handleBackdropClick = useCallback(() => onClose(), [onClose]);
 
-  // ✅ HOTFIX — Kapalı overlay'ler DOM'da KALMAYACAK. Cover picker sadece edit modda mount.
+  // ✅ Kapalı overlay'ler DOM'da KALMAYACAK. Cover picker sadece edit modda mount.
   const showCoverPickerOverlay = !!(isEditMode && coverPickerOpen);
   const overlayOpen = !!(lightboxItems || showShareSheet || showCoverPickerOverlay || commentsOverlayOpen);
   const canInteract = !overlayOpen && !interactionBlocked;
 
-  // ✅ Hero menu state (same)
+  // ✅ Hero menu state
   const [heroMenuOpen, setHeroMenuOpen] = useState(false);
   const closeHeroMenu = useCallback(() => setHeroMenuOpen(false), []);
   const toggleHeroMenu = useCallback((e) => {
@@ -535,9 +599,7 @@ export default function RouteDetailMobile({
     );
   }, [routeDoc, initialRoute, coverUi.coverKindUi, coverUi.coverResolved, owner, routeId]);
 
-  // =========================
-  // ✅ Early returns (access/prefill) — KALSIN
-  // =========================
+  // ✅ Early returns (access/prefill)
   if (!routeId)
     return withPortal(<RouteDetailAccessSheet kind="not-found" followInitially={followInitially} onClose={onClose} />);
 
@@ -582,19 +644,17 @@ export default function RouteDetailMobile({
 
   if (!routeDoc)
     return withPortal(
-      <RouteDetailAccessSheet
-        kind="forbidden"
-        followInitially={followInitially}
+      <RouteDetailPrefillSheet
+        title="Yükleniyor…"
+        audienceKey={heroModel.audienceKey}
+        audienceLabel={heroModel.audienceLabel}
+        ratingAvgLabel={heroModel.ratingAvgLabel}
+        metaLine={heroModel.metaLine}
         onClose={onClose}
-        onRetry={retryPermCheck}
-        ownerIdForProfile={ownerIdForProfile}
-        ownerPreview={lockedOwnerDoc || owner}
       />
     );
 
-  // =========================
   // ✅ Main UI
-  // =========================
   const content = (
     <div
       className={`route-detail-backdrop ${rdTheme === "light" ? "route-detail-light" : "route-detail-dark"}${
@@ -629,7 +689,8 @@ export default function RouteDetailMobile({
           heroCategory={heroModel.heroCategory}
           heroTitle={heroModel.heroTitle}
           heroStarsModel={heroModel.heroStarsModel}
-          heroRatingBadgeText={heroModel.heroRatingInfo?.badgeText || heroModel.ratingAvgLabel || "—"}
+          // ✅ EMİR-Flash-1: “(${N} Kaşif)” text’i (avg vs ayrı iş)
+          heroRatingBadgeText={heroModel.heroExplorerLabel || "(0 Kaşif)"}
           ownerName={heroModel.ownerName}
           ownerAvatarUrl={heroModel.ownerAvatarUrl}
           timeAgoLine={heroModel.timeAgoLine}
@@ -661,7 +722,6 @@ export default function RouteDetailMobile({
 
           {questUi}
 
-          {/* ✅ EMİR 1 — Edit blokları: CoverRow sadece edit modda */}
           {isEditMode && (
             <RouteDetailCoverRow
               coverResolved={coverUi.coverResolved}
@@ -735,7 +795,6 @@ export default function RouteDetailMobile({
           </div>
         </div>
 
-        {/* ✅ Edit modda “Düzenlemeyi bitir” */}
         {isEditMode && (
           <div className="route-detail-footer">
             <button type="button" className="route-detail-close-btn" onClick={() => exitEdit()}>

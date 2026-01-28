@@ -41,9 +41,28 @@ export default function RouteDetailHeroMobile({
 }) {
   const hasOwnerName = !!String(ownerName || "").trim();
   const hasTime = !!String(timeAgoLine || "").trim();
+  const hasTitle = !!String(heroTitle || "").trim();
 
   const saveLabel = isFav ? "Kaydedilenlerden çıkar" : "Kaydet";
   const saveTitle = !canToggleFav ? "Kaydetmek için giriş yapmalısın." : saveLabel;
+
+  // ✅ FIX: heroStarsModel null/bozuk gelirse crash yok
+  const safeStars = (() => {
+    const m = heroStarsModel || {};
+    const full = Math.max(0, Math.min(5, Number(m.full) || 0));
+    const half = !!m.half;
+    const emptyFromModel = Number.isFinite(Number(m.empty)) ? Number(m.empty) : null;
+    const empty =
+      emptyFromModel != null
+        ? Math.max(0, Math.min(5, emptyFromModel))
+        : Math.max(0, 5 - full - (half ? 1 : 0));
+
+    const total = full + (half ? 1 : 0) + empty;
+    if (total !== 5) {
+      return { full, half, empty: Math.max(0, 5 - full - (half ? 1 : 0)) };
+    }
+    return { full, half, empty };
+  })();
 
   return (
     <div
@@ -64,11 +83,9 @@ export default function RouteDetailHeroMobile({
         />
       </div>
 
-      {/* ✅ 2 katman overlay: top + bottom (okunurluk garantisi) */}
       <div className="rd-hero__overlay rd-hero__overlay--top" />
       <div className="rd-hero__overlay rd-hero__overlay--bottom" />
 
-      {/* ✅ Nav: sol geri | sağ 2 aksiyon (paylaş + menü) */}
       <div className="route-detail-hero__nav" onClick={(e) => e.stopPropagation()}>
         <div className="rd-hero-nav-left">
           <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onClose} title="Geri">
@@ -188,38 +205,40 @@ export default function RouteDetailHeroMobile({
         )}
       </div>
 
-      {/* ✅ Hero info: kategori pill + başlık + rating row */}
       <div className="rd-hero__info" aria-label="Rota özeti">
         {heroCategory ? <div className="rd-hero__pill">{heroCategory}</div> : null}
 
-        <h1 className="rd-hero__title" title={heroTitle || "Rota"}>
-          {heroTitle || "Rota"}
-        </h1>
+        {hasTitle ? (
+          <h1 className="rd-hero__title" title={heroTitle}>
+            {heroTitle}
+          </h1>
+        ) : (
+          <div className="rd-hero__titleSkeleton" aria-hidden="true" />
+        )}
 
         <div className="rd-hero__ratingRow" aria-label="Rota puanı">
           <div className="rd-hero__stars" aria-hidden="true">
-            {Array.from({ length: heroStarsModel.full }).map((_, i) => (
+            {Array.from({ length: safeStars.full }).map((_, i) => (
               <span key={`f${i}`} className="rd-hero__star rd-hero__star--full">
                 ★
               </span>
             ))}
-            {heroStarsModel.half ? (
+            {safeStars.half ? (
               <span key="h" className="rd-hero__star rd-hero__star--half">
                 ★
               </span>
             ) : null}
-            {Array.from({ length: heroStarsModel.empty }).map((_, i) => (
+            {Array.from({ length: safeStars.empty }).map((_, i) => (
               <span key={`e${i}`} className="rd-hero__star rd-hero__star--empty">
                 ★
               </span>
             ))}
           </div>
 
-          <span className="rd-hero__ratingBadge">{heroRatingBadgeText || "—"}</span>
+          <span className="rd-hero__ratingBadge">{heroRatingBadgeText || "(0 Kaşif)"}</span>
         </div>
       </div>
 
-      {/* ✅ Floating Interaction Hub */}
       <div className="rd-hero__hub" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { auth, db } from "../../../firebase";
 import { doc, getDoc } from "firebase/firestore";
+import { onAuthStateChanged as onAuthStateChangedMod } from "firebase/auth";
 
 import { watchRoute, watchStops } from "../../../services/routesRead";
 import { watchCommentsCount } from "../../../commentsClient";
@@ -32,6 +33,18 @@ export default function useRouteDetailData({
   const [lockedOwnerId, setLockedOwnerId] = useState(null);
   const [lockedOwnerDoc, setLockedOwnerDoc] = useState(null);
 
+  // ✅ permission check tamamlanmadan watcher başlatma
+  const [permChecked, setPermChecked] = useState(false);
+
+  // ✅ auth uid reactive
+  const [authUid, setAuthUid] = useState(() => {
+    try {
+      return auth?.currentUser?.uid ? String(auth.currentUser.uid) : "";
+    } catch {
+      return "";
+    }
+  });
+
   const routeModel = routeDoc || initialRoute;
 
   const ownerHint = useMemo(() => {
@@ -41,6 +54,44 @@ export default function useRouteDetailData({
     const fromInitial = initialRoute?.ownerId || initialRoute?.owner || null;
     return fromInitial ? String(fromInitial) : null;
   }, [ownerFromLink, initialRoute]);
+
+  // ✅ auth değişimini dinle (modular + compat safe)
+  useEffect(() => {
+    let unsub = null;
+
+    const setFromUser = (u) => {
+      try {
+        setAuthUid(u?.uid ? String(u.uid) : "");
+      } catch {
+        setAuthUid("");
+      }
+    };
+
+    try {
+      // compat
+      if (auth && typeof auth.onAuthStateChanged === "function") {
+        unsub = auth.onAuthStateChanged((u) => setFromUser(u));
+      } else {
+        // modular
+        unsub = onAuthStateChangedMod(auth, (u) => setFromUser(u));
+      }
+    } catch {
+      // fallback: no-op
+    }
+
+    // ilk değer
+    try {
+      setFromUser(auth?.currentUser || null);
+    } catch {}
+
+    return () => {
+      if (typeof unsub === "function") {
+        try {
+          unsub();
+        } catch {}
+      }
+    };
+  }, []);
 
   // routeId değişince reset
   useEffect(() => {
@@ -52,19 +103,25 @@ export default function useRouteDetailData({
     setCommentsCount(null);
     setLockedOwnerId(null);
     setLockedOwnerDoc(null);
+    setPermChecked(false);
   }, [routeId]);
 
   // permission quick check
   useEffect(() => {
     if (!routeId) {
       setPermError("not-found");
+      setPermChecked(true);
       return;
     }
+
     let alive = true;
+    setPermChecked(false);
+
     (async () => {
       try {
         const s = await getDoc(doc(db, "routes", routeId));
         if (!alive) return;
+
         if (!s.exists()) setPermError("not-found");
         else setPermError(null);
       } catch (e) {
@@ -73,12 +130,27 @@ export default function useRouteDetailData({
         if (code.includes("permission") || code.includes("denied"))
           setPermError("forbidden");
         else setPermError(null);
+      } finally {
+        if (!alive) return;
+        setPermChecked(true);
       }
     })();
+
     return () => {
       alive = false;
     };
   }, [routeId, permCheckTick]);
+
+  // ✅ auth değişince forbidden/private için otomatik re-check
+  useEffect(() => {
+    if (!routeId) return;
+    if (!(permError === "forbidden" || permError === "private")) return;
+
+    setPermChecked(false);
+    setPermCheckTick((x) => x + 1);
+    setReloadTick((x) => x + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUid]);
 
   // private check (routeModel geldikçe)
   useEffect(() => {
@@ -91,16 +163,17 @@ export default function useRouteDetailData({
       return;
     }
 
-    const uid = auth.currentUser?.uid ? String(auth.currentUser.uid) : "";
+    const uid = authUid ? String(authUid) : "";
     const oid = routeModel?.ownerId ? String(routeModel.ownerId) : "";
     const mine = uid && oid && uid === oid;
 
     if (!mine) setPermError("private");
     else if (permError === "private") setPermError(null);
-  }, [routeId, routeModel, permError]);
+  }, [routeId, routeModel, permError, authUid]);
 
   const retryPermCheck = useCallback(() => {
     setPermError(null);
+    setPermChecked(false);
     setPermCheckTick((x) => x + 1);
     setReloadTick((x) => x + 1);
   }, []);
@@ -108,6 +181,8 @@ export default function useRouteDetailData({
   // comments count watch
   useEffect(() => {
     if (!routeId) return;
+    if (!permChecked) return;
+
     if (
       permError === "forbidden" ||
       permError === "private" ||
@@ -129,11 +204,13 @@ export default function useRouteDetailData({
         } catch {}
       }
     };
-  }, [routeId, reloadTick, permError]);
+  }, [routeId, reloadTick, permError, permChecked]);
 
   // route/stops watch
   useEffect(() => {
     if (!routeId) return;
+    if (!permChecked) return;
+
     if (
       permError === "forbidden" ||
       permError === "private" ||
@@ -184,7 +261,7 @@ export default function useRouteDetailData({
           .slice()
           .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-        // ✅ EMİR 02: stops canonical (lat/lng root garantisi)
+        // ✅ stops canonical (lat/lng root garantisi)
         const norm = normalizeStopsForPreview(sorted);
         setStops(norm?.stops || sorted);
         setStopsLoaded(true);
@@ -200,7 +277,7 @@ export default function useRouteDetailData({
         offStops();
       } catch {}
     };
-  }, [routeId, reloadTick, permError]);
+  }, [routeId, reloadTick, permError, permChecked]);
 
   // locked owner resolve (for forbidden/private/not-found)
   useEffect(() => {
@@ -283,5 +360,6 @@ export default function useRouteDetailData({
     ownerIdForProfile,
     lockedOwnerDoc,
     retryPermCheck,
+    authUid, // ✅ eklendi: RouteDetailMobile üstünden reaktif auth için
   };
 }

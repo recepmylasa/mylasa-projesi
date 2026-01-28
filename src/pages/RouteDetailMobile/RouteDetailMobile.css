@@ -43,3 +43,27 @@
     transition: none !important;
   }
 }
+
+/* =========================================================
+   ✅ MAP PREVIEW SCROLL / CLICK KİLİDİ — SAFETY OVERRIDE
+   - Map preview ve üst overlay’ler kesinlikle input yakalamasın
+   - Sheet scroll’unu asla kilitlemesin
+   ========================================================= */
+
+/* Map kartı alanında dikey pan’a izin ver */
+.route-detail-backdrop .rd-map-card,
+.route-detail-backdrop .rd-map-card__canvas,
+.route-detail-backdrop .route-detail-map,
+.route-detail-backdrop .rdmps-shell,
+.route-detail-backdrop .rdmps-root {
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Map üzerindeki rozet/label katmanları scroll’u yakalamasın */
+.route-detail-backdrop .rd-map-card__badges,
+.route-detail-backdrop .rd-map-card__label,
+.route-detail-backdrop .rd-map-badges,
+.route-detail-backdrop .rd-map-loc {
+  pointer-events: none !important;
+}

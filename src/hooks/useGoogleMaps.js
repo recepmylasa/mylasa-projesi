@@ -168,6 +168,10 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
   const loadAttemptSeqRef = useRef(0);
   const ensureTimersRef = useRef([]);
 
+  // ✅ EMİR — ensureMapInstance başarısızlık sebebini ayrıştır
+  const lastEnsureErrRef = useRef(null);
+  const lastEnsureReasonRef = useRef("");
+
   const clearEnsureTimers = () => {
     try {
       ensureTimersRef.current.forEach((t) => {
@@ -191,9 +195,19 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
   const ensureMapInstance = useCallback(
     (gmaps) => {
       try {
-        if (!gmaps) return false;
+        lastEnsureErrRef.current = null;
+        lastEnsureReasonRef.current = "";
+
+        if (!gmaps) {
+          lastEnsureReasonRef.current = "no_gmaps";
+          return false;
+        }
         if (mapRef.current) return true;
-        if (!mapDivRef.current) return false;
+
+        if (!mapDivRef.current) {
+          lastEnsureReasonRef.current = "no_div";
+          return false;
+        }
 
         const opts = {
           center: { lat: 39.0, lng: 35.0 },
@@ -210,7 +224,9 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
 
         mapRef.current = new gmaps.Map(mapDivRef.current, opts);
         return !!mapRef.current;
-      } catch {
+      } catch (e) {
+        lastEnsureErrRef.current = e;
+        lastEnsureReasonRef.current = "ctor_throw";
         return false;
       }
     },
@@ -296,8 +312,19 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
             const elapsed = Date.now() - startedAt;
             if (elapsed >= HARD_TIMEOUT_MS) {
               setGmapsStatus("error");
-              setErrorMsg("Harita alanı oluşturulamadı.");
-              setError(new Error("MAP_DIV_MISSING"));
+
+              const hasDiv = !!mapDivRef.current;
+              const ctorErr = lastEnsureErrRef.current;
+              const reason = lastEnsureReasonRef.current;
+
+              if (hasDiv && ctorErr && reason === "ctor_throw") {
+                const msg = `Harita oluşturulamadı: ${ctorErr?.message || "Bilinmeyen hata"}`;
+                setErrorMsg(msg);
+                setError(new Error("MAP_INIT_FAILED"));
+              } else {
+                setErrorMsg("Harita alanı oluşturulamadı.");
+                setError(new Error("MAP_DIV_MISSING"));
+              }
               return;
             }
 

@@ -1,14 +1,13 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.hero.css */
 /* EMİR 1 (GENİŞLETİLMİŞ) — RouteDetailMobile Hero + Floating Interaction Hub (Flash paritesi)
-   - ✅ EMİR 2: Title+rating hero üstüne alındı
-   - ✅ EMİR 3: Hub full-width (20px/20px) + biraz yukarı + camdan cover görünür
-   - ✅ EMİR 4A: Kaydet ikonunu yıldızla karıştırma (bookmark)
+   - ✅ EMİR-Flash-1: Title placeholder yok → skeleton
+   - ✅ EMİR-Flash-1: Badge text “(${N} Kaşif)”
 */
 
 /* ✅ EMİR 1 — Tuning knobs (scoped) */
 .route-detail-backdrop {
-  --rd-hero-hub-overlap: 14px; /* sheet üstü nefes */
-  --rd-hero-nav-top: 12px;     /* safe-area hariç offset */
+  --rd-hero-hub-overlap: 14px;
+  --rd-hero-nav-top: 12px;
 }
 
 .route-detail-hero {
@@ -27,7 +26,6 @@
   }
 }
 
-/* dekor: hafif glow */
 .route-detail-hero::before {
   content: "";
   position: absolute;
@@ -55,7 +53,6 @@
   transform: scale(1.045);
 }
 
-/* ✅ EMİR 1 — Scale class gelmezse bile “Flash hissi” kaçmasın */
 .route-detail-hero__media img {
   transform: scale(1.045);
 }
@@ -88,7 +85,6 @@
   );
 }
 
-/* Light theme overlay */
 .route-detail-backdrop[data-theme="light"] .rd-hero__overlay--top,
 .route-detail-backdrop.route-detail-light .rd-hero__overlay--top {
   background: linear-gradient(
@@ -236,15 +232,13 @@
   white-space: nowrap;
 }
 
-/* ✅ Hero info (Flash gibi ÜST SOL) — EMİR 2 */
+/* ✅ Hero info (Flash gibi ÜST SOL) */
 .rd-hero__info {
   position: absolute;
   left: 20px;
   right: 20px;
-
   top: calc(env(safe-area-inset-top, 0px) + var(--rd-hero-nav-top, 12px) + 40px + 12px);
   bottom: auto;
-
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -275,7 +269,6 @@
   letter-spacing: -0.5px;
   color: var(--rd-text);
   text-shadow: 0 10px 26px rgba(0, 0, 0, 0.38);
-
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -285,6 +278,30 @@
 .route-detail-backdrop[data-theme="light"] .rd-hero__title,
 .route-detail-backdrop.route-detail-light .rd-hero__title {
   text-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+}
+
+/* ✅ Title skeleton */
+.rd-hero__titleSkeleton {
+  height: 34px;
+  width: min(320px, 84%);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+
+.route-detail-backdrop[data-theme="light"] .rd-hero__titleSkeleton,
+.route-detail-backdrop.route-detail-light .rd-hero__titleSkeleton {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.rd-hero__titleSkeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  transform: translateX(-100%);
+  animation: rdHeroShimmer 1.2s ease-in-out infinite;
 }
 
 .rd-hero__ratingRow {
@@ -327,6 +344,7 @@
   color: rgba(0, 0, 0, 0.22);
 }
 
+/* ✅ Badge (Flash-1: “(N Kaşif)” text burada görünür) */
 .rd-hero__ratingBadge {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
@@ -340,28 +358,23 @@
   -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
-/* ✅ Floating Interaction Hub — ARGE: FULL-WIDTH + 20/20 + 64px + r20 + p16 + blur24 */
+/* ✅ Floating Interaction Hub */
 .rd-hero__hub {
   position: absolute;
-
   left: 20px;
   right: 20px;
   width: auto;
   max-width: none;
   transform: none;
-
-  bottom: 28px; /* ✅ bar biraz yukarı: altında cover görünsün */
+  bottom: 28px;
   height: 64px;
   z-index: 6;
-
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-
   padding: 16px;
   border-radius: 20px;
-
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(12, 12, 14, 0.20);
   backdrop-filter: blur(24px) saturate(160%);
@@ -421,7 +434,7 @@
   color: var(--rd-text);
 }
 
-/* ✅ Skeleton (owner data gelene kadar “Yazar” yok) */
+/* ✅ Skeleton */
 .rd-hero__avatarSkeleton {
   width: 100%;
   height: 100%;
@@ -443,7 +456,8 @@
   background: rgba(0, 0, 0, 0.08);
 }
 
-.rd-hero__skeletonLine::after {
+.rd-hero__skeletonLine::after,
+.rd-hero__avatarSkeleton::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -458,7 +472,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rd-hero__skeletonLine::after {
+  .rd-hero__skeletonLine::after,
+  .rd-hero__avatarSkeleton::after,
+  .rd-hero__titleSkeleton::after {
     animation: none;
     transform: none;
     opacity: 0.0;
@@ -560,9 +576,7 @@
   text-shadow: 0 0 18px rgba(251, 146, 60, 0.18);
 }
 
-/* =========================================================
-   ✅ HARD OVERRIDES — Vitreous.css daha spesifik selector’ları ez
-   ========================================================= */
+/* ✅ HARD OVERRIDES */
 .route-detail-backdrop .route-detail-hero {
   height: clamp(300px, 56vh, 540px) !important;
   min-height: clamp(300px, 56vh, 540px) !important;
@@ -576,18 +590,15 @@
   }
 }
 
-/* ✅ Safe-area (notch) */
 .route-detail-backdrop .route-detail-hero__nav {
   top: calc(env(safe-area-inset-top, 0px) + var(--rd-hero-nav-top, 12px)) !important;
   pointer-events: auto !important;
 }
 
-/* ✅ Hub sonrası sheet üstü boşluk */
 .route-detail-backdrop .route-detail-body {
   padding-top: var(--rd-hero-hub-overlap, 14px) !important;
 }
 
-/* Vitreous pseudo gradient’i kapat (biz 2 overlay kullanıyoruz) */
 .route-detail-backdrop .route-detail-hero::after {
   content: none !important;
   background: none !important;

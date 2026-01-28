@@ -38,11 +38,20 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
 
   const title = useMemo(() => getRouteTitleSafe(routeModel), [routeModel]);
 
-  // ✅ EMIR 3 — Hero title: route.title/name öncelikli, süre gibi string’leri reddet
+  // ✅ EMİR-Flash-1: Title placeholder YOK.
+  // - gerçek route title/name yoksa "" dön → UI skeleton gösterir
   const heroTitle = useMemo(() => {
     try {
       const m = routeModel || {};
-      const candidates = [m?.title, m?.name, m?.routeTitle, m?.routeName, m?.displayTitle, m?.caption, m?.heading]
+      const candidates = [
+        m?.title,
+        m?.name,
+        m?.routeTitle,
+        m?.routeName,
+        m?.displayTitle,
+        m?.caption,
+        m?.heading,
+      ]
         .filter(Boolean)
         .map((x) => String(x).trim())
         .filter(Boolean);
@@ -65,13 +74,13 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
       const fb = normalize(title);
       if (fb && !looksLikeDurationOnly(fb)) return fb;
 
-      return "Rota";
+      return ""; // ✅ placeholder yok
     } catch {
-      return title || "Rota";
+      return "";
     }
   }, [routeModel, title]);
 
-  // ✅ EMİR 3 — kısa açıklama (pill altı)
+  // ✅ kısa açıklama (pill altı)
   const routeDescText = useMemo(() => {
     try {
       const m = routeModel || {};
@@ -83,7 +92,7 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     }
   }, [routeModel]);
 
-  // ✅ EMİR 2 — Map label (BODRUM / MUĞLA gibi)
+  // ✅ Map label (BODRUM / MUĞLA gibi) + TR locale uppercase
   const mapAreaLabel = useMemo(() => {
     try {
       const m = routeModel || {};
@@ -97,7 +106,7 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
       const b = district && city && city.toLowerCase() !== district.toLowerCase() ? city : "";
 
       const out = [a, b].filter(Boolean).join(" / ");
-      return out ? out.toUpperCase() : "";
+      return out ? out.toLocaleUpperCase("tr-TR") : "";
     } catch {
       return "";
     }
@@ -112,29 +121,31 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     }
   }, [stopsForPreview]);
 
-  // ✅ Hero category
+  // ✅ Hero category: kaynaktan geldiği gibi (Flash örneği gibi “Tarih & Macera”)
   const heroCategory = useMemo(() => {
     try {
       const m = routeModel || {};
       const raw =
+        m?.categoryLabel ||
         m?.category ||
         m?.routeCategory ||
+        m?.typeLabel ||
         m?.type ||
         m?.routeType ||
+        m?.theme ||
         m?.activity ||
         m?.kind ||
         (Array.isArray(m?.tags) && m.tags.length ? m.tags[0] : "") ||
         "";
 
-      const s = String(raw || "").trim();
-      if (!s) return "";
-      return s.toUpperCase();
+      const s = String(raw || "").trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+      return s || "";
     } catch {
       return "";
     }
   }, [routeModel]);
 
-  // ✅ ARGE — “Yazar” placeholder YASAK: boş/skeleton gösterilecek
+  // ✅ “Yazar” placeholder YASAK: boş/skeleton gösterilecek
   const ownerName = useMemo(() => {
     const o = owner || lockedOwnerDoc || {};
     const candidates = [
@@ -145,7 +156,6 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
       o?.userName,
       o?.handle,
 
-      // locked/edge-case fallback (route model) — ama placeholder filtreli
       routeModel?.ownerName,
       routeModel?.ownerUsername,
       routeModel?.ownerDisplayName,
@@ -165,7 +175,7 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     for (const c of candidates) {
       if (!isBad(c)) return c;
     }
-    return ""; // ✅ veri gelene kadar boş → UI skeleton gösterecek
+    return "";
   }, [owner, lockedOwnerDoc, routeModel]);
 
   const ownerAvatarUrl = useMemo(() => {
@@ -188,7 +198,7 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     return `${t} paylaşıldı`;
   }, [timeAgoText]);
 
-  // ✅ EMİR 1 — Hero rating parse + 5★ visual
+  // ✅ Avg + count parse (varsa)
   const heroRatingInfo = useMemo(() => {
     try {
       const labelRaw = String(ratingAvgLabel || "").trim();
@@ -214,19 +224,47 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
         }
       }
 
-      let badgeText = "";
-      if (typeof avg === "number" && Number.isFinite(avg)) {
-        const a = Math.max(0, Math.min(5, avg));
-        badgeText = count != null ? `${a.toFixed(1)} (${count})` : `${a.toFixed(1)}`;
-      } else {
-        badgeText = labelRaw || "—";
-      }
-
-      return { avg, count, badgeText };
+      return { avg, count };
     } catch {
-      return { avg: null, count: null, badgeText: String(ratingAvgLabel || "—") };
+      return { avg: null, count: null };
     }
   }, [ratingAvgLabel]);
+
+  // ✅ EMİR-Flash-1: N Kaşif (count) — route alanlarından oku, yoksa label parse fallback
+  const heroExplorerCount = useMemo(() => {
+    const readInt = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return null;
+      if (n < 0) return null;
+      return Math.floor(n);
+    };
+
+    try {
+      const m = routeModel || {};
+
+      const candidates = [
+        m?.ratingCount,
+        m?.ratingsCount,
+        m?.votes,
+        m?.voteCount,
+        m?.starsCount,
+        m?.stars?.count,
+        m?.rating?.count,
+        m?.ratingAgg?.count,
+        m?.agg?.ratingsCount,
+        heroRatingInfo?.count,
+      ];
+
+      for (const c of candidates) {
+        const v = readInt(c);
+        if (v != null) return v;
+      }
+    } catch {}
+
+    return 0;
+  }, [routeModel, heroRatingInfo]);
+
+  const heroExplorerLabel = useMemo(() => `(${heroExplorerCount} Kaşif)`, [heroExplorerCount]);
 
   const heroStarsModel = useMemo(() => {
     const avg = heroRatingInfo?.avg;
@@ -263,6 +301,8 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     heroTitle,
     heroRatingInfo,
     heroStarsModel,
+    heroExplorerCount,
+    heroExplorerLabel,
     ownerName,
     ownerAvatarUrl,
     timeAgoLine,

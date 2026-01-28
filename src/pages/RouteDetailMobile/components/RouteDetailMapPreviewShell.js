@@ -69,17 +69,32 @@ function key6(p) {
 
 /**
  * [a,b] can be [lat,lng] or [lng,lat]
- * Rule (EMİR 2):
- * - If one value is impossible as lat (|v|>90) but valid as lng -> swap accordingly
- * - Else ambiguous -> heuristic: if abs(a) > abs(b) assume [lat,lng], else assume [lng,lat]
+ * hint:
+ *  - "lnglat": treat as [lng,lat] FIRST (GeoJSON)
+ *  - "latlng": treat as [lat,lng] FIRST
+ *  - "auto": prefer [lat,lng] (Mylasa default) unless impossible
  */
-function parseArrayLatLng(arr) {
+function parseArrayLatLng(arr, hint = "auto") {
   try {
     if (!Array.isArray(arr) || arr.length < 2) return null;
 
     const a = toFiniteNumber(arr[0]);
     const b = toFiniteNumber(arr[1]);
     if (a == null || b == null) return null;
+
+    // Forced orders first
+    if (hint === "lnglat") {
+      const lat = b;
+      const lng = a;
+      if (inRangeLatLng(lat, lng)) return { lat, lng };
+      // fallback to auto if forced order fails
+    }
+    if (hint === "latlng") {
+      const lat = a;
+      const lng = b;
+      if (inRangeLatLng(lat, lng)) return { lat, lng };
+      // fallback to auto if forced order fails
+    }
 
     const aLatOk = Math.abs(a) <= 90;
     const bLatOk = Math.abs(b) <= 90;
@@ -100,7 +115,6 @@ function parseArrayLatLng(arr) {
       return inRangeLatLng(lat, lng) ? { lat, lng } : null;
     }
 
-    // Both could be lat -> ambiguous
     const candLatLng = inRangeLatLng(a, b) ? { lat: a, lng: b } : null;
     const candLngLat = inRangeLatLng(b, a) ? { lat: b, lng: a } : null;
 
@@ -108,8 +122,8 @@ function parseArrayLatLng(arr) {
     if (!candLatLng && candLngLat) return candLngLat;
     if (!candLatLng && !candLngLat) return null;
 
-    if (Math.abs(a) > Math.abs(b)) return candLatLng;
-    return candLngLat;
+    // ✅ AUTO ambiguity: Mylasa default = [lat,lng]
+    return candLatLng;
   } catch {
     return null;
   }
@@ -128,14 +142,13 @@ function parseCoordString(str) {
     const b = toFiniteNumber(parts[1]);
     if (a == null || b == null) return null;
 
-    // Apply same array rules
-    return parseArrayLatLng([a, b]);
+    return parseArrayLatLng([a, b], "auto");
   } catch {
     return null;
   }
 }
 
-function extractLatLng(any, depth = 0, seen) {
+function extractLatLng(any, depth = 0, seen, hint = "auto") {
   if (!any) return null;
   if (depth > 6) return null;
 
@@ -149,7 +162,7 @@ function extractLatLng(any, depth = 0, seen) {
     }
   } catch {}
 
-  // string "lat,lng" / "lng lat"
+  // string "lat,lng"
   try {
     if (typeof any === "string") {
       const out = parseCoordString(any);
@@ -160,7 +173,7 @@ function extractLatLng(any, depth = 0, seen) {
   // array [a,b]
   try {
     if (Array.isArray(any) && any.length >= 2) {
-      const out = parseArrayLatLng(any);
+      const out = parseArrayLatLng(any, hint);
       if (out) return out;
     }
   } catch {}
@@ -181,7 +194,6 @@ function extractLatLng(any, depth = 0, seen) {
       const lng = toFiniteNumber(any.longitude);
       if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
     }
-    // some serializations
     if (typeof any._lat === "number" && typeof any._long === "number") {
       const lat = toFiniteNumber(any._lat);
       const lng = toFiniteNumber(any._long);
@@ -214,46 +226,50 @@ function extractLatLng(any, depth = 0, seen) {
     if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
   } catch {}
 
-  // GeoJSON-ish {type:"LineString", coordinates:[[lng,lat],...]} handled upstream, but also allow single coord
+  // GeoJSON-ish {type:"Point", coordinates:[lng,lat]} single point support
   try {
     if (any?.type && typeof any.type === "string" && Array.isArray(any.coordinates)) {
-      // if it's a single coord array: [lng,lat]
-      const single = extractLatLng(any.coordinates, depth + 1, _seen);
-      if (single) return single;
+      // If coordinates is a single coord array -> parse as lnglat
+      if (Array.isArray(any.coordinates) && any.coordinates.length >= 2 && !Array.isArray(any.coordinates[0])) {
+        const out = parseArrayLatLng(any.coordinates, "lnglat");
+        if (out) return out;
+      }
+      return null;
     }
   } catch {}
 
-  // Nested candidates
+  // Nested candidates (with hint propagation)
   const candidates = [
-    any?.latLng,
-    any?.latlng,
-    any?.location,
-    any?.loc,
-    any?.geo,
-    any?.geoPoint,
-    any?.geopoint,
-    any?.point,
-    any?.position,
-    any?.pos,
-    any?.center,
-    any?.coord,
-    any?.coords,
-    any?.coordinates,
-    any?.geometry?.location,
-    any?.geometry,
-    any?.place?.location,
-    any?.place?.geometry?.location,
-    any?.place?.geometry,
-    any?.stop?.location,
-    any?.stop?.coords,
-    any?.stop?.geo,
-    any?.stop?.point,
-    any?.place?.coord,
-    any?.place?.coords,
+    { v: any?.latLng, h: hint },
+    { v: any?.latlng, h: hint },
+    { v: any?.location, h: hint },
+    { v: any?.loc, h: hint },
+    { v: any?.geo, h: hint },
+    { v: any?.geoPoint, h: hint },
+    { v: any?.geopoint, h: hint },
+    { v: any?.point, h: hint },
+    { v: any?.position, h: hint },
+    { v: any?.pos, h: hint },
+    { v: any?.center, h: hint },
+    { v: any?.coord, h: hint },
+    { v: any?.coords, h: hint },
+    // coordinates usually means GeoJSON-ish => lnglat
+    { v: any?.coordinates, h: "lnglat" },
+    { v: any?.geometry?.location, h: hint },
+    { v: any?.geometry, h: hint },
+    { v: any?.place?.location, h: hint },
+    { v: any?.place?.geometry?.location, h: hint },
+    { v: any?.place?.geometry, h: hint },
+    { v: any?.stop?.location, h: hint },
+    { v: any?.stop?.coords, h: hint },
+    { v: any?.stop?.geo, h: hint },
+    { v: any?.stop?.point, h: hint },
+    { v: any?.place?.coord, h: hint },
+    { v: any?.place?.coords, h: hint },
   ];
 
   for (const c of candidates) {
-    const p = extractLatLng(c, depth + 1, _seen);
+    const p = extractLatLng(c.v, depth + 1, _seen, c.h);
     if (p) return p;
   }
 
@@ -261,30 +277,36 @@ function extractLatLng(any, depth = 0, seen) {
 }
 
 function coercePointsArray(input) {
-  if (Array.isArray(input)) return input;
+  // returns { arr, hint }
+  if (Array.isArray(input)) return { arr: input, hint: "auto" };
 
-  // GeoJSON-ish line
   if (input && typeof input === "object") {
-    if (input?.type === "LineString" && Array.isArray(input.coordinates)) return input.coordinates;
+    // GeoJSON LineString: coordinates are [lng,lat]
+    if (input?.type === "LineString" && Array.isArray(input.coordinates)) {
+      return { arr: input.coordinates, hint: "lnglat" };
+    }
 
     const cands = [
-      input?.path,
-      input?.points,
-      input?.polyline,
-      input?.coordinates,
-      input?.geometry?.path,
-      input?.geometry?.points,
-      input?.geometry?.coordinates,
-      input?.geometry,
+      { v: input?.path, h: "auto" },
+      { v: input?.points, h: "auto" },
+      { v: input?.polyline, h: "auto" },
+      { v: input?.coordinates, h: "lnglat" }, // coordinates => GeoJSON-ish default
+      { v: input?.geometry?.path, h: "auto" },
+      { v: input?.geometry?.points, h: "auto" },
+      { v: input?.geometry?.coordinates, h: "lnglat" },
+      { v: input?.geometry, h: "auto" },
     ];
+
     for (const c of cands) {
-      if (Array.isArray(c)) return c;
-      if (c && typeof c === "object" && c?.type === "LineString" && Array.isArray(c.coordinates)) return c.coordinates;
+      if (Array.isArray(c.v)) return { arr: c.v, hint: c.h };
+      if (c.v && typeof c.v === "object" && c.v?.type === "LineString" && Array.isArray(c.v.coordinates)) {
+        return { arr: c.v.coordinates, hint: "lnglat" };
+      }
     }
   }
 
   // if string with single coord, normalizePointsFromPath will pick 1 point
-  return input ? [input] : [];
+  return input ? { arr: [input], hint: "auto" } : { arr: [], hint: "auto" };
 }
 
 function dedupBy6(points) {
@@ -300,10 +322,10 @@ function dedupBy6(points) {
 }
 
 function normalizePointsFromPath(path) {
-  const arr = coercePointsArray(path);
+  const { arr, hint } = coercePointsArray(path);
   const out = [];
   for (const p of arr) {
-    const ll = extractLatLng(p);
+    const ll = extractLatLng(p, 0, undefined, hint);
     if (ll) out.push(ll);
   }
   return dedupBy6(out);
@@ -313,9 +335,27 @@ function normalizePointsFromStops(stops) {
   const arr = Array.isArray(stops) ? stops : [];
   const out = [];
   for (const s of arr) {
-    const ll = extractLatLng(s);
+    const ll = extractLatLng(s, 0, undefined, "auto");
     if (ll) out.push(ll);
   }
+  return dedupBy6(out);
+}
+
+/* ✅ Freeze breaker: çok nokta varsa çizim/fitBounds için downsample */
+function downsamplePoints(points, max = 450) {
+  const arr = Array.isArray(points) ? points : [];
+  if (arr.length <= max) return arr;
+
+  const step = Math.ceil(arr.length / max);
+  const out = [];
+
+  for (let i = 0; i < arr.length; i += step) {
+    out.push(arr[i]);
+  }
+
+  const last = arr[arr.length - 1];
+  if (out.length === 0 || key6(out[out.length - 1]) !== key6(last)) out.push(last);
+
   return dedupBy6(out);
 }
 
@@ -356,7 +396,6 @@ export default function RouteDetailMapPreviewShell({
     "";
 
   const mapsOpts = useMemo(() => ({ API_KEY, MAP_ID }), [API_KEY, MAP_ID]);
-
   const gmaps = useGoogleMaps(mapsOpts) || {};
 
   const gmapsStatus =
@@ -371,23 +410,23 @@ export default function RouteDetailMapPreviewShell({
   const gmapsAttemptLoad = gmaps.attemptLoad;
 
   const isReady = gmapsStatus === "ready" || gmapsStatus === "loaded";
-  const isError =
+
+  const baseIsError =
     gmapsStatus === "error" ||
     gmapsStatus === "failed" ||
     gmapsStatus === "blocked" ||
     gmapsStatus === "missing_key";
 
+  const isError = baseIsError || !API_KEY;
   const isLoading = !isReady && !isError;
 
   const handleRetry = useCallback(() => {
-    // ✅ önce maps loader'ı toparla
     try {
       if (typeof gmapsReload === "function") gmapsReload();
     } catch {}
     try {
       if (typeof gmapsAttemptLoad === "function") gmapsAttemptLoad(true);
     } catch {}
-    // ✅ sonra dış handler
     try {
       onRetry();
     } catch {}
@@ -439,6 +478,21 @@ export default function RouteDetailMapPreviewShell({
     }
   }, [mapInstance, bumpTick]);
 
+  // ✅ Preview map: sheet donması / tıklama kilidi kırıcı
+  useEffect(() => {
+    if (!mapInstance) return;
+    try {
+      mapInstance.setOptions({
+        gestureHandling: "none",
+        draggable: false,
+        scrollwheel: false,
+        disableDoubleClickZoom: true,
+        keyboardShortcuts: false,
+        clickableIcons: false,
+      });
+    } catch {}
+  }, [mapInstance]);
+
   // ===== Flash UI Map Styling =====
   const flashMapStyles = useMemo(
     () => [
@@ -483,7 +537,7 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
   }, [mapInstance, flashMapStyles]);
 
-  // ===== EMİR 2 — Nokta toplama önceliği (path -> stops) + 1 nokta desteği =====
+  // ===== Nokta toplama önceliği (path -> stops) + 1 nokta desteği =====
   const points = useMemo(() => {
     const ptsFromPath = normalizePointsFromPath(path);
     const ptsFromStops = normalizePointsFromStops(stops);
@@ -497,12 +551,14 @@ export default function RouteDetailMapPreviewShell({
     return [];
   }, [path, stops]);
 
+  const drawPoints = useMemo(() => downsamplePoints(points, 450), [points]);
+  const rawPointCount = (points && points.length) || 0;
+
   const polylineRef = useRef(null);
   const glowRef = useRef(null);
   const startMarkerRef = useRef(null);
   const endMarkerRef = useRef(null);
 
-  // marker/polyline create + update + cleanup
   useEffect(() => {
     const map = mapInstance;
     const g = window.google;
@@ -521,8 +577,7 @@ export default function RouteDetailMapPreviewShell({
       endMarkerRef.current = null;
     };
 
-    // no points
-    if (!points || points.length < 1) {
+    if (!drawPoints || drawPoints.length < 1) {
       cleanup();
       return;
     }
@@ -536,8 +591,7 @@ export default function RouteDetailMapPreviewShell({
       anchor: new g.maps.Point(15, 27),
     };
 
-    // single point: marker only (no polyline)
-    if (points.length === 1) {
+    if (drawPoints.length === 1) {
       try {
         if (polylineRef.current) polylineRef.current.setMap(null);
         if (glowRef.current) glowRef.current.setMap(null);
@@ -545,7 +599,7 @@ export default function RouteDetailMapPreviewShell({
       polylineRef.current = null;
       glowRef.current = null;
 
-      const p0 = points[0];
+      const p0 = drawPoints[0];
 
       try {
         if (!startMarkerRef.current) {
@@ -571,11 +625,10 @@ export default function RouteDetailMapPreviewShell({
       return () => cleanup();
     }
 
-    // 2+ points: polyline + start/end markers
     try {
       if (!glowRef.current) {
         glowRef.current = new g.maps.Polyline({
-          path: points,
+          path: drawPoints,
           geodesic: true,
           strokeColor: cyan,
           strokeOpacity: 0.22,
@@ -585,7 +638,7 @@ export default function RouteDetailMapPreviewShell({
         });
         glowRef.current.setMap(map);
       } else {
-        glowRef.current.setPath(points);
+        glowRef.current.setPath(drawPoints);
         glowRef.current.setMap(map);
       }
     } catch {}
@@ -593,7 +646,7 @@ export default function RouteDetailMapPreviewShell({
     try {
       if (!polylineRef.current) {
         polylineRef.current = new g.maps.Polyline({
-          path: points,
+          path: drawPoints,
           geodesic: true,
           strokeColor: cyan,
           strokeOpacity: 0.96,
@@ -603,13 +656,13 @@ export default function RouteDetailMapPreviewShell({
         });
         polylineRef.current.setMap(map);
       } else {
-        polylineRef.current.setPath(points);
+        polylineRef.current.setPath(drawPoints);
         polylineRef.current.setMap(map);
       }
     } catch {}
 
-    const start = points[0];
-    const end = points[points.length - 1];
+    const start = drawPoints[0];
+    const end = drawPoints[drawPoints.length - 1];
 
     try {
       if (!startMarkerRef.current) {
@@ -642,9 +695,9 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
 
     return () => cleanup();
-  }, [mapInstance, points]);
+  }, [mapInstance, drawPoints]);
 
-  // ===== EMİR 2 — FitBounds / Zoom Stabilitesi (1 nokta desteği + loop-breaker + RO+RAF) =====
+  // ===== FitBounds / Zoom Stabilitesi (mevcut mantık aynen) =====
   const fitStateRef = useRef({
     pendingTimer: null,
     pendingRaf: null,
@@ -665,8 +718,6 @@ export default function RouteDetailMapPreviewShell({
   const computeSig = useCallback((pts, rect) => {
     const w = rect?.width || 0;
     const h = rect?.height || 0;
-
-    // bucket size to avoid “sheet anim” micro-jitter spam
     const wB = Math.round(w / 40) * 40;
     const hB = Math.round(h / 40) * 40;
 
@@ -689,18 +740,18 @@ export default function RouteDetailMapPreviewShell({
 
       if (!isReady) return;
       if (!map || !el || !g?.maps) return;
-      if (!points || points.length < 1) return;
+      if (!drawPoints || drawPoints.length < 1) return;
 
       const rect = el.getBoundingClientRect?.();
       const w = rect?.width || 0;
       const h = rect?.height || 0;
       if (w <= 4 || h <= 4) return;
 
-      const sig = computeSig(points, rect);
+      const sig = computeSig(drawPoints, rect);
 
       const now = Date.now();
       if (fitStateRef.current.lastSig === sig && now - fitStateRef.current.lastAt < 800) return;
-      if (now - fitStateRef.current.lastAnyAt < 180) return; // micro-throttle
+      if (now - fitStateRef.current.lastAnyAt < 180) return;
 
       fitStateRef.current.lastSig = sig;
       fitStateRef.current.lastAt = now;
@@ -711,8 +762,8 @@ export default function RouteDetailMapPreviewShell({
       } catch {}
 
       try {
-        if (points.length === 1) {
-          const p0 = points[0];
+        if (drawPoints.length === 1) {
+          const p0 = drawPoints[0];
           map.setCenter(p0);
           const z = map.getZoom?.();
           if (!Number.isFinite(z) || z < 14 || z > 18) {
@@ -722,12 +773,12 @@ export default function RouteDetailMapPreviewShell({
         }
 
         const bounds = new g.maps.LatLngBounds();
-        for (const p of points) bounds.extend(p);
+        for (const p of drawPoints) bounds.extend(p);
 
         map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
       } catch {}
     },
-    [mapInstance, isReady, points, safeTriggerResize, computeSig]
+    [mapInstance, isReady, drawPoints, safeTriggerResize, computeSig]
   );
 
   const scheduleFit = useCallback(
@@ -816,7 +867,7 @@ export default function RouteDetailMapPreviewShell({
   useEffect(() => {
     if (!isReady || !mapInstance) return;
     scheduleFit("points");
-  }, [points, isReady, mapInstance, scheduleFit]);
+  }, [drawPoints, isReady, mapInstance, scheduleFit]);
 
   // ===== Label =====
   const locationLabel = useMemo(() => {
@@ -935,6 +986,8 @@ export default function RouteDetailMapPreviewShell({
         borderRadius: 14,
         overflow: "hidden",
         transform: "translateZ(0)",
+        touchAction: "pan-y",
+        WebkitTapHighlightColor: "transparent",
       }}
       data-routeid={routeId || ""}
       data-ready={isReady ? "1" : "0"}
@@ -943,14 +996,17 @@ export default function RouteDetailMapPreviewShell({
     >
       <RouteDetailMapPreview mapDivRef={setDivRef} mapReadyTick={mapReadyTick} />
 
-      <div className="rd-map-badges">
-        {isReady && points?.length > 0 ? (
-          <div className="rd-map-badge">{points.length} NOKTA</div>
+      <div className="rd-map-badges" style={{ pointerEvents: "none" }}>
+        {isReady && rawPointCount > 0 ? (
+          <div className="rd-map-badge">{rawPointCount} NOKTA</div>
         ) : (
           <div className="rd-map-badge">{isLoading ? "YÜKLENİYOR" : "HARİTA"}</div>
         )}
       </div>
-      <div className="rd-map-loc">{locationLabel}</div>
+
+      <div className="rd-map-loc" style={{ pointerEvents: "none" }}>
+        {locationLabel}
+      </div>
 
       {isLoading ? (
         <div style={overlayBase} aria-label="Harita yükleniyor">
