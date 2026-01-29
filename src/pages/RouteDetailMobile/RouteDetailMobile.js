@@ -333,7 +333,7 @@ export default function RouteDetailMobile({
     startQuest,
     stopQuest,
     finishQuest,
-    authUid, // ✅ önemli
+    authUid,
   ]);
 
   // ✅ media (cache + gallery + upload)
@@ -523,8 +523,14 @@ export default function RouteDetailMobile({
     blockInteractionsBriefly,
   ]);
 
-  // ✅ Hero model
-  const heroModel = useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stopsForPreview });
+  // ✅ Hero model (Paket 02: ownerId pass)
+  const heroModel = useRDHeroModel({
+    routeModel,
+    owner,
+    lockedOwnerDoc,
+    stopsForPreview,
+    ownerId: ownerIdForProfile,
+  });
 
   // ✅ Actions
   const { onShare, onExportGpx, canRateRoute, onRouteRate, onStopRate, isFav, onToggleFav, canToggleFav } =
@@ -689,8 +695,8 @@ export default function RouteDetailMobile({
           heroCategory={heroModel.heroCategory}
           heroTitle={heroModel.heroTitle}
           heroStarsModel={heroModel.heroStarsModel}
-          // ✅ EMİR-Flash-1: “(${N} Kaşif)” text’i (avg vs ayrı iş)
-          heroRatingBadgeText={heroModel.heroExplorerLabel || "(0 Kaşif)"}
+          heroRatingBadgeText={heroModel.heroExplorerLabel || `${heroModel.heroCategory || "Macera"}: 0 Kaşif`}
+          heroAvgRating={heroModel.heroRatingInfo?.avg}
           ownerName={heroModel.ownerName}
           ownerAvatarUrl={heroModel.ownerAvatarUrl}
           timeAgoLine={heroModel.timeAgoLine}

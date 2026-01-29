@@ -1,5 +1,5 @@
 // FILE: src/pages/RouteDetailMobile/tabs/RouteDetailStopsTab.js
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import StarBars from "../components/StarBars";
 import StarRatingV2 from "../../../components/StarRatingV2/StarRatingV2";
 
@@ -25,6 +25,7 @@ export default function RouteDetailStopsTab({
 
   const safeOpenLightbox = (items, idx) => {
     if (!canInteract) return;
+    if (typeof openLightbox !== "function") return;
     try {
       openLightbox(items, idx);
     } catch {}
@@ -32,13 +33,40 @@ export default function RouteDetailStopsTab({
 
   const safePickMedia = (stopId) => {
     if (!canInteract) return;
+    if (typeof onPickMedia !== "function") return;
     try {
       onPickMedia(stopId);
     } catch {}
   };
 
+  // ✅ Thumb request spam kırıcı (hover/touch aynı durağa üst üste çağırmasın)
+  const thumbsReqRef = useRef(new Map());
+  const requestThumbs = useCallback(
+    (stopId) => {
+      if (!canInteract) return;
+      if (typeof ensureStopThumbs !== "function") return;
+
+      const now = Date.now();
+      const last = thumbsReqRef.current.get(stopId) || 0;
+
+      // 2.5s throttle: aynı stop için sürekli tetiklenmesin
+      if (now - last < 2500) return;
+
+      thumbsReqRef.current.set(stopId, now);
+      try {
+        ensureStopThumbs(stopId);
+      } catch {}
+    },
+    [canInteract, ensureStopThumbs]
+  );
+
   return (
-    <div className="rdtab rdtab--stops" data-mode={mode} data-owner={isOwner ? "1" : "0"} data-interact={canInteract ? "1" : "0"}>
+    <div
+      className="rdtab rdtab--stops"
+      data-mode={mode}
+      data-owner={isOwner ? "1" : "0"}
+      data-interact={canInteract ? "1" : "0"}
+    >
       <div className="rd-stops">
         {(stops || []).map((s, idx) => {
           const cache = mediaCacheRef.current.get(s.id) || {};
@@ -86,6 +114,7 @@ export default function RouteDetailStopsTab({
                       if (!canInteract) return;
                       if (isOwner) return;
                       if (isEdit) return;
+                      if (typeof onStopRate !== "function") return;
                       onStopRate(s.id, v);
                     }}
                     size={22}
@@ -94,7 +123,12 @@ export default function RouteDetailStopsTab({
 
                   {/* ✅ EMİR 13: Edit modda yalnızca owner için “Medya Ekle” */}
                   {isEdit && (
-                    <button type="button" onClick={() => safePickMedia(s.id)} className="rdglass-btn" disabled={!canInteract}>
+                    <button
+                      type="button"
+                      onClick={() => safePickMedia(s.id)}
+                      className="rdglass-btn"
+                      disabled={!canInteract}
+                    >
                       Medya Ekle
                     </button>
                   )}
@@ -103,8 +137,8 @@ export default function RouteDetailStopsTab({
                 {/* Medya satırı */}
                 <div
                   className="rd-stop-media"
-                  onMouseEnter={() => (canInteract ? ensureStopThumbs(s.id) : null)}
-                  onTouchStart={() => (canInteract ? ensureStopThumbs(s.id) : null)}
+                  onMouseEnter={() => requestThumbs(s.id)}
+                  onTouchStart={() => requestThumbs(s.id)}
                 >
                   {media.slice(0, 4).map((m, mIdx) => {
                     const isVideo = normalizeMediaType(m) === "video";
@@ -145,7 +179,9 @@ export default function RouteDetailStopsTab({
                             decoding="async"
                             draggable={false}
                             style={{ pointerEvents: "none" }}
-                            onError={(e) => onImgError?.(e, { scope: "stop_media", stopId: s.id, mediaId: m?.id || null })}
+                            onError={(e) =>
+                              onImgError?.(e, { scope: "stop_media", stopId: s.id, mediaId: m?.id || null })
+                            }
                           />
                         )}
                       </button>
@@ -153,7 +189,9 @@ export default function RouteDetailStopsTab({
                   })}
 
                   {media.length === 0 && (
-                    <div className="rd-stop-mediaEmpty rdglass-muted">{hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}</div>
+                    <div className="rd-stop-mediaEmpty rdglass-muted">
+                      {hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}
+                    </div>
                   )}
                 </div>
 

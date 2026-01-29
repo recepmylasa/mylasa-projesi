@@ -280,9 +280,9 @@
   text-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
 }
 
-/* ✅ Title skeleton */
+/* ✅ Title skeleton — EMİR PAKETİ 2: layout sabit (2 satır alanı) */
 .rd-hero__titleSkeleton {
-  height: 34px;
+  height: 72px; /* ✅ önce 34px’ti → layout kaymasın diye 2 satır */
   width: min(320px, 84%);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.12);
@@ -308,12 +308,14 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .rd-hero__stars {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex: 0 0 auto;
 }
 
 .rd-hero__star {
@@ -344,7 +346,7 @@
   color: rgba(0, 0, 0, 0.22);
 }
 
-/* ✅ Badge (Flash-1: “(N Kaşif)” text burada görünür) */
+/* ✅ Badge */
 .rd-hero__ratingBadge {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
@@ -356,6 +358,13 @@
   padding: 4px 8px;
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ✅ Floating Interaction Hub */
@@ -519,7 +528,7 @@
   text-overflow: ellipsis;
 }
 
-/* ✅ Kaydet button — bookmark ikon */
+/* ✅ Kaydet button */
 .rd-hero__favBtn {
   height: 40px;
   width: 40px;
@@ -602,6 +611,12 @@
 .route-detail-backdrop .route-detail-hero::after {
   content: none !important;
   background: none !important;
+}
+
+/* ✅ Title görünürlüğü kilidi (başka override varsa ezsin) */
+.route-detail-backdrop .rd-hero__title {
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 /* ✅ ÇİFT HUB KIRICI */

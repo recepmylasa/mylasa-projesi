@@ -10,16 +10,27 @@ import {
   formatTimeAgo,
   getAudienceFromRoute,
   getRouteRatingLabelSafe,
-  getRouteTitleSafe,
 } from "../routeDetailUtils";
 
-export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stopsForPreview }) {
+export default function useRDHeroModel({
+  routeModel,
+  owner,
+  lockedOwnerDoc,
+  stopsForPreview,
+  ownerId, // ✅ Paket 02: fallback için
+}) {
   const ratingAvgLabel = useMemo(() => getRouteRatingLabelSafe(routeModel), [routeModel]);
   const stats = useMemo(() => (routeModel ? buildStatsFromRoute(routeModel) : null), [routeModel]);
 
-  const { key: audienceKey, label: audienceLabel } = useMemo(() => getAudienceFromRoute(routeModel || {}), [routeModel]);
+  const { key: audienceKey, label: audienceLabel } = useMemo(
+    () => getAudienceFromRoute(routeModel || {}),
+    [routeModel]
+  );
 
-  const dateText = useMemo(() => formatDateTimeTR(routeModel?.finishedAt || routeModel?.createdAt), [routeModel]);
+  const dateText = useMemo(
+    () => formatDateTimeTR(routeModel?.finishedAt || routeModel?.createdAt),
+    [routeModel]
+  );
 
   const distanceText = formatDistanceFromStats(stats);
   const durationText = formatDurationFromStats(stats);
@@ -36,51 +47,22 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     return bits.join(" · ");
   }, [dateText, distanceText, durationText, stopsText, avgSpeedText]);
 
-  const title = useMemo(() => getRouteTitleSafe(routeModel), [routeModel]);
-
-  // ✅ EMİR-Flash-1: Title placeholder YOK.
-  // - gerçek route title/name yoksa "" dön → UI skeleton gösterir
-  const heroTitle = useMemo(() => {
+  // ✅ EMİR PAKETİ 2 — TEK TITLE KAYNAĞI
+  const title = useMemo(() => {
     try {
       const m = routeModel || {};
-      const candidates = [
-        m?.title,
-        m?.name,
-        m?.routeTitle,
-        m?.routeName,
-        m?.displayTitle,
-        m?.caption,
-        m?.heading,
-      ]
-        .filter(Boolean)
-        .map((x) => String(x).trim())
-        .filter(Boolean);
-
-      const normalize = (s) => String(s || "").replace(/\s+/g, " ").trim();
-      const looksLikeDurationOnly = (s) => {
-        const x = normalize(s).toLowerCase();
-        if (!x) return true;
-        if (/^(rota\s*)?\d{1,2}:\d{2}(:\d{2})?$/.test(x)) return true;
-        return false;
-      };
-
-      for (const c of candidates) {
-        const s = normalize(c);
-        if (!s) continue;
-        if (looksLikeDurationOnly(s)) continue;
-        return s;
-      }
-
-      const fb = normalize(title);
-      if (fb && !looksLikeDurationOnly(fb)) return fb;
-
-      return ""; // ✅ placeholder yok
+      const raw = (m?.title || m?.name || "").toString();
+      const t = raw.replace(/\s+/g, " ").trim();
+      if (!t) return "";
+      if (t.toLowerCase() === "rota") return ""; // ✅ yasak placeholder
+      return t;
     } catch {
       return "";
     }
-  }, [routeModel, title]);
+  }, [routeModel]);
 
-  // ✅ kısa açıklama (pill altı)
+  const heroTitle = title;
+
   const routeDescText = useMemo(() => {
     try {
       const m = routeModel || {};
@@ -92,12 +74,25 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     }
   }, [routeModel]);
 
-  // ✅ Map label (BODRUM / MUĞLA gibi) + TR locale uppercase
   const mapAreaLabel = useMemo(() => {
     try {
       const m = routeModel || {};
-      const cityRaw = m?.city || m?.province || m?.il || m?.state || m?.region || m?.locationCity || m?.location?.city || "";
-      const districtRaw = m?.district || m?.ilce || m?.town || m?.locationDistrict || m?.location?.district || "";
+      const cityRaw =
+        m?.city ||
+        m?.province ||
+        m?.il ||
+        m?.state ||
+        m?.region ||
+        m?.locationCity ||
+        m?.location?.city ||
+        "";
+      const districtRaw =
+        m?.district ||
+        m?.ilce ||
+        m?.town ||
+        m?.locationDistrict ||
+        m?.location?.district ||
+        "";
 
       const city = String(cityRaw || "").trim();
       const district = String(districtRaw || "").trim();
@@ -121,50 +116,77 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     }
   }, [stopsForPreview]);
 
-  // ✅ Hero category: kaynaktan geldiği gibi (Flash örneği gibi “Tarih & Macera”)
+  // ✅ EMİR PAKETİ 3 — Kategori pili + “Macera” fallback
   const heroCategory = useMemo(() => {
+    const MAX_LEN = 12;
+
+    const isBad = (v) => {
+      const x = String(v || "").trim().toLowerCase();
+      if (!x) return true;
+      if (x === "unknown" || x === "-" || x === "n/a" || x === "na" || x === "null" || x === "undefined")
+        return true;
+      return false;
+    };
+
+    const clean = (v) =>
+      String(v || "")
+        .trim()
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ");
+
+    const shorten = (label) => {
+      const s = clean(label);
+      if (!s) return "Macera";
+      if (s.length <= MAX_LEN) return s;
+
+      const firstWord = s.split(" ")[0].trim();
+      if (firstWord && firstWord.length <= MAX_LEN) return firstWord;
+
+      const base = firstWord || s;
+      const cut = base.slice(0, MAX_LEN).trim();
+      return cut || "Macera";
+    };
+
     try {
       const m = routeModel || {};
       const raw =
         m?.categoryLabel ||
         m?.category ||
-        m?.routeCategory ||
-        m?.typeLabel ||
         m?.type ||
-        m?.routeType ||
-        m?.theme ||
-        m?.activity ||
-        m?.kind ||
         (Array.isArray(m?.tags) && m.tags.length ? m.tags[0] : "") ||
-        "";
+        "Macera";
 
-      const s = String(raw || "").trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
-      return s || "";
+      const normalized = clean(raw);
+      const safe = isBad(normalized) ? "Macera" : normalized;
+
+      return shorten(safe) || "Macera";
     } catch {
-      return "";
+      return "Macera";
     }
   }, [routeModel]);
 
-  // ✅ “Yazar” placeholder YASAK: boş/skeleton gösterilecek
+  const resolvedOwnerId = useMemo(() => {
+    try {
+      const m = routeModel || {};
+      const id =
+        ownerId ||
+        owner?.id ||
+        lockedOwnerDoc?.id ||
+        m?.ownerId ||
+        m?.owner ||
+        null;
+      return id ? String(id) : "";
+    } catch {
+      return "";
+    }
+  }, [ownerId, owner?.id, lockedOwnerDoc?.id, routeModel]);
+
+  // ✅ EMİR PAKETİ 02 — OwnerName çözüm sırası (profil öncelikli)
+  // 1) fetched user doc (owner) — displayName hedefi
+  // 2) cached/lockedOwnerDoc
+  // 3) route doc içi ownerName/ownerUsername...
+  // yoksa: "Kullanıcı • XXXX" (Yazar yasak)
   const ownerName = useMemo(() => {
-    const o = owner || lockedOwnerDoc || {};
-    const candidates = [
-      o?.name,
-      o?.fullName,
-      o?.displayName,
-      o?.username,
-      o?.userName,
-      o?.handle,
-
-      routeModel?.ownerName,
-      routeModel?.ownerUsername,
-      routeModel?.ownerDisplayName,
-      routeModel?.ownerHandle,
-    ]
-      .filter(Boolean)
-      .map((x) => String(x).trim())
-      .filter(Boolean);
-
     const isBad = (s) => {
       const x = String(s || "").trim().toLowerCase();
       if (!x) return true;
@@ -172,24 +194,85 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
       return false;
     };
 
+    const m = routeModel || {};
+    const locked = lockedOwnerDoc || {};
+    const fetched = owner || {};
+
+    const candidates = [
+      // 1) fetched user doc (profil)
+      fetched?.displayName,
+      fetched?.name,
+      fetched?.fullName,
+      fetched?.username,
+      fetched?.userName,
+      fetched?.handle,
+
+      // 2) locked/cache
+      locked?.displayName,
+      locked?.name,
+      locked?.fullName,
+      locked?.username,
+      locked?.userName,
+      locked?.handle,
+
+      // 3) route preview
+      m?.ownerName,
+      m?.ownerUsername,
+      m?.ownerDisplayName,
+      m?.ownerHandle,
+    ]
+      .filter(Boolean)
+      .map((x) => String(x).trim())
+      .filter(Boolean);
+
     for (const c of candidates) {
       if (!isBad(c)) return c;
     }
-    return "";
-  }, [owner, lockedOwnerDoc, routeModel]);
 
+    // ✅ güvenli fallback (UI asla boş kalmasın)
+    const id = String(resolvedOwnerId || "").trim();
+    if (id) {
+      const short = id.slice(-4).toUpperCase();
+      return `Kullanıcı • ${short}`;
+    }
+    return "Kullanıcı";
+  }, [owner, lockedOwnerDoc, routeModel, resolvedOwnerId]);
+
+  // ✅ Avatar: profil → locked → route
   const ownerAvatarUrl = useMemo(() => {
-    const o = owner || lockedOwnerDoc || {};
-    const s =
-      (o?.photoURL && String(o.photoURL).trim()) ||
-      (o?.profilFoto && String(o.profilFoto).trim()) ||
-      (o?.avatar && String(o.avatar).trim()) ||
-      (routeModel?.ownerAvatar && String(routeModel.ownerAvatar).trim()) ||
+    const m = routeModel || {};
+    const locked = lockedOwnerDoc || {};
+    const fetched = owner || {};
+
+    const pick = (v) => (v && String(v).trim() ? String(v).trim() : "");
+
+    const fetchedA =
+      pick(fetched?.photoURL) ||
+      pick(fetched?.profilFoto) ||
+      pick(fetched?.avatar) ||
       "";
-    return s || "";
+
+    const cachedA =
+      pick(locked?.photoURL) ||
+      pick(locked?.profilFoto) ||
+      pick(locked?.avatar) ||
+      "";
+
+    const routeA =
+      pick(m?.ownerAvatarUrl) ||
+      pick(m?.ownerAvatar) ||
+      pick(m?.ownerPhotoURL) ||
+      pick(m?.ownerPhotoUrl) ||
+      pick(m?.ownerPhoto) ||
+      "";
+
+    return fetchedA || cachedA || routeA || "";
   }, [owner, lockedOwnerDoc, routeModel]);
 
-  const timeAgoText = useMemo(() => formatTimeAgo(routeModel?.finishedAt || routeModel?.createdAt), [routeModel]);
+  const timeAgoText = useMemo(
+    () => formatTimeAgo(routeModel?.finishedAt || routeModel?.createdAt),
+    [routeModel]
+  );
 
   const timeAgoLine = useMemo(() => {
     const t = String(timeAgoText || "").trim();
@@ -230,45 +313,11 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     }
   }, [ratingAvgLabel]);
 
-  // ✅ EMİR-Flash-1: N Kaşif (count) — route alanlarından oku, yoksa label parse fallback
-  const heroExplorerCount = useMemo(() => {
-    const readInt = (v) => {
-      const n = Number(v);
-      if (!Number.isFinite(n)) return null;
-      if (n < 0) return null;
-      return Math.floor(n);
-    };
-
-    try {
-      const m = routeModel || {};
-
-      const candidates = [
-        m?.ratingCount,
-        m?.ratingsCount,
-        m?.votes,
-        m?.voteCount,
-        m?.starsCount,
-        m?.stars?.count,
-        m?.rating?.count,
-        m?.ratingAgg?.count,
-        m?.agg?.ratingsCount,
-        heroRatingInfo?.count,
-      ];
-
-      for (const c of candidates) {
-        const v = readInt(c);
-        if (v != null) return v;
-      }
-    } catch {}
-
-    return 0;
-  }, [routeModel, heroRatingInfo]);
-
-  const heroExplorerLabel = useMemo(() => `(${heroExplorerCount} Kaşif)`, [heroExplorerCount]);
-
   const heroStarsModel = useMemo(() => {
     const avg = heroRatingInfo?.avg;
-    if (typeof avg !== "number" || !Number.isFinite(avg)) return { full: 0, half: false, empty: 5 };
+    if (typeof avg !== "number" || !Number.isFinite(avg))
+      return { full: 0, half: false, empty: 5 };
+
     const a = Math.max(0, Math.min(5, avg));
     const baseFull = Math.floor(a);
     const rem = a - baseFull;
@@ -301,8 +350,6 @@ export default function useRDHeroModel({ routeModel, owner, lockedOwnerDoc, stop
     heroTitle,
     heroRatingInfo,
     heroStarsModel,
-    heroExplorerCount,
-    heroExplorerLabel,
     ownerName,
     ownerAvatarUrl,
     timeAgoLine,

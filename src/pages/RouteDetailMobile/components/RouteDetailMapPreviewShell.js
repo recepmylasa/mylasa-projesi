@@ -66,6 +66,9 @@ function round6(n) {
 function key6(p) {
   return `${round6(p.lat)},${round6(p.lng)}`;
 }
+function round4(n) {
+  return Math.round(n * 1e4) / 1e4;
+}
 
 /**
  * [a,b] can be [lat,lng] or [lng,lat]
@@ -395,6 +398,8 @@ export default function RouteDetailMapPreviewShell({
     process.env.REACT_APP_MAP_ID ||
     "";
 
+  const hasMapId = !!MAP_ID;
+
   const mapsOpts = useMemo(() => ({ API_KEY, MAP_ID }), [API_KEY, MAP_ID]);
   const gmaps = useGoogleMaps(mapsOpts) || {};
 
@@ -532,6 +537,7 @@ export default function RouteDetailMapPreviewShell({
     try {
       if (appliedStyleRef.current.map !== mapInstance || !appliedStyleRef.current.did) {
         appliedStyleRef.current = { map: mapInstance, did: true };
+        // MAP_ID olsa bile setOptions denemesi zararsız (bazı konfiglerde çalışıyor)
         mapInstance.setOptions({ styles: flashMapStyles });
       }
     } catch {}
@@ -697,7 +703,7 @@ export default function RouteDetailMapPreviewShell({
     return () => cleanup();
   }, [mapInstance, drawPoints]);
 
-  // ===== FitBounds / Zoom Stabilitesi (mevcut mantık aynen) =====
+  // ===== FitBounds / Zoom Stabilitesi (mevcut mantık + sig güçlendi) =====
   const fitStateRef = useRef({
     pendingTimer: null,
     pendingRaf: null,
@@ -729,7 +735,24 @@ export default function RouteDetailMapPreviewShell({
     const f = `${round6(first.lat)},${round6(first.lng)}`;
     const l = `${round6(last.lat)},${round6(last.lng)}`;
 
-    return `${pts.length}:${f}:${l}:${wB}x${hB}`;
+    // ✅ BBox ekle: iç nokta değişse bile sig değişsin (fit kaçmasın)
+    let minLat = first.lat,
+      maxLat = first.lat,
+      minLng = first.lng,
+      maxLng = first.lng;
+
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (!p) continue;
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+      if (p.lng < minLng) minLng = p.lng;
+      if (p.lng > maxLng) maxLng = p.lng;
+    }
+
+    const bbox = `${round4(minLat)},${round4(minLng)},${round4(maxLat)},${round4(maxLng)}`;
+
+    return `${pts.length}:${f}:${l}:${bbox}:${wB}x${hB}`;
   }, []);
 
   const doFitNow = useCallback(
@@ -958,6 +981,11 @@ export default function RouteDetailMapPreviewShell({
 
   const messageForError = () => {
     if (!API_KEY) return "Google Maps API anahtarı bulunamadı.";
+
+    const code = String(gmaps?.error?.message || "").trim();
+    if (code === "MAP_DIV_MISSING") return "Harita alanı henüz hazır değil. Biraz bekleyip tekrar deneyin.";
+    if (code === "MAP_INIT_FAILED") return gmaps?.errorMsg || "Harita oluşturulamadı.";
+
     const base = String(gmaps?.errorMsg || gmaps?.error?.message || gmaps?.error || "")
       .toLowerCase()
       .trim();
@@ -968,9 +996,7 @@ export default function RouteDetailMapPreviewShell({
     if (base.includes("auth_failed")) return "Google Maps yetkilendirme hatası.";
     if (gmapsStatus === "blocked") return "Google Maps yüklemesi engellendi.";
     if (gmapsStatus === "missing_key") return "Google Maps API anahtarı eksik.";
-    if (gmapsStatus === "error" && base.includes("map_div_missing")) {
-      return "Harita alanı henüz hazır değil. Biraz bekleyip tekrar deneyin.";
-    }
+
     return gmaps?.errorMsg || "Harita yüklenemedi. Tekrar deneyin.";
   };
 
@@ -993,6 +1019,7 @@ export default function RouteDetailMapPreviewShell({
       data-ready={isReady ? "1" : "0"}
       data-error={isError ? "1" : "0"}
       data-points={(points && points.length) || 0}
+      data-hasmapid={hasMapId ? "1" : "0"}
     >
       <RouteDetailMapPreview mapDivRef={setDivRef} mapReadyTick={mapReadyTick} />
 
@@ -1068,6 +1095,11 @@ export default function RouteDetailMapPreviewShell({
         @keyframes rdmpspin { 
           0% { transform: rotate(0deg); } 
           100% { transform: rotate(360deg); } 
+        }
+
+        /* ✅ MAP_ID cloud styling styles'ı yok sayarsa: hafif filter fallback */
+        .rdmps-root[data-hasmapid="1"] .rdmps-map {
+          filter: contrast(1.05) saturate(0.88) brightness(0.96);
         }
       `}</style>
     </div>
