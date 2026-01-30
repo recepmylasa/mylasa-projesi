@@ -256,7 +256,9 @@ export default function RouteDetailHeroMobile({
           ) : null}
 
           {/* ✅ EMİR PAKETİ 4: format “Kategori: N Kaşif” */}
-          <span className="rd-hero__ratingBadge">{heroRatingBadgeText || `${categoryText}: 0 Kaşif`}</span>
+          <span className="rd-hero__ratingBadge">
+            {heroRatingBadgeText || `${categoryText}: 0 Kaşif`}
+          </span>
         </div>
       </div>
 
@@ -270,11 +272,18 @@ export default function RouteDetailHeroMobile({
         >
           <div className="rd-hero__avatar" aria-hidden="true">
             {ownerAvatarUrl ? (
-              <img src={ownerAvatarUrl} alt={hasOwnerName ? ownerName : "Profil fotoğrafı"} loading="lazy" decoding="async" />
+              <img
+                src={ownerAvatarUrl}
+                alt={hasOwnerName ? ownerName : "Profil fotoğrafı"}
+                loading="lazy"
+                decoding="async"
+              />
             ) : showOwnerSkeleton ? (
               <span className="rd-hero__avatarSkeleton" aria-hidden="true" />
             ) : (
-              <span className="rd-hero__avatarFallback">{(ownerName && ownerName[0]) || "•"}</span>
+              <span className="rd-hero__avatarFallback">
+                {(ownerName && ownerName[0]) || "•"}
+              </span>
             )}
           </div>
 

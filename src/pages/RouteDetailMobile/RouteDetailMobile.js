@@ -76,8 +76,7 @@ export default function RouteDetailMobile({
   } = useRDPortalsAndScrollLock();
 
   // ✅ Ghost click blocker
-  const { interactionBlocked, blockInteractionsBriefly } =
-    useRDInteractionBlocker();
+  const { interactionBlocked, blockInteractionsBriefly } = useRDInteractionBlocker();
 
   // ✅ Theme
   const { rdTheme, rdThemeSource, themeAnimOn, onToggleTheme } = useRDTheme();
@@ -148,18 +147,12 @@ export default function RouteDetailMobile({
       const rawLen = Array.isArray(rawPath) ? rawPath.length : 0;
       if (pathDropped > 0) {
         // eslint-disable-next-line no-console
-        console.warn(
-          `[RouteDetailMobile] path normalize dropped ${pathDropped}/${rawLen}`,
-          { routeId }
-        );
+        console.warn(`[RouteDetailMobile] path normalize dropped ${pathDropped}/${rawLen}`, { routeId });
       }
       const totalStops = (stops || []).length;
       if (totalStops > 0 && stopsDropped > 0) {
         // eslint-disable-next-line no-console
-        console.warn(
-          `[RouteDetailMobile] stops missing coords ${stopsDropped}/${totalStops}`,
-          { routeId }
-        );
+        console.warn(`[RouteDetailMobile] stops missing coords ${stopsDropped}/${totalStops}`, { routeId });
       }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,8 +163,7 @@ export default function RouteDetailMobile({
       const t = String(it?.type || it?.mime || it?.contentType || "").toLowerCase();
       const u = String(it?.url || "").toLowerCase();
       if (t.includes("video")) return "video";
-      if (t.includes("image") || t.includes("photo") || t.includes("img"))
-        return "image";
+      if (t.includes("image") || t.includes("photo") || t.includes("img")) return "image";
       if (u.match(/\.(mp4|webm|mov|m4v|mkv)(\?|#|$)/i)) return "video";
       return "image";
     } catch {
@@ -197,24 +189,21 @@ export default function RouteDetailMobile({
   );
 
   // ✅ img proof
-  const DEFAULT_ROUTE_COVER_URL_PUBLIC =
-    (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
-  const { isDefaultCoverUrl, handleImgLoadProof, handleImgErrorToDefault } =
-    useRouteDetailImgProof({
-      routeId,
-      defaultPublicUrl: DEFAULT_ROUTE_COVER_URL_PUBLIC,
-      defaultConstUrl: DEFAULT_ROUTE_COVER_URL,
-      maxLogs: 80,
-    });
+  const DEFAULT_ROUTE_COVER_URL_PUBLIC = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
+  const { isDefaultCoverUrl, handleImgLoadProof, handleImgErrorToDefault } = useRouteDetailImgProof({
+    routeId,
+    defaultPublicUrl: DEFAULT_ROUTE_COVER_URL_PUBLIC,
+    defaultConstUrl: DEFAULT_ROUTE_COVER_URL,
+    maxLogs: 80,
+  });
 
   // ✅ quest — V3 gate + path/stops
-  const { questState, startQuest, stopQuest, finishQuest, questLocLine, ghostMetrics } =
-    useRouteDetailQuest({
-      routeId,
-      enabled: V3_ENABLED,
-      path: pathPts,
-      stops: stopsForPreview || [],
-    });
+  const { questState, startQuest, stopQuest, finishQuest, questLocLine, ghostMetrics } = useRouteDetailQuest({
+    routeId,
+    enabled: V3_ENABLED,
+    path: pathPts,
+    stops: stopsForPreview || [],
+  });
 
   const questUi = useMemo(() => {
     if (!V3_ENABLED) return null;
@@ -222,13 +211,11 @@ export default function RouteDetailMobile({
     const hasPath = Array.isArray(pathPts) && pathPts.length >= 2;
     const hasStops = Array.isArray(stopsForPreview) && stopsForPreview.length >= 1;
 
-    const total =
-      Number(ghostMetrics?.totalCheckpoints) || (hasStops ? stopsForPreview.length : 0);
+    const total = Number(ghostMetrics?.totalCheckpoints) || (hasStops ? stopsForPreview.length : 0);
     const visitedCount = Number(ghostMetrics?.visitedCount) || 0;
 
     const completion =
-      typeof ghostMetrics?.completion === "number" &&
-      Number.isFinite(ghostMetrics.completion)
+      typeof ghostMetrics?.completion === "number" && Number.isFinite(ghostMetrics.completion)
         ? ghostMetrics.completion
         : 0;
 
@@ -236,8 +223,7 @@ export default function RouteDetailMobile({
     const pctText = Math.round(pct * 100);
 
     const dist = ghostMetrics?.distanceToRouteM;
-    const distText =
-      typeof dist === "number" && Number.isFinite(dist) ? `${Math.round(dist)}m` : "—";
+    const distText = typeof dist === "number" && Number.isFinite(dist) ? `${Math.round(dist)}m` : "—";
 
     const offRoute = !!ghostMetrics?.offRoute;
     const canFinish = !!ghostMetrics?.canFinish;
@@ -247,7 +233,7 @@ export default function RouteDetailMobile({
 
     let disabledReason = "";
     if (!hasPath) disabledReason = "Bu rotada iz bulunamadı.";
-    else if (!hasStops) disabledReason = "Bu rotada checkpoint bulunamadı.";
+    else if (!hasStops) disabledReason = "Buota checkpoint bulunamadı.";
 
     const startDisabled = questState !== "idle" || !!disabledReason;
     const finishDisabled = !canFinish || !isAuthed;
@@ -262,9 +248,7 @@ export default function RouteDetailMobile({
             <div className="route-detail-quest-title">Ghost Mode</div>
             <div className="route-detail-quest-sub">Rotayı takip et, %85 tamamla, ödülü al.</div>
           </div>
-          <div className={`route-detail-quest-badge ${questState === "active" ? "is-active" : ""}`}>
-            {statusText}
-          </div>
+          <div className={`route-detail-quest-badge ${questState === "active" ? "is-active" : ""}`}>{statusText}</div>
         </div>
 
         {questLocLine ? (
@@ -466,14 +450,7 @@ export default function RouteDetailMobile({
     if (tab === "report") onTabChange("stops");
     if (commentsOverlayOpen) setCommentsOverlayOpen(false);
     if (activeSection === "comments") setActiveSection("stops");
-  }, [
-    isEditMode,
-    tab,
-    onTabChange,
-    commentsOverlayOpen,
-    activeSection,
-    setActiveSection,
-  ]);
+  }, [isEditMode, tab, onTabChange, commentsOverlayOpen, activeSection, setActiveSection]);
 
   // ✅ ESC behavior
   useEffect(() => {
@@ -533,8 +510,8 @@ export default function RouteDetailMobile({
   });
 
   // ✅ Actions
-  const { onShare, onExportGpx, canRateRoute, onRouteRate, onStopRate, isFav, onToggleFav, canToggleFav } =
-    useRDActions({
+  const { onShare, onExportGpx, canRateRoute, onRouteRate, onStopRate, isFav, onToggleFav, canToggleFav } = useRDActions(
+    {
       routeId,
       routeDoc,
       initialRoute,
@@ -542,7 +519,8 @@ export default function RouteDetailMobile({
       ownerFromLink,
       stopsForPreview,
       pathPts,
-    });
+    }
+  );
 
   // ✅ cover resolve
   const coverUi = useMemo(
@@ -700,6 +678,7 @@ export default function RouteDetailMobile({
           ownerName={heroModel.ownerName}
           ownerAvatarUrl={heroModel.ownerAvatarUrl}
           timeAgoLine={heroModel.timeAgoLine}
+          ownerState={heroModel.ownerState}
           isFav={isFav}
           onToggleFav={onToggleFav}
           canToggleFav={canToggleFav}
@@ -752,53 +731,52 @@ export default function RouteDetailMobile({
 
           {!isEditMode && <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />}
 
-          <div className="rd-sections">
-            <RouteDetailSectionsMobile
-              stopsSectionRef={stopsSectionRef}
-              gallerySectionRef={gallerySectionRef}
-              commentsSectionRef={commentsSectionRef}
-              gpxSectionRef={gpxSectionRef}
-              reportSectionRef={reportSectionRef}
-              tab={tab}
-              isEditMode={isEditMode}
-              canInteract={canInteract}
-              modeForTabs={modeForTabs}
-              isOwner={!!isOwner}
-              stops={stops}
-              stopsLoaded={stopsLoaded}
-              commentsCount={commentsCount}
-              stopAgg={stopAgg}
-              uploadState={uploadState}
-              mediaCacheRef={mediaCacheRef}
-              ensureStopThumbs={ensureStopThumbs}
-              cancelUpload={cancelUpload}
-              onPickMedia={onPickMedia}
-              normalizeMediaType={normalizeMediaType}
-              buildLightboxItems={buildLightboxItems}
-              openLightbox={(items, idx) => {
-                setLightboxItems(items);
-                setLightboxIndex(idx);
-              }}
-              onImgError={handleImgErrorToDefault}
-              onStopRate={onStopRate}
-              galleryItems={galleryItems}
-              galleryState={galleryState}
-              gallerySentinelRef={gallerySentinelRef}
-              onOpenCommentsOverlay={() => {
-                if (!canInteract) return;
-                if (isEditMode) return;
-                setCommentsOverlayOpen(true);
-              }}
-              onExportGpx={onExportGpx}
-              reportLoaded={reportLoaded}
-              routeAgg={routeAgg}
-              stopAggForReport={stopAgg}
-              distanceText={heroModel.distanceText}
-              durationText={heroModel.durationText}
-              stopsText={heroModel.stopsText}
-              avgSpeedText={heroModel.avgSpeedText}
-            />
-          </div>
+          {/* ✅ FIX: RouteDetailSectionsMobile zaten .rd-sections döndürüyor, burada tekrar sarmalama yok */}
+          <RouteDetailSectionsMobile
+            stopsSectionRef={stopsSectionRef}
+            gallerySectionRef={gallerySectionRef}
+            commentsSectionRef={commentsSectionRef}
+            gpxSectionRef={gpxSectionRef}
+            reportSectionRef={reportSectionRef}
+            tab={tab}
+            isEditMode={isEditMode}
+            canInteract={canInteract}
+            modeForTabs={modeForTabs}
+            isOwner={!!isOwner}
+            stops={stops}
+            stopsLoaded={stopsLoaded}
+            commentsCount={commentsCount}
+            stopAgg={stopAgg}
+            uploadState={uploadState}
+            mediaCacheRef={mediaCacheRef}
+            ensureStopThumbs={ensureStopThumbs}
+            cancelUpload={cancelUpload}
+            onPickMedia={onPickMedia}
+            normalizeMediaType={normalizeMediaType}
+            buildLightboxItems={buildLightboxItems}
+            openLightbox={(items, idx) => {
+              setLightboxItems(items);
+              setLightboxIndex(idx);
+            }}
+            onImgError={handleImgErrorToDefault}
+            onStopRate={onStopRate}
+            galleryItems={galleryItems}
+            galleryState={galleryState}
+            gallerySentinelRef={gallerySentinelRef}
+            onOpenCommentsOverlay={() => {
+              if (!canInteract) return;
+              if (isEditMode) return;
+              setCommentsOverlayOpen(true);
+            }}
+            onExportGpx={onExportGpx}
+            reportLoaded={reportLoaded}
+            routeAgg={routeAgg}
+            stopAggForReport={stopAgg}
+            distanceText={heroModel.distanceText}
+            durationText={heroModel.durationText}
+            stopsText={heroModel.stopsText}
+            avgSpeedText={heroModel.avgSpeedText}
+          />
         </div>
 
         {isEditMode && (

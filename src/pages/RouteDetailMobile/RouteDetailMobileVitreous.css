@@ -6,5 +6,7 @@
 @import "./styles/rd.vitreous.hubPillsMapSheet.css";
 @import "./styles/rd.vitreous.parityFallbacks.css";
 @import "./styles/rd.vitreous.stops.css";
+/* ✅ EMİR 03 — Stops Timeline override (markup + layout) */
+@import "./styles/rd.vitreous.stops.timeline.css";
 @import "./styles/rd.vitreous.gallery.css";
 @import "./styles/rd.vitreous.overlaysUtilsCta.css";

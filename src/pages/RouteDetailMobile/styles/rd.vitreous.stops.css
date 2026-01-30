@@ -1,2 +1,66 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.vitreous.stops.css */
-/* Stops — EMİR 1 split (bu dosya import eder, başka dosya import ETMEZ) */
+/* Stops — Vitreous base (scope: RouteDetailMobile only)
+   Bu dosya SADECE stops tab stil temelini taşır.
+   Timeline grid/markup override: rd.vitreous.stops.timeline.css
+*/
+
+.route-detail-backdrop .rdtab--stops {
+  --rd-stop-radius: 18px;
+  --rd-stop-gap: 12px;
+}
+
+/* Genel container */
+.route-detail-backdrop .rdtab--stops .rd-stops {
+  padding: 0;
+}
+
+/* Card premium */
+.route-detail-backdrop .rdtab--stops .rd-stop.rdglass-card {
+  border-radius: var(--rd-stop-radius);
+  border-color: var(--glass-border, rgba(255, 255, 255, 0.12));
+  background: var(--glass, rgba(255, 255, 255, 0.06));
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  position: relative;
+}
+
+/* Subtle refraction highlight line */
+.route-detail-backdrop .rdtab--stops .rd-stop.rdglass-card::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 1px;
+  background: var(--glass-highlight, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Light modda shadow biraz düşsün */
+.route-detail-backdrop[data-theme="light"] .rdtab--stops .rd-stop.rdglass-card {
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14);
+}
+
+/* Mini satırda butonlar taşmasın */
+.route-detail-backdrop .rdtab--stops .rd-stop-addMediaBtn,
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadCancel {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+/* Upload fill renk tokena yakın (bakır/amber) */
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadFill {
+  background: rgba(251, 146, 60, 0.95);
+}
+
+/* Reduced motion: micro scale’ları kapat */
+@media (prefers-reduced-motion: reduce) {
+  .route-detail-backdrop .rdtab--stops .rd-stop-mediaItem:active,
+  .route-detail-backdrop .rdtab--stops .rdglass-btn:active {
+    transform: none !important;
+  }
+}

@@ -70,6 +70,7 @@ export default function RouteDetailSectionsMobile({
           isOwner={!!isOwner}
           canInteract={canInteract}
           stops={stops}
+          stopsLoaded={stopsLoaded}
           stopAgg={stopAgg}
           uploadState={uploadState}
           mediaCacheRef={mediaCacheRef}

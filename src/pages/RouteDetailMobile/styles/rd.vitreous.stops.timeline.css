@@ -1,0 +1,266 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.vitreous.stops.timeline.css */
+/* ✅ EMİR PAKETİ 03 + 04 — Duraklar UI (Flash Timeline + Vitreous polish)
+   - Sol: 48x48 "Sıra / 01" cam index card
+   - Orta: dikey hairline (soft gradient, son elemanda yok)
+   - Sağ: title, mini satır (rating), açıklama, yatay medya (foto yoksa render yok)
+*/
+
+.route-detail-backdrop .rdtab--stops .rd-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Kart: 3 kolon (left / mid / right) */
+.route-detail-backdrop .rdtab--stops .rd-stop.rdglass-card {
+  display: grid;
+  grid-template-columns: 56px 14px 1fr;
+  gap: 0;
+  padding: 12px;
+  border-radius: 18px;
+  overflow: visible; /* timeline çizgisi gap'e taşsın */
+}
+
+/* Sol */
+.route-detail-backdrop .rdtab--stops .rd-stop-left {
+  padding-top: 2px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* Index card: cam panel hissi */
+.route-detail-backdrop .rdtab--stops .rd-stop-indexCard {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+  background: var(--glass-2, rgba(255, 255, 255, 0.08));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  position: relative;
+  overflow: hidden;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-indexCard::after {
+  content: "";
+  position: absolute;
+  inset: -20px -20px auto -20px;
+  height: 50px;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.18), transparent 70%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-indexCard__label {
+  font-size: 10px;
+  font-weight: 900;
+  color: var(--text-dim2, rgba(255, 255, 255, 0.65));
+  letter-spacing: -0.2px;
+  margin-bottom: 4px;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-indexCard__num {
+  font-size: 16px;
+  font-weight: 1000;
+  letter-spacing: -0.6px;
+  color: var(--text-main, #fff);
+}
+
+/* Orta: hairline */
+.route-detail-backdrop .rdtab--stops .rd-stop-mid {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+/* çizgi: kartlar arası boşluğa da uzasın + gradient */
+.route-detail-backdrop .rdtab--stops .rd-stop-mid::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: -12px;
+  bottom: -12px;
+  width: 1px;
+  opacity: 0.85;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--glass-divider, rgba(255, 255, 255, 0.14)) 18%,
+    rgba(251, 146, 60, 0.20) 50%,
+    var(--glass-divider, rgba(255, 255, 255, 0.14)) 82%,
+    transparent
+  );
+}
+
+/* ilk elemanda yukarı taşma olmasın */
+.route-detail-backdrop .rdtab--stops .rd-stops .rd-stop:first-child .rd-stop-mid::before {
+  top: 18px;
+}
+
+/* son elemanda çizgi yok */
+.route-detail-backdrop .rdtab--stops .rd-stop[data-last="1"] .rd-stop-mid::before {
+  display: none;
+}
+
+/* Sağ */
+.route-detail-backdrop .rdtab--stops .rd-stop-right {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-title {
+  font-size: 17px; /* ✅ 16–18px hedef */
+  font-weight: 900;
+  letter-spacing: -0.3px;
+  color: var(--text-main, #fff);
+  line-height: 1.2;
+  margin-top: 2px;
+  word-break: break-word;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-miniRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-agg {
+  flex: 1;
+  min-width: 0;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-agg--empty {
+  height: 8px;
+  opacity: 0;
+}
+
+/* Açıklama */
+.route-detail-backdrop .rdtab--stops .rd-stop-desc {
+  margin-top: 8px;
+  font-size: 13.5px; /* ✅ 13–14px hedef */
+  line-height: 1.38;
+  color: var(--text-dim, rgba(255, 255, 255, 0.72));
+  word-break: break-word;
+}
+
+/* Medya row: yatay scroll */
+.route-detail-backdrop .rdtab--stops .rd-stop-media {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0 2px;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-media::-webkit-scrollbar {
+  display: none;
+}
+
+/* Thumbnail: border + hafif glow/kontrast (abartma yok) */
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem {
+  flex: 0 0 auto;
+  width: 120px;
+  height: 80px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+  background: rgba(0, 0, 0, 0.18);
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  scroll-snap-align: start;
+  position: relative;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.16);
+}
+
+.route-detail-backdrop[data-theme="light"] .rdtab--stops .rd-stop-mediaItem {
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem:active {
+  transform: scale(0.99);
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem img,
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(1.04) contrast(1.02);
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaItem__videoBadge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+/* Permission hint */
+.route-detail-backdrop .rdtab--stops .rd-stop-mediaHint {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+/* Upload alanı */
+.route-detail-backdrop .rdtab--stops .rd-stop-upload {
+  margin-top: 10px;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadFill {
+  height: 100%;
+  background: rgba(251, 146, 60, 0.95);
+  border-radius: 999px;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadPct {
+  font-size: 12px;
+  font-weight: 900;
+  min-width: 44px;
+  text-align: right;
+}
+
+.route-detail-backdrop .rdtab--stops .rd-stop-uploadCancel {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+}
+
+/* ✅ prefers-reduced-motion: micro transform kapat */
+@media (prefers-reduced-motion: reduce) {
+  .route-detail-backdrop .rdtab--stops .rd-stop-mediaItem:active {
+    transform: none !important;
+  }
+}

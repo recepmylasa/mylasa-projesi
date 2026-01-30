@@ -9,6 +9,7 @@ export default function RouteDetailStopsTab({
   canInteract = true,
 
   stops,
+  stopsLoaded = true, // ✅ NEW: parent’tan geliyor (loading/empty ayrımı)
   stopAgg,
   uploadState,
   mediaCacheRef,
@@ -39,6 +40,14 @@ export default function RouteDetailStopsTab({
     } catch {}
   };
 
+  const safeBuildLightboxItems = (arr) => {
+    try {
+      return typeof buildLightboxItems === "function" ? buildLightboxItems(arr) : arr;
+    } catch {
+      return arr;
+    }
+  };
+
   // ✅ Thumb request spam kırıcı (hover/touch aynı durağa üst üste çağırmasın)
   const thumbsReqRef = useRef(new Map());
   const requestThumbs = useCallback(
@@ -60,6 +69,9 @@ export default function RouteDetailStopsTab({
     [canInteract, ensureStopThumbs]
   );
 
+  const list = Array.isArray(stops) ? stops : [];
+  const len = list.length;
+
   return (
     <div
       className="rdtab rdtab--stops"
@@ -68,35 +80,49 @@ export default function RouteDetailStopsTab({
       data-interact={canInteract ? "1" : "0"}
     >
       <div className="rd-stops">
-        {(stops || []).map((s, idx) => {
-          const cache = mediaCacheRef.current.get(s.id) || {};
+        {list.map((s, idx) => {
+          const cache = mediaCacheRef?.current?.get?.(s.id) || {};
           const media = cache.items || [];
-          const up = uploadState[s.id];
+          const up = uploadState?.[s.id];
           const hadPermErr = cache.__error && String(cache.__error).includes("permission");
 
           const nRaw = Number(s?.order);
           const n = Number.isFinite(nRaw) && nRaw > 0 ? nRaw : idx + 1;
           const nLabel = String(n).padStart(2, "0");
 
+          const isLast = idx === len - 1;
+
           return (
-            <div key={s.id} className="rd-stop rdglass-card">
-              {/* Sol rail / timeline */}
-              <div className="rd-stop-rail" aria-hidden="true">
-                <div className="rd-stop-badge">
-                  <span className="rd-stop-badge__label">Sıra</span>
-                  <span className="rd-stop-badge__num">{nLabel}</span>
+            <div
+              key={s.id}
+              className={`rd-stop rdglass-card${isLast ? " is-last" : ""}`}
+              data-last={isLast ? "1" : "0"}
+              data-is-last={isLast ? "true" : "false"} // ✅ CSS paritesi için ek sinyal
+              onMouseEnter={() => requestThumbs(s.id)}
+              onTouchStart={() => requestThumbs(s.id)}
+            >
+              {/* Sol: index card */}
+              <div className="rd-stop-left" aria-hidden="true">
+                <div className="rd-stop-indexCard">
+                  <span className="rd-stop-indexCard__label">Sıra</span>
+                  <span className="rd-stop-indexCard__num">{nLabel}</span>
                 </div>
               </div>
 
-              {/* İç içerik */}
-              <div className="rd-stop-content">
-                <div className="rd-stop-head">
-                  <div className="rd-stop-title">{s.title || `Durak ${nLabel}`}</div>
-                  {s.note ? <div className="rd-stop-desc">{s.note}</div> : null}
-                </div>
+              {/* Orta: timeline hairline */}
+              <div
+                className={`rd-stop-mid${isLast ? " is-last" : ""}`}
+                aria-hidden="true"
+                data-last={isLast ? "1" : "0"}
+                data-is-last={isLast ? "true" : "false"}
+              />
 
-                <div className="rd-stop-actions">
-                  {stopAgg && stopAgg[s.id] && (
+              {/* Sağ: içerik */}
+              <div className="rd-stop-right">
+                <div className="rd-stop-title">{s.title || `Durak ${nLabel}`}</div>
+
+                <div className="rd-stop-miniRow">
+                  {stopAgg && stopAgg[s.id] ? (
                     <div className="rd-stop-agg" aria-label="Durak puan dağılımı">
                       <StarBars
                         counts={stopAgg[s.id].counts}
@@ -106,9 +132,11 @@ export default function RouteDetailStopsTab({
                         showNumbers={false}
                       />
                     </div>
+                  ) : (
+                    <div className="rd-stop-agg rd-stop-agg--empty" aria-hidden="true" />
                   )}
 
-                  {/* ✅ EMİR 13: Owner ve edit modda rating UI pasif (pırıl pırıl parite) */}
+                  {/* ✅ Rating mini satır: title altı (Flash paritesi) */}
                   <StarRatingV2
                     onRated={(v) => {
                       if (!canInteract) return;
@@ -117,16 +145,16 @@ export default function RouteDetailStopsTab({
                       if (typeof onStopRate !== "function") return;
                       onStopRate(s.id, v);
                     }}
-                    size={22}
+                    size={20}
                     disabled={!canInteract || isOwner || isEdit}
                   />
 
-                  {/* ✅ EMİR 13: Edit modda yalnızca owner için “Medya Ekle” */}
+                  {/* ✅ Edit modda yalnızca owner için “Medya Ekle” (mini boy) */}
                   {isEdit && (
                     <button
                       type="button"
                       onClick={() => safePickMedia(s.id)}
-                      className="rdglass-btn"
+                      className="rdglass-btn rd-stop-addMediaBtn"
                       disabled={!canInteract}
                     >
                       Medya Ekle
@@ -134,69 +162,66 @@ export default function RouteDetailStopsTab({
                   )}
                 </div>
 
-                {/* Medya satırı */}
-                <div
-                  className="rd-stop-media"
-                  onMouseEnter={() => requestThumbs(s.id)}
-                  onTouchStart={() => requestThumbs(s.id)}
-                >
-                  {media.slice(0, 4).map((m, mIdx) => {
-                    const isVideo = normalizeMediaType(m) === "video";
-                    return (
-                      <button
-                        key={m.id || mIdx}
-                        type="button"
-                        className="rd-stop-mediaItem"
-                        onClick={() => safeOpenLightbox(buildLightboxItems(media), mIdx)}
-                        title={isVideo ? "Video" : "Fotoğraf"}
-                        aria-label={isVideo ? "Videoyu görüntüle" : "Fotoğrafı görüntüle"}
-                        disabled={!canInteract}
-                      >
-                        {isVideo && (
-                          <div className="rd-stop-mediaItem__videoBadge" aria-hidden="true">
-                            ▶︎
-                          </div>
-                        )}
+                {/* Açıklama: yoksa hiç render olmasın */}
+                {s.note ? <div className="rd-stop-desc">{s.note}</div> : null}
 
-                        {/* ✅ Ghost click/video click-yutma kırıcı: preview elementleri pointer-events:none */}
-                        {isVideo ? (
-                          <video
-                            src={m.url}
-                            muted
-                            playsInline
-                            preload="metadata"
-                            disablePictureInPicture
-                            controlsList="nodownload noplaybackrate"
-                            tabIndex={-1}
-                            aria-hidden="true"
-                            style={{ pointerEvents: "none" }}
-                          />
-                        ) : (
-                          <img
-                            src={m.url}
-                            alt="Durak medyası"
-                            loading="lazy"
-                            decoding="async"
-                            draggable={false}
-                            style={{ pointerEvents: "none" }}
-                            onError={(e) =>
-                              onImgError?.(e, { scope: "stop_media", stopId: s.id, mediaId: m?.id || null })
-                            }
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
+                {/* Medya row: Foto yoksa row gizli (boşluk yok) */}
+                {media.length > 0 ? (
+                  <div className="rd-stop-media">
+                    {media.slice(0, 12).map((m, mIdx) => {
+                      const isVideo = normalizeMediaType?.(m) === "video";
+                      return (
+                        <button
+                          key={m.id || mIdx}
+                          type="button"
+                          className="rd-stop-mediaItem"
+                          onClick={() => safeOpenLightbox(safeBuildLightboxItems(media), mIdx)}
+                          title={isVideo ? "Video" : "Fotoğraf"}
+                          aria-label={isVideo ? "Videoyu görüntüle" : "Fotoğrafı görüntüle"}
+                          disabled={!canInteract}
+                        >
+                          {isVideo && (
+                            <div className="rd-stop-mediaItem__videoBadge" aria-hidden="true">
+                              ▶︎
+                            </div>
+                          )}
 
-                  {media.length === 0 && (
-                    <div className="rd-stop-mediaEmpty rdglass-muted">
-                      {hadPermErr ? "Medya erişimi kısıtlı." : "Medya yok"}
-                    </div>
-                  )}
-                </div>
+                          {/* ✅ Ghost click kırıcı: preview elementleri pointer-events:none */}
+                          {isVideo ? (
+                            <video
+                              src={m.url}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              disablePictureInPicture
+                              controlsList="nodownload noplaybackrate"
+                              tabIndex={-1}
+                              aria-hidden="true"
+                              style={{ pointerEvents: "none" }}
+                            />
+                          ) : (
+                            <img
+                              src={m.url}
+                              alt="Durak medyası"
+                              loading="lazy"
+                              decoding="async"
+                              draggable={false}
+                              style={{ pointerEvents: "none" }}
+                              onError={(e) =>
+                                onImgError?.(e, { scope: "stop_media", stopId: s.id, mediaId: m?.id || null })
+                              }
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : hadPermErr ? (
+                  <div className="rd-stop-mediaHint rdglass-muted">Medya erişimi kısıtlı.</div>
+                ) : null}
 
                 {/* Upload row */}
-                {up && (
+                {up ? (
                   <div className="rd-stop-upload">
                     <div className="rd-stop-uploadRow">
                       <div className="rdglass-progress-track">
@@ -207,7 +232,7 @@ export default function RouteDetailStopsTab({
 
                       <button
                         type="button"
-                        onClick={() => (canInteract ? cancelUpload(s.id) : null)}
+                        onClick={() => (canInteract && typeof cancelUpload === "function" ? cancelUpload(s.id) : null)}
                         className="rdglass-btn rd-stop-uploadCancel"
                         disabled={!canInteract}
                       >
@@ -215,19 +240,28 @@ export default function RouteDetailStopsTab({
                       </button>
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           );
         })}
 
-        {(stops || []).length === 0 && (
+        {/* ✅ Loading/Empty ayrımı */}
+        {len === 0 && !stopsLoaded ? (
+          <div className="rdglass-card rdglass-card--pad rdglass-empty">
+            <div className="rdglass-muted" style={{ fontSize: 13 }}>
+              Duraklar yükleniyor…
+            </div>
+          </div>
+        ) : null}
+
+        {len === 0 && !!stopsLoaded ? (
           <div className="rdglass-card rdglass-card--pad rdglass-empty">
             <div className="rdglass-muted" style={{ fontSize: 13 }}>
               Bu rotada durak yok.
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
