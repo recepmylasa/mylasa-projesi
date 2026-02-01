@@ -14,7 +14,17 @@ export default function RouteDetailMapCardMobile({
 }) {
   return (
     <div className="route-detail-map rd-map-card">
-      <div className="rd-map-card__canvas">
+      {/* ✅ FIX: map container ölçüsü garanti (fitBounds kaçırmasın) */}
+      <div
+        className="rd-map-card__canvas"
+        style={{
+          position: "relative",
+          width: "100%",
+          minHeight: 220,
+          height: 220,
+          overflow: "hidden",
+        }}
+      >
         <RouteDetailMapPreviewShell
           key={mapsRetryTick}
           routeId={routeId}

@@ -66,7 +66,100 @@ export default function RouteDetailMobile({
 }) {
   const V3_ENABLED = ROUTES_V3_ENABLED;
 
-  // ✅ Portals + scroll lock (same behavior, always)
+  // ✅ Sheet ref
+  const sheetRef = React.useRef(null);
+
+  // ✅ Main scroller ref (jitter fix: tek otorite)
+  const mainBodyRef = React.useRef(null);
+
+  // ✅ EMİR 01 — Collapsible hero (RAF + CSS vars)
+  // ✅ FIX: lastAppliedKey ile style write spam kırıcı + mikro delta filtresi
+  const heroCollapseRef = React.useRef({
+    raf: 0,
+    lastTop: 0,
+    lastInputTop: -1,
+    lastAppliedKey: "",
+  });
+
+  const clamp01 = (n) => Math.max(0, Math.min(1, n));
+
+  const applyHeroCollapseVars = useCallback((scrollTop) => {
+    // ✅ round: micro jitter kırıcı (sub-pixel scroll/top dalgalanması)
+    const st = Math.max(0, Math.round(Number(scrollTop) || 0));
+
+    // hedef aralıklar
+    const H_MAX = 500; // 420–520 aralığı içinde
+    const H_MIN = 140; // 120–160 aralığı içinde
+    const RANGE = Math.max(1, H_MAX - H_MIN);
+
+    const t = clamp01(st / RANGE);
+
+    const h = Math.round(H_MAX - t * RANGE);
+
+    // ✅ tiny float jitter'ı azalt
+    const infoOpacityRaw = clamp01(1 - t * 1.35);
+    const infoOpacity = Math.round(infoOpacityRaw * 1000) / 1000;
+
+    const infoY = Math.round(-t * 18);
+    const imgScale = (1.045 - t * 0.07).toFixed(3);
+    const hubY = Math.round(-t * 10);
+    const collapsed = t >= 0.98 ? 1 : 0;
+
+    const scopeEl = sheetRef.current?.closest(".route-detail-backdrop") || sheetRef.current;
+    if (!scopeEl) return;
+
+    // ✅ NO-OP guard: değer değişmediyse DOM'a yazma (reflow/anchor loop kırıcı)
+    const key = `${h}|${infoOpacity}|${infoY}|${imgScale}|${hubY}|${collapsed}`;
+    const ref = heroCollapseRef.current;
+    if (ref.lastAppliedKey === key) return;
+    ref.lastAppliedKey = key;
+
+    try {
+      scopeEl.style.setProperty("--rd-hero-h", `${h}px`);
+      scopeEl.style.setProperty("--rd-hero-info-o", `${infoOpacity}`);
+      scopeEl.style.setProperty("--rd-hero-info-y", `${infoY}px`);
+      scopeEl.style.setProperty("--rd-hero-img-scale", `${imgScale}`);
+      scopeEl.style.setProperty("--rd-hero-hub-y", `${hubY}px`);
+      scopeEl.setAttribute("data-hero-collapsed", collapsed ? "1" : "0");
+    } catch {}
+  }, []);
+
+  const scheduleHeroCollapse = useCallback(
+    (scrollTop) => {
+      // ✅ round: event spam + micro delta filtresi tek hamlede
+      const st = Math.max(0, Math.round(Number(scrollTop) || 0));
+      const ref = heroCollapseRef.current;
+
+      // ✅ aynı değerse hiçbir şey yapma
+      if (ref.lastInputTop === st) return;
+      ref.lastInputTop = st;
+
+      ref.lastTop = st;
+      if (ref.raf) return;
+
+      ref.raf = window.requestAnimationFrame(() => {
+        ref.raf = 0;
+        applyHeroCollapseVars(ref.lastTop);
+      });
+    },
+    [applyHeroCollapseVars]
+  );
+
+  useEffect(() => {
+    // route değişince collapse reset
+    scheduleHeroCollapse(0);
+    return () => {
+      try {
+        const r = heroCollapseRef.current;
+        if (r?.raf) {
+          window.cancelAnimationFrame(r.raf);
+          r.raf = 0;
+        }
+      } catch {}
+    };
+  }, [routeId, scheduleHeroCollapse]);
+
+  // ✅ Portals + scroll lock
   const {
     withPortal,
     commentsPortalEl,
@@ -87,7 +180,6 @@ export default function RouteDetailMobile({
     tab,
     onTabChange,
     activeSection,
-    setActiveSection,
     tabsBarRef,
     tabsBarH,
     stopsSectionRef,
@@ -96,6 +188,36 @@ export default function RouteDetailMobile({
     gpxSectionRef,
     reportSectionRef,
   } = useRDAnchors({ routeId, routeBodyRef: routeBodyRefForAnchors });
+
+  // ✅ Default tab = stops (route değişince de)
+  useEffect(() => {
+    try {
+      onTabChange?.("stops");
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId]);
+
+  // ✅ Tab change wrapper: scrollTop reset + hero collapse sync
+  const handleTabChange = useCallback(
+    (key) => {
+      if (!key) return;
+      try {
+        onTabChange?.(key);
+      } catch {}
+      try {
+        const el = mainBodyRef.current;
+        if (el && typeof el.scrollTo === "function") {
+          el.scrollTo({ top: 0, behavior: "smooth" });
+        } else if (el) {
+          el.scrollTop = 0;
+        }
+      } catch {}
+      try {
+        scheduleHeroCollapse(0);
+      } catch {}
+    },
+    [onTabChange, scheduleHeroCollapse]
+  );
 
   // ✅ data (route/stops/owner/perm/comments/lockedOwner)
   const {
@@ -109,28 +231,22 @@ export default function RouteDetailMobile({
     lockedOwnerDoc,
     retryPermCheck,
     authUid, // ✅ reaktif auth
-  } = useRouteDetailData({ routeId, initialRoute, followInitially, ownerFromLink });
+  } = useRouteDetailData({
+    routeId,
+    initialRoute,
+    followInitially,
+    ownerFromLink,
+  });
 
   const routeModel = routeDoc || initialRoute;
 
   // ✅ path canonical
   const rawPath = useMemo(() => {
     const m = routeDoc || initialRoute || {};
-    return (
-      m?.path ||
-      m?.routePath ||
-      m?.polyline ||
-      m?.points ||
-      m?.raw?.path ||
-      m?.raw?.polyline ||
-      []
-    );
+    return m?.path || m?.routePath || m?.polyline || m?.points || m?.raw?.path || m?.raw?.polyline || [];
   }, [routeDoc, initialRoute]);
 
-  const { pts: pathPts, dropped: pathDropped } = useMemo(
-    () => normalizePathForPreview(rawPath),
-    [rawPath]
-  );
+  const { pts: pathPts, dropped: pathDropped } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
 
   // ✅ stops canonical (MapPreview/Quest/GPX için)
   const { stops: stopsForPreview, dropped: stopsDropped } = useMemo(
@@ -228,12 +344,11 @@ export default function RouteDetailMobile({
     const offRoute = !!ghostMetrics?.offRoute;
     const canFinish = !!ghostMetrics?.canFinish;
 
-    // ✅ FIX: reaktif auth (auth.currentUser değil)
     const isAuthed = !!String(authUid || "").trim();
 
     let disabledReason = "";
     if (!hasPath) disabledReason = "Bu rotada iz bulunamadı.";
-    else if (!hasStops) disabledReason = "Buota checkpoint bulunamadı.";
+    else if (!hasStops) disabledReason = "Bu rotada checkpoint bulunamadı.";
 
     const startDisabled = questState !== "idle" || !!disabledReason;
     const finishDisabled = !canFinish || !isAuthed;
@@ -287,13 +402,7 @@ export default function RouteDetailMobile({
               className="route-detail-quest-primary"
               onClick={finishQuest}
               disabled={finishDisabled}
-              title={
-                !isAuthed
-                  ? "Ödül için giriş yapmalısın."
-                  : !canFinish
-                  ? "Bitirmek için en az %85 tamamla."
-                  : ""
-              }
+              title={!isAuthed ? "Ödül için giriş yapmalısın." : !canFinish ? "Bitirmek için en az %85 tamamla." : ""}
             >
               Bitir ve ödülü al
             </button>
@@ -335,7 +444,7 @@ export default function RouteDetailMobile({
     setGalleryTabActive,
   } = useRouteDetailMedia({ routeId, routeDoc, stops, tab });
 
-  // ✅ merge routeBodyRef for anchors (no behavior change)
+  // ✅ merge routeBodyRef for anchors + mainBodyRef (single scroll authority)
   const setRouteBodyEl = useCallback(
     (el) => {
       try {
@@ -344,8 +453,17 @@ export default function RouteDetailMobile({
       try {
         routeBodyRefForAnchors.current = el;
       } catch {}
+      try {
+        mainBodyRef.current = el;
+      } catch {}
+
+      // ✅ initial collapse sync
+      try {
+        const st = typeof el?.scrollTop === "number" ? el.scrollTop : 0;
+        scheduleHeroCollapse(st);
+      } catch {}
     },
-    [routeBodyRef]
+    [routeBodyRef, scheduleHeroCollapse]
   );
 
   // ✅ cover picker hook (medya cache’e bağlı)
@@ -439,18 +557,19 @@ export default function RouteDetailMobile({
     if (tab === "report") loadReportAgg();
   }, [tab, loadReportAgg]);
 
-  // ✅ Gallery aktifliği: tab değil activeSection belirler (scroll-spy)
+  // ✅ Galeri tab active
   useEffect(() => {
-    setGalleryTabActive(activeSection === "gallery");
-  }, [activeSection, setGalleryTabActive]);
+    try {
+      setGalleryTabActive(tab === "gallery");
+    } catch {}
+  }, [tab, setGalleryTabActive]);
 
-  // ✅ Edit modda view-only (report) açık kalmasın + comments overlay kapanır
+  // ✅ Edit modda: report kapalı + comments overlay kapanır
   useEffect(() => {
     if (!isEditMode) return;
-    if (tab === "report") onTabChange("stops");
+    if (tab === "report") handleTabChange("stops");
     if (commentsOverlayOpen) setCommentsOverlayOpen(false);
-    if (activeSection === "comments") setActiveSection("stops");
-  }, [isEditMode, tab, onTabChange, commentsOverlayOpen, activeSection, setActiveSection]);
+  }, [isEditMode, tab, commentsOverlayOpen, handleTabChange]);
 
   // ✅ ESC behavior
   useEffect(() => {
@@ -500,7 +619,7 @@ export default function RouteDetailMobile({
     blockInteractionsBriefly,
   ]);
 
-  // ✅ Hero model (Paket 02: ownerId pass)
+  // ✅ Hero model
   const heroModel = useRDHeroModel({
     routeModel,
     owner,
@@ -510,8 +629,8 @@ export default function RouteDetailMobile({
   });
 
   // ✅ Actions
-  const { onShare, onExportGpx, canRateRoute, onRouteRate, onStopRate, isFav, onToggleFav, canToggleFav } = useRDActions(
-    {
+  const { onShare, onExportGpx, canRateRoute, onRouteRate, onStopRate, isFav, onToggleFav, canToggleFav } =
+    useRDActions({
       routeId,
       routeDoc,
       initialRoute,
@@ -519,8 +638,7 @@ export default function RouteDetailMobile({
       ownerFromLink,
       stopsForPreview,
       pathPts,
-    }
-  );
+    });
 
   // ✅ cover resolve
   const coverUi = useMemo(
@@ -649,46 +767,58 @@ export default function RouteDetailMobile({
       data-theme-anim={themeAnimOn ? "1" : "0"}
       onClick={handleBackdropClick}
     >
-      <div className="route-detail-sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="route-detail-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
-        <RouteDetailHeroMobile
-          coverResolved={coverUi.coverResolved}
-          handleImgLoadProof={handleImgLoadProof}
-          handleImgErrorToDefault={handleImgErrorToDefault}
-          heroMenuOpen={heroMenuOpen}
-          toggleHeroMenu={toggleHeroMenu}
-          closeHeroMenu={closeHeroMenu}
-          enterEdit={enterEdit}
-          exitEdit={exitEdit}
-          isOwner={!!isOwner}
-          isEditMode={isEditMode}
-          onClose={onClose}
-          onShare={onShare}
-          onExportGpx={onExportGpx}
-          onToggleTheme={onToggleTheme}
-          onOpenReport={() => onTabChange("report")}
-          onOpenShareSheet={() => setShowShareSheet(true)}
-          rdTheme={rdTheme}
-          heroCategory={heroModel.heroCategory}
-          heroTitle={heroModel.heroTitle}
-          heroStarsModel={heroModel.heroStarsModel}
-          heroRatingBadgeText={heroModel.heroExplorerLabel || `${heroModel.heroCategory || "Macera"}: 0 Kaşif`}
-          heroAvgRating={heroModel.heroRatingInfo?.avg}
-          ownerName={heroModel.ownerName}
-          ownerAvatarUrl={heroModel.ownerAvatarUrl}
-          timeAgoLine={heroModel.timeAgoLine}
-          ownerState={heroModel.ownerState}
-          isFav={isFav}
-          onToggleFav={onToggleFav}
-          canToggleFav={canToggleFav}
-          requestOpenProfile={requestOpenProfile}
-        />
+        {/* ✅ Scroll anchoring loop kırıcı: hero bölgesi anchor olmasın */}
+        <div style={{ overflowAnchor: "none" }}>
+          <RouteDetailHeroMobile
+            coverResolved={coverUi.coverResolved}
+            handleImgLoadProof={handleImgLoadProof}
+            handleImgErrorToDefault={handleImgErrorToDefault}
+            heroMenuOpen={heroMenuOpen}
+            toggleHeroMenu={toggleHeroMenu}
+            closeHeroMenu={closeHeroMenu}
+            enterEdit={enterEdit}
+            exitEdit={exitEdit}
+            isOwner={!!isOwner}
+            isEditMode={isEditMode}
+            onClose={onClose}
+            onShare={onShare}
+            onExportGpx={onExportGpx}
+            onToggleTheme={onToggleTheme}
+            onOpenReport={() => handleTabChange("report")}
+            onOpenShareSheet={() => setShowShareSheet(true)}
+            rdTheme={rdTheme}
+            heroCategory={heroModel.heroCategory}
+            heroTitle={heroModel.heroTitle}
+            heroStarsModel={heroModel.heroStarsModel}
+            heroRatingBadgeText={heroModel.heroExplorerLabel || "(0 Kaşif)"}
+            heroAvgRating={heroModel.heroRatingInfo?.avg}
+            ownerName={heroModel.ownerName}
+            ownerAvatarUrl={heroModel.ownerAvatarUrl}
+            timeAgoLine={heroModel.timeAgoLine}
+            ownerState={heroModel.ownerState}
+            isFav={isFav}
+            onToggleFav={onToggleFav}
+            canToggleFav={canToggleFav}
+            requestOpenProfile={requestOpenProfile}
+          />
+        </div>
 
-        <div className="route-detail-body" ref={setRouteBodyEl} style={{ "--rd-sticky-tabs-h": `${tabsBarH}px` }}>
+        <div
+          className="route-detail-body"
+          ref={setRouteBodyEl}
+          style={{
+            "--rd-sticky-tabs-h": `${tabsBarH}px`,
+            overflowAnchor: "none",
+            overscrollBehavior: "contain",
+          }}
+          onScroll={(e) => scheduleHeroCollapse(e.currentTarget.scrollTop)}
+        >
           <RouteDetailStickyTabsMobile
-            activeSection={activeSection}
-            onTabChange={onTabChange}
+            activeTab={tab || activeSection || "stops"}
+            onTabChange={handleTabChange}
             canInteract={canInteract}
             tabsBarRef={tabsBarRef}
             routeDescText={heroModel.routeDescText}
@@ -731,7 +861,6 @@ export default function RouteDetailMobile({
 
           {!isEditMode && <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />}
 
-          {/* ✅ FIX: RouteDetailSectionsMobile zaten .rd-sections döndürüyor, burada tekrar sarmalama yok */}
           <RouteDetailSectionsMobile
             stopsSectionRef={stopsSectionRef}
             gallerySectionRef={gallerySectionRef}

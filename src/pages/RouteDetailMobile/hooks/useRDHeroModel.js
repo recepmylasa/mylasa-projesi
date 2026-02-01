@@ -19,15 +19,9 @@ export default function useRDHeroModel({
   stopsForPreview,
   ownerId,
 }) {
-  const ratingAvgLabel = useMemo(
-    () => getRouteRatingLabelSafe(routeModel),
-    [routeModel]
-  );
+  const ratingAvgLabel = useMemo(() => getRouteRatingLabelSafe(routeModel), [routeModel]);
 
-  const stats = useMemo(
-    () => (routeModel ? buildStatsFromRoute(routeModel) : null),
-    [routeModel]
-  );
+  const stats = useMemo(() => (routeModel ? buildStatsFromRoute(routeModel) : null), [routeModel]);
 
   const { key: audienceKey, label: audienceLabel } = useMemo(
     () => getAudienceFromRoute(routeModel || {}),
@@ -72,13 +66,7 @@ export default function useRDHeroModel({
   const routeDescText = useMemo(() => {
     try {
       const m = routeModel || {};
-      const raw =
-        m?.description ||
-        m?.summary ||
-        m?.text ||
-        m?.about ||
-        m?.notes ||
-        "";
+      const raw = m?.description || m?.summary || m?.text || m?.about || m?.notes || "";
       if (typeof raw !== "string") return "";
       return raw.trim();
     } catch {
@@ -89,31 +77,14 @@ export default function useRDHeroModel({
   const mapAreaLabel = useMemo(() => {
     try {
       const m = routeModel || {};
-      const cityRaw =
-        m?.city ||
-        m?.province ||
-        m?.il ||
-        m?.state ||
-        m?.region ||
-        m?.locationCity ||
-        m?.location?.city ||
-        "";
-      const districtRaw =
-        m?.district ||
-        m?.ilce ||
-        m?.town ||
-        m?.locationDistrict ||
-        m?.location?.district ||
-        "";
+      const cityRaw = m?.city || m?.province || m?.il || m?.state || m?.region || m?.locationCity || m?.location?.city || "";
+      const districtRaw = m?.district || m?.ilce || m?.town || m?.locationDistrict || m?.location?.district || "";
 
       const city = String(cityRaw || "").trim();
       const district = String(districtRaw || "").trim();
 
       const a = district || city;
-      const b =
-        district && city && city.toLowerCase() !== district.toLowerCase()
-          ? city
-          : "";
+      const b = district && city && city.toLowerCase() !== district.toLowerCase() ? city : "";
 
       const out = [a, b].filter(Boolean).join(" / ");
       return out ? out.toLocaleUpperCase("tr-TR") : "";
@@ -137,15 +108,7 @@ export default function useRDHeroModel({
     const isBad = (v) => {
       const x = String(v || "").trim().toLowerCase();
       if (!x) return true;
-      if (
-        x === "unknown" ||
-        x === "-" ||
-        x === "n/a" ||
-        x === "na" ||
-        x === "null" ||
-        x === "undefined"
-      )
-        return true;
+      if (x === "unknown" || x === "-" || x === "n/a" || x === "na" || x === "null" || x === "undefined") return true;
       return false;
     };
 
@@ -189,20 +152,13 @@ export default function useRDHeroModel({
   const resolvedOwnerId = useMemo(() => {
     try {
       const m = routeModel || {};
-      const id =
-        ownerId ||
-        owner?.id ||
-        lockedOwnerDoc?.id ||
-        m?.ownerId ||
-        m?.owner ||
-        null;
+      const id = ownerId || owner?.id || lockedOwnerDoc?.id || m?.ownerId || m?.owner || null;
       return id ? String(id) : "";
     } catch {
       return "";
     }
   }, [ownerId, owner?.id, lockedOwnerDoc?.id, routeModel]);
 
-  // ✅ Avatar: profil → locked → route
   const ownerAvatarUrl = useMemo(() => {
     const m = routeModel || {};
     const locked = lockedOwnerDoc || {};
@@ -237,21 +193,11 @@ export default function useRDHeroModel({
     return fetchedA || cachedA || routeA || "";
   }, [owner, lockedOwnerDoc, routeModel]);
 
-  // ✅ PROFİL PARİTESİ: username/handle ÖNCE, sonra displayName/ad-soyad
   const ownerName = useMemo(() => {
     const isBad = (s) => {
       const x = String(s || "").trim().toLowerCase();
       if (!x) return true;
-      // yasak placeholder’lar
-      if (
-        x === "yazar" ||
-        x === "author" ||
-        x === "unknown" ||
-        x === "kullanıcı" ||
-        x === "kullanici" ||
-        x === "user"
-      )
-        return true;
+      if (x === "yazar" || x === "author" || x === "unknown" || x === "kullanıcı" || x === "kullanici" || x === "user") return true;
       return false;
     };
 
@@ -261,7 +207,6 @@ export default function useRDHeroModel({
     const locked = lockedOwnerDoc || {};
     const fetched = owner || {};
 
-    // 1) Profilde görünen şey genelde username/handle -> bunu ÖNCE dene
     const primaryCandidates = [
       fetched?.kullaniciAdi,
       fetched?.kullaniciadi,
@@ -279,7 +224,6 @@ export default function useRDHeroModel({
       locked?.nick,
       locked?.screenName,
 
-      // route snapshot alanları (varsa)
       m?.ownerUsername,
       m?.ownerKullaniciAdi,
       m?.ownerKullaniciadi,
@@ -287,7 +231,6 @@ export default function useRDHeroModel({
       m?.ownerUserName,
     ];
 
-    // 2) Sonra displayName / ad-soyad vb.
     const secondaryCandidates = [
       fetched?.displayName,
       fetched?.adSoyad,
@@ -321,7 +264,6 @@ export default function useRDHeroModel({
       if (!isBad(c)) return c;
     }
 
-    // ✅ güvenli fallback
     const id = norm(resolvedOwnerId);
     if (id) {
       const short = id.slice(-4).toUpperCase();
@@ -330,7 +272,6 @@ export default function useRDHeroModel({
     return "Kullanıcı";
   }, [owner, lockedOwnerDoc, routeModel, resolvedOwnerId]);
 
-  // ✅ owner state machine (loading/ready/fallback) — alan seti genişletildi
   const ownerState = useMemo(() => {
     const hasAnyIdentity = (o) => {
       if (!o) return false;
@@ -424,8 +365,7 @@ export default function useRDHeroModel({
 
   const heroStarsModel = useMemo(() => {
     const avg = heroRatingInfo?.avg;
-    if (typeof avg !== "number" || !Number.isFinite(avg))
-      return { full: 0, half: false, empty: 5 };
+    if (typeof avg !== "number" || !Number.isFinite(avg)) return { full: 0, half: false, empty: 5 };
 
     const a = Math.max(0, Math.min(5, avg));
     const baseFull = Math.floor(a);
@@ -472,10 +412,9 @@ export default function useRDHeroModel({
   }, [routeModel, heroRatingInfo]);
 
   const heroExplorerLabel = useMemo(() => {
-    const cat = String(heroCategory || "Macera").trim() || "Macera";
     const n = Math.max(0, Number(heroExplorerCount) || 0);
-    return `${cat}: ${n} Kaşif`;
-  }, [heroCategory, heroExplorerCount]);
+    return `(${n} Kaşif)`;
+  }, [heroExplorerCount]);
 
   return {
     ratingAvgLabel,

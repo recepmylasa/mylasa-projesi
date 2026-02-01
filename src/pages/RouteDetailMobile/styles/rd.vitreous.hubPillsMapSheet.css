@@ -4,19 +4,34 @@
    EMİR 4B (CSS fail-safe): "Yazar" alt label görünmesin
 */
 
+/* =========================================================
+   ✅ EMİR — TEK MERKEZ ÖLÇÜSÜ (hub/pills/desc/map)
+   ========================================================= */
+.route-detail-backdrop {
+  /* RouteDetailMobile.css set ediyor ama burada da fail-safe */
+  --rd-center-gutter: 14px;
+  --rd-center-max: 560px;
+}
+
 /* -------------------- AUTHOR HUB (Hero’dan taşan cam pill) -------------------- */
 .route-detail-backdrop .rd-author-hub {
   position: relative;
-  z-index: 10;
 
-  /* ✅ EMİR 3: daha fazla overlap + ortalı */
+  /* ✅ FIX: Map'in üstünde kalsın (stacking context breaker) */
+  z-index: 90;
+  isolation: isolate;
+  transform: translateZ(0);
+  will-change: transform;
+
+  /* ✅ EMİR 3: overlap + ortalı */
   margin-top: calc(-1 * var(--rd-author-overlap));
-  margin-right: auto;
   margin-left: auto;
+  margin-right: auto;
   margin-bottom: 14px;
 
-  width: calc(100% - 28px);
-  max-width: 520px;
+  /* ✅ Tek merkez ölçüsü */
+  width: calc(100% - (var(--rd-center-gutter) * 2));
+  max-width: var(--rd-center-max);
 
   padding: 12px 12px;
   border-radius: 18px;
@@ -24,6 +39,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
+
+  pointer-events: auto;
 
   /* ✅ Glass */
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -36,7 +53,7 @@
 .route-detail-backdrop.route-detail-light .rd-author-hub,
 .route-detail-backdrop[data-theme="light"] .rd-author-hub {
   border-color: rgba(15, 23, 42, 0.10);
-  background: rgba(255, 255, 255, 0.54); /* cover camın içinden görünsün */
+  background: rgba(255, 255, 255, 0.54);
   box-shadow: 0 18px 34px rgba(2, 6, 23, 0.10);
 }
 
@@ -98,9 +115,16 @@
 
 /* -------------------- Tabs Pills + Açıklama -------------------- */
 .route-detail-backdrop .rd-pills-block {
-  margin: 0 14px 10px !important; /* ✅ EMİR 3: hub ile nefes */
+  /* ✅ tek merkez ölçüsü + ortalama */
+  width: calc(100% - (var(--rd-center-gutter) * 2));
+  max-width: var(--rd-center-max);
+  margin: 0 auto 10px !important;
+
   padding: 10px 10px;
   border-radius: 18px;
+
+  /* sayfa taşması fail-safe */
+  overflow: hidden;
 }
 
 .route-detail-backdrop .rd-pills-block .rd-pills-row,
@@ -112,6 +136,7 @@
   align-items: center;
   justify-content: flex-start;
   width: 100%;
+  min-width: 0;
 }
 
 .route-detail-backdrop .rd-pills-block button {
@@ -119,6 +144,8 @@
   line-height: var(--rd-pill-h);
   border-radius: 999px;
   padding: 0 10px;
+
+  /* ✅ 4 buton eşit bölüşsün ve taşırmasın */
   flex: 1 1 0;
   min-width: 0;
 
@@ -150,7 +177,10 @@
 
 /* Açıklama metni */
 .route-detail-backdrop .rd-route-desc {
-  margin: 8px 14px 12px !important;
+  width: calc(100% - (var(--rd-center-gutter) * 2));
+  max-width: var(--rd-center-max);
+  margin: 8px auto 12px !important;
+
   font-size: 13px;
   line-height: 1.42;
   color: var(--rd-muted);
@@ -159,9 +189,42 @@
 /* -------------------- Map Card chrome -------------------- */
 .route-detail-backdrop .rd-map-card {
   position: relative;
-  margin: 10px 14px 0 !important;
+
+  /* ✅ FIX: map dış katmanda üstte davranmasın */
+  z-index: 10;
+  isolation: isolate;
+  transform: translateZ(0);
+
+  /* ✅ tek merkez ölçüsü + ortalama */
+  width: calc(100% - (var(--rd-center-gutter) * 2));
+  max-width: var(--rd-center-max);
+  margin: 10px auto 0 !important;
+
   border-radius: var(--rd-map-radius);
   overflow: hidden;
+
+  /* yatay taşma fail-safe */
+  max-width: min(var(--rd-center-max), calc(100vw - (var(--rd-center-gutter) * 2)));
+  contain: paint;
+}
+
+/* ✅ Map iç wrapper’lar asla kartın dışına taşmasın */
+.route-detail-backdrop .rd-map-card .route-detail-map,
+.route-detail-backdrop .rd-map-card .rd-map,
+.route-detail-backdrop .rd-map-card .rdmps,
+.route-detail-backdrop .rd-map-card .rdmps-shell,
+.route-detail-backdrop .rd-map-card .rdmps-root,
+.route-detail-backdrop .rd-map-card .rdmps-map,
+.route-detail-backdrop .rd-map-card__canvas {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden;
+}
+
+/* ✅ FIX: Google Maps iç katmanı dış stacking’e taşmasın */
+.route-detail-backdrop .rd-map-card .gm-style,
+.route-detail-backdrop .rd-map-card .gm-style > div {
+  z-index: 0 !important;
 }
 
 .route-detail-backdrop .rd-map-card .route-detail-map,

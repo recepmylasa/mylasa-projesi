@@ -1,19 +1,31 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.hero.css */
 /* EMİR 1 (GENİŞLETİLMİŞ) — RouteDetailMobile Hero + Floating Interaction Hub (Flash paritesi)
-   - ✅ EMİR-Flash-1: Title placeholder yok → skeleton
-   - ✅ EMİR-Flash-1: Badge text “(${N} Kaşif)”
+   - ✅ Title placeholder yok → skeleton
+   - ✅ Badge text “(${N} Kaşif)”
+   - ✅ Hero collapse CSS vars (JS set eder): --rd-hero-h / --rd-hero-info-o / --rd-hero-info-y / --rd-hero-img-scale / --rd-hero-hub-y
 */
 
-/* ✅ EMİR 1 — Tuning knobs (scoped) */
+/* ✅ EMİR 1 — Tuning knobs + collapse vars (scoped) */
 .route-detail-backdrop {
   --rd-hero-hub-overlap: 14px;
   --rd-hero-nav-top: 12px;
+
+  /* Collapsible defaults (JS override eder) */
+  --rd-hero-h: clamp(300px, 56vh, 540px);
+  --rd-hero-info-o: 1;
+  --rd-hero-info-y: 0px;
+  --rd-hero-img-scale: 1.045;
+  --rd-hero-hub-y: 0px;
 }
+
+/* =========================================================
+   HERO ROOT
+   ========================================================= */
 
 .route-detail-hero {
   position: relative;
   width: 100%;
-  height: clamp(300px, 56vh, 540px);
+  height: var(--rd-hero-h, clamp(300px, 56vh, 540px));
   overflow: visible;
   border-bottom: 1px solid var(--rd-border);
   transform: translateZ(0);
@@ -22,14 +34,15 @@
 
 @supports (height: 100dvh) {
   .route-detail-hero {
-    height: clamp(300px, 56dvh, 540px);
+    height: var(--rd-hero-h, clamp(300px, 56dvh, 540px));
   }
 }
 
+/* Ambient copper glow */
 .route-detail-hero::before {
   content: "";
   position: absolute;
-  inset: -24px -24px -24px -24px;
+  inset: -24px;
   z-index: 1;
   pointer-events: none;
   opacity: 0.18;
@@ -37,6 +50,10 @@
     radial-gradient(720px 320px at 18% 6%, rgba(251, 146, 60, 0.14), transparent 72%),
     radial-gradient(640px 280px at 82% 10%, rgba(184, 115, 51, 0.12), transparent 70%);
 }
+
+/* =========================================================
+   HERO MEDIA
+   ========================================================= */
 
 .route-detail-hero__media {
   position: absolute;
@@ -50,14 +67,17 @@
   object-fit: cover;
   object-position: 50% 34%;
   display: block;
-  transform: scale(1.045);
+  transform: scale(var(--rd-hero-img-scale, 1.045));
 }
 
 .route-detail-hero__media img {
-  transform: scale(1.045);
+  transform: scale(var(--rd-hero-img-scale, 1.045));
 }
 
-/* ✅ 2 katman overlay */
+/* =========================================================
+   OVERLAYS
+   ========================================================= */
+
 .rd-hero__overlay {
   position: absolute;
   inset: 0;
@@ -107,7 +127,10 @@
   );
 }
 
-/* ✅ Nav bar */
+/* =========================================================
+   NAV BAR
+   ========================================================= */
+
 .route-detail-hero__nav {
   position: absolute;
   top: 12px;
@@ -164,7 +187,16 @@
   min-width: 40px;
 }
 
-/* ✅ Menu */
+.rd-hero-nav-btn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* =========================================================
+   HERO MENU
+   ========================================================= */
+
 .rd-hero-menu {
   position: absolute;
   top: 56px;
@@ -232,7 +264,10 @@
   white-space: nowrap;
 }
 
-/* ✅ Hero info (Flash gibi ÜST SOL) */
+/* =========================================================
+   HERO INFO (FLASH: TOP-LEFT)
+   ========================================================= */
+
 .rd-hero__info {
   position: absolute;
   left: 20px;
@@ -244,6 +279,11 @@
   flex-direction: column;
   gap: 10px;
   pointer-events: none;
+
+  /* Collapse vars */
+  opacity: var(--rd-hero-info-o, 1);
+  transform: translateY(var(--rd-hero-info-y, 0px));
+  will-change: transform, opacity;
 }
 
 .rd-hero__pill {
@@ -280,9 +320,9 @@
   text-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
 }
 
-/* ✅ Title skeleton — EMİR PAKETİ 2: layout sabit (2 satır alanı) */
+/* Title skeleton (2 satır alanı) */
 .rd-hero__titleSkeleton {
-  height: 72px; /* ✅ önce 34px’ti → layout kaymasın diye 2 satır */
+  height: 72px;
   width: min(320px, 84%);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.12);
@@ -330,7 +370,11 @@
 }
 
 .rd-hero__star--half {
-  background: linear-gradient(90deg, var(--rd-copper-glow, rgba(251, 146, 60, 1)) 50%, rgba(255, 255, 255, 0.25) 50%);
+  background: linear-gradient(
+    90deg,
+    var(--rd-copper-glow, rgba(251, 146, 60, 1)) 50%,
+    rgba(255, 255, 255, 0.25) 50%
+  );
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -346,7 +390,7 @@
   color: rgba(0, 0, 0, 0.22);
 }
 
-/* ✅ Badge */
+/* Badge */
 .rd-hero__ratingBadge {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
@@ -367,14 +411,38 @@
   text-overflow: ellipsis;
 }
 
-/* ✅ Floating Interaction Hub */
+/* Opsiyonel meta satırı (component basıyorsa) */
+.rd-hero__metaLine {
+  font-size: 12px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 10px 22px rgba(0, 0, 0, 0.22);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.route-detail-backdrop[data-theme="light"] .rd-hero__metaLine,
+.route-detail-backdrop.route-detail-light .rd-hero__metaLine {
+  color: rgba(0, 0, 0, 0.66);
+  text-shadow: 0 10px 22px rgba(0, 0, 0, 0.10);
+}
+
+/* =========================================================
+   FLOATING INTERACTION HUB
+   ========================================================= */
+
 .rd-hero__hub {
   position: absolute;
   left: 20px;
   right: 20px;
   width: auto;
   max-width: none;
-  transform: none;
+
+  /* Collapse var */
+  transform: translateY(var(--rd-hero-hub-y, 0px));
+  will-change: transform;
+
   bottom: 28px;
   height: 64px;
   z-index: 6;
@@ -413,6 +481,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+.rd-hero__hubProfile:active {
+  transform: translateY(1px);
+}
+
 .rd-hero__hubProfile:focus-visible {
   outline: none;
   box-shadow: var(--rd-focus-ring, none);
@@ -443,7 +515,38 @@
   color: var(--rd-text);
 }
 
-/* ✅ Skeleton */
+/* Author meta */
+.rd-hero__authorMeta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rd-hero__authorName {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--rd-text);
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rd-hero__time {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--rd-muted);
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* =========================================================
+   SKELETONS (AVATAR + LINES)
+   ========================================================= */
+
 .rd-hero__avatarSkeleton {
   width: 100%;
   height: 100%;
@@ -486,7 +589,7 @@
   .rd-hero__titleSkeleton::after {
     animation: none;
     transform: none;
-    opacity: 0.0;
+    opacity: 0;
   }
 }
 
@@ -501,34 +604,10 @@
   opacity: 0.9;
 }
 
-.rd-hero__authorMeta {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
+/* =========================================================
+   FAV (BOOKMARK) BUTTON
+   ========================================================= */
 
-.rd-hero__authorName {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--rd-text);
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.rd-hero__time {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--rd-muted);
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ✅ Kaydet button */
 .rd-hero__favBtn {
   height: 40px;
   width: 40px;
@@ -566,6 +645,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: var(--rd-text);
 }
 
 .rd-hero__favIcon svg {
@@ -585,17 +665,28 @@
   text-shadow: 0 0 18px rgba(251, 146, 60, 0.18);
 }
 
-/* ✅ HARD OVERRIDES */
+/* =========================================================
+   COLLAPSE/TRANSITION SAFETY
+   ========================================================= */
+
+.route-detail-backdrop[data-hero-collapsed="1"] .rd-hero__info {
+  pointer-events: none;
+}
+
+/* =========================================================
+   HARD OVERRIDES (FLASH PARİTESİ + ÇAKIŞMA KIRICI)
+   ========================================================= */
+
 .route-detail-backdrop .route-detail-hero {
-  height: clamp(300px, 56vh, 540px) !important;
-  min-height: clamp(300px, 56vh, 540px) !important;
+  height: var(--rd-hero-h, clamp(300px, 56vh, 540px)) !important;
+  min-height: var(--rd-hero-h, clamp(300px, 56vh, 540px)) !important;
   overflow: visible !important;
 }
 
 @supports (height: 100dvh) {
   .route-detail-backdrop .route-detail-hero {
-    height: clamp(300px, 56dvh, 540px) !important;
-    min-height: clamp(300px, 56dvh, 540px) !important;
+    height: var(--rd-hero-h, clamp(300px, 56dvh, 540px)) !important;
+    min-height: var(--rd-hero-h, clamp(300px, 56dvh, 540px)) !important;
   }
 }
 
@@ -613,13 +704,13 @@
   background: none !important;
 }
 
-/* ✅ Title görünürlüğü kilidi (başka override varsa ezsin) */
+/* Title görünürlüğü kilidi */
 .route-detail-backdrop .rd-hero__title {
   opacity: 1 !important;
   visibility: visible !important;
 }
 
-/* ✅ ÇİFT HUB KIRICI */
+/* Çift hub kırıcı */
 .route-detail-backdrop .rd-author-hub {
   display: none !important;
 }

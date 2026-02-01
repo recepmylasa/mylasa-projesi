@@ -17,22 +17,55 @@ export default function RouteDetailGalleryTab({
   const items = Array.isArray(galleryItems) ? galleryItems : [];
   const isLoading = !!galleryState?.loading;
 
-  // Loading + içerik azsa 6–8 skeleton
+  // ✅ Loading + içerik azsa 6–8 skeleton (TOPLAM 8 tile’ı geçmesin)
   const showSkeleton = isLoading && items.length < 6;
-  const skeletonCount = showSkeleton ? Math.max(6, Math.min(8, 8 - items.length)) : 0;
+  const skeletonCount = showSkeleton ? Math.max(0, 8 - items.length) : 0;
 
-  const openAt = (idx) => {
-    if (!canInteract) return;
+  const safeNormalizeMediaType = (it) => {
     try {
-      openLightbox(buildLightboxItems(items), idx);
+      if (typeof normalizeMediaType === "function") return normalizeMediaType(it);
+    } catch {}
+
+    // fallback (crash olmasın)
+    try {
+      const t = String(it?.type || it?.mime || it?.contentType || "").toLowerCase();
+      const u = String(it?.url || "").toLowerCase();
+      if (t.includes("video")) return "video";
+      if (u.match(/\.(mp4|webm|mov|m4v|mkv)(\?|#|$)/i)) return "video";
+    } catch {}
+    return "image";
+  };
+
+  const safeBuildLightboxItems = (arr) => {
+    try {
+      return typeof buildLightboxItems === "function" ? buildLightboxItems(arr) : arr;
+    } catch {
+      return arr;
+    }
+  };
+
+  const safeOpenLightbox = (lbItems, idx) => {
+    if (!canInteract) return;
+    if (typeof openLightbox !== "function") return;
+    try {
+      openLightbox(lbItems, idx);
     } catch {}
   };
 
+  const openAt = (idx) => {
+    safeOpenLightbox(safeBuildLightboxItems(items), idx);
+  };
+
   return (
-    <div className="rdtab rdtab--gallery" data-mode={mode} data-owner={isOwner ? "1" : "0"} data-interact={canInteract ? "1" : "0"}>
+    <div
+      className="rdtab rdtab--gallery"
+      data-mode={mode}
+      data-owner={isOwner ? "1" : "0"}
+      data-interact={canInteract ? "1" : "0"}
+    >
       <div className="rd-gallery" aria-busy={isLoading ? "true" : "false"}>
         {items.map((it, idx) => {
-          const isVideo = normalizeMediaType(it) === "video";
+          const isVideo = safeNormalizeMediaType(it) === "video";
           const key = `${it.stopId || "s"}_${it.id || idx}`;
 
           return (

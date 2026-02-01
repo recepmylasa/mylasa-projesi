@@ -29,14 +29,12 @@ export default function RouteDetailHeroMobile({
   heroStarsModel,
   heroRatingBadgeText,
 
-  // ✅ EMİR PAKETİ 4: avg sadece >0 ise yıldız göster
   heroAvgRating,
 
   ownerName,
   ownerAvatarUrl,
   timeAgoLine,
 
-  // ✅ EMİR PAKETİ 01: owner state machine (loading/ready/fallback)
   ownerState,
 
   isFav,
@@ -45,24 +43,29 @@ export default function RouteDetailHeroMobile({
 
   requestOpenProfile,
 }) {
-  const ownerStatus = ownerState || "loading";
-  const showOwnerSkeleton = ownerStatus === "loading";
-
   const hasOwnerName = !!String(ownerName || "").trim();
+  const hasOwnerAvatar = !!String(ownerAvatarUrl || "").trim();
   const hasTime = !!String(timeAgoLine || "").trim();
   const hasTitle = !!String(heroTitle || "").trim();
+
+  // ✅ FIX: ownerState prop gelmezse "loading" diye kilitlenmesin.
+  // Eğer isim veya avatar varsa asla skeleton gösterme.
+  const derivedOwnerState =
+    ownerState || (hasOwnerName || hasOwnerAvatar ? "fallback" : "loading");
+
+  const showOwnerSkeleton =
+    derivedOwnerState === "loading" && !hasOwnerName && !hasOwnerAvatar;
+
+  const canOpenProfile = typeof requestOpenProfile === "function";
 
   const saveLabel = isFav ? "Kaydedilenlerden çıkar" : "Kaydet";
   const saveTitle = !canToggleFav ? "Kaydetmek için giriş yapmalısın." : saveLabel;
 
-  // ✅ EMİR PAKETİ 3 — Pill her durumda görünür, boş kalmaz
   const categoryText = (heroCategory && String(heroCategory).trim()) || "Macera";
 
-  // ✅ EMİR PAKETİ 4 — avg yalnızca >0 ise görünür
   const avgNum = Number(heroAvgRating);
   const hasAvg = Number.isFinite(avgNum) && avgNum > 0;
 
-  // ✅ FIX: heroStarsModel null/bozuk gelirse crash yok
   const safeStars = (() => {
     const m = heroStarsModel || {};
     const full = Math.max(0, Math.min(5, Number(m.full) || 0));
@@ -222,7 +225,6 @@ export default function RouteDetailHeroMobile({
       </div>
 
       <div className="rd-hero__info" aria-label="Rota özeti">
-        {/* ✅ EMİR PAKETİ 3: pill her durumda görünür */}
         <div className="rd-hero__pill">{categoryText}</div>
 
         {hasTitle ? (
@@ -234,7 +236,6 @@ export default function RouteDetailHeroMobile({
         )}
 
         <div className="rd-hero__ratingRow" aria-label="Rota puanı">
-          {/* ✅ EMİR PAKETİ 4: avg > 0 ise yıldız, yoksa yıldız satırı yok */}
           {hasAvg ? (
             <div className="rd-hero__stars" aria-hidden="true">
               {Array.from({ length: safeStars.full }).map((_, i) => (
@@ -255,10 +256,7 @@ export default function RouteDetailHeroMobile({
             </div>
           ) : null}
 
-          {/* ✅ EMİR PAKETİ 4: format “Kategori: N Kaşif” */}
-          <span className="rd-hero__ratingBadge">
-            {heroRatingBadgeText || `${categoryText}: 0 Kaşif`}
-          </span>
+          <span className="rd-hero__ratingBadge">{heroRatingBadgeText || "(0 Kaşif)"}</span>
         </div>
       </div>
 
@@ -266,12 +264,17 @@ export default function RouteDetailHeroMobile({
         <button
           type="button"
           className="rd-hero__hubProfile"
-          onClick={requestOpenProfile}
-          title="Profili aç"
+          onClick={(e) => {
+            e?.stopPropagation?.();
+            if (!canOpenProfile) return;
+            requestOpenProfile(e);
+          }}
+          disabled={!canOpenProfile}
+          title={canOpenProfile ? "Profili aç" : "Profil verisi yok"}
           aria-label="Profili aç"
         >
           <div className="rd-hero__avatar" aria-hidden="true">
-            {ownerAvatarUrl ? (
+            {hasOwnerAvatar ? (
               <img
                 src={ownerAvatarUrl}
                 alt={hasOwnerName ? ownerName : "Profil fotoğrafı"}
@@ -281,25 +284,29 @@ export default function RouteDetailHeroMobile({
             ) : showOwnerSkeleton ? (
               <span className="rd-hero__avatarSkeleton" aria-hidden="true" />
             ) : (
-              <span className="rd-hero__avatarFallback">
-                {(ownerName && ownerName[0]) || "•"}
-              </span>
+              <span className="rd-hero__avatarFallback">{(ownerName && ownerName[0]) || "•"}</span>
             )}
           </div>
 
           <div className="rd-hero__authorMeta">
-            {!showOwnerSkeleton && hasOwnerName ? (
+            {hasOwnerName ? (
               <div className="rd-hero__authorName" title={ownerName}>
                 {ownerName}
               </div>
-            ) : (
+            ) : showOwnerSkeleton ? (
               <div className="rd-hero__skeletonLine rd-hero__skeletonLine--name" aria-hidden="true" />
+            ) : (
+              <div className="rd-hero__authorName" title="Kullanıcı">
+                Kullanıcı
+              </div>
             )}
 
             {hasTime ? (
-              <div className="rd-hero__time">{timeAgoLine || ""}</div>
-            ) : (
+              <div className="rd-hero__time">{timeAgoLine}</div>
+            ) : showOwnerSkeleton ? (
               <div className="rd-hero__skeletonLine rd-hero__skeletonLine--time" aria-hidden="true" />
+            ) : (
+              <div className="rd-hero__time">—</div>
             )}
           </div>
         </button>
@@ -308,7 +315,10 @@ export default function RouteDetailHeroMobile({
           <button
             type="button"
             className={`rd-hero__favBtn ${isFav ? "is-active" : ""}`}
-            onClick={onToggleFav}
+            onClick={(e) => {
+              e?.stopPropagation?.();
+              onToggleFav(e);
+            }}
             aria-label={saveLabel}
             aria-pressed={!!isFav}
             title={saveTitle}
@@ -325,7 +335,7 @@ export default function RouteDetailHeroMobile({
                 aria-hidden="true"
                 focusable="false"
               >
-                <path d="M6 3h12a1 1 0 0 1 1 1v18l-7-4-7 4V4a1 1 0 0 1 1-1z" />
+                <path d="M6 3h12a1 1 0 0 1 1 1v18l-7-4-7 4V4a1 0 0 1 1-1z" />
               </svg>
             </span>
           </button>

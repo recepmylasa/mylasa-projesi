@@ -3,6 +3,10 @@
 
 @import "./styles/rd.vitreous.tokens.css";
 @import "./styles/rd.vitreous.heroNav.css";
+
+/* ✅ Tab/Pill row garanti (sekme bar görünürlüğü) */
+@import "./styles/rd.vitreous.sectionTabs.css";
+
 @import "./styles/rd.vitreous.hubPillsMapSheet.css";
 @import "./styles/rd.vitreous.parityFallbacks.css";
 @import "./styles/rd.vitreous.stops.css";

@@ -9,13 +9,25 @@
 .route-detail-backdrop .rd-sectionTabsWrap {
   position: sticky;
   top: 0;
-  z-index: 40;
-  padding: 10px 12px 10px;
-  margin: 0 -12px 10px;
-  border-bottom: 1px solid var(--rd-border);
+  z-index: 60;
+
+  /* ✅ TEK MERKEZ ÖLÇÜSÜ (sayfa taşmasını bitirir) */
+  width: calc(100% - (var(--rd-center-gutter, 14px) * 2));
+  max-width: var(--rd-center-max, 560px);
+  margin: 0 auto 10px;
+
+  padding: 10px 10px;
+  border-radius: 18px;
+
+  border: 1px solid var(--rd-border);
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(18px) saturate(160%);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  /* ✅ iç taşmayı kes */
+  overflow: hidden;
+
+  pointer-events: auto;
 }
 
 .route-detail-backdrop[data-theme="light"] .rd-sectionTabsWrap,
@@ -26,14 +38,24 @@
 .route-detail-backdrop .rd-sectionTabs {
   display: flex;
   align-items: center;
+
+  /* ✅ 4 buton eşit bölüşür → iç scroll yok */
   justify-content: space-between;
   gap: 8px;
+
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .route-detail-backdrop .rd-sectionTabBtn {
-  flex: 1;
+  /* ✅ eşit bölüşüm + taşma yok */
+  flex: 1 1 0;
   min-width: 0;
+
   height: 40px;
+  line-height: 40px;
+
   border-radius: 14px;
   border: 1px solid var(--rd-border);
   background: rgba(255, 255, 255, 0.06);
@@ -41,16 +63,22 @@
   font-weight: 800;
   font-size: 13px;
   letter-spacing: -0.1px;
+
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+
   backdrop-filter: blur(14px) saturate(150%);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
+
   position: relative;
   overflow: hidden;
   padding: 0 10px;
+
   white-space: nowrap;
   text-overflow: ellipsis;
+
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 80ms ease;
 }
 
 .route-detail-backdrop .rd-sectionTabBtn:disabled {
@@ -60,6 +88,11 @@
 
 .route-detail-backdrop .rd-sectionTabBtn:active {
   transform: translateY(1px);
+}
+
+.route-detail-backdrop .rd-sectionTabBtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.22);
 }
 
 .route-detail-backdrop .rd-sectionTabBtn.is-active {
@@ -142,6 +175,9 @@
   padding: 14px 14px;
   backdrop-filter: blur(18px) saturate(160%);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  /* ✅ sayfa taşma fail-safe */
+  max-width: 100%;
 }
 
 .route-detail-backdrop[data-theme="light"] .rd-commentsCard,

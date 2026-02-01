@@ -1,37 +1,29 @@
 // FILE: src/pages/RouteDetailMobile/hooks/useRDAnchors.js
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function useRDAnchors({ routeId, routeBodyRef }) {
-  // ✅ URL’den “tab” okuma (EMİR 3: comments/gpx dahil)
+  const TAB_KEYS = useMemo(() => ["stops", "gallery", "comments", "gpx", "report"], []);
+
   const readTabFromUrl = useCallback(() => {
     if (typeof window === "undefined") return "stops";
     try {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t === "gallery" || t === "report" || t === "comments" || t === "stops" || t === "gpx") return t;
+      if (TAB_KEYS.includes(t)) return t;
     } catch {}
     return "stops";
-  }, []);
+  }, [TAB_KEYS]);
 
-  // ✅ tab + URL sync (artık anchor sekmeleri de bu “tab” ile yazıyoruz; scroll-spy URL spam yapmaz)
   const [tab, setTab] = useState(() => readTabFromUrl());
-  const onTabChange = useCallback((nextTab) => {
-    setTab(nextTab);
-    if (typeof window === "undefined") return;
-    try {
-      const url = new URL(window.location.href);
-      if (!nextTab || nextTab === "stops") url.searchParams.delete("tab");
-      else url.searchParams.set("tab", nextTab);
-      window.history.replaceState(window.history.state, "", url.toString());
-    } catch {}
-  }, []);
-
-  // ✅ EMİR 3 — Anchor sekme state (UI highlight) + ölçüm
   const [activeSection, setActiveSection] = useState(() => {
     const t = readTabFromUrl();
-    if (t === "stops" || t === "gallery" || t === "comments" || t === "gpx") return t;
-    return "stops";
+    return t === "report" ? "report" : t || "stops";
   });
+
+  const activeRef = useRef(activeSection);
+  useEffect(() => {
+    activeRef.current = activeSection;
+  }, [activeSection]);
 
   const tabsBarRef = React.useRef(null);
   const [tabsBarH, setTabsBarH] = useState(56);
@@ -42,7 +34,15 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
   const gpxSectionRef = React.useRef(null);
   const reportSectionRef = React.useRef(null);
 
-  // ✅ Sticky sekme bar yükseklik ölçümü
+  const getScrollEl = useCallback(() => {
+    try {
+      return routeBodyRef?.current || document.querySelector(".route-detail-body");
+    } catch {
+      return null;
+    }
+  }, [routeBodyRef]);
+
+  // Sticky bar height
   useEffect(() => {
     const el = tabsBarRef.current;
     if (!el) return;
@@ -71,27 +71,22 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
     };
   }, []);
 
-  // ✅ Scroll helpers
-  const getScrollEl = useCallback(() => {
-    try {
-      return routeBodyRef?.current || document.querySelector(".route-detail-body");
-    } catch {
-      return null;
-    }
-  }, [routeBodyRef]);
+  const getTargetRef = useCallback((key) => {
+    if (key === "stops") return stopsSectionRef;
+    if (key === "gallery") return gallerySectionRef;
+    if (key === "comments") return commentsSectionRef;
+    if (key === "gpx") return gpxSectionRef;
+    if (key === "report") return reportSectionRef;
+    return stopsSectionRef;
+  }, []);
 
   const scrollToSection = useCallback(
     (key, opts = { smooth: true }) => {
       const sc = getScrollEl();
       if (!sc) return;
 
-      let target = null;
-      if (key === "stops") target = stopsSectionRef.current;
-      else if (key === "gallery") target = gallerySectionRef.current;
-      else if (key === "comments") target = commentsSectionRef.current;
-      else if (key === "gpx") target = gpxSectionRef.current;
-      else if (key === "report") target = reportSectionRef.current;
-
+      const ref = getTargetRef(key);
+      const target = ref?.current;
       if (!target) return;
 
       try {
@@ -107,93 +102,173 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
         });
       } catch {
         try {
-          target.scrollIntoView({ behavior: opts?.smooth === false ? "auto" : "smooth", block: "start" });
+          target.scrollIntoView({
+            behavior: opts?.smooth === false ? "auto" : "smooth",
+            block: "start",
+          });
         } catch {}
       }
     },
-    [getScrollEl, tabsBarH]
+    [getScrollEl, getTargetRef, tabsBarH]
   );
 
-  // ✅ tab değişince (URL / click) ilgili anchor’a kaydır (scroll-spy URL spam yapmaz)
-  const didInitialAnchorRef = React.useRef(false);
+  const writeTabToUrl = useCallback((safe) => {
+    if (typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      if (safe && safe !== "stops") url.searchParams.set("tab", safe);
+      else url.searchParams.delete("tab");
+      window.history.replaceState(window.history.state, "", url.toString());
+    } catch {}
+  }, []);
+
+  // ✅ NEW: Conditional mount uyumu (tek içerik kuralı)
+  // Tab değişince section bazen bir frame sonra mount olur → raf retry ile garanti.
+  const scrollJobRef = useRef({ raf: 0, timer: 0 });
+
+  const cancelScrollJob = useCallback(() => {
+    try {
+      if (scrollJobRef.current.timer) {
+        window.clearTimeout(scrollJobRef.current.timer);
+        scrollJobRef.current.timer = 0;
+      }
+    } catch {}
+    try {
+      if (scrollJobRef.current.raf) {
+        window.cancelAnimationFrame(scrollJobRef.current.raf);
+        scrollJobRef.current.raf = 0;
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    return () => cancelScrollJob();
+  }, [cancelScrollJob]);
+
+  const scheduleScrollToSection = useCallback(
+    (key, opts = { smooth: true }) => {
+      if (typeof window === "undefined") return;
+
+      cancelScrollJob();
+
+      const start = Date.now();
+      const maxMs = 700; // mount + layout için yeterli
+      const maxTries = 24;
+
+      const attempt = (tries) => {
+        const sc = getScrollEl();
+        const target = getTargetRef(key)?.current;
+
+        if (sc && target) {
+          scrollToSection(key, opts);
+          return;
+        }
+
+        if (tries >= maxTries) return;
+        if (Date.now() - start > maxMs) return;
+
+        scrollJobRef.current.raf = window.requestAnimationFrame(() => attempt(tries + 1));
+      };
+
+      // önce micro-delay, sonra raf loop
+      scrollJobRef.current.timer = window.setTimeout(() => attempt(0), 0);
+    },
+    [cancelScrollJob, getScrollEl, getTargetRef, scrollToSection]
+  );
+
+  const onTabChange = useCallback(
+    (nextTab) => {
+      const safe = TAB_KEYS.includes(nextTab) ? nextTab : "stops";
+      setTab(safe);
+
+      // UI highlight
+      setActiveSection(safe === "report" ? "report" : safe);
+
+      writeTabToUrl(safe);
+
+      // ✅ tek içerik kuralı: section mount'u bekleyerek scroll
+      scheduleScrollToSection(safe, { smooth: true });
+    },
+    [TAB_KEYS, writeTabToUrl, scheduleScrollToSection]
+  );
+
+  // Route change: tab sanitize + initial scroll
   useEffect(() => {
     if (!routeId) return;
 
-    const isAnchor = tab === "stops" || tab === "gallery" || tab === "comments" || tab === "gpx";
-    const isReport = tab === "report";
-    if (!isAnchor && !isReport) return;
+    const wanted = readTabFromUrl();
+    const safe = TAB_KEYS.includes(wanted) ? wanted : "stops";
 
-    const smooth = didInitialAnchorRef.current ? true : false;
+    setTab(safe);
+    setActiveSection(safe === "report" ? "report" : safe);
+    writeTabToUrl(safe);
 
-    const t = window.setTimeout(() => {
-      if (isAnchor) {
-        setActiveSection(tab);
-        scrollToSection(tab, { smooth });
-      } else if (isReport) {
-        scrollToSection("report", { smooth });
-      }
-      didInitialAnchorRef.current = true;
-    }, 60);
+    scheduleScrollToSection(safe, { smooth: false });
+  }, [routeId, readTabFromUrl, TAB_KEYS, writeTabToUrl, scheduleScrollToSection]);
 
-    return () => {
-      try {
-        window.clearTimeout(t);
-      } catch {}
-    };
-  }, [tab, routeId, scrollToSection]);
-
-  // ✅ Scroll-spy (jitter yok): rAF throttle ile activeSection güncelle
+  // Scroll-spy: aktif section’ı otomatik güncelle (report açık değilken report takip etme)
+  const rafRef = useRef(0);
   useEffect(() => {
     const sc = getScrollEl();
     if (!sc) return;
 
-    let raf = 0;
+    const keys =
+      tab === "report"
+        ? ["stops", "gallery", "comments", "gpx", "report"]
+        : ["stops", "gallery", "comments", "gpx"];
 
-    const pick = () => {
-      try {
-        const top = (sc.scrollTop || 0) + (tabsBarH || 56) + 18;
+    const pickActive = () => {
+      const scRect = sc.getBoundingClientRect();
+      const offset = (tabsBarH || 56) + 16;
 
-        const order = [
-          { key: "stops", el: stopsSectionRef.current },
-          { key: "gallery", el: gallerySectionRef.current },
-          { key: "comments", el: commentsSectionRef.current },
-          { key: "gpx", el: gpxSectionRef.current },
-        ];
+      let bestKey = activeRef.current || "stops";
+      let bestDist = Number.POSITIVE_INFINITY;
 
-        let cur = "stops";
-        for (const it of order) {
-          if (!it.el) continue;
-          if (it.el.offsetTop <= top) cur = it.key;
+      keys.forEach((k) => {
+        const el = getTargetRef(k)?.current;
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+
+        const visible = r.bottom > scRect.top + offset && r.top < scRect.bottom - 12;
+        if (!visible) return;
+
+        const dist = Math.abs(r.top - scRect.top - offset);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestKey = k;
         }
+      });
 
-        setActiveSection((prev) => (prev === cur ? prev : cur));
-      } catch {}
+      if (bestKey && bestKey !== activeRef.current) {
+        setActiveSection(bestKey);
+      }
     };
 
     const onScroll = () => {
-      if (raf) return;
-      raf = window.requestAnimationFrame(() => {
-        raf = 0;
-        pick();
+      if (rafRef.current) return;
+      rafRef.current = window.requestAnimationFrame(() => {
+        rafRef.current = 0;
+        pickActive();
       });
     };
 
+    sc.addEventListener("scroll", onScroll, { passive: true });
     try {
-      sc.addEventListener("scroll", onScroll, { passive: true });
+      pickActive();
     } catch {}
-
-    pick();
 
     return () => {
       try {
         sc.removeEventListener("scroll", onScroll);
       } catch {}
       try {
-        if (raf) window.cancelAnimationFrame(raf);
+        if (rafRef.current) {
+          window.cancelAnimationFrame(rafRef.current);
+          rafRef.current = 0;
+        }
       } catch {}
-      raf = 0;
     };
-  }, [getScrollEl, tabsBarH, routeId]);
+  }, [getScrollEl, getTargetRef, tabsBarH, tab]);
 
   return {
     tab,
