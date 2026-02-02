@@ -3,6 +3,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./RouteDetailMobile.css";
 import "./RouteDetailMobileVitreous.css";
 
+// ✅ Tabs/Pills stilleri (yoksa bar görünmeyebilir)
+import "./styles/rd.sectionTabs.css";
+
 // ✅ hero/yazar stilleri en sonda
 import "./styles/rd.hero.css";
 
@@ -44,13 +47,163 @@ import resolveCoverForUi from "./utils/resolveCoverForUi";
 
 // New components
 import RouteDetailHeroMobile from "./components/RouteDetailHeroMobile";
-import RouteDetailStickyTabsMobile from "./components/RouteDetailStickyTabsMobile";
 import RouteDetailMapCardMobile from "./components/RouteDetailMapCardMobile";
 import RouteDetailSectionsMobile from "./components/RouteDetailSectionsMobile";
 import RouteDetailOverlaysMobile from "./components/RouteDetailOverlaysMobile";
 
 // ✅ Backward compatibility export’ları (IMPORTLAR BİTTİKTEN SONRA!)
 export { formatTimeAgo, formatCount, formatDateTR } from "./routeDetailCompat";
+
+/**
+ * ✅ FALLBACK STICKY TABS
+ * - Bazı cihaz/CSS kombinasyonlarında pills bar görünmez olabiliyor.
+ * - Bu fallback bar inline-style ile “kesin görünür” olur (CSS’e takılmaz).
+ * - tabsBarRef buraya bağlanır (anchors ölçümü / offset için).
+ */
+function RouteDetailStickyTabsFallback({
+  activeTab,
+  onTabChange,
+  canInteract,
+  tabsBarRef,
+  routeDescText,
+  rdTheme,
+  commentsCount,
+  galleryCount,
+  onAfterTabChange,
+}) {
+  const isLight = rdTheme === "light";
+
+  const tabs = useMemo(() => {
+    const cc = Number(commentsCount) || 0;
+    const gc = Number(galleryCount) || 0;
+
+    return [
+      { key: "stops", label: "Duraklar" },
+      { key: "gallery", label: "Galeri", badge: gc > 0 ? String(gc) : "" },
+      { key: "comments", label: "Yorumlar", badge: cc > 0 ? String(cc) : "" },
+      { key: "gpx", label: "GPX" },
+    ];
+  }, [commentsCount, galleryCount]);
+
+  const handleClick = useCallback(
+    (key) => {
+      if (!key) return;
+      if (!canInteract) return;
+      try {
+        onTabChange?.(key);
+      } catch {}
+      try {
+        onAfterTabChange?.();
+      } catch {}
+    },
+    [canInteract, onTabChange, onAfterTabChange]
+  );
+
+  const bg = isLight ? "rgba(255,255,255,0.84)" : "rgba(10,10,12,0.62)";
+  const border = isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.08)";
+  const textMuted = isLight ? "rgba(0,0,0,0.62)" : "rgba(255,255,255,0.70)";
+  const pillBg = isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)";
+  const pillBorder = isLight ? "1px solid rgba(0,0,0,0.10)" : "1px solid rgba(255,255,255,0.10)";
+  const pillActiveBg = isLight ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.92)";
+  const pillActiveText = isLight ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.92)";
+
+  return (
+    <div
+      ref={tabsBarRef}
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 60,
+        padding: "10px 12px 10px",
+        background: bg,
+        borderBottom: border,
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        transform: "translateZ(0)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
+          scrollbarWidth: "none",
+        }}
+      >
+        {tabs.map((t) => {
+          const isActive = (activeTab || "stops") === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => handleClick(t.key)}
+              disabled={!canInteract}
+              aria-pressed={isActive}
+              style={{
+                flex: "0 0 auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: isActive ? "1px solid transparent" : pillBorder,
+                background: isActive ? pillActiveBg : pillBg,
+                color: isActive ? pillActiveText : isLight ? "rgba(0,0,0,0.88)" : "rgba(255,255,255,0.90)",
+                fontSize: 13,
+                fontWeight: 700,
+                lineHeight: "16px",
+                letterSpacing: 0.2,
+                opacity: canInteract ? 1 : 0.55,
+                cursor: canInteract ? "pointer" : "default",
+                userSelect: "none",
+              }}
+            >
+              <span>{t.label}</span>
+              {!!t.badge && (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 20,
+                    height: 18,
+                    padding: "0 6px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    lineHeight: "18px",
+                    background: isActive ? "rgba(0,0,0,0.18)" : isLight ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.10)",
+                    color: isActive ? pillActiveText : isLight ? "rgba(0,0,0,0.76)" : "rgba(255,255,255,0.78)",
+                  }}
+                >
+                  {t.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {!!routeDescText && (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 13,
+            lineHeight: "16px",
+            color: textMuted,
+            overflow: "hidden",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+          }}
+        >
+          {routeDescText}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function RouteDetailMobile({
   routeId,
@@ -756,6 +909,8 @@ export default function RouteDetailMobile({
       />
     );
 
+  const activeTabKey = tab || activeSection || "stops";
+
   // ✅ Main UI
   const content = (
     <div
@@ -779,8 +934,20 @@ export default function RouteDetailMobile({
             heroMenuOpen={heroMenuOpen}
             toggleHeroMenu={toggleHeroMenu}
             closeHeroMenu={closeHeroMenu}
-            enterEdit={enterEdit}
-            exitEdit={exitEdit}
+            enterEdit={() => {
+              if (!isOwner) return;
+              try {
+                setMode("edit");
+              } catch {}
+            }}
+            exitEdit={() => {
+              try {
+                setMode("view");
+              } catch {}
+              try {
+                blockInteractionsBriefly(240);
+              } catch {}
+            }}
             isOwner={!!isOwner}
             isEditMode={isEditMode}
             onClose={onClose}
@@ -816,12 +983,28 @@ export default function RouteDetailMobile({
           }}
           onScroll={(e) => scheduleHeroCollapse(e.currentTarget.scrollTop)}
         >
-          <RouteDetailStickyTabsMobile
-            activeTab={tab || activeSection || "stops"}
-            onTabChange={handleTabChange}
+          {/* ✅ KAYBOLAN BUTONLARIN “KESİN” GÖRÜNÜR FALLBACK’İ */}
+          <RouteDetailStickyTabsFallback
+            activeTab={activeTabKey}
+            onTabChange={(key) => {
+              handleTabChange(key);
+              try {
+                blockInteractionsBriefly(120);
+              } catch {}
+            }}
+            onAfterTabChange={() => {
+              try {
+                // tab değişince üstte kalmasını istiyoruz
+                const el = mainBodyRef.current;
+                if (el && typeof el.scrollTo === "function") el.scrollTo({ top: 0, behavior: "smooth" });
+              } catch {}
+            }}
             canInteract={canInteract}
             tabsBarRef={tabsBarRef}
             routeDescText={heroModel.routeDescText}
+            rdTheme={rdTheme}
+            commentsCount={commentsCount}
+            galleryCount={Array.isArray(galleryItems) ? galleryItems.length : 0}
           />
 
           <RouteDetailMapCardMobile
@@ -910,7 +1093,18 @@ export default function RouteDetailMobile({
 
         {isEditMode && (
           <div className="route-detail-footer">
-            <button type="button" className="route-detail-close-btn" onClick={() => exitEdit()}>
+            <button
+              type="button"
+              className="route-detail-close-btn"
+              onClick={() => {
+                try {
+                  setMode("view");
+                } catch {}
+                try {
+                  blockInteractionsBriefly(240);
+                } catch {}
+              }}
+            >
               Düzenlemeyi bitir
             </button>
           </div>

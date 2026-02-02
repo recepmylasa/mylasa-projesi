@@ -1,15 +1,15 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.sectionTabs.css */
-/* ✅ EMİR 3 — RouteDetailMobile Sticky Tab Bar + Anchor Sections (Flash paritesi)
-   - Sticky cam bar: Duraklar / Galeri / Yorumlar / GPX
-   - Anchor scroll: scroll-margin-top + JS offset
-   - Scroll-spy highlight: activeSection class
-   - Map/yorum click bozulmasın: z-index ve pointer-events kontrollü
-*/
+/* ✅ RouteDetailMobile Sticky Tab Bar + Anchor Sections (Flash paritesi) */
 
 .route-detail-backdrop .rd-sectionTabsWrap {
   position: sticky;
   top: 0;
   z-index: 60;
+
+  /* ✅ FAIL-SAFE: eski CSS display:none yaptıysa bile görün */
+  display: block;
+  visibility: visible;
+  opacity: 1;
 
   /* ✅ TEK MERKEZ ÖLÇÜSÜ (sayfa taşmasını bitirir) */
   width: calc(100% - (var(--rd-center-gutter, 14px) * 2));

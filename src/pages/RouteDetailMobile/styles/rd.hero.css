@@ -30,6 +30,10 @@
   border-bottom: 1px solid var(--rd-border);
   transform: translateZ(0);
   margin-bottom: 0;
+
+  /* ✅ FIX: hero, sheet’in üstünde stack’lenebilsin (hub map altına düşmesin) */
+  z-index: 60;
+  isolation: isolate;
 }
 
 @supports (height: 100dvh) {
@@ -445,7 +449,10 @@
 
   bottom: 28px;
   height: 64px;
-  z-index: 6;
+
+  /* ✅ FIX: map’e ezdirme (POSITION’U BOZMA!) */
+  z-index: 1200;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -681,6 +688,10 @@
   height: var(--rd-hero-h, clamp(300px, 56vh, 540px)) !important;
   min-height: var(--rd-hero-h, clamp(300px, 56vh, 540px)) !important;
   overflow: visible !important;
+
+  /* ✅ FIX: hero hep sheet’in üstünde çizilsin */
+  position: relative !important;
+  z-index: 60 !important;
 }
 
 @supports (height: 100dvh) {
@@ -710,7 +721,13 @@
   visibility: visible !important;
 }
 
-/* Çift hub kırıcı */
-.route-detail-backdrop .rd-author-hub {
-  display: none !important;
+/* =========================================================
+   ✅ MAP KATMANI FAIL-SAFE
+   - Map’in içindeki iframe/gm-style bazen agresif z-index ile gelir.
+   - Hub’ın üstte kalması için: hub çok yukarıda, map kartı izole ve daha aşağıda.
+   ========================================================= */
+
+.route-detail-backdrop .route-detail-sheet {
+  position: relative !important;
+  z-index: 10 !important;
 }

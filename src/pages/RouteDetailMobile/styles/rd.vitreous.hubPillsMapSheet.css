@@ -13,21 +13,13 @@
   --rd-center-max: 560px;
 }
 
-/* -------------------- AUTHOR HUB (Hero’dan taşan cam pill) -------------------- */
+/* -------------------- AUTHOR HUB (Sheet içinde, tabs üstünde) -------------------- */
 .route-detail-backdrop .rd-author-hub {
   position: relative;
+  z-index: 30;
 
-  /* ✅ FIX: Map'in üstünde kalsın (stacking context breaker) */
-  z-index: 90;
-  isolation: isolate;
-  transform: translateZ(0);
-  will-change: transform;
-
-  /* ✅ EMİR 3: overlap + ortalı */
-  margin-top: calc(-1 * var(--rd-author-overlap));
-  margin-left: auto;
-  margin-right: auto;
-  margin-bottom: 14px;
+  /* ✅ REVİZE: overlap yok → map/pills üstüne binmesin */
+  margin: 12px auto 10px;
 
   /* ✅ Tek merkez ölçüsü */
   width: calc(100% - (var(--rd-center-gutter) * 2));
@@ -115,6 +107,9 @@
 
 /* -------------------- Tabs Pills + Açıklama -------------------- */
 .route-detail-backdrop .rd-pills-block {
+  position: relative;
+  z-index: 20;
+
   /* ✅ tek merkez ölçüsü + ortalama */
   width: calc(100% - (var(--rd-center-gutter) * 2));
   max-width: var(--rd-center-max);
@@ -189,11 +184,7 @@
 /* -------------------- Map Card chrome -------------------- */
 .route-detail-backdrop .rd-map-card {
   position: relative;
-
-  /* ✅ FIX: map dış katmanda üstte davranmasın */
   z-index: 10;
-  isolation: isolate;
-  transform: translateZ(0);
 
   /* ✅ tek merkez ölçüsü + ortalama */
   width: calc(100% - (var(--rd-center-gutter) * 2));
@@ -219,12 +210,6 @@
   width: 100% !important;
   max-width: 100% !important;
   overflow: hidden;
-}
-
-/* ✅ FIX: Google Maps iç katmanı dış stacking’e taşmasın */
-.route-detail-backdrop .rd-map-card .gm-style,
-.route-detail-backdrop .rd-map-card .gm-style > div {
-  z-index: 0 !important;
 }
 
 .route-detail-backdrop .rd-map-card .route-detail-map,
