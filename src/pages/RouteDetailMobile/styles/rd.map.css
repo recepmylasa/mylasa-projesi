@@ -1,15 +1,16 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.map.css */
-/* RouteDetailMobile — Map Card (Flash UI preview) */
+/* RouteDetailMobile — Map Card (stable fill: no half/blank top) */
 
 .route-detail-sheet .rd-map-card {
   position: relative;
   width: 100%;
+  display: block;
 
-  /* kısa harita */
-  height: clamp(170px, 24vh, 220px);
-  min-height: 170px;
+  /* tek otorite: --rd-map-h (yoksa fallback) */
+  height: var(--rd-map-h, clamp(190px, 26vh, 240px));
+  min-height: var(--rd-map-h, clamp(190px, 26vh, 240px));
 
-  border-radius: 20px;
+  border-radius: var(--rd-map-radius, 20px);
   overflow: hidden;
 
   border: 1px solid var(--rd-border, var(--glass-border, rgba(0, 0, 0, 0.08)));
@@ -19,11 +20,10 @@
   backdrop-filter: blur(16px) saturate(160%);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
 
-  transform: translateZ(0);
   margin-top: 12px;
 }
 
-/* “World-map look” hissi */
+/* dekoratif overlay’ler */
 .route-detail-sheet .rd-map-card::before {
   content: "";
   position: absolute;
@@ -49,27 +49,49 @@
   pointer-events: none;
 }
 
-/* Map shell canvas full bleed */
+/* ✅ Canvas kartı full kaplar (absolute fill) */
 .route-detail-sheet .rd-map-card__canvas {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+/* ✅ Shell ve map div full fill */
+.route-detail-sheet .rd-map-card__canvas .rdmps-root,
+.route-detail-sheet .rd-map-card__canvas .rdmps-shell {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.route-detail-sheet .rd-map-card__canvas .rdmps-map {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Google Maps iç DOM’u da 100% zorla (yarım tile/blank top fix) */
+.route-detail-sheet .rd-map-card__canvas .rdmps-map > div,
+.route-detail-sheet .rd-map-card__canvas .rdmps-map .gm-style,
+.route-detail-sheet .rd-map-card__canvas .rdmps-map .gm-style > div {
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* Map internals radius */
-.route-detail-sheet .rd-map-card .rdmps-map {
-  border-radius: 20px !important;
-  min-height: 100%;
-}
-
-.route-detail-sheet .rd-map-card .rdmps-overlay {
-  border-radius: 20px !important;
-}
-
+.route-detail-sheet .rd-map-card .rdmps-map,
+.route-detail-sheet .rd-map-card .rdmps-overlay,
 .route-detail-sheet .rd-map-card .rdmps-card {
-  border-radius: 16px !important;
+  border-radius: inherit !important;
 }
-
-/* ✅ EMİR 6: zorla siyah filtre kaldırıldı */
 
 /* Bottom-right location label */
 .route-detail-sheet .rd-map-card__label {
@@ -99,7 +121,6 @@
   white-space: nowrap;
 }
 
-/* Safety: dekoratif layer click yutmasın */
 .route-detail-sheet .rd-map-card::before,
 .route-detail-sheet .rd-map-card::after {
   pointer-events: none;

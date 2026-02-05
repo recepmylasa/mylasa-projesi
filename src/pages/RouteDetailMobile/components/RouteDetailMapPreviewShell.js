@@ -1,4 +1,4 @@
-/* FILE: src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js */
+// FILE: src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGoogleMaps } from "../../../hooks/useGoogleMaps";
 import RouteDetailMapPreview from "./RouteDetailMapPreview";
@@ -68,6 +68,77 @@ function key6(p) {
 }
 function round4(n) {
   return Math.round(n * 1e4) / 1e4;
+}
+
+/* =========================================================
+   ✅ ENCODED POLYLINE (string) DECODE — eski rotalar için
+   ========================================================= */
+function looksLikeEncodedPolyline(str) {
+  const s = String(str || "").trim();
+  if (s.length < 16) return false;
+  if (/[,\s]/.test(s)) return false;
+  // printable ASCII
+  if (!/^[\x20-\x7E]+$/.test(s)) return false;
+  return true;
+}
+
+function decodeEncodedPolyline(str, precision = 5) {
+  const s = String(str || "");
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  const coordinates = [];
+  const factor = Math.pow(10, precision);
+
+  while (index < s.length) {
+    let b;
+    let shift = 0;
+    let result = 0;
+
+    do {
+      b = s.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20 && index < s.length);
+
+    const dlat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+
+    do {
+      b = s.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20 && index < s.length);
+
+    const dlng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
+
+    const p = { lat: lat / factor, lng: lng / factor };
+    if (inRangeLatLng(p.lat, p.lng)) coordinates.push(p);
+  }
+
+  return coordinates;
+}
+
+function tryDecodePolylineMaybe(input) {
+  const s = typeof input === "string" ? input.trim() : "";
+  if (!looksLikeEncodedPolyline(s)) return null;
+
+  try {
+    const pts5 = decodeEncodedPolyline(s, 5);
+    if (Array.isArray(pts5) && pts5.length >= 2) return pts5;
+
+    const pts6 = decodeEncodedPolyline(s, 6);
+    if (Array.isArray(pts6) && pts6.length >= 2) return pts6;
+
+    return Array.isArray(pts5) && pts5.length ? pts5 : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -232,7 +303,6 @@ function extractLatLng(any, depth = 0, seen, hint = "auto") {
   // GeoJSON-ish {type:"Point", coordinates:[lng,lat]} single point support
   try {
     if (any?.type && typeof any.type === "string" && Array.isArray(any.coordinates)) {
-      // If coordinates is a single coord array -> parse as lnglat
       if (Array.isArray(any.coordinates) && any.coordinates.length >= 2 && !Array.isArray(any.coordinates[0])) {
         const out = parseArrayLatLng(any.coordinates, "lnglat");
         if (out) return out;
@@ -280,10 +350,31 @@ function extractLatLng(any, depth = 0, seen, hint = "auto") {
 }
 
 function coercePointsArray(input) {
+  // ✅ string olabilir: encoded polyline destekle
+  if (typeof input === "string") {
+    const decoded = tryDecodePolylineMaybe(input);
+    if (decoded && decoded.length) return { arr: decoded, hint: "auto" };
+    return { arr: [input], hint: "auto" };
+  }
+
   // returns { arr, hint }
   if (Array.isArray(input)) return { arr: input, hint: "auto" };
 
   if (input && typeof input === "object") {
+    // ✅ object içinde encoded polyline alanları (eski kayıtlar)
+    const polyStr =
+      (typeof input?.encodedPath === "string" && input.encodedPath) ||
+      (typeof input?.encodedPolyline === "string" && input.encodedPolyline) ||
+      (typeof input?.polyline === "string" && input.polyline) ||
+      (typeof input?.encoded === "string" && input.encoded) ||
+      (typeof input?.overview_polyline?.points === "string" && input.overview_polyline.points) ||
+      null;
+
+    if (polyStr) {
+      const decoded = tryDecodePolylineMaybe(polyStr);
+      if (decoded && decoded.length) return { arr: decoded, hint: "auto" };
+    }
+
     // GeoJSON LineString: coordinates are [lng,lat]
     if (input?.type === "LineString" && Array.isArray(input.coordinates)) {
       return { arr: input.coordinates, hint: "lnglat" };
@@ -301,6 +392,11 @@ function coercePointsArray(input) {
     ];
 
     for (const c of cands) {
+      if (typeof c.v === "string") {
+        const decoded = tryDecodePolylineMaybe(c.v);
+        if (decoded && decoded.length) return { arr: decoded, hint: "auto" };
+      }
+
       if (Array.isArray(c.v)) return { arr: c.v, hint: c.h };
       if (c.v && typeof c.v === "object" && c.v?.type === "LineString" && Array.isArray(c.v.coordinates)) {
         return { arr: c.v.coordinates, hint: "lnglat" };
@@ -537,7 +633,6 @@ export default function RouteDetailMapPreviewShell({
     try {
       if (appliedStyleRef.current.map !== mapInstance || !appliedStyleRef.current.did) {
         appliedStyleRef.current = { map: mapInstance, did: true };
-        // MAP_ID olsa bile setOptions denemesi zararsız (bazı konfiglerde çalışıyor)
         mapInstance.setOptions({ styles: flashMapStyles });
       }
     } catch {}
@@ -735,7 +830,6 @@ export default function RouteDetailMapPreviewShell({
     const f = `${round6(first.lat)},${round6(first.lng)}`;
     const l = `${round6(last.lat)},${round6(last.lng)}`;
 
-    // ✅ BBox ekle: iç nokta değişse bile sig değişsin (fit kaçmasın)
     let minLat = first.lat,
       maxLat = first.lat,
       minLng = first.lng,
@@ -798,7 +892,13 @@ export default function RouteDetailMapPreviewShell({
         const bounds = new g.maps.LatLngBounds();
         for (const p of drawPoints) bounds.extend(p);
 
-        map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
+        try {
+          map.fitBounds(bounds, { top: 22, right: 22, bottom: 22, left: 22 });
+        } catch {
+          try {
+            map.fitBounds(bounds);
+          } catch {}
+        }
       } catch {}
     },
     [mapInstance, isReady, drawPoints, safeTriggerResize, computeSig]
@@ -1000,18 +1100,26 @@ export default function RouteDetailMapPreviewShell({
     return gmaps?.errorMsg || "Harita yüklenemedi. Tekrar deneyin.";
   };
 
-  const showNoPoints = isReady && stopsLoaded && (!points || points.length === 0);
+  const hasAnyInput = useMemo(() => {
+    if (typeof path === "string" && path.trim()) return true;
+    if (Array.isArray(path) && path.length) return true;
+    if (path && typeof path === "object" && Object.keys(path).length) return true;
+    if (Array.isArray(stops) && stops.length) return true;
+    return false;
+  }, [path, stops]);
+
+  const showNoPoints = isReady && hasAnyInput && (!points || points.length === 0);
 
   return (
     <div
       className="rdmps-shell rdmps-root"
       style={{
-        position: "relative",
+        position: "absolute",
+        inset: 0,
         width: "100%",
         height: "100%",
-        borderRadius: 14,
+        borderRadius: "inherit",
         overflow: "hidden",
-        transform: "translateZ(0)",
         touchAction: "pan-y",
         WebkitTapHighlightColor: "transparent",
       }}
@@ -1081,7 +1189,10 @@ export default function RouteDetailMapPreviewShell({
         <div style={overlayBase} aria-label="Rota noktası yok">
           <div style={card}>
             <div style={title}>Rota çizgisi bulunamadı</div>
-            <div style={desc}>Bu rotada çizilecek bir path/nokta verisi görünmüyor. Durakları kontrol edin.</div>
+            <div style={desc}>
+              Bu rotada çizilecek bir path/nokta verisi görünmüyor (veya format decode edilemedi). Durak/path formatını
+              kontrol edin.
+            </div>
             <div style={btnRow}>
               <button type="button" style={retryBtn} onClick={handleRetry}>
                 Yeniden dene

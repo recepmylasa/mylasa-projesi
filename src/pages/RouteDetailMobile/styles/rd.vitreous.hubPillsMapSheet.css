@@ -8,20 +8,19 @@
    ✅ EMİR — TEK MERKEZ ÖLÇÜSÜ (hub/pills/desc/map)
    ========================================================= */
 .route-detail-backdrop {
-  /* RouteDetailMobile.css set ediyor ama burada da fail-safe */
   --rd-center-gutter: 14px;
   --rd-center-max: 560px;
+
+  /* ✅ FIX: map yüksekliği burada da fail-safe (tek otorite) */
+  --rd-map-h: clamp(190px, 26vh, 240px);
 }
 
 /* -------------------- AUTHOR HUB (Sheet içinde, tabs üstünde) -------------------- */
 .route-detail-backdrop .rd-author-hub {
   position: relative;
   z-index: 30;
-
-  /* ✅ REVİZE: overlap yok → map/pills üstüne binmesin */
   margin: 12px auto 10px;
 
-  /* ✅ Tek merkez ölçüsü */
   width: calc(100% - (var(--rd-center-gutter) * 2));
   max-width: var(--rd-center-max);
 
@@ -34,7 +33,6 @@
 
   pointer-events: auto;
 
-  /* ✅ Glass */
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(12, 12, 14, 0.22);
   backdrop-filter: blur(calc(var(--rd-blur, 18px) + 6px)) saturate(160%);
@@ -69,7 +67,7 @@
   color: var(--rd-ink);
 }
 
-/* ✅ EMİR 4B fail-safe: "Yazar" label genelde burada duruyor → görünmesin */
+/* ✅ EMİR 4B fail-safe */
 .route-detail-backdrop .rd-author-sub {
   display: none !important;
 }
@@ -110,7 +108,6 @@
   position: relative;
   z-index: 20;
 
-  /* ✅ tek merkez ölçüsü + ortalama */
   width: calc(100% - (var(--rd-center-gutter) * 2));
   max-width: var(--rd-center-max);
   margin: 0 auto 10px !important;
@@ -118,7 +115,6 @@
   padding: 10px 10px;
   border-radius: 18px;
 
-  /* sayfa taşması fail-safe */
   overflow: hidden;
 }
 
@@ -140,7 +136,6 @@
   border-radius: 999px;
   padding: 0 10px;
 
-  /* ✅ 4 buton eşit bölüşsün ve taşırmasın */
   flex: 1 1 0;
   min-width: 0;
 
@@ -182,24 +177,51 @@
 }
 
 /* -------------------- Map Card chrome -------------------- */
+
+/* ✅ Map card tek merkez + tam yükseklik */
 .route-detail-backdrop .rd-map-card {
   position: relative;
   z-index: 10;
+  display: block;
 
-  /* ✅ tek merkez ölçüsü + ortalama */
   width: calc(100% - (var(--rd-center-gutter) * 2));
   max-width: var(--rd-center-max);
   margin: 10px auto 0 !important;
 
+  height: var(--rd-map-h) !important;
+  min-height: var(--rd-map-h) !important;
+
   border-radius: var(--rd-map-radius);
   overflow: hidden;
 
-  /* yatay taşma fail-safe */
   max-width: min(var(--rd-center-max), calc(100vw - (var(--rd-center-gutter) * 2)));
-  contain: paint;
+
+  /* ✅ FIX: Google Maps clip/yarım render riskini düşür */
+  contain: none;
 }
 
-/* ✅ Map iç wrapper’lar asla kartın dışına taşmasın */
+/* ✅ KİLİT: canvas mutlaka absolute fill (yarım/alta kayma bitiş) */
+.route-detail-backdrop .rd-map-card__canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  overflow: hidden !important;
+  border-radius: inherit !important;
+}
+
+/* ✅ HARD FIX: bazen rdmps-shell ratio-box/padding ile yüksekliği “alta iter” → tamamen kapat */
+.route-detail-backdrop .rd-map-card .rdmps-shell,
+.route-detail-backdrop .rd-map-card .rdmps-root {
+  position: absolute !important;
+  inset: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: block !important;
+}
+
+/* ✅ Map iç wrapper’lar asla kartın dışına taşmasın + %100 yükseklik */
 .route-detail-backdrop .rd-map-card .route-detail-map,
 .route-detail-backdrop .rd-map-card .rd-map,
 .route-detail-backdrop .rd-map-card .rdmps,
@@ -210,15 +232,8 @@
   width: 100% !important;
   max-width: 100% !important;
   overflow: hidden;
-}
-
-.route-detail-backdrop .rd-map-card .route-detail-map,
-.route-detail-backdrop .rd-map-card .rd-map,
-.route-detail-backdrop .rd-map-card .rdmps,
-.route-detail-backdrop .rd-map-card .rdmps-shell,
-.route-detail-backdrop .rd-map-card .rdmps-root {
-  height: var(--rd-map-h) !important;
-  min-height: var(--rd-map-h) !important;
+  height: 100% !important;
+  min-height: 100% !important;
 }
 
 .route-detail-backdrop .rd-map-card .rdmps-map {

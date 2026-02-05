@@ -21,34 +21,29 @@
 
 /* =========================================================
    ✅ EMİR — GLOBAL X OVERFLOW KILL + TEK MERKEZ ÖLÇÜSÜ
-   - Sayfanın sağa-sola kaymasını kökten bitirir
-   - Tüm içerik blokları aynı "premium merkez" ölçüsüne bağlanır
    ========================================================= */
 
 .route-detail-backdrop {
-  /* X taşma asla dışarı çıkmasın */
   overflow-x: hidden !important;
   overscroll-behavior-x: none;
   width: 100%;
   max-width: 100vw;
-
-  /* mobilde yatay pan’ı öldür (sayfayı sağa çekince boşluk açılmasın) */
   touch-action: pan-y;
 
-  /* Tek merkez ölçüsü (hub/pills/map/section cards) */
   --rd-center-gutter: 14px;
   --rd-center-max: 560px;
+
+  /* ✅ MAP CARD: tek yerden yükseklik kontrolü (vitreous override edebilir) */
+  --rd-map-h: 240px;
 }
 
-/* RouteDetail scope box-sizing garantisi */
 .route-detail-backdrop,
-.route-detail-backdrop * ,
+.route-detail-backdrop *,
 .route-detail-backdrop *::before,
 .route-detail-backdrop *::after {
   box-sizing: border-box;
 }
 
-/* Sheet ve scroll container da X’te taşmasın */
 .route-detail-backdrop .route-detail-sheet {
   width: 100%;
   max-width: 100vw;
@@ -61,7 +56,7 @@
   touch-action: pan-y;
 }
 
-/* ✅ EMİR 4 — Tema geçişi (çok hafif, flash yok) — sadece RouteDetail scope */
+/* ✅ EMİR 4 — Tema geçişi */
 .route-detail-backdrop[data-theme-anim="1"] {
   transition: background-color 180ms ease, color 180ms ease;
 }
@@ -88,11 +83,8 @@
 
 /* =========================================================
    ✅ MAP PREVIEW SCROLL / CLICK KİLİDİ — SAFETY OVERRIDE
-   - Map preview ve üst overlay’ler kesinlikle input yakalamasın
-   - Sheet scroll’unu asla kilitlemesin
    ========================================================= */
 
-/* Map kartı alanında dikey pan’a izin ver */
 .route-detail-backdrop .rd-map-card,
 .route-detail-backdrop .rd-map-card__canvas,
 .route-detail-backdrop .route-detail-map,
@@ -102,7 +94,6 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Map üzerindeki rozet/label katmanları scroll’u yakalamasın */
 .route-detail-backdrop .rd-map-card__badges,
 .route-detail-backdrop .rd-map-card__label,
 .route-detail-backdrop .rd-map-badges,
@@ -110,9 +101,54 @@
   pointer-events: none !important;
 }
 
+/* ✅ EMİR B — SECTIONS merkez + spacing (map card kendi dosyasında tek otorite) */
+.route-detail-backdrop .route-detail-body > .rd-sections {
+  width: min(100%, var(--rd-center-max));
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: var(--rd-center-gutter);
+  padding-right: var(--rd-center-gutter);
+}
+
+/* Map card’ın “alta gömülme/yarım görünme” vakalarında genelde negatif margin/transform çıkıyor.
+   Burada kartı layout’ta sabitliyoruz. */
+.route-detail-backdrop .route-detail-body > .rd-map-card {
+  position: relative !important;
+  z-index: 1;
+  margin-top: 12px !important;
+}
+
+/* ✅ Canvas her koşulda karta %100 fill (yarım/alta kayma fix) */
+.route-detail-backdrop .rd-map-card__canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+/* Badge/label overlay’leri canvas içinde güvenli konumlandır */
+.route-detail-backdrop .rd-map-card__badges {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  gap: 6px;
+  z-index: 2;
+}
+
+.route-detail-backdrop .rd-map-card__label {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 2;
+  max-width: calc(100% - 20px);
+}
+
 /* =========================================================
    ✅ EMİR 01 — TEK SCROLL OTORİTESİ (GÜVENLİ OVERRIDE)
-   - Eğer nested scroll varsa: body’yi ana scroll yapmaya zorlar
    ========================================================= */
 
 .route-detail-backdrop .route-detail-sheet {
@@ -127,9 +163,11 @@
   overflow-x: hidden !important;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+
+  /* ✅ alt bar / safe-area yüzünden “yarım” hissi olmasın */
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
 }
 
-/* Nested scroll şüphesi olan section container’ları: scroll’u body’ye bırak */
 .route-detail-backdrop .route-detail-body .rd-sections,
 .route-detail-backdrop .route-detail-body .rd-section,
 .route-detail-backdrop .route-detail-body .rd-stops,
@@ -143,14 +181,9 @@
 
 /* =========================================================
    ✅ EMİR 01 — ÜST BÖLÜM PARİTESİ
-   1) Sheet = premium card: oval üst köşe + clip
-   2) Cover = full-bleed: sheet’in en üst pikselinden başlar (boşluk yok)
-   3) Backdrop = daha soft: önceki ekran üst bölümü daha görünür
    ========================================================= */
 
-/* 3) Backdrop’u yumuşat (karartmayı düşür, üst daha şeffaf) */
 .route-detail-backdrop {
-  /* Mevcut foundation background’larını güvenli override */
   background:
     radial-gradient(900px 520px at 50% -10%, rgba(255, 255, 255, 0.06), transparent 60%),
     linear-gradient(
@@ -160,7 +193,6 @@
       rgba(0, 0, 0, 0.34) 100%
     ) !important;
 
-  /* Soft blur hissi (karartmayı artırmadan) */
   backdrop-filter: blur(3px) saturate(120%);
   -webkit-backdrop-filter: blur(3px) saturate(120%);
 }
@@ -180,29 +212,21 @@
   -webkit-backdrop-filter: blur(2px) saturate(120%);
 }
 
-/* 1) Sheet’i gerçek “card/sheet” yap: oval + clip */
 .route-detail-backdrop .route-detail-sheet {
-  /* üst köşeler premium */
   border-top-left-radius: 28px !important;
   border-top-right-radius: 28px !important;
 
-  /* kapak görseli bu oval içinde clip olsun */
   overflow: hidden !important;
 
-  /* Safari/blur + border-radius birleşiminde safer */
   isolation: isolate;
   transform: translateZ(0);
 
-  /* bazen iOS’ta radius+overflow glitch → clip-path ile destek */
   clip-path: inset(0 round 28px 28px 0 0);
   -webkit-clip-path: inset(0 round 28px 28px 0 0);
 
-  /* kapaktan önce boşluk kalmasın */
   padding-top: 0 !important;
 }
 
-/* 2) Kapak foto sheet’in tepesinden başlasın:
-   grab handle akıştan çıkar (absolute), cover full-bleed olur */
 .route-detail-backdrop .route-detail-sheet > .route-detail-grab {
   position: absolute !important;
   top: 10px !important;
@@ -213,18 +237,14 @@
   height: 5px !important;
   border-radius: 999px !important;
 
-  /* görünür ama kapatıcı değil */
   background: rgba(255, 255, 255, 0.32) !important;
   border: 1px solid rgba(255, 255, 255, 0.18) !important;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18) !important;
 
   z-index: 20 !important;
-
-  /* nav / tıklama yakalamasın */
   pointer-events: none !important;
 }
 
-/* Light theme’de grab biraz koyulaşsın (kontrast) */
 .route-detail-backdrop[data-theme="light"] .route-detail-sheet > .route-detail-grab,
 .route-detail-backdrop.route-detail-light .route-detail-sheet > .route-detail-grab {
   background: rgba(0, 0, 0, 0.14) !important;
@@ -232,13 +252,10 @@
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.10) !important;
 }
 
-/* Cover’ün üstte “boşluk” yapmasını engelle (her ihtimale karşı) */
 .route-detail-backdrop .route-detail-hero {
   margin-top: 0 !important;
 }
 
-/* Eğer foundation sheet içinde ilk child’a padding veriyorsa:
-   hero zaten ilk görsel olmalı → üst boşluğu sıfırla */
 .route-detail-backdrop .route-detail-sheet > .route-detail-hero,
 .route-detail-backdrop .route-detail-sheet > .route-detail-hero * {
   scroll-margin-top: 0;
