@@ -22,8 +22,24 @@ export default function RouteDetailMapCardMobile({
     return s ? s : "";
   }, [mapAreaLabel]);
 
+  // ✅ CSS scope kaçsa bile kartın yüksekliği garanti (yarım map fix)
+  const cardH = "var(--rd-map-h, clamp(190px, 26vh, 240px))";
+
   return (
-    <div className="route-detail-map rd-map-card" data-rd-map-card="1">
+    <div
+      className="route-detail-map rd-map-card"
+      data-rd-map-card="1"
+      style={{
+        position: "relative",
+        width: "100%",
+        display: "block",
+        height: cardH,
+        minHeight: cardH,
+        borderRadius: "var(--rd-map-radius, 20px)",
+        overflow: "hidden",
+        isolation: "isolate",
+      }}
+    >
       {/* ✅ TEK OTORİTE: dış kart yükseklik verir, canvas absolute fill */}
       <div
         className="rd-map-card__canvas"

@@ -1,7 +1,6 @@
 // FILE: src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGoogleMaps } from "../../../hooks/useGoogleMaps";
-import RouteDetailMapPreview from "./RouteDetailMapPreview";
 
 function pickLocationLabelFromStops(stops) {
   const arr = Array.isArray(stops) ? stops : [];
@@ -1129,9 +1128,35 @@ export default function RouteDetailMapPreviewShell({
       data-points={(points && points.length) || 0}
       data-hasmapid={hasMapId ? "1" : "0"}
     >
-      <RouteDetailMapPreview mapDivRef={setDivRef} mapReadyTick={mapReadyTick} />
+      {/* ✅ Harita div'ini burada garanti ediyoruz (mutlak fill + 100% yükseklik) */}
+      <div
+        className="rdmps-map"
+        ref={setDivRef}
+        data-ready-tick={mapReadyTick}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          minHeight: "100%",
+          // Preview: harita scroll/drag yakalamasın (sheet/scroll kilitlemesin)
+          pointerEvents: "none",
+        }}
+      />
 
-      <div className="rd-map-badges" style={{ pointerEvents: "none" }}>
+      {/* ✅ Bu overlay’ler asla layout bozmasın: absolute */}
+      <div
+        className="rd-map-badges"
+        style={{
+          position: "absolute",
+          top: 10,
+          left: 10,
+          display: "flex",
+          gap: 8,
+          pointerEvents: "none",
+          zIndex: 4,
+        }}
+      >
         {isReady && rawPointCount > 0 ? (
           <div className="rd-map-badge">{rawPointCount} NOKTA</div>
         ) : (
@@ -1139,7 +1164,16 @@ export default function RouteDetailMapPreviewShell({
         )}
       </div>
 
-      <div className="rd-map-loc" style={{ pointerEvents: "none" }}>
+      <div
+        className="rd-map-loc"
+        style={{
+          position: "absolute",
+          right: 10,
+          bottom: 10,
+          pointerEvents: "none",
+          zIndex: 4,
+        }}
+      >
         {locationLabel}
       </div>
 
@@ -1206,6 +1240,15 @@ export default function RouteDetailMapPreviewShell({
         @keyframes rdmpspin { 
           0% { transform: rotate(0deg); } 
           100% { transform: rotate(360deg); } 
+        }
+
+        /* ✅ Harita iç container'larını ZORLA 100% yükseklik */
+        .rdmps-map,
+        .rdmps-map > div,
+        .rdmps-map .gm-style,
+        .rdmps-map .gm-style > div {
+          width: 100% !important;
+          height: 100% !important;
         }
 
         /* ✅ MAP_ID cloud styling styles'ı yok sayarsa: hafif filter fallback */

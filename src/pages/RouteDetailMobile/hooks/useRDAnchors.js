@@ -1,16 +1,16 @@
 // FILE: src/pages/RouteDetailMobile/hooks/useRDAnchors.js
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * ✅ Sprint 1 / EMİR A (P0)
- * Amaç: Tab = "tek içerik" mantığına geçerken
- * - otomatik anchor scroll'u KAPAT
- * - scroll-spy KAPAT (aktif section tab ile aynı olsun)
- * Çünkü:
- * - anchor scroll + sticky height + hero collapse birlikte layout'ı kaydırıyor,
- *   map yarım/alta gömülme ve "timeline" hissi üretiyor.
+ * ✅ Sprint / EMİR A (P0)
+ * Amaç:
+ * - Tabs URL senkronu (tab param)
+ * - Tab tıklayınca ilgili section’a "güvenli" scroll (sticky + hero collapse offsetli)
+ * - Scroll-spy KAPALI (jitter/loop riskini artırıyordu)
  *
- * Not: Tek içerik kuralı RouteDetailSectionsMobile.js içinde uygulanacak.
+ * Not:
+ * - Eğer RouteDetailSectionsMobile tek içerik render ediyorsa, section ref yoksa scroll NO-OP olur.
+ * - Eğer tüm section’lar DOM’da ise, tab → section zıplaması çalışır.
  */
 export default function useRDAnchors({ routeId, routeBodyRef }) {
   const TAB_KEYS = useMemo(() => ["stops", "gallery", "comments", "gpx", "report"], []);
@@ -37,7 +37,7 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
 
   const [tab, setTab] = useState(() => readTabFromUrl());
 
-  // ✅ Artık aktifSection = tab (scroll-spy yok)
+  // ✅ scroll-spy yok: activeSection default olarak tab ile aynı tutulur
   const [activeSection, setActiveSection] = useState(() => {
     const t = readTabFromUrl();
     return t === "report" ? "report" : t || "stops";
@@ -53,7 +53,7 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
   const gpxSectionRef = React.useRef(null);
   const reportSectionRef = React.useRef(null);
 
-  // ✅ Scroll element getter (şimdilik kullanılmıyor ama ileride gerekebilir)
+  // ✅ Scroll element getter
   const getScrollEl = useCallback(() => {
     try {
       return routeBodyRef?.current || document.querySelector(".route-detail-body");
@@ -61,6 +61,26 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
       return null;
     }
   }, [routeBodyRef]);
+
+  // ✅ Tab → ref map
+  const getSectionRefByKey = useCallback(
+    (key) => {
+      switch (key) {
+        case "gallery":
+          return gallerySectionRef;
+        case "comments":
+          return commentsSectionRef;
+        case "gpx":
+          return gpxSectionRef;
+        case "report":
+          return reportSectionRef;
+        case "stops":
+        default:
+          return stopsSectionRef;
+      }
+    },
+    [gallerySectionRef, commentsSectionRef, gpxSectionRef, reportSectionRef, stopsSectionRef]
+  );
 
   // Sticky bar height ölç
   useEffect(() => {
@@ -91,6 +111,68 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
     };
   }, []);
 
+  // ✅ Programmatic scroll guard (loop breaker)
+  const scrollJobRef = useRef({ raf: 0, sig: "" });
+
+  const doScrollToTab = useCallback(
+    (safe, behavior = "smooth") => {
+      const scrollEl = getScrollEl();
+      if (!scrollEl) return;
+
+      // "Duraklar" = üst (map + üst bloklar) daha mantıklı
+      if (!safe || safe === "stops") {
+        try {
+          scrollEl.scrollTo({ top: 0, behavior });
+        } catch {
+          try {
+            scrollEl.scrollTop = 0;
+          } catch {}
+        }
+        return;
+      }
+
+      const ref = getSectionRefByKey(safe);
+      const sectionEl = ref?.current;
+      if (!sectionEl) return; // tek içerik modunda normal
+
+      try {
+        const scrollRect = scrollEl.getBoundingClientRect();
+        const secRect = sectionEl.getBoundingClientRect();
+
+        // hedef: section başı sticky tabs altında görünsün
+        const MARGIN = 10;
+        let top = scrollEl.scrollTop + (secRect.top - scrollRect.top) - (tabsBarH + MARGIN);
+
+        top = Math.max(0, Math.round(top));
+
+        scrollEl.scrollTo({ top, behavior });
+      } catch {}
+    },
+    [getScrollEl, getSectionRefByKey, tabsBarH]
+  );
+
+  const scheduleScrollToTab = useCallback(
+    (safe, behavior = "smooth") => {
+      const job = scrollJobRef.current;
+      try {
+        if (job.raf) cancelAnimationFrame(job.raf);
+      } catch {}
+
+      const sig = `${safe}:${Date.now()}`;
+      job.sig = sig;
+
+      // ✅ iki RAF: state + layout otursun (hero collapse / sticky height)
+      job.raf = requestAnimationFrame(() => {
+        job.raf = requestAnimationFrame(() => {
+          job.raf = 0;
+          if (scrollJobRef.current.sig !== sig) return;
+          doScrollToTab(safe, behavior);
+        });
+      });
+    },
+    [doScrollToTab]
+  );
+
   const onTabChange = useCallback(
     (nextTab) => {
       const safe = TAB_KEYS.includes(nextTab) ? nextTab : "stops";
@@ -101,13 +183,13 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
       // URL sync
       writeTabToUrl(safe);
 
-      // ✅ ÖNEMLİ: Artık burada scrollToSection YOK.
-      // Tek içerik kuralı geldiğinde scroll zaten "0" olacak (RouteDetailMobile handleTabChange).
+      // ✅ tab tıklayınca section’a git (tek içerikse ref yok → no-op)
+      scheduleScrollToTab(safe, "smooth");
     },
-    [TAB_KEYS, writeTabToUrl]
+    [TAB_KEYS, writeTabToUrl, scheduleScrollToTab]
   );
 
-  // Route change: tab sanitize + url sync (scroll yok)
+  // Route change: tab sanitize + url sync (+ gerekiyorsa initial scroll)
   useEffect(() => {
     if (!routeId) return;
 
@@ -118,10 +200,22 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
     setActiveSection(safe === "report" ? "report" : safe);
     writeTabToUrl(safe);
 
-    // ✅ scroll-spy yok, scheduleScroll yok
-    // routeBodyRef/current reset gibi işler RouteDetailMobile tarafında yapılır.
+    // ✅ URL’de tab varsa (gallery/comments/gpx/report) açılışta da oraya götür
+    if (safe && safe !== "stops") {
+      scheduleScrollToTab(safe, "auto");
+    } else {
+      scheduleScrollToTab("stops", "auto");
+    }
+
+    return () => {
+      try {
+        const j = scrollJobRef.current;
+        if (j?.raf) cancelAnimationFrame(j.raf);
+        j.raf = 0;
+      } catch {}
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeId, readTabFromUrl, TAB_KEYS]);
+  }, [routeId]);
 
   return {
     tab,
@@ -135,6 +229,5 @@ export default function useRDAnchors({ routeId, routeBodyRef }) {
     commentsSectionRef,
     gpxSectionRef,
     reportSectionRef,
-    // getScrollEl şimdilik dışarı açmıyoruz (gerekmiyor)
   };
 }

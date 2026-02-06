@@ -6,6 +6,9 @@ import "./RouteDetailMobileVitreous.css";
 // ✅ Tabs/Pills stilleri (yoksa bar görünmeyebilir)
 import "./styles/rd.sectionTabs.css";
 
+// ✅ MAP CARD full-fill fix (yarım map fix)  ✅✅✅
+import "./styles/rd.map.css";
+
 // ✅ hero/yazar stilleri en sonda
 import "./styles/rd.hero.css";
 
@@ -69,7 +72,6 @@ function RouteDetailStickyTabsFallback({
   rdTheme,
   commentsCount,
   galleryCount,
-  onAfterTabChange,
 }) {
   const isLight = rdTheme === "light";
 
@@ -92,11 +94,8 @@ function RouteDetailStickyTabsFallback({
       try {
         onTabChange?.(key);
       } catch {}
-      try {
-        onAfterTabChange?.();
-      } catch {}
     },
-    [canInteract, onTabChange, onAfterTabChange]
+    [canInteract, onTabChange]
   );
 
   const bg = isLight ? "rgba(255,255,255,0.84)" : "rgba(10,10,12,0.62)";
@@ -237,19 +236,15 @@ export default function RouteDetailMobile({
   const clamp01 = (n) => Math.max(0, Math.min(1, n));
 
   const applyHeroCollapseVars = useCallback((scrollTop) => {
-    // ✅ round: micro jitter kırıcı (sub-pixel scroll/top dalgalanması)
     const st = Math.max(0, Math.round(Number(scrollTop) || 0));
 
-    // hedef aralıklar
-    const H_MAX = 500; // 420–520 aralığı içinde
-    const H_MIN = 140; // 120–160 aralığı içinde
+    const H_MAX = 500;
+    const H_MIN = 140;
     const RANGE = Math.max(1, H_MAX - H_MIN);
 
     const t = clamp01(st / RANGE);
-
     const h = Math.round(H_MAX - t * RANGE);
 
-    // ✅ tiny float jitter'ı azalt
     const infoOpacityRaw = clamp01(1 - t * 1.35);
     const infoOpacity = Math.round(infoOpacityRaw * 1000) / 1000;
 
@@ -261,7 +256,6 @@ export default function RouteDetailMobile({
     const scopeEl = sheetRef.current?.closest(".route-detail-backdrop") || sheetRef.current;
     if (!scopeEl) return;
 
-    // ✅ NO-OP guard: değer değişmediyse DOM'a yazma (reflow/anchor loop kırıcı)
     const key = `${h}|${infoOpacity}|${infoY}|${imgScale}|${hubY}|${collapsed}`;
     const ref = heroCollapseRef.current;
     if (ref.lastAppliedKey === key) return;
@@ -279,11 +273,9 @@ export default function RouteDetailMobile({
 
   const scheduleHeroCollapse = useCallback(
     (scrollTop) => {
-      // ✅ round: event spam + micro delta filtresi tek hamlede
       const st = Math.max(0, Math.round(Number(scrollTop) || 0));
       const ref = heroCollapseRef.current;
 
-      // ✅ aynı değerse hiçbir şey yapma
       if (ref.lastInputTop === st) return;
       ref.lastInputTop = st;
 
@@ -299,7 +291,6 @@ export default function RouteDetailMobile({
   );
 
   useEffect(() => {
-    // route değişince collapse reset
     scheduleHeroCollapse(0);
     return () => {
       try {
@@ -313,13 +304,8 @@ export default function RouteDetailMobile({
   }, [routeId, scheduleHeroCollapse]);
 
   // ✅ Portals + scroll lock
-  const {
-    withPortal,
-    commentsPortalEl,
-    setCommentsPortalEl,
-    lightboxPortalEl,
-    setLightboxPortalEl,
-  } = useRDPortalsAndScrollLock();
+  const { withPortal, commentsPortalEl, setCommentsPortalEl, lightboxPortalEl, setLightboxPortalEl } =
+    useRDPortalsAndScrollLock();
 
   // ✅ Ghost click blocker
   const { interactionBlocked, blockInteractionsBriefly } = useRDInteractionBlocker();
@@ -342,6 +328,11 @@ export default function RouteDetailMobile({
     reportSectionRef,
   } = useRDAnchors({ routeId, routeBodyRef: routeBodyRefForAnchors });
 
+  // ✅ ACTIVE TAB: scroll-spy (activeSection) ÖNCE, sonra tab state
+  const activeTabKey = useMemo(() => {
+    return activeSection || tab || "stops";
+  }, [activeSection, tab]);
+
   // ✅ Default tab = stops (route değişince de)
   useEffect(() => {
     try {
@@ -350,26 +341,15 @@ export default function RouteDetailMobile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
 
-  // ✅ Tab change wrapper: scrollTop reset + hero collapse sync
+  // ✅ Tab change wrapper: SADECE onTabChange (scrollTop=0 yok! anchor ile çakışıyordu)
   const handleTabChange = useCallback(
     (key) => {
       if (!key) return;
       try {
         onTabChange?.(key);
       } catch {}
-      try {
-        const el = mainBodyRef.current;
-        if (el && typeof el.scrollTo === "function") {
-          el.scrollTo({ top: 0, behavior: "smooth" });
-        } else if (el) {
-          el.scrollTop = 0;
-        }
-      } catch {}
-      try {
-        scheduleHeroCollapse(0);
-      } catch {}
     },
-    [onTabChange, scheduleHeroCollapse]
+    [onTabChange]
   );
 
   // ✅ data (route/stops/owner/perm/comments/lockedOwner)
@@ -383,7 +363,7 @@ export default function RouteDetailMobile({
     ownerIdForProfile,
     lockedOwnerDoc,
     retryPermCheck,
-    authUid, // ✅ reaktif auth
+    authUid,
   } = useRouteDetailData({
     routeId,
     initialRoute,
@@ -610,7 +590,6 @@ export default function RouteDetailMobile({
         mainBodyRef.current = el;
       } catch {}
 
-      // ✅ initial collapse sync
       try {
         const st = typeof el?.scrollTop === "number" ? el.scrollTop : 0;
         scheduleHeroCollapse(st);
@@ -645,19 +624,9 @@ export default function RouteDetailMobile({
   });
 
   // ✅ Viewer/Edit ayrımı (mode)
-  const [mode, setMode] = useState("view"); // "view" | "edit"
+  const [mode, setMode] = useState("view");
   const isEditMode = useMemo(() => !!isOwner && mode === "edit", [isOwner, mode]);
   const modeForTabs = isEditMode ? "edit" : "view";
-
-  const enterEdit = useCallback(() => {
-    if (!isOwner) return;
-    setMode("edit");
-  }, [isOwner]);
-
-  const exitEdit = useCallback(() => {
-    setMode("view");
-    blockInteractionsBriefly(240);
-  }, [blockInteractionsBriefly]);
 
   useEffect(() => {
     setMode("view");
@@ -706,16 +675,17 @@ export default function RouteDetailMobile({
     setReportLoaded(true);
   }, [reportLoaded, routeId]);
 
+  // ✅ report: tab OR scroll-spy
   useEffect(() => {
-    if (tab === "report") loadReportAgg();
-  }, [tab, loadReportAgg]);
+    if (activeTabKey === "report") loadReportAgg();
+  }, [activeTabKey, loadReportAgg]);
 
-  // ✅ Galeri tab active
+  // ✅ Galeri: tab OR scroll-spy
   useEffect(() => {
     try {
-      setGalleryTabActive(tab === "gallery");
+      setGalleryTabActive(activeTabKey === "gallery");
     } catch {}
-  }, [tab, setGalleryTabActive]);
+  }, [activeTabKey, setGalleryTabActive]);
 
   // ✅ Edit modda: report kapalı + comments overlay kapanır
   useEffect(() => {
@@ -753,7 +723,8 @@ export default function RouteDetailMobile({
       }
 
       if (isEditMode) {
-        exitEdit();
+        setMode("view");
+        blockInteractionsBriefly(240);
         return;
       }
       onClose();
@@ -766,7 +737,6 @@ export default function RouteDetailMobile({
     coverPickerOpen,
     closeCoverPicker,
     isEditMode,
-    exitEdit,
     showShareSheet,
     commentsOverlayOpen,
     blockInteractionsBriefly,
@@ -909,8 +879,6 @@ export default function RouteDetailMobile({
       />
     );
 
-  const activeTabKey = tab || activeSection || "stops";
-
   // ✅ Main UI
   const content = (
     <div
@@ -925,7 +893,6 @@ export default function RouteDetailMobile({
       <div className="route-detail-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
         <div className="route-detail-grab" />
 
-        {/* ✅ Scroll anchoring loop kırıcı: hero bölgesi anchor olmasın */}
         <div style={{ overflowAnchor: "none" }}>
           <RouteDetailHeroMobile
             coverResolved={coverUi.coverResolved}
@@ -983,20 +950,12 @@ export default function RouteDetailMobile({
           }}
           onScroll={(e) => scheduleHeroCollapse(e.currentTarget.scrollTop)}
         >
-          {/* ✅ KAYBOLAN BUTONLARIN “KESİN” GÖRÜNÜR FALLBACK’İ */}
           <RouteDetailStickyTabsFallback
             activeTab={activeTabKey}
             onTabChange={(key) => {
               handleTabChange(key);
               try {
                 blockInteractionsBriefly(120);
-              } catch {}
-            }}
-            onAfterTabChange={() => {
-              try {
-                // tab değişince üstte kalmasını istiyoruz
-                const el = mainBodyRef.current;
-                if (el && typeof el.scrollTo === "function") el.scrollTo({ top: 0, behavior: "smooth" });
               } catch {}
             }}
             canInteract={canInteract}
@@ -1050,7 +1009,7 @@ export default function RouteDetailMobile({
             commentsSectionRef={commentsSectionRef}
             gpxSectionRef={gpxSectionRef}
             reportSectionRef={reportSectionRef}
-            tab={tab}
+            tab={activeTabKey}
             isEditMode={isEditMode}
             canInteract={canInteract}
             modeForTabs={modeForTabs}
