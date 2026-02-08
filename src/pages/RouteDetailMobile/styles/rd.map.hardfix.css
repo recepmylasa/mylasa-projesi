@@ -1,0 +1,63 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.map.hardfix.css */
+
+/* ✅ YARIM HARİTA / KESİLME HARD-FIX (MOBİL ROUTE DETAIL)
+   Sorun: Map card yükseklik “çöküyor” → Google Maps ilk ölçümde küçük görüp yarım render kalabiliyor.
+   Çözüm: Map card’a deterministik yükseklik/aspect ver + canvas içini %100 doldur.
+*/
+
+.route-detail-body .rd-map-card {
+  /* hero altına “çekilme / sıkışma” kırıcı */
+  margin-top: 0 !important;
+  transform: none !important;
+
+  /* ✅ asıl fix: yükseklik çökmesini engelle */
+  width: 100% !important;
+  align-self: stretch !important;
+  flex: 0 0 auto !important;
+
+  /* 16:9 map preview (IG/Flash hissi) */
+  aspect-ratio: 16 / 9 !important;
+
+  /* çok küçük kalmasın */
+  min-height: 200px !important;
+
+  /* bazı css’ler height’ı ezebiliyor */
+  height: auto !important;
+  max-height: none !important;
+
+  overflow: hidden !important;
+}
+
+.route-detail-body .rd-map-card__canvas {
+  transform: none !important;
+
+  /* canvas mutlaka kartı doldursun */
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+/* Shell/Map wrapper (farklı class adları için geniş yakalama) */
+.route-detail-body .rd-map-card [class*="rdmps"],
+.route-detail-body .rd-map-card [class*="MapPreview"],
+.route-detail-body .rd-map-card [class*="mapPreview"],
+.route-detail-body .rd-map-card [class*="map-preview"],
+.route-detail-body .rd-map-card [data-rd-map] {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+/* Google Maps iç div’leri */
+.route-detail-body .rd-map-card .gm-style,
+.route-detail-body .rd-map-card .gm-style > div,
+.route-detail-body .rd-map-card .gm-style > div > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Canvas inline height takılırsa */
+.route-detail-body .rd-map-card canvas {
+  width: 100% !important;
+  height: 100% !important;
+}

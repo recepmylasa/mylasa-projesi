@@ -46,6 +46,8 @@ export default function RouteDetailOverlaysMobile({
   lightboxPortalEl,
   setLightboxPortalEl,
 }) {
+  const hasLightboxItems = Array.isArray(lightboxItems) && lightboxItems.length > 0;
+
   return (
     <>
       {showShareSheet && !isEditMode && (
@@ -117,8 +119,8 @@ export default function RouteDetailOverlaysMobile({
         </div>
       )}
 
-      {/* ✅ Lightbox FIX */}
-      {lightboxItems && (
+      {/* ✅ Lightbox FIX: boş array [] overlay’yi kilitlemesin */}
+      {hasLightboxItems && (
         <div
           ref={setLightboxPortalEl}
           className="route-detail-overlay-stop"

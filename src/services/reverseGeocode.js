@@ -1,16 +1,35 @@
 // FILE: src/services/reverseGeocode.js
-// Reverse geocode (kısa adres) — hatada kalıcı kapatma + konsol sessiz
-// Ek olarak getCityCountry & formatCityCountry export eder (Adım 7 ihtiyacı).
+// Reverse geocode (kısa adres) — hata/spam kırıcı + oturum kill-switch
+// Ek olarak getCityCountry & formatCityCountry export eder.
 
 let _geocoder = null;
 let _disabled = false; // Bu oturumda kill-switch
 let _inflight = null; // Aynı noktaya paralel istekleri engelle
 let _inflightKey = null;
 
-const PERSIST_KEY = "revgeo_disabled_v1"; // Yeniden yüklemede de kapalı başlatmak için
-// Ortam değişkeni ile tamamen kapatmak istersen: REACT_APP_DISABLE_REVGEOCODE=true
-const ENV_DISABLE =
-  String(process.env.REACT_APP_DISABLE_REVGEOCODE || "").toLowerCase() === "true";
+const PERSIST_KEY = "revgeo_disabled_v1"; // yeniden yüklemede de kapalı başlatmak için
+const ENV_DISABLE = String(process.env.REACT_APP_DISABLE_REVGEOCODE || "").toLowerCase() === "true";
+
+// ✅ Global rate-limit (harita scroll vs. spam kırıcı)
+const MIN_INTERVAL_MS = 900;
+let _lastReqAt = 0;
+
+// ✅ fail-streak ile session disable
+let _failStreak = 0;
+let _lastFailAt = 0;
+const FAIL_STREAK_WINDOW_MS = 60 * 1000;
+const FAIL_STREAK_LIMIT = 4;
+
+// Dev warnOnce
+const __DEV__ = process.env.NODE_ENV !== "production";
+const __warnOnce = new Set();
+function warnOnce(key, ...args) {
+  if (!__DEV__) return;
+  if (__warnOnce.has(key)) return;
+  __warnOnce.add(key);
+  // eslint-disable-next-line no-console
+  console.warn(...args);
+}
 
 try {
   if (ENV_DISABLE || localStorage.getItem(PERSIST_KEY) === "1") {
@@ -18,80 +37,49 @@ try {
   }
 } catch {}
 
-/* ------------ Dev ortamında gürültüyü sustur (sadece ilgili mesajlar) ------------ */
-/**
- * ✅ EMİR 18-7 uyumlu: permission-denied / missing permissions spam kırıcı (DEV only)
- * - Davranış değiştirmez, sadece konsol gürültüsünü keser.
- * - StrictMode / hot-reload tekrar patch etmesin diye global flag var.
- */
-if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
-  const PATCH_FLAG = "__mylasa_console_patch_revgeo_v2";
-  try {
-    if (!window[PATCH_FLAG]) {
-      window[PATCH_FLAG] = true;
-
-      const swallow = (msg) => {
-        const s = String(msg || "");
-
-        // Google Geocoder / API Key gürültüsü
-        if (/Geocoding Service: This API key is not authorized/i.test(s)) return true;
-        if (/REQUEST_DENIED|OVER_DAILY_LIMIT|API_KEY_INVALID/i.test(s)) return true;
-
-        // ✅ Firestore/SDK permission spam (kırmızı hatalar)
-        if (/permission[- ]denied/i.test(s)) return true;
-        if (/missing or insufficient permissions/i.test(s)) return true;
-        if (/FirebaseError:.*permission/i.test(s)) return true;
-
-        return false;
-      };
-
-      const _warn = console.warn;
-      const _error = console.error;
-
-      console.warn = (...args) => {
-        const first = args?.[0] ? String(args[0]) : "";
-        if (swallow(first)) return;
-        _warn(...args);
-      };
-
-      console.error = (...args) => {
-        const first = args?.[0] ? String(args[0]) : "";
-        if (swallow(first)) return;
-        _error(...args);
-      };
-    }
-  } catch {
-    // no-op
-  }
-}
-
-/* --------------------------------- Cache --------------------------------- */
-const _cache = new Map(); // key -> { v, t, meta }
+const _cache = new Map(); // key -> { v, t, meta, status }
 const TTL_MS = 30 * 60 * 1000; // 30 dk
 
 function _key(lat, lng) {
-  // 5 ondalık ~1m — cache çarpışmasını azaltır
   return `${lat.toFixed(5)},${lng.toFixed(5)}`;
 }
-
 function _now() {
   return Date.now();
 }
-
 function _isFiniteNum(x) {
   return typeof x === "number" && Number.isFinite(x);
 }
-
 function _toNum(x) {
   const n = typeof x === "number" ? x : Number(x);
   return Number.isFinite(n) ? n : null;
 }
 
-function _disablePermanently() {
+function _disablePermanently(reason) {
   _disabled = true;
   try {
     localStorage.setItem(PERSIST_KEY, "1");
   } catch {}
+  warnOnce("revgeo_perm_off", "[reverseGeocode] Kalıcı devre dışı (fatal):", reason || "");
+}
+
+function _disableSession(reason) {
+  _disabled = true;
+  warnOnce("revgeo_sess_off", "[reverseGeocode] Oturumda devre dışı (spam kırıcı):", reason || "");
+}
+
+function _noteFail(status) {
+  const now = _now();
+  if (now - _lastFailAt > FAIL_STREAK_WINDOW_MS) _failStreak = 0;
+  _failStreak += 1;
+  _lastFailAt = now;
+  if (_failStreak >= FAIL_STREAK_LIMIT) {
+    _disableSession(`fail_streak:${status || "UNKNOWN"}`);
+  }
+}
+
+function _noteSuccess() {
+  _failStreak = 0;
+  _lastFailAt = 0;
 }
 
 function _ensureGeocoder() {
@@ -133,8 +121,7 @@ function _pickShort(results) {
   if (!comps) return "";
 
   const get = (type) =>
-    comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.short_name ||
-    "";
+    comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.short_name || "";
 
   const part1 =
     get("neighborhood") ||
@@ -158,19 +145,15 @@ export function getCityCountry(results) {
   }
 
   const comps =
-    results.find(
-      (x) => Array.isArray(x.address_components) && x.address_components.length
-    )?.address_components ||
+    results.find((x) => Array.isArray(x.address_components) && x.address_components.length)?.address_components ||
     results[0]?.address_components ||
     [];
 
   const getLong = (type) =>
-    comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.long_name ||
-    "";
+    comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.long_name || "";
 
   const getShort = (type) =>
-    comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.short_name ||
-    "";
+    comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.short_name || "";
 
   const city =
     getLong("locality") ||
@@ -185,7 +168,6 @@ export function getCityCountry(results) {
 }
 
 export function formatCityCountry(arg1, arg2) {
-  // formatCityCountry({city,country}) veya formatCityCountry(city, country)
   let city = "";
   let country = "";
 
@@ -207,6 +189,7 @@ function _isFatalStatus(status) {
     s === "REQUEST_DENIED" ||
     s === "INVALID_REQUEST" ||
     s === "OVER_DAILY_LIMIT" ||
+    s === "OVER_QUERY_LIMIT" ||
     s === "API_KEY_INVALID"
   );
 }
@@ -246,7 +229,9 @@ function _geocodePromise(geocoder, location, signal) {
 
         // fatal => kalıcı kapat
         if (_isFatalStatus(st)) {
-          _disablePermanently();
+          _disablePermanently(st);
+        } else {
+          _noteFail(st);
         }
 
         return resolve({ results: results || [], status: st });
@@ -276,10 +261,20 @@ function _parseArgs(a, b, c) {
   return { lat, lng, signal };
 }
 
+function _rateLimitGate() {
+  const now = _now();
+  if (now - _lastReqAt < MIN_INTERVAL_MS) return false;
+  _lastReqAt = now;
+  return true;
+}
+
 /**
  * reverseGeocodeShort(...) -> string (kısa adres)
  * - cache + inflight dedupe
  * - fatal hatada kalıcı disable
+ * - fail-streak ile session disable
+ * - rate-limit ile spam kırıcı
+ * - ZERO_RESULTS -> cache boş (TTL) yazar
  */
 export async function reverseGeocodeShort(a, b, c) {
   const { lat, lng, signal } = _parseArgs(a, b, c);
@@ -308,24 +303,32 @@ export async function reverseGeocodeShort(a, b, c) {
     }
   }
 
+  // ✅ global rate-limit (cache yoksa)
+  if (!_rateLimitGate()) return "";
+
   _inflightKey = k;
 
   _inflight = (async () => {
     try {
       const { results, status } = await _geocodePromise(geocoder, { lat, lng }, signal);
 
-      if (status !== "OK") {
-        // OK değilse bile cache’e boş yazma: kısa süre sonra tekrar deneyebilsin.
+      if (status === "ZERO_RESULTS") {
+        _cache.set(k, { v: "", t: _now(), meta: { city: "", country: "", countryCode: "" }, status });
         return "";
       }
 
+      if (status !== "OK") {
+        return "";
+      }
+
+      _noteSuccess();
       const short = _pickShort(results);
       const meta = getCityCountry(results);
 
-      _cache.set(k, { v: short || "", t: _now(), meta });
-
+      _cache.set(k, { v: short || "", t: _now(), meta, status: "OK" });
       return short || "";
     } catch {
+      _noteFail("ERROR");
       return "";
     } finally {
       _inflight = null;
@@ -343,7 +346,6 @@ export async function reverseGeocodeShort(a, b, c) {
 
 /**
  * reverseGeocode(...) -> { short, city, country, countryCode, status }
- * (Bazı yerlerde şehir/ülke lazımsa diye)
  */
 export async function reverseGeocode(a, b, c) {
   const { lat, lng, signal } = _parseArgs(a, b, c);
@@ -366,23 +368,34 @@ export async function reverseGeocode(a, b, c) {
 
   if (cached && now - cached.t < TTL_MS) {
     const meta = cached.meta || { city: "", country: "", countryCode: "" };
-    return { short: cached.v || "", ...meta, status: "CACHED" };
+    return { short: cached.v || "", ...meta, status: cached.status || "CACHED" };
+  }
+
+  if (!_rateLimitGate()) {
+    return { short: "", city: "", country: "", countryCode: "", status: "RATE_LIMIT" };
   }
 
   try {
     const { results, status } = await _geocodePromise(geocoder, { lat, lng }, signal);
 
+    if (status === "ZERO_RESULTS") {
+      const meta = { city: "", country: "", countryCode: "" };
+      _cache.set(k, { v: "", t: _now(), meta, status });
+      return { short: "", ...meta, status };
+    }
+
     if (status !== "OK") {
       return { short: "", city: "", country: "", countryCode: "", status };
     }
 
+    _noteSuccess();
     const short = _pickShort(results);
     const meta = getCityCountry(results);
 
-    _cache.set(k, { v: short || "", t: _now(), meta });
-
+    _cache.set(k, { v: short || "", t: _now(), meta, status: "OK" });
     return { short: short || "", ...meta, status: "OK" };
   } catch {
+    _noteFail("ERROR");
     return { short: "", city: "", country: "", countryCode: "", status: "ERROR" };
   }
 }

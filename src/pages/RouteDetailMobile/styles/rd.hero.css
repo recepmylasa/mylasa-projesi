@@ -31,8 +31,8 @@
   transform: translateZ(0);
   margin-bottom: 0;
 
-  /* ✅ FIX: hero, sheet’in üstünde stack’lenebilsin (hub map altına düşmesin) */
-  z-index: 60;
+  /* ✅ FIX: hero, sheet’in üstünde stack’lenebilsin (tabs cover üstüne çıkmasın) */
+  z-index: 80;
   isolation: isolate;
 }
 
@@ -450,7 +450,7 @@
   bottom: 28px;
   height: 64px;
 
-  /* ✅ FIX: map’e ezdirme (POSITION’U BOZMA!) */
+  /* ✅ Hub hep üstte */
   z-index: 1200;
 
   display: flex;
@@ -689,9 +689,9 @@
   min-height: var(--rd-hero-h, clamp(300px, 56vh, 540px)) !important;
   overflow: visible !important;
 
-  /* ✅ FIX: hero hep sheet’in üstünde çizilsin */
+  /* ✅ FIX: hero hep sheet’in üstünde çizilsin (tabs cover üstüne çıkmasın) */
   position: relative !important;
-  z-index: 60 !important;
+  z-index: 80 !important;
 }
 
 @supports (height: 100dvh) {
@@ -723,8 +723,6 @@
 
 /* =========================================================
    ✅ MAP KATMANI FAIL-SAFE
-   - Map’in içindeki iframe/gm-style bazen agresif z-index ile gelir.
-   - Hub’ın üstte kalması için: hub çok yukarıda, map kartı izole ve daha aşağıda.
    ========================================================= */
 
 .route-detail-backdrop .route-detail-sheet {

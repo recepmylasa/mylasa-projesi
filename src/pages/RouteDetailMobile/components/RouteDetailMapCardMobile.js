@@ -17,17 +17,17 @@ export default function RouteDetailMapCardMobile({
     return Math.max(0, Math.min(12, Math.floor(n)));
   }, [mapBadgeCount]);
 
-  const label = useMemo(() => {
+  const areaLabel = useMemo(() => {
     const s = String(mapAreaLabel || "").trim();
     return s ? s : "";
   }, [mapAreaLabel]);
 
-  // ✅ CSS scope kaçsa bile kartın yüksekliği garanti (yarım map fix)
-  const cardH = "var(--rd-map-h, clamp(190px, 26vh, 240px))";
+  // ✅ Tek otorite: MapCard yüksekliği (CSS’te de --rd-map-h ile kilitli)
+  const cardH = "var(--rd-map-h, 240px)";
 
   return (
     <div
-      className="route-detail-map rd-map-card"
+      className="rd-map-card"
       data-rd-map-card="1"
       style={{
         position: "relative",
@@ -38,9 +38,11 @@ export default function RouteDetailMapCardMobile({
         borderRadius: "var(--rd-map-radius, 20px)",
         overflow: "hidden",
         isolation: "isolate",
+
+        // ✅ Shell’in clamp vb. hiçbir şeye kaçmaması için:
+        "--rdmps-h": "100%",
       }}
     >
-      {/* ✅ TEK OTORİTE: dış kart yükseklik verir, canvas absolute fill */}
       <div
         className="rd-map-card__canvas"
         style={{
@@ -59,21 +61,10 @@ export default function RouteDetailMapCardMobile({
           path={pathPts}
           stops={stopsForPreview || []}
           stopsLoaded={stopsLoaded}
+          badgeCount={badgeCount}
+          areaLabel={areaLabel}
           onRetry={() => retryMap()}
         />
-
-        {/* ✅ overlay'ler canvas içinde kalsın (layout bozmasın) */}
-        {badgeCount > 0 && (
-          <div className="rd-map-card__badges" aria-hidden="true">
-            {Array.from({ length: badgeCount }).map((_, i) => (
-              <span key={i} className="rd-map-badge">
-                {i + 1}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {!!label && <div className="rd-map-card__label">{label}</div>}
       </div>
     </div>
   );

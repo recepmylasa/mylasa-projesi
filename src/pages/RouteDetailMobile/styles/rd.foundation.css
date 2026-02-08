@@ -189,14 +189,17 @@
   border-top-left-radius: 18px;
   border-top-right-radius: 18px;
 
-  /* ✅ EMİR 4 — premium shadow/border token’larla */
-  box-shadow: var(--rd-shadow, var(--sheet-shadow, 0 -10px 40px rgba(0, 0, 0, 0.25)));
-  overflow: hidden;
+  /* ✅ EMİR 4/01 — parent zincirinde overflow:hidden KALDIR (map clipping/alta girme kırıcı) */
+  overflow: visible;
+
   max-height: calc(100vh - 44px);
   display: flex;
   flex-direction: column;
   padding-bottom: env(safe-area-inset-bottom);
   border: 1px solid var(--rd-border, var(--glass-border, transparent));
+
+  /* ✅ Tek scroll otoritesi body’de: flex child’ların düzgün çalışması için */
+  min-height: 0;
 
   /* Vitreous */
   backdrop-filter: blur(var(--blur, 0px)) saturate(160%);
@@ -362,7 +365,7 @@
 .route-detail-close-icon {
   margin-left: auto;
   width: 34px;
-  height: 34px;
+  height: 3434px;
   border-radius: 999px;
   border: 1px solid #e3e3e3;
   background: #fff;
@@ -377,8 +380,16 @@
 
 .route-detail-body {
   padding: 12px 14px 10px;
-  overflow: auto;
+
+  /* ✅ EMİR 01/02 — TEK SCROLL OTORİTESİ BURASI (sheet’in karşılığı) */
+  flex: 1 1 auto;
+  min-height: 0;
+
+  overflow-y: auto;
+  overflow-x: visible;
+
   -webkit-overflow-scrolling: touch;
+  position: relative;
 }
 
 .route-detail-map {

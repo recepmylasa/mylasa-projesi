@@ -9,8 +9,11 @@ import "./styles/rd.sectionTabs.css";
 // ✅ MAP CARD full-fill fix (yarım map fix)  ✅✅✅
 import "./styles/rd.map.css";
 
-// ✅ hero/yazar stilleri en sonda
+// ✅ hero/yazar stilleri (base)
 import "./styles/rd.hero.css";
+
+// ✅✅✅ HARD FIX EN SON: yarım map / clipping / overlap kırıcı
+import "./styles/rd.map.hardfix.css";
 
 // Existing sheets/rows stay here (risk azalt)
 import RouteDetailAccessSheet from "./components/RouteDetailAccessSheet";

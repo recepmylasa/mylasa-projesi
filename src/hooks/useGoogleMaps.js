@@ -168,7 +168,7 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
   const loadAttemptSeqRef = useRef(0);
   const ensureTimersRef = useRef([]);
 
-  // ✅ EMİR — ensureMapInstance başarısızlık sebebini ayrıştır
+  // ✅ ensureMapInstance başarısızlık sebebini ayrıştır
   const lastEnsureErrRef = useRef(null);
   const lastEnsureReasonRef = useRef("");
 
@@ -190,6 +190,18 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
       clearEnsureTimers();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ FIX: Harita container ilk render’da küçükse Google Maps “yarım” kalabiliyor.
+  // Bu yüzden map oluşur oluşmaz 0ms ve 250ms’de resize kick atıyoruz.
+  const kickResize = useCallback(() => {
+    try {
+      const map = mapRef.current;
+      if (!map) return;
+      const ev = window.google?.maps?.event;
+      if (!ev?.trigger) return;
+      ev.trigger(map, "resize");
+    } catch {}
   }, []);
 
   const ensureMapInstance = useCallback(
@@ -223,6 +235,14 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
         if (MAP_ID) opts.mapId = MAP_ID;
 
         mapRef.current = new gmaps.Map(mapDivRef.current, opts);
+
+        // ✅ resize kick (map yarım/alta “yapışma” bug’ını keser)
+        try {
+          const t0 = setTimeout(() => kickResize(), 0);
+          const t1 = setTimeout(() => kickResize(), 250);
+          ensureTimersRef.current.push(t0, t1);
+        } catch {}
+
         return !!mapRef.current;
       } catch (e) {
         lastEnsureErrRef.current = e;
@@ -230,7 +250,7 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
         return false;
       }
     },
-    [MAP_ID]
+    [MAP_ID, kickResize]
   );
 
   const initPlacesServices = useCallback(() => {

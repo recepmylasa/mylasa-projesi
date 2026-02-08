@@ -1,3 +1,4 @@
+/* FILE: src/MapMobile.js */
 // src/MapMobile.js — Cluster + Reverse Geocoding + Rota Kaydı + ErrorBoundary + PlaceDetail entegrasyonu
 import React, {
   useCallback,
@@ -158,16 +159,11 @@ export default function MapMobile({
     autocompleteServiceRef,
     placesServiceRef,
     sessionTokenRef,
-    attemptLoad,
     reload,
   } = useGoogleMaps({ API_KEY, MAP_ID });
 
   const mapError = error || null;
   const reloadMap = reload;
-
-  useEffect(() => {
-    attemptLoad(false);
-  }, [attemptLoad]);
 
   const { upsertMarker, removeMarker, selfUIRef } = useMarkers(
     mapRef,
@@ -1077,9 +1073,12 @@ export default function MapMobile({
     if (nameSpan) nameSpan.textContent = "Ben";
 
     if (fill) {
-      const level = batteryLevel == null ? 1 : Math.max(0, Math.min(1, batteryLevel));
+      const level =
+        batteryLevel == null ? 1 : Math.max(0, Math.min(1, batteryLevel));
       fill.style.width =
-        batteryLevel == null ? "100%" : `${Math.max(3, Math.round(level * 100))}%`;
+        batteryLevel == null
+          ? "100%"
+          : `${Math.max(3, Math.round(level * 100))}%`;
       fill.style.opacity = batteryLevel == null ? "0.55" : "1";
       fill.style.background =
         batteryLevel == null
@@ -1287,7 +1286,9 @@ export default function MapMobile({
           try {
             const arr = polylineRef.current?.getPath?.();
             if (arr && window.google?.maps) {
-              arr.push(new window.google.maps.LatLng(userLocation.lat, userLocation.lng));
+              arr.push(
+                new window.google.maps.LatLng(userLocation.lat, userLocation.lng)
+              );
             }
           } catch {}
           routeStore.appendPath(routeId, p).catch(() => {});
@@ -1777,7 +1778,9 @@ export default function MapMobile({
       />
 
       {/* Modallar */}
-      {isAvatarModalOpen && <AvatarModal onClose={() => setIsAvatarModalOpen(false)} />}
+      {isAvatarModalOpen && (
+        <AvatarModal onClose={() => setIsAvatarModalOpen(false)} />
+      )}
       {overlay === PANEL_SETTINGS && (
         <MapSettingsModal onClose={() => dispatchPanels({ type: "CLOSE_ALL" })} />
       )}
@@ -1797,7 +1800,8 @@ export default function MapMobile({
           placeId={selectedPlace.id || selectedPlace.place_id}
           placeName={selectedPlace.name}
           coords={
-            typeof selectedPlace.lat === "number" && typeof selectedPlace.lng === "number"
+            typeof selectedPlace.lat === "number" &&
+            typeof selectedPlace.lng === "number"
               ? { lat: selectedPlace.lat, lng: selectedPlace.lng }
               : null
           }
