@@ -1,0 +1,32 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.sheet.hardfix.css */
+/* ✅ SHEET MOTOR HARD-FIX
+   Amaç: sheet/backdrop/body üzerinde biriken transform/translate'i öldürmek.
+   NOT: Google Maps iç DOM'una dokunmaz (gm-style vs yok).
+*/
+
+.route-detail-backdrop,
+.route-detail-sheet,
+.route-detail-body {
+  transform: none !important;
+  translate: none !important;
+  will-change: auto !important;
+}
+
+/* iOS scroll motoru stabil */
+.route-detail-body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain !important;
+}
+
+/* Inline transform yazan motorları ez (inline non-important ise !important kazanır) */
+.route-detail-backdrop[style*="transform"],
+.route-detail-sheet[style*="transform"],
+.route-detail-body[style*="transform"] {
+  transform: none !important;
+}
+
+.route-detail-backdrop[style*="translate"],
+.route-detail-sheet[style*="translate"],
+.route-detail-body[style*="translate"] {
+  translate: none !important;
+}

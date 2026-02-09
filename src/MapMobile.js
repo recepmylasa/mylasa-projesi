@@ -170,6 +170,34 @@ export default function MapMobile({
     advancedAllowedRef
   );
 
+  // ✅ FIX: İlk render/overlay değişimlerinde Google Maps yarım çizilebiliyor → resize kick
+  useEffect(() => {
+    if (gmapsStatus !== "ready") return;
+    const map = mapRef.current;
+    const trig = window.google?.maps?.event?.trigger;
+    if (!map || !trig) return;
+
+    const kick = () => {
+      try {
+        trig(map, "resize");
+        const c = map.getCenter?.();
+        if (c) map.setCenter(c);
+      } catch {}
+    };
+
+    const t0 = setTimeout(kick, 0);
+    const t1 = setTimeout(kick, 250);
+    const t2 = setTimeout(kick, 900);
+    return () => {
+      try {
+        clearTimeout(t0);
+        clearTimeout(t1);
+        clearTimeout(t2);
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gmapsStatus]);
+
   // dış tık kapama için ref'ler
   const searchBtnRef = useRef(null);
   const layersBtnRef = useRef(null);
@@ -1185,7 +1213,14 @@ export default function MapMobile({
         }
       );
     },
-    [placesServiceRef, sessionTokenRef, mapRef, upsertMarker, dispatchPanels, showRangeToast]
+    [
+      placesServiceRef,
+      sessionTokenRef,
+      mapRef,
+      upsertMarker,
+      dispatchPanels,
+      showRangeToast,
+    ]
   );
 
   // seçili yer için kısa adresi doldur (adres yoksa da reverse geocode ile al)
@@ -1303,7 +1338,13 @@ export default function MapMobile({
         clearAllStopMarkers();
       } catch {}
     }
-  }, [routeStatus, userLocation, createPolyline, clearPolyline, clearAllStopMarkers]);
+  }, [
+    routeStatus,
+    userLocation,
+    createPolyline,
+    clearPolyline,
+    clearAllStopMarkers,
+  ]);
 
   // ✅ ADIM 1: "Durak Ekle" artık prompt değil → sheet aç
   const handleAddStop = useCallback(() => {
@@ -1390,36 +1431,50 @@ export default function MapMobile({
   }, [routeStatus, clearPolyline, clearAllStopMarkers]);
 
   return (
-    <div style={containerStyle}>
+    <div style={{ ...containerStyle, position: "relative", overflow: "hidden" }}>
       <style>{`
         .mylasa-search-input::placeholder { color: rgba(255,255,255,0.8); }
         .mylasa-search-scroll::-webkit-scrollbar { width: 6px; }
         .mylasa-search-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
       `}</style>
 
+      {/* ✅ FIX: Map her zaman arkada tam ekran (flow'dan çıkartıldı) */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 0 }}>
+        <MapErrorBoundary onRetry={reloadMap} compact>
+          <MapMobileMapContent
+            mapDivRef={mapDivRef}
+            gmapsStatus={gmapsStatus}
+            mapError={mapError}
+            errorMsg={errorMsg}
+          />
+        </MapErrorBoundary>
+      </div>
+
       {/* üst bar */}
-      <MapTopControls
-        selfAvatarUrl={selfAvatarUrl}
-        onOpenAvatar={() => setIsAvatarModalOpen(true)}
-        onToggleSettings={() =>
-          dispatchPanels({ type: "TOGGLE", payload: PANEL_SETTINGS })
-        }
-        onToggleLayers={() =>
-          dispatchPanels({ type: "TOGGLE", payload: PANEL_LAYERS })
-        }
-        onToggleSearch={() => {
-          dispatchPanels({ type: "TOGGLE", payload: PANEL_SEARCH });
-          setSearchText("");
-          setPredictions([]);
-          setTimeout(() => {
-            const evt = new Event("resize");
-            window.dispatchEvent(evt);
-          }, 0);
-        }}
-        searchBtnRef={searchBtnRef}
-        layersBtnRef={layersBtnRef}
-        settingsBtnRef={settingsBtnRef}
-      />
+      <div style={{ position: "absolute", left: 0, right: 0, top: 0, zIndex: 24 }}>
+        <MapTopControls
+          selfAvatarUrl={selfAvatarUrl}
+          onOpenAvatar={() => setIsAvatarModalOpen(true)}
+          onToggleSettings={() =>
+            dispatchPanels({ type: "TOGGLE", payload: PANEL_SETTINGS })
+          }
+          onToggleLayers={() =>
+            dispatchPanels({ type: "TOGGLE", payload: PANEL_LAYERS })
+          }
+          onToggleSearch={() => {
+            dispatchPanels({ type: "TOGGLE", payload: PANEL_SEARCH });
+            setSearchText("");
+            setPredictions([]);
+            setTimeout(() => {
+              const evt = new Event("resize");
+              window.dispatchEvent(evt);
+            }, 0);
+          }}
+          searchBtnRef={searchBtnRef}
+          layersBtnRef={layersBtnRef}
+          settingsBtnRef={settingsBtnRef}
+        />
+      </div>
 
       {/* katman menüsü */}
       <div
@@ -1580,16 +1635,6 @@ export default function MapMobile({
           </div>
         </div>
       )}
-
-      {/* Google Map */}
-      <MapErrorBoundary onRetry={reloadMap} compact>
-        <MapMobileMapContent
-          mapDivRef={mapDivRef}
-          gmapsStatus={gmapsStatus}
-          mapError={mapError}
-          errorMsg={errorMsg}
-        />
-      </MapErrorBoundary>
 
       {/* BEN için kısa adres chip */}
       {selfShortAddr && (
@@ -1817,7 +1862,13 @@ function MapMobileMapContent({ mapDivRef, gmapsStatus, mapError, errorMsg }) {
     throw mapError;
   }
 
-  if (gmapsStatus === "no-key") {
+  // ✅ FIX: hook farklı status döndürebiliyor → hepsini yakala
+  if (
+    gmapsStatus === "no-key" ||
+    gmapsStatus === "missing_key" ||
+    gmapsStatus === "missing-key" ||
+    gmapsStatus === "missingKey"
+  ) {
     const err = new Error("Harita yapılandırması eksik");
     err.code = "NO_API_KEY";
     throw err;
@@ -1829,10 +1880,5 @@ function MapMobileMapContent({ mapDivRef, gmapsStatus, mapError, errorMsg }) {
     throw err;
   }
 
-  return (
-    <div
-      ref={mapDivRef}
-      style={{ width: "100%", height: "100%", paddingBottom: 55 }}
-    />
-  );
+  return <div ref={mapDivRef} style={{ position: "absolute", inset: 0 }} />;
 }

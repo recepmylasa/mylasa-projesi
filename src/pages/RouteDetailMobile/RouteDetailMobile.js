@@ -15,6 +15,9 @@ import "./styles/rd.hero.css";
 // ✅✅✅ HARD FIX EN SON: yarım map / clipping / overlap kırıcı
 import "./styles/rd.map.hardfix.css";
 
+// ✅✅✅ EMİR — SHEET MOTOR HARD-FIX (transform yasak + clamp/reset)
+import "./styles/rd.sheet.hardfix.css";
+
 // Existing sheets/rows stay here (risk azalt)
 import RouteDetailAccessSheet from "./components/RouteDetailAccessSheet";
 import RouteDetailPrefillSheet from "./components/RouteDetailPrefillSheet";
@@ -121,7 +124,8 @@ function RouteDetailStickyTabsFallback({
         borderBottom: border,
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
-        transform: "translateZ(0)",
+        // ❌ EMİR: transform YASAK (scroll motoru + sticky ölçü sapması risk)
+        // transform: "translateZ(0)",
       }}
     >
       <div
@@ -175,7 +179,11 @@ function RouteDetailStickyTabsFallback({
                     fontSize: 12,
                     fontWeight: 800,
                     lineHeight: "18px",
-                    background: isActive ? "rgba(0,0,0,0.18)" : isLight ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.10)",
+                    background: isActive
+                      ? "rgba(0,0,0,0.18)"
+                      : isLight
+                      ? "rgba(0,0,0,0.10)"
+                      : "rgba(255,255,255,0.10)",
                     color: isActive ? pillActiveText : isLight ? "rgba(0,0,0,0.76)" : "rgba(255,255,255,0.78)",
                   }}
                 >
@@ -226,6 +234,14 @@ export default function RouteDetailMobile({
 
   // ✅ Main scroller ref (jitter fix: tek otorite)
   const mainBodyRef = React.useRef(null);
+
+  // ✅ EMİR — HARD RESET px eşiği
+  const HARD_RESET_TOP_PX = 2;
+
+  // ✅ EMİR — “Clamp & Reset” mandalı (spam kırıcı)
+  const hardFixRef = React.useRef({
+    lastAtTop: true,
+  });
 
   // ✅ EMİR 01 — Collapsible hero (RAF + CSS vars)
   // ✅ FIX: lastAppliedKey ile style write spam kırıcı + mikro delta filtresi
@@ -291,6 +307,144 @@ export default function RouteDetailMobile({
       });
     },
     [applyHeroCollapseVars]
+  );
+
+  // ✅ EMİR — inline transform “temizleyici”
+  const stripInlineTransform = useCallback((el) => {
+    if (!el) return;
+    try {
+      const t = el.style?.transform;
+      if (t && t !== "none") el.style.transform = "none";
+    } catch {}
+    try {
+      // CSS translate property (varsa)
+      const tr = el.style?.translate;
+      if (tr && tr !== "none") el.style.translate = "none";
+    } catch {}
+    try {
+      // will-change: transform birikimi istemiyoruz (scroll motoru için)
+      const wc = String(el.style?.willChange || "");
+      if (wc && wc.includes("transform")) {
+        const cleaned = wc
+          .split(",")
+          .map((x) => x.trim())
+          .filter((x) => x && x !== "transform")
+          .join(", ");
+        el.style.willChange = cleaned || "auto";
+      }
+    } catch {}
+  }, []);
+
+  // ✅ EMİR — HARD RESET: scrollTop=0 iken offset/transform “zorla 0”
+  const hardResetSheetMotor = useCallback(
+    (reason = "") => {
+      const sheetEl = sheetRef.current;
+      if (!sheetEl) return;
+
+      const bodyEl =
+        mainBodyRef.current ||
+        sheetEl.querySelector?.(".route-detail-body") ||
+        sheetEl.querySelector?.(".content-body");
+
+      const st = typeof bodyEl?.scrollTop === "number" ? bodyEl.scrollTop : 0;
+      if (st > HARD_RESET_TOP_PX) return;
+
+      const backdropEl = sheetEl.closest?.(".route-detail-backdrop") || null;
+
+      // 1) Asla transform/translate kalmayacak (inline kalıntıları sök)
+      stripInlineTransform(backdropEl);
+      stripInlineTransform(sheetEl);
+      stripInlineTransform(bodyEl);
+
+      // Bazı motorlar parent’a da yazar (risk azalt)
+      stripInlineTransform(sheetEl.parentElement);
+
+      // 2) Hero progress tek kaynak = scrollTop → 0’a sabitle
+      try {
+        scheduleHeroCollapse(0);
+      } catch {}
+
+      // 3) Debug attribute (Elements’ta takip kolay)
+      try {
+        backdropEl?.setAttribute("data-rd-hardfix-top", "1");
+        if (process.env.NODE_ENV !== "production" && reason) {
+          // eslint-disable-next-line no-console
+          console.debug(`[RD HARD-FIX] reset @top (${reason})`);
+        }
+      } catch {}
+    },
+    [HARD_RESET_TOP_PX, scheduleHeroCollapse, stripInlineTransform]
+  );
+
+  // ✅ EMİR — mount/route değişince: en baştan “temiz” başla
+  useEffect(() => {
+    let raf = 0;
+    raf = window.requestAnimationFrame(() => {
+      try {
+        hardResetSheetMotor("mount");
+      } catch {}
+    });
+    return () => {
+      try {
+        if (raf) window.cancelAnimationFrame(raf);
+      } catch {}
+    };
+  }, [routeId, hardResetSheetMotor]);
+
+  // ✅ EMİR — gesture end: top’a döndüyse offset birikimi imkansız
+  useEffect(() => {
+    const sheetEl = sheetRef.current;
+    if (!sheetEl) return;
+
+    const onGestureEnd = () => {
+      try {
+        hardResetSheetMotor("gesture-end");
+      } catch {}
+    };
+
+    const opts = { passive: true };
+
+    sheetEl.addEventListener("touchend", onGestureEnd, opts);
+    sheetEl.addEventListener("touchcancel", onGestureEnd, opts);
+    sheetEl.addEventListener("pointerup", onGestureEnd, opts);
+    sheetEl.addEventListener("pointercancel", onGestureEnd, opts);
+    sheetEl.addEventListener("mouseup", onGestureEnd, opts);
+
+    return () => {
+      try {
+        sheetEl.removeEventListener("touchend", onGestureEnd, opts);
+        sheetEl.removeEventListener("touchcancel", onGestureEnd, opts);
+        sheetEl.removeEventListener("pointerup", onGestureEnd, opts);
+        sheetEl.removeEventListener("pointercancel", onGestureEnd, opts);
+        sheetEl.removeEventListener("mouseup", onGestureEnd, opts);
+      } catch {}
+    };
+  }, [routeId, hardResetSheetMotor]);
+
+  // ✅ EMİR — scroll handler: stateless(progress = scrollTop) + clamp/reset mandalı
+  const handleBodyScroll = useCallback(
+    (e) => {
+      const st = Math.max(0, Math.round(Number(e?.currentTarget?.scrollTop) || 0));
+      scheduleHeroCollapse(st);
+
+      const atTop = st <= HARD_RESET_TOP_PX;
+      const ref = hardFixRef.current;
+
+      // atTop iken her zaman temizle (inline birikim varsa sökülür; yoksa no-op)
+      if (atTop) {
+        hardResetSheetMotor("scroll@top");
+      }
+
+      // state geçişi (debug/izleme)
+      if (ref.lastAtTop !== atTop) {
+        ref.lastAtTop = atTop;
+        try {
+          const backdropEl = sheetRef.current?.closest?.(".route-detail-backdrop");
+          if (backdropEl) backdropEl.setAttribute("data-rd-at-top", atTop ? "1" : "0");
+        } catch {}
+      }
+    },
+    [HARD_RESET_TOP_PX, hardResetSheetMotor, scheduleHeroCollapse]
   );
 
   useEffect(() => {
@@ -596,9 +750,12 @@ export default function RouteDetailMobile({
       try {
         const st = typeof el?.scrollTop === "number" ? el.scrollTop : 0;
         scheduleHeroCollapse(st);
+        if (st <= HARD_RESET_TOP_PX) {
+          hardResetSheetMotor("body-ref");
+        }
       } catch {}
     },
-    [routeBodyRef, scheduleHeroCollapse]
+    [routeBodyRef, scheduleHeroCollapse, HARD_RESET_TOP_PX, hardResetSheetMotor]
   );
 
   // ✅ cover picker hook (medya cache’e bağlı)
@@ -951,7 +1108,7 @@ export default function RouteDetailMobile({
             overflowAnchor: "none",
             overscrollBehavior: "contain",
           }}
-          onScroll={(e) => scheduleHeroCollapse(e.currentTarget.scrollTop)}
+          onScroll={handleBodyScroll}
         >
           <RouteDetailStickyTabsFallback
             activeTab={activeTabKey}
