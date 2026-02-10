@@ -1,4 +1,4 @@
-/* FILE: src/hooks/useGoogleMaps.js */
+// FILE: src/hooks/useGoogleMaps.js
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const GMAPS_SCRIPT_ID = "gmaps-js-sdk";
@@ -220,6 +220,25 @@ export function useGoogleMaps({ API_KEY, MAP_ID }) {
           lastEnsureReasonRef.current = "no_div";
           return false;
         }
+
+        // ✅ container'ın gerçekten %100 fill almasını garanti et (bazı global css'ler bozabiliyor)
+        try {
+          const d = mapDivRef.current;
+          d.style.width = "100%";
+          d.style.height = "100%";
+          d.style.minHeight = "100%";
+        } catch {}
+
+        // ✅ KRİTİK: container ölçüsü yokken map yaratma (yarım render bug'ı)
+        try {
+          const r = mapDivRef.current.getBoundingClientRect?.();
+          const w = r?.width || 0;
+          const h = r?.height || 0;
+          if (w < 10 || h < 10) {
+            lastEnsureReasonRef.current = "div_too_small";
+            return false;
+          }
+        } catch {}
 
         const opts = {
           center: { lat: 39.0, lng: 35.0 },

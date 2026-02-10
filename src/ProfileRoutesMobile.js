@@ -360,6 +360,7 @@ function formatDistanceKmFromRoute(route) {
   const s = route.stats || {};
   const kmFromStats = toFiniteNumber(s.distanceKm);
   if (kmFromStats != null && kmFromStats > 0) {
+    // ✅ FIX: kopyala-yapıştır sırasında giren "жы" karakterleri kaldırıldı
     const fixed = kmFromStats >= 10 ? Math.round(kmFromStats) : Math.round(kmFromStats * 10) / 10;
     return `${fixed} km`;
   }
@@ -1298,7 +1299,9 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
               </div>
 
               {/* ✅ sadece video posteri ise */}
-              {coverCandidate?.hasVideo && <div className="profile-route-tile-badge profile-route-tile-badge--right">▶</div>}
+              {coverCandidate?.hasVideo && (
+                <div className="profile-route-tile-badge profile-route-tile-badge--right">▶</div>
+              )}
             </div>
 
             <div className="profile-route-tile-overlay" aria-hidden="true">

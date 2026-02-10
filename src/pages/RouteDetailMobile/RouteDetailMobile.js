@@ -6,14 +6,14 @@ import "./RouteDetailMobileVitreous.css";
 // ✅ Tabs/Pills stilleri (yoksa bar görünmeyebilir)
 import "./styles/rd.sectionTabs.css";
 
-// ✅ MAP CARD full-fill fix (yarım map fix)  ✅✅✅
+// ✅ MAP CARD base styles
 import "./styles/rd.map.css";
 
 // ✅ hero/yazar stilleri (base)
 import "./styles/rd.hero.css";
 
-// ✅✅✅ HARD FIX EN SON: yarım map / clipping / overlap kırıcı
-import "./styles/rd.map.hardfix.css";
+// ❌ PARÇA-1 REGRESYON RESET: premium hissiyatı bozan hardfix şimdilik kapalı
+// import "./styles/rd.map.hardfix.css";
 
 // ✅✅✅ EMİR — SHEET MOTOR HARD-FIX (transform yasak + clamp/reset)
 import "./styles/rd.sheet.hardfix.css";
@@ -65,9 +65,6 @@ export { formatTimeAgo, formatCount, formatDateTR } from "./routeDetailCompat";
 
 /**
  * ✅ FALLBACK STICKY TABS
- * - Bazı cihaz/CSS kombinasyonlarında pills bar görünmez olabiliyor.
- * - Bu fallback bar inline-style ile “kesin görünür” olur (CSS’e takılmaz).
- * - tabsBarRef buraya bağlanır (anchors ölçümü / offset için).
  */
 function RouteDetailStickyTabsFallback({
   activeTab,
@@ -118,14 +115,12 @@ function RouteDetailStickyTabsFallback({
       style={{
         position: "sticky",
         top: 0,
-        zIndex: 60,
+        zIndex: 90, // ✅ üstte kesin dursun (map/hero altında kalmasın)
         padding: "10px 12px 10px",
         background: bg,
         borderBottom: border,
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
-        // ❌ EMİR: transform YASAK (scroll motoru + sticky ölçü sapması risk)
-        // transform: "translateZ(0)",
       }}
     >
       <div
@@ -235,6 +230,19 @@ export default function RouteDetailMobile({
   // ✅ Main scroller ref (jitter fix: tek otorite)
   const mainBodyRef = React.useRef(null);
 
+  // ✅ EMİR — route başına 1 kere "TOP reset" mandalı (StrictMode spam kırıcı)
+  const initialTopResetRef = React.useRef({ routeId: null, done: false });
+
+  // ✅ PARÇA-1: Debug flag (prod’da kapalı)
+  const RD_DEBUG = useMemo(() => {
+    try {
+      if (process.env.NODE_ENV === "production") return false;
+      return typeof window !== "undefined" && window.localStorage.getItem("RD_DEBUG") === "1";
+    } catch {
+      return false;
+    }
+  }, []);
+
   // ✅ EMİR — HARD RESET px eşiği
   const HARD_RESET_TOP_PX = 2;
 
@@ -244,7 +252,6 @@ export default function RouteDetailMobile({
   });
 
   // ✅ EMİR 01 — Collapsible hero (RAF + CSS vars)
-  // ✅ FIX: lastAppliedKey ile style write spam kırıcı + mikro delta filtresi
   const heroCollapseRef = React.useRef({
     raf: 0,
     lastTop: 0,
@@ -317,12 +324,10 @@ export default function RouteDetailMobile({
       if (t && t !== "none") el.style.transform = "none";
     } catch {}
     try {
-      // CSS translate property (varsa)
       const tr = el.style?.translate;
       if (tr && tr !== "none") el.style.translate = "none";
     } catch {}
     try {
-      // will-change: transform birikimi istemiyoruz (scroll motoru için)
       const wc = String(el.style?.willChange || "");
       if (wc && wc.includes("transform")) {
         const cleaned = wc
@@ -351,20 +356,15 @@ export default function RouteDetailMobile({
 
       const backdropEl = sheetEl.closest?.(".route-detail-backdrop") || null;
 
-      // 1) Asla transform/translate kalmayacak (inline kalıntıları sök)
       stripInlineTransform(backdropEl);
       stripInlineTransform(sheetEl);
       stripInlineTransform(bodyEl);
-
-      // Bazı motorlar parent’a da yazar (risk azalt)
       stripInlineTransform(sheetEl.parentElement);
 
-      // 2) Hero progress tek kaynak = scrollTop → 0’a sabitle
       try {
         scheduleHeroCollapse(0);
       } catch {}
 
-      // 3) Debug attribute (Elements’ta takip kolay)
       try {
         backdropEl?.setAttribute("data-rd-hardfix-top", "1");
         if (process.env.NODE_ENV !== "production" && reason) {
@@ -375,6 +375,214 @@ export default function RouteDetailMobile({
     },
     [HARD_RESET_TOP_PX, scheduleHeroCollapse, stripInlineTransform]
   );
+
+  // ✅ PARÇA-1: TRANSFORM AVCISI + SCROLL OTORİTESİ LOGGER (debug-only)
+  useEffect(() => {
+    if (!RD_DEBUG) return;
+
+    const sheetEl = sheetRef.current;
+    if (!sheetEl) return;
+
+    const rootEl = sheetEl.closest(".route-detail-backdrop") || sheetEl;
+
+    const getLabel = (el) => {
+      try {
+        const tag = String(el.tagName || "").toLowerCase();
+        const clsRaw = String(el.className || "");
+        const cls = clsRaw && typeof clsRaw === "string" ? clsRaw.trim().replace(/\s+/g, ".") : "";
+        const id = el.id ? `#${el.id}` : "";
+        return `${tag}${id}${cls ? "." + cls : ""}`;
+      } catch {
+        return "node";
+      }
+    };
+
+    const extractDataAttrs = (el) => {
+      try {
+        const out = {};
+        const attrs = el.getAttributeNames?.() || [];
+        attrs.forEach((a) => {
+          if (!a || !a.startsWith("data-")) return;
+          out[a] = el.getAttribute(a);
+        });
+        return out;
+      } catch {
+        return {};
+      }
+    };
+
+    const lastEvtRef = { type: "init", ts: Date.now() };
+    const markEvt = (type) => {
+      try {
+        lastEvtRef.type = type;
+        lastEvtRef.ts = typeof performance !== "undefined" ? performance.now() : Date.now();
+      } catch {}
+    };
+
+    const evtOpts = { capture: true, passive: true };
+    const evtTypes = [
+      "scroll",
+      "touchstart",
+      "touchmove",
+      "touchend",
+      "touchcancel",
+      "touchcancel",
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+      "pointercancel",
+      "mousedown",
+      "mousemove",
+      "mouseup",
+      "wheel",
+    ];
+
+    // ✅ cleanup düzgün olsun (aynı fn ref)
+    const evtHandlers = {};
+    evtTypes.forEach((t) => {
+      try {
+        const fn = () => markEvt(t);
+        evtHandlers[t] = fn;
+        rootEl.addEventListener(t, fn, evtOpts);
+      } catch {}
+    });
+
+    // Scroll otoritesi: aynı anda hem sheet hem body scroll mu?
+    const bodyEl =
+      mainBodyRef.current ||
+      sheetEl.querySelector?.(".route-detail-body") ||
+      sheetEl.querySelector?.(".content-body") ||
+      null;
+
+    const scrollLogRef = { lastTs: 0, lastKey: "" };
+    const logScroll = (src) => {
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now - scrollLogRef.lastTs < 220) return;
+
+      const sst = typeof sheetEl.scrollTop === "number" ? Math.round(sheetEl.scrollTop) : 0;
+      const bst = typeof bodyEl?.scrollTop === "number" ? Math.round(bodyEl.scrollTop) : 0;
+      const key = `${src}|s:${sst}|b:${bst}`;
+      if (scrollLogRef.lastKey === key) return;
+
+      scrollLogRef.lastKey = key;
+      scrollLogRef.lastTs = now;
+
+      // eslint-disable-next-line no-console
+      console.log(`[RD_DEBUG][scroll] ${key}`, { sheet: sheetEl, body: bodyEl });
+    };
+
+    const onSheetScroll = () => logScroll("sheet");
+    const onBodyScroll = () => logScroll("body");
+
+    try {
+      sheetEl.addEventListener("scroll", onSheetScroll, { passive: true });
+    } catch {}
+    try {
+      bodyEl?.addEventListener("scroll", onBodyScroll, { passive: true });
+    } catch {}
+
+    // Transform avcısı: inline style değişince gerçek hedef node’u yakala
+    const seen = new WeakMap();
+    let logCount = 0;
+    const MAX_LOG = 120;
+
+    const obs = new MutationObserver((list) => {
+      if (!list || !list.length) return;
+      if (logCount >= MAX_LOG) return;
+
+      for (const m of list) {
+        if (logCount >= MAX_LOG) break;
+        if (m.type !== "attributes") continue;
+        if (m.attributeName !== "style") continue;
+
+        const el = m.target;
+        if (!(el instanceof HTMLElement)) continue;
+
+        let styleStr = "";
+        try {
+          styleStr = String(el.getAttribute("style") || "");
+        } catch {}
+
+        let tf = "none";
+        try {
+          tf = String(window.getComputedStyle(el).transform || "none");
+        } catch {}
+
+        const looksLikeTransform =
+          tf !== "none" || styleStr.includes("transform") || styleStr.includes("translate") || styleStr.includes("matrix");
+
+        if (!looksLikeTransform) continue;
+
+        const lastKey = seen.get(el) || "";
+        const key = `${tf}||${styleStr}`;
+        if (lastKey === key) continue;
+
+        seen.set(el, key);
+        logCount++;
+
+        const sst = typeof sheetEl.scrollTop === "number" ? Math.round(sheetEl.scrollTop) : 0;
+        const bst = typeof bodyEl?.scrollTop === "number" ? Math.round(bodyEl.scrollTop) : 0;
+
+        // eslint-disable-next-line no-console
+        console.groupCollapsed(
+          `[RD_DEBUG][transform#${logCount}] ${getLabel(el)} | tf:${tf !== "none" ? "YES" : "maybe"} | evt:${
+            lastEvtRef.type
+          } | s:${sst} b:${bst}`
+        );
+        // eslint-disable-next-line no-console
+        console.log("node:", el);
+        // eslint-disable-next-line no-console
+        console.log("label:", getLabel(el));
+        // eslint-disable-next-line no-console
+        console.log("data:", extractDataAttrs(el));
+        // eslint-disable-next-line no-console
+        console.log("computed.transform:", tf);
+        // eslint-disable-next-line no-console
+        console.log("inline style:", styleStr);
+        // eslint-disable-next-line no-console
+        console.log("lastEvent:", { ...lastEvtRef });
+        // eslint-disable-next-line no-console
+        console.groupEnd();
+      }
+
+      if (logCount >= MAX_LOG) {
+        try {
+          // eslint-disable-next-line no-console
+          console.warn("[RD_DEBUG] MAX_LOG reached, observer muted.");
+        } catch {}
+      }
+    });
+
+    try {
+      obs.observe(rootEl, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["style"],
+      });
+      // eslint-disable-next-line no-console
+      console.log("[RD_DEBUG] Transform Avcısı aktif. (localStorage RD_DEBUG=1)");
+    } catch {}
+
+    return () => {
+      try {
+        obs.disconnect();
+      } catch {}
+      try {
+        sheetEl.removeEventListener("scroll", onSheetScroll);
+      } catch {}
+      try {
+        bodyEl?.removeEventListener("scroll", onBodyScroll);
+      } catch {}
+
+      evtTypes.forEach((t) => {
+        try {
+          const fn = evtHandlers[t];
+          if (fn) rootEl.removeEventListener(t, fn, evtOpts);
+        } catch {}
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [RD_DEBUG, routeId]);
 
   // ✅ EMİR — mount/route değişince: en baştan “temiz” başla
   useEffect(() => {
@@ -421,7 +629,7 @@ export default function RouteDetailMobile({
     };
   }, [routeId, hardResetSheetMotor]);
 
-  // ✅ EMİR — scroll handler: stateless(progress = scrollTop) + clamp/reset mandalı
+  // ✅ EMİR — scroll handler
   const handleBodyScroll = useCallback(
     (e) => {
       const st = Math.max(0, Math.round(Number(e?.currentTarget?.scrollTop) || 0));
@@ -430,12 +638,10 @@ export default function RouteDetailMobile({
       const atTop = st <= HARD_RESET_TOP_PX;
       const ref = hardFixRef.current;
 
-      // atTop iken her zaman temizle (inline birikim varsa sökülür; yoksa no-op)
       if (atTop) {
         hardResetSheetMotor("scroll@top");
       }
 
-      // state geçişi (debug/izleme)
       if (ref.lastAtTop !== atTop) {
         ref.lastAtTop = atTop;
         try {
@@ -485,20 +691,13 @@ export default function RouteDetailMobile({
     reportSectionRef,
   } = useRDAnchors({ routeId, routeBodyRef: routeBodyRefForAnchors });
 
-  // ✅ ACTIVE TAB: scroll-spy (activeSection) ÖNCE, sonra tab state
   const activeTabKey = useMemo(() => {
     return activeSection || tab || "stops";
   }, [activeSection, tab]);
 
-  // ✅ Default tab = stops (route değişince de)
-  useEffect(() => {
-    try {
-      onTabChange?.("stops");
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeId]);
+  // ❌ KALDIRILDI: routeId değişince zorla onTabChange("stops") yapmak
+  // Bu, bazı cihazlarda ilk açılışta scroll tetikleyip hero/map state’i bozuyor.
 
-  // ✅ Tab change wrapper: SADECE onTabChange (scrollTop=0 yok! anchor ile çakışıyordu)
   const handleTabChange = useCallback(
     (key) => {
       if (!key) return;
@@ -509,7 +708,6 @@ export default function RouteDetailMobile({
     [onTabChange]
   );
 
-  // ✅ data (route/stops/owner/perm/comments/lockedOwner)
   const {
     routeDoc,
     stops,
@@ -530,7 +728,53 @@ export default function RouteDetailMobile({
 
   const routeModel = routeDoc || initialRoute;
 
-  // ✅ path canonical
+  // ✅ EMİR — route doc geldikten sonra 1 kez “TOP reset” (deep-link varsa dokunma)
+  useEffect(() => {
+    if (!routeId) return;
+    if (!routeDoc) return;
+
+    const ref = initialTopResetRef.current;
+    if (ref.routeId === routeId && ref.done) return;
+    ref.routeId = routeId;
+    ref.done = true;
+
+    let hasHash = false;
+    try {
+      hasHash = typeof window !== "undefined" && !!(window.location.hash && window.location.hash.length > 1);
+    } catch {}
+
+    const hasExplicitTab = !!(tab && String(tab) !== "stops");
+    if (hasHash || hasExplicitTab) return;
+
+    const sheetEl = sheetRef.current;
+    const bodyEl =
+      mainBodyRef.current ||
+      sheetEl?.querySelector?.(".route-detail-body") ||
+      sheetEl?.querySelector?.(".content-body") ||
+      null;
+
+    if (!bodyEl) return;
+
+    let raf = 0;
+    raf = window.requestAnimationFrame(() => {
+      try {
+        bodyEl.scrollTop = 0;
+      } catch {}
+      try {
+        scheduleHeroCollapse(0);
+      } catch {}
+      try {
+        hardResetSheetMotor("route-ready");
+      } catch {}
+    });
+
+    return () => {
+      try {
+        if (raf) window.cancelAnimationFrame(raf);
+      } catch {}
+    };
+  }, [routeId, routeDoc, tab, scheduleHeroCollapse, hardResetSheetMotor]);
+
   const rawPath = useMemo(() => {
     const m = routeDoc || initialRoute || {};
     return m?.path || m?.routePath || m?.polyline || m?.points || m?.raw?.path || m?.raw?.polyline || [];
@@ -538,7 +782,6 @@ export default function RouteDetailMobile({
 
   const { pts: pathPts, dropped: pathDropped } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
 
-  // ✅ stops canonical (MapPreview/Quest/GPX için)
   const { stops: stopsForPreview, dropped: stopsDropped } = useMemo(
     () => normalizeStopsForPreview(stops || []),
     [stops]
@@ -594,7 +837,6 @@ export default function RouteDetailMobile({
     [normalizeMediaType]
   );
 
-  // ✅ img proof
   const DEFAULT_ROUTE_COVER_URL_PUBLIC = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
   const { isDefaultCoverUrl, handleImgLoadProof, handleImgErrorToDefault } = useRouteDetailImgProof({
     routeId,
@@ -603,7 +845,6 @@ export default function RouteDetailMobile({
     maxLogs: 80,
   });
 
-  // ✅ quest — V3 gate + path/stops
   const { questState, startQuest, stopQuest, finishQuest, questLocLine, ghostMetrics } = useRouteDetailQuest({
     routeId,
     enabled: V3_ENABLED,
@@ -719,7 +960,6 @@ export default function RouteDetailMobile({
     authUid,
   ]);
 
-  // ✅ media (cache + gallery + upload)
   const {
     mediaCacheRef,
     galleryItems,
@@ -734,7 +974,6 @@ export default function RouteDetailMobile({
     setGalleryTabActive,
   } = useRouteDetailMedia({ routeId, routeDoc, stops, tab });
 
-  // ✅ merge routeBodyRef for anchors + mainBodyRef (single scroll authority)
   const setRouteBodyEl = useCallback(
     (el) => {
       try {
@@ -758,7 +997,6 @@ export default function RouteDetailMobile({
     [routeBodyRef, scheduleHeroCollapse, HARD_RESET_TOP_PX, hardResetSheetMotor]
   );
 
-  // ✅ cover picker hook (medya cache’e bağlı)
   const {
     coverLocal,
     coverPickerOpen,
@@ -783,7 +1021,6 @@ export default function RouteDetailMobile({
     bumpMediaTick,
   });
 
-  // ✅ Viewer/Edit ayrımı (mode)
   const [mode, setMode] = useState("view");
   const isEditMode = useMemo(() => !!isOwner && mode === "edit", [isOwner, mode]);
   const modeForTabs = isEditMode ? "edit" : "view";
@@ -805,21 +1042,15 @@ export default function RouteDetailMobile({
     } catch {}
   }, [mode, coverPickerOpen, closeCoverPicker]);
 
-  // ✅ Map retry
   const [mapsRetryTick, setMapsRetryTick] = useState(0);
   const retryMap = useCallback(() => setMapsRetryTick((x) => x + 1), []);
 
-  // ✅ Lightbox
   const [lightboxItems, setLightboxItems] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
-  // ✅ Share sheet
   const [showShareSheet, setShowShareSheet] = useState(false);
-
-  // ✅ Comments overlay (anchor’dan ayrı)
   const [commentsOverlayOpen, setCommentsOverlayOpen] = useState(false);
 
-  // ✅ report agg
   const [reportLoaded, setReportLoaded] = useState(false);
   const [routeAgg, setRouteAgg] = useState(null);
   const [stopAgg, setStopAgg] = useState(null);
@@ -835,26 +1066,22 @@ export default function RouteDetailMobile({
     setReportLoaded(true);
   }, [reportLoaded, routeId]);
 
-  // ✅ report: tab OR scroll-spy
   useEffect(() => {
     if (activeTabKey === "report") loadReportAgg();
   }, [activeTabKey, loadReportAgg]);
 
-  // ✅ Galeri: tab OR scroll-spy
   useEffect(() => {
     try {
       setGalleryTabActive(activeTabKey === "gallery");
     } catch {}
   }, [activeTabKey, setGalleryTabActive]);
 
-  // ✅ Edit modda: report kapalı + comments overlay kapanır
   useEffect(() => {
     if (!isEditMode) return;
     if (tab === "report") handleTabChange("stops");
     if (commentsOverlayOpen) setCommentsOverlayOpen(false);
   }, [isEditMode, tab, commentsOverlayOpen, handleTabChange]);
 
-  // ✅ ESC behavior
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== "Escape") return;
@@ -902,7 +1129,6 @@ export default function RouteDetailMobile({
     blockInteractionsBriefly,
   ]);
 
-  // ✅ Hero model
   const heroModel = useRDHeroModel({
     routeModel,
     owner,
@@ -911,7 +1137,6 @@ export default function RouteDetailMobile({
     ownerId: ownerIdForProfile,
   });
 
-  // ✅ Actions
   const { onShare, onExportGpx, canRateRoute, onRouteRate, onStopRate, isFav, onToggleFav, canToggleFav } =
     useRDActions({
       routeId,
@@ -923,7 +1148,6 @@ export default function RouteDetailMobile({
       pathPts,
     });
 
-  // ✅ cover resolve
   const coverUi = useMemo(
     () =>
       resolveCoverForUi({
@@ -940,12 +1164,10 @@ export default function RouteDetailMobile({
 
   const handleBackdropClick = useCallback(() => onClose(), [onClose]);
 
-  // ✅ Kapalı overlay'ler DOM'da KALMAYACAK. Cover picker sadece edit modda mount.
   const showCoverPickerOverlay = !!(isEditMode && coverPickerOpen);
   const overlayOpen = !!(lightboxItems || showShareSheet || showCoverPickerOverlay || commentsOverlayOpen);
   const canInteract = !overlayOpen && !interactionBlocked;
 
-  // ✅ Hero menu state
   const [heroMenuOpen, setHeroMenuOpen] = useState(false);
   const closeHeroMenu = useCallback(() => setHeroMenuOpen(false), []);
   const toggleHeroMenu = useCallback((e) => {
@@ -984,7 +1206,6 @@ export default function RouteDetailMobile({
     );
   }, [routeDoc, initialRoute, coverUi.coverKindUi, coverUi.coverResolved, owner, routeId]);
 
-  // ✅ Early returns (access/prefill)
   if (!routeId)
     return withPortal(<RouteDetailAccessSheet kind="not-found" followInitially={followInitially} onClose={onClose} />);
 
@@ -1039,7 +1260,6 @@ export default function RouteDetailMobile({
       />
     );
 
-  // ✅ Main UI
   const content = (
     <div
       className={`route-detail-backdrop ${rdTheme === "light" ? "route-detail-light" : "route-detail-dark"}${

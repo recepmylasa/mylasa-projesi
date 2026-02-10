@@ -41,6 +41,9 @@ export default function RouteDetailMapCardMobile({
 
         // ✅ Shell’in clamp vb. hiçbir şeye kaçmaması için:
         "--rdmps-h": "100%",
+
+        // ✅ sheet/hero transform zincirlerinde render glitch azaltıcı
+        transform: "translateZ(0)",
       }}
     >
       <div

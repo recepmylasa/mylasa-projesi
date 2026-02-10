@@ -509,8 +509,10 @@ export default function RouteDetailMapPreviewShell({
   }, []);
 
   const lastMapInstanceRef = useRef(null);
-
   const shellRef = useRef(null);
+
+  // ✅ EMİR 02: Map gesture guard — sheet/scroll motoruna kaçışı kes
+  const gestureGuardRef = useRef({ active: false, pointerId: null });
 
   // ✅ EMİR 01: Shell kendi clamp'ını ASLA dayatmaz. %100 fill.
   const shellH = "var(--rdmps-h, 100%)";
@@ -554,16 +556,106 @@ export default function RouteDetailMapPreviewShell({
     }
   }, [mapInstance, bumpTick]);
 
+  // ✅ EMİR 02: Map üstünde pointer/touch sheet’e kaçmasın
+  useEffect(() => {
+    const host = shellRef.current;
+    if (!host) return;
+
+    const state = gestureGuardRef.current;
+
+    const onTouchStart = () => {
+      state.active = true;
+    };
+    const onTouchEnd = () => {
+      state.active = false;
+      state.pointerId = null;
+    };
+    const onTouchMove = (e) => {
+      if (!state.active) return;
+      try {
+        e.preventDefault();
+      } catch {}
+      try {
+        e.stopPropagation();
+      } catch {}
+    };
+
+    const onPointerDown = (e) => {
+      state.active = true;
+      state.pointerId = e.pointerId ?? null;
+      try {
+        host.setPointerCapture?.(e.pointerId);
+      } catch {}
+      try {
+        e.stopPropagation();
+      } catch {}
+    };
+    const onPointerMove = (e) => {
+      if (!state.active) return;
+      if (state.pointerId != null && e.pointerId != null && state.pointerId !== e.pointerId) return;
+      try {
+        e.stopPropagation();
+      } catch {}
+    };
+    const onPointerUp = (e) => {
+      if (state.pointerId != null && e.pointerId != null && state.pointerId !== e.pointerId) return;
+      state.active = false;
+      state.pointerId = null;
+      try {
+        e.stopPropagation();
+      } catch {}
+    };
+
+    const onWheel = (e) => {
+      try {
+        e.stopPropagation();
+      } catch {}
+    };
+
+    try {
+      host.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
+      host.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+      host.addEventListener("touchend", onTouchEnd, { capture: true, passive: true });
+      host.addEventListener("touchcancel", onTouchEnd, { capture: true, passive: true });
+
+      host.addEventListener("pointerdown", onPointerDown, { capture: true, passive: false });
+      host.addEventListener("pointermove", onPointerMove, { capture: true, passive: false });
+      host.addEventListener("pointerup", onPointerUp, { capture: true, passive: false });
+      host.addEventListener("pointercancel", onPointerUp, { capture: true, passive: false });
+
+      host.addEventListener("wheel", onWheel, { capture: true, passive: true });
+    } catch {}
+
+    return () => {
+      try {
+        host.removeEventListener("touchstart", onTouchStart, true);
+        host.removeEventListener("touchmove", onTouchMove, true);
+        host.removeEventListener("touchend", onTouchEnd, true);
+        host.removeEventListener("touchcancel", onTouchEnd, true);
+
+        host.removeEventListener("pointerdown", onPointerDown, true);
+        host.removeEventListener("pointermove", onPointerMove, true);
+        host.removeEventListener("pointerup", onPointerUp, true);
+        host.removeEventListener("pointercancel", onPointerUp, true);
+
+        host.removeEventListener("wheel", onWheel, true);
+      } catch {}
+    };
+  }, []);
+
+  // ✅ EMİR 02: Map options — map gesture map’te kalsın
   useEffect(() => {
     if (!mapInstance) return;
     try {
       mapInstance.setOptions({
-        gestureHandling: "none",
-        draggable: false,
+        gestureHandling: "greedy",
+        draggable: true,
         scrollwheel: false,
         disableDoubleClickZoom: true,
         keyboardShortcuts: false,
         clickableIcons: false,
+        draggableCursor: "grab",
+        draggingCursor: "grabbing",
       });
     } catch {}
   }, [mapInstance]);
@@ -819,7 +911,6 @@ export default function RouteDetailMapPreviewShell({
     return `${pts.length}:${f}:${l}:${bbox}:${wB}x${hB}`;
   }, []);
 
-  // ✅ EMİR 01-B: resize + nudge (fallback) — sheet drag / visualViewport değişimlerinde yarım kalmayı kırar
   const triggerResizeAndNudge = useCallback(() => {
     const map = mapInstance;
     const g = window.google;
@@ -829,7 +920,6 @@ export default function RouteDetailMapPreviewShell({
       if (g.maps.event?.trigger) g.maps.event.trigger(map, "resize");
     } catch {}
 
-    // fallback nudge (bazı cihazlarda trigger yetersiz kalabiliyor)
     try {
       const c = map.getCenter?.();
       if (c && typeof map.setCenter === "function") map.setCenter(c);
@@ -854,7 +944,6 @@ export default function RouteDetailMapPreviewShell({
       const h = rect?.height || 0;
       if (w <= 4 || h <= 4) return;
 
-      // ✅ sig (points olsun/olmasın) — loop breaker
       const sig = computeSig(drawPoints, rect);
       const now = Date.now();
       if (fitStateRef.current.lastSig === sig && now - fitStateRef.current.lastAt < 800) return;
@@ -864,17 +953,14 @@ export default function RouteDetailMapPreviewShell({
       fitStateRef.current.lastAt = now;
       fitStateRef.current.lastAnyAt = now;
 
-      // ✅ önce resize+nudge, sonra (varsa) bounds
       try {
         triggerResizeAndNudge();
       } catch {}
 
-      // points yoksa bile yarım render fix için burada duruyoruz
       if (!drawPoints || drawPoints.length < 1) return;
 
       const pts = drawPoints;
 
-      // ✅ fitBounds’u resize’den sonraki frame’e bırak (yarım canvas’ı kırar)
       requestAnimationFrame(() => {
         try {
           if (!isReady) return;
@@ -924,7 +1010,6 @@ export default function RouteDetailMapPreviewShell({
         fitStateRef.current.pendingRaf = raf;
       };
 
-      // resize/transition gibi durumlarda kısa debounce daha stabil
       if (reason === "resize" || reason === "transition") {
         fitStateRef.current.pendingTimer = setTimeout(run, 90);
         return;
@@ -935,7 +1020,72 @@ export default function RouteDetailMapPreviewShell({
     [isReady, mapInstance, doFitNow]
   );
 
-  // ✅ EMİR 01-B: RO’yu sadece shell’e değil parent + rd-map-card’a da kur
+  // ✅ EMİR 03: Transform/drag monitor — ResizeObserver transform'u görmez.
+  // Sheet drag sırasında map “yarım” kalmasın diye rect değişimini izleyip resize+fit yapıyoruz.
+  useEffect(() => {
+    if (!isReady || !mapInstance) return;
+
+    const el = shellRef.current || localDivRef.current;
+    if (!el) return;
+
+    let raf = 0;
+    let lastSampleT = 0;
+
+    let lastW = -1;
+    let lastH = -1;
+    let lastTop = 0;
+    let lastLeft = 0;
+
+    let lastKickAt = 0;
+
+    const tick = (t) => {
+      raf = requestAnimationFrame(tick);
+      if (!isReady) return;
+
+      // ~8fps sample (hafif)
+      if (t - lastSampleT < 120) return;
+      lastSampleT = t;
+
+      let r;
+      try {
+        r = el.getBoundingClientRect();
+      } catch {
+        return;
+      }
+
+      const w = Math.round(r.width);
+      const h = Math.round(r.height);
+      const top = Math.round(r.top);
+      const left = Math.round(r.left);
+
+      const sizeChanged = Math.abs(w - lastW) > 2 || Math.abs(h - lastH) > 2;
+      const moved = Math.abs(top - lastTop) > 6 || Math.abs(left - lastLeft) > 6;
+
+      if (!sizeChanged && !moved) return;
+
+      lastW = w;
+      lastH = h;
+      lastTop = top;
+      lastLeft = left;
+
+      const now = Date.now();
+      if (now - lastKickAt < 140) return;
+      lastKickAt = now;
+
+      try {
+        triggerResizeAndNudge();
+      } catch {}
+      scheduleFit("rect");
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => {
+      try {
+        cancelAnimationFrame(raf);
+      } catch {}
+    };
+  }, [isReady, mapInstance, scheduleFit, triggerResizeAndNudge]);
+
   useEffect(() => {
     const el = shellRef.current;
     if (!el) return;
@@ -977,7 +1127,6 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [scheduleFit]);
 
-  // ✅ EMİR 01-B: visualViewport değişimleri (mobil adres bar / sheet) -> resize
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
@@ -1002,7 +1151,6 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [scheduleFit]);
 
-  // ✅ EMİR 01-B: sheet/hero transition biter bitmez resize + fit
   useEffect(() => {
     const el = shellRef.current;
     if (!el) return;
@@ -1011,13 +1159,15 @@ export default function RouteDetailMapPreviewShell({
       el.closest?.(".route-detail-sheet") ||
       el.closest?.(".route-detail-body") ||
       el.closest?.("[data-route-detail]") ||
+      el.closest?.(".rd-sheet") ||
+      el.closest?.(".rd-root") ||
+      el.closest?.("[data-rd-sheet]") ||
       null;
 
     if (!host) return;
 
     const onEnd = () => {
       scheduleFit("transition");
-      // ekstra bir kez daha (bazı cihazlarda layout 1 frame sonra netleşiyor)
       setTimeout(() => scheduleFit("transition"), 140);
     };
 
@@ -1034,7 +1184,6 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [scheduleFit]);
 
-  // ✅ tab geri gelince / sayfa görünür olunca tekrar oturt
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "visible") scheduleFit("resize");
@@ -1072,7 +1221,6 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
   }, [scheduleFit]);
 
-  // ✅ ready anında çoklu stabilizasyon (RAF + timeout) — “yarım init”i kırar
   useEffect(() => {
     if (!isReady || !mapInstance) return;
 
@@ -1085,7 +1233,6 @@ export default function RouteDetailMapPreviewShell({
       fitStateRef.current._r3 = raf3;
     });
 
-    // timeouts
     try {
       fitStateRef.current._t1 = setTimeout(() => scheduleFit("resize"), 120);
       fitStateRef.current._t2 = setTimeout(() => scheduleFit("resize"), 300);
@@ -1243,7 +1390,6 @@ export default function RouteDetailMapPreviewShell({
         minHeight: shellH,
         borderRadius: "inherit",
         overflow: "hidden",
-        touchAction: "pan-y",
         WebkitTapHighlightColor: "transparent",
         background: "var(--rdmps-bg, rgba(0,0,0,0.10))",
       }}
@@ -1263,7 +1409,10 @@ export default function RouteDetailMapPreviewShell({
           width: "100%",
           height: "100%",
           minHeight: "100%",
-          pointerEvents: "none",
+
+          // ✅ kritik: map event'leri map'te kalsın
+          pointerEvents: "auto",
+          touchAction: "none",
         }}
       />
 
@@ -1372,13 +1521,11 @@ export default function RouteDetailMapPreviewShell({
           100% { transform: rotate(360deg); } 
         }
 
-        /* ✅ EMİR 01: Shell height clamp YOK. %100 fill. */
         .rdmps-shell{
           height: var(--rdmps-h, 100%) !important;
           min-height: var(--rdmps-h, 100%) !important;
         }
 
-        /* ✅ Harita iç container'larını ZORLA %100 */
         .rdmps-map,
         .rdmps-map > div,
         .rdmps-map .gm-style,
@@ -1387,13 +1534,11 @@ export default function RouteDetailMapPreviewShell({
           height: 100% !important;
         }
 
-        /* ✅ Canvas bazı cihazlarda inline height ile takılabiliyor */
         .rdmps-map canvas{
           width: 100% !important;
           height: 100% !important;
         }
 
-        /* ✅ Mini badge (1..12) */
         .rd-map-badge.rd-map-badge--mini{
           height: 22px;
           padding: 0 8px;
@@ -1402,9 +1547,13 @@ export default function RouteDetailMapPreviewShell({
           opacity: 0.98;
         }
 
-        /* ✅ MAP_ID cloud styling styles'ı yok sayarsa: hafif filter fallback */
         .rdmps-root[data-hasmapid="1"] .rdmps-map {
           filter: contrast(1.05) saturate(0.88) brightness(0.96);
+        }
+
+        /* ✅ global css max-width:100% map tile bozmasın */
+        .gm-style img, .gm-style canvas {
+          max-width: none !important;
         }
       `}</style>
     </div>

@@ -115,6 +115,7 @@
    - Vitreous hub/map sheet bazı cihazlarda body/map’e negatif margin/translate basıp
      haritayı hero’nun altına sokuyor → yarım görünme.
    - Burada map kartı layout’a geri çakıyoruz + yüksekliği !important ile kilitliyoruz.
+   - Selector genişletildi: data attr yoksa da yakalasın.
    ========================================================= */
 
 .route-detail-backdrop .route-detail-body {
@@ -122,6 +123,7 @@
   padding-top: 0 !important;
 }
 
+.route-detail-backdrop .route-detail-body > .rd-map-card,
 .route-detail-backdrop .route-detail-body > .rd-map-card[data-rd-map-card="1"] {
   position: relative !important;
   z-index: 1 !important;
@@ -139,6 +141,7 @@
   bottom: auto !important;
 }
 
+.route-detail-backdrop .route-detail-body > .rd-map-card .rd-map-card__canvas,
 .route-detail-backdrop .route-detail-body > .rd-map-card[data-rd-map-card="1"] .rd-map-card__canvas {
   position: absolute !important;
   inset: 0 !important;
@@ -150,6 +153,10 @@
 }
 
 /* ✅ Google map iç wrapper’lar %100 dolsun (bazı cihazlarda 50%/auto kalıyordu) */
+.route-detail-backdrop .route-detail-body > .rd-map-card .rd-map-card__canvas > *,
+.route-detail-backdrop .route-detail-body > .rd-map-card .rdmps-root,
+.route-detail-backdrop .route-detail-body > .rd-map-card .rdmps-shell,
+.route-detail-backdrop .route-detail-body > .rd-map-card .route-detail-map,
 .route-detail-backdrop .route-detail-body > .rd-map-card[data-rd-map-card="1"] .rd-map-card__canvas > *,
 .route-detail-backdrop .route-detail-body > .rd-map-card[data-rd-map-card="1"] .rdmps-root,
 .route-detail-backdrop .route-detail-body > .rd-map-card[data-rd-map-card="1"] .rdmps-shell,

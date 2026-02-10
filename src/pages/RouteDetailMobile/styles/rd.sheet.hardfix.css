@@ -1,32 +1,70 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.sheet.hardfix.css */
-/* ✅ SHEET MOTOR HARD-FIX
-   Amaç: sheet/backdrop/body üzerinde biriken transform/translate'i öldürmek.
-   NOT: Google Maps iç DOM'una dokunmaz (gm-style vs yok).
+/* ✅ EMİR — SHEET MOTOR HARD-FIX (transform yasak + layout otoritesi)
+   Hedef: Hero + Body aynı kolon akışında kalsın. Scroll otoritesi SADECE .route-detail-body.
+   Bu dosya en son import ediliyor → diğer tüm eski/dağınık stilleri ezer.
 */
 
-.route-detail-backdrop,
-.route-detail-sheet,
-.route-detail-body {
+.route-detail-backdrop .route-detail-sheet {
+  /* ✅ Flow otoritesi: hero + body üst üste binmesin */
+  display: flex !important;
+  flex-direction: column !important;
+
+  /* ✅ Sheet motor kalıntısı: transform/translate tamamen yasak */
+  transform: none !important;
+  translate: none !important;
+  will-change: auto !important;
+
+  /* ✅ İçerik taşmalarını sheet yerine body yönetsin */
+  overflow: hidden !important;
+}
+
+/* Grab handle sabit kalsın */
+.route-detail-backdrop .route-detail-grab {
+  flex: 0 0 auto !important;
+}
+
+/* ✅ Body: asla absolute/fixed olmayacak → hero’nun altına girmeyecek */
+.route-detail-backdrop .route-detail-body {
+  position: relative !important;
+
+  /* Eski motorlar inset/top/bottom basmış olabilir */
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+
+  /* Flex içinde tek scroll otoritesi */
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+
+  /* Body üstünde transform olursa sticky/map bozuluyor */
+  transform: none !important;
+  translate: none !important;
+  will-change: auto !important;
+
+  /* Hub overlap nefes payı (hero sibling olduğu için sadece bu kadar yeterli) */
+  padding-top: var(--rd-hero-hub-overlap, 14px) !important;
+}
+
+/* ✅ Bazı cihazlarda wrapper div’lere transform basılırsa (motor kalıntısı), onları da kır */
+.route-detail-backdrop .route-detail-sheet > * {
   transform: none !important;
   translate: none !important;
   will-change: auto !important;
 }
 
-/* iOS scroll motoru stabil */
-.route-detail-body {
-  -webkit-overflow-scrolling: touch;
+/* ✅ Eğer bir yerde yanlışlıkla sheet scroll otoritesi olmuşsa kapat */
+.route-detail-backdrop .route-detail-sheet {
+  overscroll-behavior: none !important;
+}
+
+/* ✅ Safety: iOS bounce sırasında “yarım kalma” hissini azaltır */
+.route-detail-backdrop .route-detail-body {
   overscroll-behavior: contain !important;
-}
-
-/* Inline transform yazan motorları ez (inline non-important ise !important kazanır) */
-.route-detail-backdrop[style*="transform"],
-.route-detail-sheet[style*="transform"],
-.route-detail-body[style*="transform"] {
-  transform: none !important;
-}
-
-.route-detail-backdrop[style*="translate"],
-.route-detail-sheet[style*="translate"],
-.route-detail-body[style*="translate"] {
-  translate: none !important;
 }

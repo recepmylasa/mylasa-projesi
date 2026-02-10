@@ -1,63 +1,61 @@
-/* FILE: src/pages/RouteDetailMobile/styles/rd.map.hardfix.css */
-
-/* ✅ YARIM HARİTA / KESİLME HARD-FIX (MOBİL ROUTE DETAIL)
-   Sorun: Map card yükseklik “çöküyor” → Google Maps ilk ölçümde küçük görüp yarım render kalabiliyor.
-   Çözüm: Map card’a deterministik yükseklik/aspect ver + canvas içini %100 doldur.
+/* FILE: src/pages/RouteDetailMobile/styles/rd.map.hardfix.css
+   EMİR 18 (P0) — Map / Scroll altında kalma + yarım render stabilizer
+   ⚠️ Bu dosya premium hissi BOZMAZ: zorla oran/height vermez.
+   Amaç:
+   - Map pan gesture sayfa/sheet motoruna kaçmasın
+   - Map container / gm-style tam dolsun (yarım canvas/clipping riski azalsın)
 */
 
-.route-detail-body .rd-map-card {
-  /* hero altına “çekilme / sıkışma” kırıcı */
-  margin-top: 0 !important;
+.route-detail-sheet .rd-map-card,
+.route-detail-sheet .route-detail-map-card,
+.route-detail-sheet .route-detail-mapCard {
+  /* Sticky/scroll motoru: map card asla transform ile yeni context’e taşınmasın */
   transform: none !important;
-
-  /* ✅ asıl fix: yükseklik çökmesini engelle */
-  width: 100% !important;
-  align-self: stretch !important;
-  flex: 0 0 auto !important;
-
-  /* 16:9 map preview (IG/Flash hissi) */
-  aspect-ratio: 16 / 9 !important;
-
-  /* çok küçük kalmasın */
-  min-height: 200px !important;
-
-  /* bazı css’ler height’ı ezebiliyor */
-  height: auto !important;
-  max-height: none !important;
-
-  overflow: hidden !important;
+  translate: none !important;
+  will-change: auto !important;
+  contain: none !important;
+  isolation: isolate;
 }
 
-.route-detail-body .rd-map-card__canvas {
-  transform: none !important;
+/* Map’in gerçek “gesture alanı” (class isimleri farklı olabilir diye çoklu selector) */
+.route-detail-sheet .rd-map,
+.route-detail-sheet .rd-map-viewport,
+.route-detail-sheet .rd-map-canvas,
+.route-detail-sheet .rd-map-card__map,
+.route-detail-sheet .route-detail-map,
+.route-detail-sheet .route-detail-mapPreview,
+.route-detail-sheet .route-detail-map-preview,
+.route-detail-sheet .route-detail-mapCanvas {
+  /* Map’te tek parmak pan yaparken page/sheet scroll chain kır */
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
 
-  /* canvas mutlaka kartı doldursun */
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 100% !important;
+  /* iOS/Chrome: iç ölçüm/paint sapmalarını azalt */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
-/* Shell/Map wrapper (farklı class adları için geniş yakalama) */
-.route-detail-body .rd-map-card [class*="rdmps"],
-.route-detail-body .rd-map-card [class*="MapPreview"],
-.route-detail-body .rd-map-card [class*="mapPreview"],
-.route-detail-body .rd-map-card [class*="map-preview"],
-.route-detail-body .rd-map-card [data-rd-map] {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 100% !important;
-}
-
-/* Google Maps iç div’leri */
-.route-detail-body .rd-map-card .gm-style,
-.route-detail-body .rd-map-card .gm-style > div,
-.route-detail-body .rd-map-card .gm-style > div > div {
+/* Google Maps iç katmanları parent’ı TAM doldursun (yarım render/clipping azaltır) */
+.route-detail-sheet .gm-style,
+.route-detail-sheet .gm-style > div,
+.route-detail-sheet .gm-style .gm-style-iw,
+.route-detail-sheet .gm-style iframe {
   width: 100% !important;
   height: 100% !important;
 }
 
-/* Canvas inline height takılırsa */
-.route-detail-body .rd-map-card canvas {
-  width: 100% !important;
-  height: 100% !important;
+/* Google Maps tile/image’larında “max-width:100%” gibi global stiller varsa map’i bozar */
+.route-detail-sheet .gm-style img,
+.route-detail-sheet .gm-style canvas {
+  max-width: none !important;
+}
+
+/* Map container “overflow/clip” yüzünden içerik kaçırmasın (card radius bozulmasın diye parent’a dokunmuyoruz) */
+.route-detail-sheet .rd-map-card__map,
+.route-detail-sheet .route-detail-mapPreview,
+.route-detail-sheet .route-detail-map-preview {
+  position: relative;
+  z-index: 1;
 }
