@@ -689,14 +689,12 @@ export default function RouteDetailMobile({
     commentsSectionRef,
     gpxSectionRef,
     reportSectionRef,
+    retryPermCheck,
   } = useRDAnchors({ routeId, routeBodyRef: routeBodyRefForAnchors });
 
   const activeTabKey = useMemo(() => {
     return activeSection || tab || "stops";
   }, [activeSection, tab]);
-
-  // ❌ KALDIRILDI: routeId değişince zorla onTabChange("stops") yapmak
-  // Bu, bazı cihazlarda ilk açılışta scroll tetikleyip hero/map state’i bozuyor.
 
   const handleTabChange = useCallback(
     (key) => {
@@ -717,7 +715,6 @@ export default function RouteDetailMobile({
     commentsCount,
     ownerIdForProfile,
     lockedOwnerDoc,
-    retryPermCheck,
     authUid,
   } = useRouteDetailData({
     routeId,

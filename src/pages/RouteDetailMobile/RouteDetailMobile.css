@@ -256,10 +256,11 @@
   overflow: hidden !important;
 
   isolation: isolate;
-  transform: translateZ(0);
 
-  clip-path: inset(0 round 28px 28px 0 0);
-  -webkit-clip-path: inset(0 round 28px 28px 0 0);
+  /* ✅ EMİR 02 (REV-2) SAFE MODE: compositing + clip kapalı */
+  transform: none !important;
+  clip-path: none !important;
+  -webkit-clip-path: none !important;
 
   padding-top: 0 !important;
 }
@@ -296,4 +297,24 @@
 .route-detail-backdrop .route-detail-sheet > .route-detail-hero,
 .route-detail-backdrop .route-detail-sheet > .route-detail-hero * {
   scroll-margin-top: 0;
+}
+
+/* =========================================================
+   ✅ EMİR 02 (REV-2) — Body sticky kesin ölüm (EN ALT OVERRIDE)
+   ========================================================= */
+
+.route-detail-backdrop .route-detail-sheet > .route-detail-body {
+  position: relative !important;
+
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  inset: auto !important;
+
+  transform: none !important;
+  translate: none !important;
+
+  contain: none !important;
+  will-change: auto !important;
 }
