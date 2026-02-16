@@ -1,2 +1,59 @@
 /* FILE: src/pages/RouteDetailMobile/styles/rd.vitreous.overlaysUtilsCta.css */
 /* Overlays/Utils/CTA — EMİR 1 split (bu dosya import eder, başka dosya import ETMEZ) */
+
+/* =========================================================
+   ✅ EMİR 02 (REV-3) — MAP ZOOM100 HARDFIX
+   Problem: rd-map-card %100 zoom’da height/aspect-ratio/flex yüzünden “strip” oluyor.
+   Çözüm: height + aspect-ratio + flex shrink + max-height kırıcılarını kökten kilitle.
+   ========================================================= */
+
+.route-detail-backdrop .rd-map-card,
+.route-detail-backdrop .rd-sections .rd-map-card,
+.route-detail-backdrop .rd-section .rd-map-card,
+.route-detail-backdrop .rd-map-card[data-rd-map-card="1"] {
+  display: block !important;
+  position: relative !important;
+  width: 100% !important;
+
+  /* 🔒 Asıl kilit */
+  height: var(--rd-map-h, 240px) !important;
+  min-height: var(--rd-map-h, 240px) !important;
+  max-height: var(--rd-map-h, 240px) !important;
+
+  /* 🔥 Strip yapan gizli suçlular */
+  aspect-ratio: auto !important;
+  flex: 0 0 auto !important;
+  align-self: stretch !important;
+
+  /* Map’i kesmesin */
+  overflow: hidden !important;
+  contain: none !important;
+  transform: none !important;
+  translate: none !important;
+}
+
+.route-detail-backdrop .rd-map-card__canvas,
+.route-detail-backdrop .rd-map-card .rd-map-card__canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+/* Shell / map div full-fill */
+.route-detail-backdrop .rd-map-card .rdmps-root,
+.route-detail-backdrop .rd-map-card .rdmps-shell,
+.route-detail-backdrop .rd-map-card .route-detail-map,
+.route-detail-backdrop .rd-map-card .rdmps-map {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+/* Parent’larda olası max-height/overflow kırpıcı varsa öldür */
+.route-detail-backdrop .rd-section,
+.route-detail-backdrop .rd-sections {
+  max-height: none !important;
+  overflow: visible !important;
+}

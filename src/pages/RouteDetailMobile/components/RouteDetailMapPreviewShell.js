@@ -443,6 +443,14 @@ function makePinSvg({ fill = "#00E5FF", stroke = "rgba(0,0,0,0.65)" } = {}) {
   return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg.trim());
 }
 
+function getMapInstanceFromRef(mapRefLike) {
+  try {
+    const m = mapRefLike?.current ? mapRefLike.current : mapRefLike;
+    if (m && typeof m.setCenter === "function" && typeof m.fitBounds === "function") return m;
+  } catch {}
+  return null;
+}
+
 export default function RouteDetailMapPreviewShell({
   routeId,
   path = [],
@@ -475,12 +483,10 @@ export default function RouteDetailMapPreviewShell({
     (gmaps.isLoaded ? "ready" : gmaps.error ? "error" : "loading");
 
   const hookMapDivRef = gmaps.mapDivRef || gmaps.containerRef || gmaps.divRef || null;
-  const mapRef = gmaps.mapRef || gmaps.map || null;
+  const mapRefLike = gmaps.mapRef || gmaps.map || null;
 
   const gmapsReload = gmaps.reload;
   const gmapsAttemptLoad = gmaps.attemptLoad;
-
-  const isReady = gmapsStatus === "ready" || gmapsStatus === "loaded";
 
   const baseIsError =
     gmapsStatus === "error" ||
@@ -489,6 +495,20 @@ export default function RouteDetailMapPreviewShell({
     gmapsStatus === "missing_key";
 
   const isError = baseIsError || !API_KEY;
+
+  // ✅ KRİTİK FIX: mapRef.current değişimi re-render tetiklemez → state ile yakala
+  const [mapInstance, setMapInstance] = useState(null);
+
+  // ✅ Hook bazı ortamlarda farklı status döndürebilir → toleranslı hazır kontrol
+  const statusIsReady =
+    gmapsStatus === "ready" ||
+    gmapsStatus === "loaded" ||
+    gmapsStatus === "ok" ||
+    gmapsStatus === "success" ||
+    gmapsStatus === "done";
+
+  // ✅ Harita instance varsa "ready" kabul et (DevTools %50 -> resize tetikleyip düzeltme bug’ını kapatır)
+  const isReady = !isError && (statusIsReady || !!mapInstance);
   const isLoading = !isReady && !isError;
 
   const handleRetry = useCallback(() => {
@@ -508,8 +528,50 @@ export default function RouteDetailMapPreviewShell({
     setMapReadyTick((t) => (t + 1) % 1000000);
   }, []);
 
-  const lastMapInstanceRef = useRef(null);
   const shellRef = useRef(null);
+
+  // ✅ Map instance probe — status'a bağımlı değil (bazı cihazlarda status gecikebiliyor)
+  useEffect(() => {
+    if (isError) {
+      setMapInstance(null);
+      return;
+    }
+
+    let raf = 0;
+    let tries = 0;
+    let stopped = false;
+
+    const probe = () => {
+      if (stopped) return;
+
+      const m = getMapInstanceFromRef(mapRefLike);
+      if (m) {
+        setMapInstance((prev) => (prev === m ? prev : m));
+        return;
+      }
+
+      tries += 1;
+      if (tries < 120) raf = requestAnimationFrame(probe);
+    };
+
+    raf = requestAnimationFrame(probe);
+    return () => {
+      stopped = true;
+      try {
+        cancelAnimationFrame(raf);
+      } catch {}
+    };
+  }, [mapRefLike, isError, routeId]);
+
+  useEffect(() => {
+    if (!isReady) return;
+    bumpTick();
+  }, [isReady, bumpTick]);
+
+  useEffect(() => {
+    if (!mapInstance) return;
+    bumpTick();
+  }, [mapInstance, bumpTick]);
 
   // ✅ EMİR 02: Map gesture guard — sheet/scroll motoruna kaçışı kes
   const gestureGuardRef = useRef({ active: false, pointerId: null });
@@ -532,29 +594,6 @@ export default function RouteDetailMapPreviewShell({
     },
     [hookMapDivRef]
   );
-
-  const mapInstance = useMemo(() => {
-    try {
-      const m = mapRef?.current ? mapRef.current : mapRef;
-      if (m && typeof m.setCenter === "function" && typeof m.fitBounds === "function") return m;
-      return null;
-    } catch {
-      return null;
-    }
-  }, [mapRef]);
-
-  useEffect(() => {
-    if (!isReady) return;
-    bumpTick();
-  }, [isReady, bumpTick]);
-
-  useEffect(() => {
-    if (!mapInstance) return;
-    if (lastMapInstanceRef.current !== mapInstance) {
-      lastMapInstanceRef.current = mapInstance;
-      bumpTick();
-    }
-  }, [mapInstance, bumpTick]);
 
   // ✅ EMİR 02: Map üstünde pointer/touch sheet’e kaçmasın
   useEffect(() => {
@@ -861,7 +900,7 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
 
     return () => cleanup();
-  }, [mapInstance, drawPoints]);
+  }, [mapInstance, drawPoints, routeId]);
 
   const fitStateRef = useRef({
     pendingTimer: null,
@@ -1021,7 +1060,6 @@ export default function RouteDetailMapPreviewShell({
   );
 
   // ✅ EMİR 03: Transform/drag monitor — ResizeObserver transform'u görmez.
-  // Sheet drag sırasında map “yarım” kalmasın diye rect değişimini izleyip resize+fit yapıyoruz.
   useEffect(() => {
     if (!isReady || !mapInstance) return;
 
@@ -1042,7 +1080,6 @@ export default function RouteDetailMapPreviewShell({
       raf = requestAnimationFrame(tick);
       if (!isReady) return;
 
-      // ~8fps sample (hafif)
       if (t - lastSampleT < 120) return;
       lastSampleT = t;
 
@@ -1221,23 +1258,54 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
   }, [scheduleFit]);
 
+  // ✅ KRİTİK: DevTools %50'nin yaptığı "resize/reflow" etkisini otomatik uygula
   useEffect(() => {
     if (!isReady || !mapInstance) return;
 
-    const raf1 = requestAnimationFrame(() => {
-      scheduleFit("raf1");
-      const raf2 = requestAnimationFrame(() => scheduleFit("raf2"));
-      const raf3 = requestAnimationFrame(() => scheduleFit("raf3"));
-      fitStateRef.current._r1 = raf1;
-      fitStateRef.current._r2 = raf2;
-      fitStateRef.current._r3 = raf3;
-    });
+    const map = mapInstance;
+    const g = window.google;
 
+    const dispatchResize = () => {
+      try {
+        window.dispatchEvent(new Event("resize"));
+      } catch {}
+    };
+
+    const kick = (why) => {
+      // why parametresi debug için tutuluyor (log yok)
+      dispatchResize();
+      try {
+        triggerResizeAndNudge();
+      } catch {}
+      scheduleFit("resize");
+    };
+
+    // anında bir kick
+    kick("now");
+
+    // layout settle: birkaç dalga
     try {
-      fitStateRef.current._t1 = setTimeout(() => scheduleFit("resize"), 120);
-      fitStateRef.current._t2 = setTimeout(() => scheduleFit("resize"), 300);
-      fitStateRef.current._t3 = setTimeout(() => scheduleFit("resize"), 700);
-      fitStateRef.current._t4 = setTimeout(() => scheduleFit("resize"), 1200);
+      fitStateRef.current._t1 = setTimeout(() => kick("250ms"), 250);
+      fitStateRef.current._t2 = setTimeout(() => kick("800ms"), 800);
+      fitStateRef.current._t3 = setTimeout(() => kick("1600ms"), 1600);
+      fitStateRef.current._t4 = setTimeout(() => kick("3000ms"), 3000);
+    } catch {}
+
+    // raf dalgası (ilk paint sonrası)
+    try {
+      fitStateRef.current._r1 = requestAnimationFrame(() => kick("raf1"));
+      fitStateRef.current._r2 = requestAnimationFrame(() => kick("raf2"));
+      fitStateRef.current._r3 = requestAnimationFrame(() => kick("raf3"));
+    } catch {}
+
+    // google idle/tilesloaded (harita gerçekten çizince)
+    let l1 = null;
+    let l2 = null;
+    try {
+      if (g?.maps?.event?.addListenerOnce) {
+        l1 = g.maps.event.addListenerOnce(map, "idle", () => kick("idle"));
+        l2 = g.maps.event.addListenerOnce(map, "tilesloaded", () => kick("tilesloaded"));
+      }
     } catch {}
 
     return () => {
@@ -1252,8 +1320,15 @@ export default function RouteDetailMapPreviewShell({
         clearTimeout(fitStateRef.current._t3);
         clearTimeout(fitStateRef.current._t4);
       } catch {}
+      try {
+        const gg = window.google;
+        if (gg?.maps?.event) {
+          if (l1) gg.maps.event.removeListener(l1);
+          if (l2) gg.maps.event.removeListener(l2);
+        }
+      } catch {}
     };
-  }, [isReady, mapInstance, scheduleFit]);
+  }, [isReady, mapInstance, scheduleFit, triggerResizeAndNudge, routeId]);
 
   useEffect(() => {
     if (!isReady || !mapInstance) return;
@@ -1409,8 +1484,6 @@ export default function RouteDetailMapPreviewShell({
           width: "100%",
           height: "100%",
           minHeight: "100%",
-
-          // ✅ kritik: map event'leri map'te kalsın
           pointerEvents: "auto",
           touchAction: "none",
         }}
@@ -1516,9 +1589,9 @@ export default function RouteDetailMapPreviewShell({
       ) : null}
 
       <style>{`
-        @keyframes rdmpspin { 
-          0% { transform: rotate(0deg); } 
-          100% { transform: rotate(360deg); } 
+        @keyframes rdmpspin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
         }
 
         .rdmps-shell{
