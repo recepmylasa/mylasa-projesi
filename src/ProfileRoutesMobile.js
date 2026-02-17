@@ -10,7 +10,9 @@
 // - <img src> ASLA gs:// / storage path / relative path olmaz; her zaman http(s):// veya data:image:
 // - Kanıt logu: RouteTileProof (DEV only + route bazlı tek sefer)
 //
-// ✅ HOTFIX: SVG cover render edilmez (data:image/svg+xml veya .svg) → "<path d>" console hatasını keser.
+// ✅ HOTFIX (REV): SVG cover render edilmez (data/image svg veya svg içerikli data-url) → "<path d>" console hatasını keser.
+// ✅ Ayrıca: "default cover" görselini <img> olarak render ETMİYORUZ (placeholder gradient zaten var).
+//   Çünkü console’daki "Expected number … 4V4a1…" hatası büyük olasılıkla <img> ile parse edilen SVG’den geliyor.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./ProfileRoutesMobile.css";
@@ -71,18 +73,52 @@ function isKnownAppLogoUrl(v) {
 }
 
 // ✅ SVG tespit (console "<path d>" hatası için HOTFIX)
+// Not: bazı svg data-url’lar "data:image/svg" ya da "data:image/svg+xml;base64,PHN2Zy..." formatında gelebilir.
+// Not2: bazen mime "data:image/*" diye gelir ama içerik svg olur (PHN2Zy / %3Csvg).
 function isSvgDataUrl(v) {
   const s = (v || "").toString().trim().toLowerCase();
-  return s.startsWith("data:image/svg+xml");
+  return s.startsWith("data:image/svg+xml") || s.startsWith("data:image/svg");
 }
+
 function isSvgHttpUrl(v) {
   const base = stripQueryAndHash(v).toLowerCase();
   if (!base) return false;
-  return base.endsWith(".svg") || base.includes("image/svg+xml");
+  return (
+    base.endsWith(".svg") ||
+    base.endsWith(".svgz") ||
+    base.includes("image/svg+xml") ||
+    base.includes("format=svg")
+  );
 }
+
+// ✅ mime kaçsa bile içerikten svg yakala (utf8 veya base64)
+function looksLikeSvgDataUrl(v) {
+  const s0 = (v || "").toString().trim();
+  if (!s0) return false;
+  const s = s0.toLowerCase();
+  if (!s.startsWith("data:image/")) return false;
+
+  if (s.startsWith("data:image/svg")) return true;
+
+  const comma = s.indexOf(",");
+  if (comma === -1) return false;
+
+  const payload = s.slice(comma + 1, comma + 1 + 240); // ilk parçaya bakmak yeter
+  if (!payload) return false;
+
+  // utf8/plain svg
+  if (payload.includes("<svg") || payload.includes("%3csvg") || payload.includes("xmlns%3d") || payload.includes("xmlns="))
+    return true;
+
+  // base64 "<svg" => PHN2Zy
+  if (payload.includes("phn2zy")) return true;
+
+  return false;
+}
+
 function isSvgAny(v) {
   if (!isNonEmptyString(v)) return false;
-  return isSvgDataUrl(v) || isSvgHttpUrl(v);
+  return isSvgDataUrl(v) || isSvgHttpUrl(v) || looksLikeSvgDataUrl(v);
 }
 
 function isHttpHttpsOrDataUrl(v) {
@@ -179,8 +215,8 @@ async function resolveToHttpsUrl(input) {
   const raw0 = (input || "").toString().trim();
   if (!raw0) return "";
 
-  // ✅ SVG data url render etmiyoruz → default’a düş
-  if (isSvgDataUrl(raw0) || isSvgHttpUrl(raw0)) return "";
+  // ✅ SVG data/url render etmiyoruz → boş dön
+  if (isSvgAny(raw0)) return "";
 
   // data:image ise direkt kabul (svg hariç)
   if (/^data:image\//i.test(raw0)) return raw0;
@@ -201,8 +237,7 @@ async function resolveToHttpsUrl(input) {
   // - Firebase Storage download URL ise mümkünse refresh (token/rules)
   // - değilse aynen kullan
   if (/^https?:\/\//i.test(raw0)) {
-    // ✅ .svg ise render etmiyoruz → default’a düş
-    if (isSvgHttpUrl(raw0)) return "";
+    if (isSvgAny(raw0)) return "";
 
     const gsFromHttp = parseFirebaseStorageHttpUrlToGs(raw0);
     if (!gsFromHttp) return raw0;
@@ -212,9 +247,7 @@ async function resolveToHttpsUrl(input) {
       const r = storageRef(storage, gsFromHttp);
       const https = await getDownloadURL(r);
 
-      // ✅ returned svg ise render etmiyoruz
-      if (isSvgHttpUrl(https)) return "";
-
+      if (isSvgAny(https)) return "";
       return typeof https === "string" && /^https?:\/\//i.test(https) ? https : raw0;
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
@@ -249,9 +282,7 @@ async function resolveToHttpsUrl(input) {
       const r = storageRef(storage, path); // path hem gs:// hem relative kabul
       const https = await getDownloadURL(r);
 
-      // ✅ svg ise render etmiyoruz
-      if (isSvgHttpUrl(https)) return "";
-
+      if (isSvgAny(https)) return "";
       return typeof https === "string" && /^https?:\/\//i.test(https) ? https : "";
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
@@ -264,7 +295,7 @@ async function resolveToHttpsUrl(input) {
       ) {
         warnOnce(
           `dlwarn_gs_${code}`,
-          `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — default cover kullanılacak.`
+          `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — placeholder kullanılacak.`
         );
         return "";
       }
@@ -360,7 +391,6 @@ function formatDistanceKmFromRoute(route) {
   const s = route.stats || {};
   const kmFromStats = toFiniteNumber(s.distanceKm);
   if (kmFromStats != null && kmFromStats > 0) {
-    // ✅ FIX: kopyala-yapıştır sırasında giren "жы" karakterleri kaldırıldı
     const fixed = kmFromStats >= 10 ? Math.round(kmFromStats) : Math.round(kmFromStats * 10) / 10;
     return `${fixed} km`;
   }
@@ -655,7 +685,7 @@ function pickFirstStopImageCandidate(stop) {
     const u = String(v).trim();
     if (!u || isKnownAppLogoUrl(u)) continue;
     if (isVideoUrl(u)) continue;
-    if (isSvgAny(u)) continue; // ✅ HOTFIX
+    if (isSvgAny(u)) continue;
     return { url: u, fromVideoPoster: false };
   }
 
@@ -682,7 +712,7 @@ function pickFirstStopImageCandidate(stop) {
         const u = it.trim();
         if (!u || isKnownAppLogoUrl(u)) continue;
         if (isVideoUrl(u)) continue;
-        if (isSvgAny(u)) continue; // ✅ HOTFIX
+        if (isSvgAny(u)) continue;
         return { url: u, fromVideoPoster: false };
       }
 
@@ -753,12 +783,12 @@ function pickStopCoverCandidate(route) {
   return { url: "", stopId: "", fromVideoPoster: false };
 }
 
-// ✅ Kapak (EMİR): cover.url → (cover meta varsa onu oku) → legacy → stopMedia → default
+// ✅ Kapak (EMİR): cover.url → legacy → stopMedia → placeholder
 function pickCoverCandidate(route) {
   if (!route)
     return {
       kind: "default",
-      url: DEFAULT_ROUTE_COVER_URL,
+      url: "", // ✅ default cover img basmıyoruz (placeholder var)
       hasVideo: false,
       sourceField: "default",
     };
@@ -784,32 +814,32 @@ function pickCoverCandidate(route) {
     };
   }
 
-  // (A) Yeni standart: route.cover.url (tek doğru kaynak)
+  // (A) Yeni standart: route.cover.url
   const coverUrl = isNonEmptyString(route?.cover?.url) ? String(route.cover.url).trim() : "";
   if (coverUrl && !isKnownAppLogoUrl(coverUrl) && !isVideoUrl(coverUrl) && !isSvgAny(coverUrl)) {
     return { kind: "image", url: coverUrl, hasVideo: false, sourceField: "cover.url" };
   }
 
-  // (B) Legacy alanlar (read-only geriye uyum)
+  // (B) Legacy
   const legacy = resolveLegacyCoverUrl(route);
   if (legacy && !isKnownAppLogoUrl(legacy) && !isVideoUrl(legacy) && !isSvgAny(legacy)) {
     return { kind: "image", url: legacy, hasVideo: false, sourceField: "legacy" };
   }
 
-  // (C) Otomatik fallback: ilk durak görseli / video poster
+  // (C) Stop media fallback
   const stopPick = pickStopCoverCandidate(route);
   if (stopPick.url && !isKnownAppLogoUrl(stopPick.url) && !isVideoUrl(stopPick.url) && !isSvgAny(stopPick.url)) {
     return {
       kind: "image",
       url: stopPick.url,
-      hasVideo: !!stopPick.fromVideoPoster, // ✅ sadece video posteri ise play rozeti
+      hasVideo: !!stopPick.fromVideoPoster,
       sourceField: "stopMedia",
       stopId: stopPick.stopId || "",
     };
   }
 
-  // (D) Default placeholder
-  return { kind: "default", url: DEFAULT_ROUTE_COVER_URL, hasVideo: false, sourceField: "default" };
+  // (D) Placeholder only (no img)
+  return { kind: "default", url: "", hasVideo: false, sourceField: "default" };
 }
 
 function buildRoutePrefill(route) {
@@ -879,11 +909,8 @@ function buildRoutePrefill(route) {
   };
 
   if (Array.isArray(route?.stopsPreview)) prefill.stopsPreview = route.stopsPreview;
-
-  // ✅ cover standart objeyi taşı (RouteDetail ilk render “pırıl pırıl” olsun)
   if (route?.cover && typeof route.cover === "object") prefill.cover = route.cover;
 
-  // legacy alanlar (geriye uyum / eski okuyucular)
   if (typeof route?.coverUrl === "string") prefill.coverUrl = route.coverUrl;
   if (typeof route?.thumbnailUrl === "string") prefill.thumbnailUrl = route.thumbnailUrl;
 
@@ -960,17 +987,7 @@ function printRouteTileProof({ route, rawTitle, smartTitleProof, coverCandidate,
   // eslint-disable-next-line no-console
   console.log("7) imgSrc (<img src>):", imgSrc || "");
   // eslint-disable-next-line no-console
-  console.log("8) img olay:", imgLoadEvent || "pending", "→ DevTools > Network’te hem kapak hem default request’i doğrula.");
-  // eslint-disable-next-line no-console
-  console.log("9) Network tab kanıtı:", "DevTools > Network > Img request → status (200/403/404) burada doğrula.");
-  // eslint-disable-next-line no-console
-  console.log("10) Başlık start/end kaynağı:", {
-    smartTitle: smartTitleProof?.smartTitle,
-    startName: smartTitleProof?.startName,
-    endName: smartTitleProof?.endName,
-    startSource: smartTitleProof?.startSource,
-    endSource: smartTitleProof?.endSource,
-  });
+  console.log("8) img olay:", imgLoadEvent || "pending");
   // eslint-disable-next-line no-console
   console.groupEnd();
 }
@@ -979,28 +996,23 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
   const rawInput = coverCandidate?.url || "";
   const resolved = useResolvedMediaUrl(rawInput);
 
-  const fallbackAbs = useMemo(() => toSameOriginAbsoluteUrl(DEFAULT_ROUTE_COVER_URL), []);
   const [imgSrc, setImgSrc] = useState("");
-
   const [imgOk, setImgOk] = useState(false);
   const [imgFinalFailed, setImgFinalFailed] = useState(false);
 
-  const didFallbackRef = useRef(false);
   const reportedRef = useRef(false);
 
   useEffect(() => {
     setImgOk(false);
     setImgFinalFailed(false);
-    didFallbackRef.current = false;
     reportedRef.current = false;
     setImgSrc("");
   }, [rawInput, resolved?.url]);
 
   useEffect(() => {
-    // primary yoksa direkt default
+    // ✅ default cover img render ETMİYORUZ → sadece placeholder
     if (!rawInput) {
-      didFallbackRef.current = true;
-      setImgSrc(fallbackAbs);
+      setImgSrc("");
       return;
     }
 
@@ -1009,12 +1021,11 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
       return;
     }
 
-    // resolve fail → default dene (EMİR-2: gradient'te kalma)
+    // resolve fail → placeholder (img yok)
     if (resolved?.status === "fail") {
-      didFallbackRef.current = true;
-      setImgSrc(fallbackAbs);
+      setImgSrc("");
     }
-  }, [rawInput, resolved?.status, resolved?.ok, resolved?.url, fallbackAbs]);
+  }, [rawInput, resolved?.status, resolved?.ok, resolved?.url]);
 
   const shouldRenderImg = isHttpHttpsOrDataUrl(imgSrc) && !imgFinalFailed;
 
@@ -1057,19 +1068,9 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
           onLoad={() => {
             setImgOk(true);
             reportedRef.current = true;
-            onLoadEvent?.(didFallbackRef.current ? "fallback_load" : "load", imgSrc);
+            onLoadEvent?.("load", imgSrc);
           }}
           onError={() => {
-            // 1) primary patladı → default'a düş (tek sefer)
-            if (!didFallbackRef.current) {
-              didFallbackRef.current = true;
-              setImgOk(false);
-              setImgFinalFailed(false);
-              setImgSrc(fallbackAbs);
-              return;
-            }
-
-            // 2) default da patladı → total fail
             setImgOk(false);
             setImgFinalFailed(true);
             if (!reportedRef.current) {
@@ -1136,7 +1137,7 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
   });
 
   const proofRouteIdRef = useRef("");
-  const [proofImgLoadEvent, setProofImgLoadEvent] = useState(""); // load | fallback_load | error_all
+  const [proofImgLoadEvent, setProofImgLoadEvent] = useState(""); // load | error_all
   const [proofImgSrc, setProofImgSrc] = useState("");
 
   const handleClick = useCallback((route) => {

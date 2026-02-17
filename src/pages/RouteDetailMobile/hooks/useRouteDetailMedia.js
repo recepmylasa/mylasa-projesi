@@ -1,4 +1,4 @@
-// src/pages/RouteDetailMobile/hooks/useRouteDetailMedia.js
+// FILE: src/pages/RouteDetailMobile/hooks/useRouteDetailMedia.js
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { auth } from "../../../firebase";
 
@@ -7,6 +7,31 @@ import { listStopMediaInline, uploadStopMediaInline } from "../routeDetailMedia"
 export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
   const mediaCacheRef = useRef(new Map());
   const [mediaTick, setMediaTick] = useState(0);
+
+  // ✅ debug warn (dev only, once per key)
+  const warnOnceRef = useRef(new Set());
+  const devWarnOnce = useCallback((key, payload) => {
+    try {
+      if (process.env.NODE_ENV === "production") return;
+      const k = String(key || "").trim();
+      if (!k) return;
+      if (warnOnceRef.current.has(k)) return;
+      warnOnceRef.current.add(k);
+      // eslint-disable-next-line no-console
+      console.warn(`[RouteDetailMedia] ${k}`, payload || {});
+    } catch {}
+  }, []);
+
+  const isPermDeniedLike = useCallback((e) => {
+    try {
+      const code = String(e?.code || "").toLowerCase();
+      const msg = String(e?.message || e || "").toLowerCase();
+      const text = `${code} ${msg}`;
+      return text.includes("permission") && text.includes("denied");
+    } catch {
+      return false;
+    }
+  }, []);
 
   const mediaTickRafRef = useRef(0);
   const bumpMediaTick = useCallback(() => {
@@ -17,7 +42,11 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
     });
   }, []);
 
-  const [galleryState, setGalleryState] = useState({ loading: false, done: false, errorCount: 0 });
+  const [galleryState, setGalleryState] = useState({
+    loading: false,
+    done: false,
+    errorCount: 0,
+  });
   const galleryInFlightRef = useRef(false);
   const galleryJobIdRef = useRef(0);
   const galleryCursorRef = useRef(0);
@@ -72,6 +101,21 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
       } catch (e) {
         error = String(e?.code || e?.message || e || "unknown");
         items = [];
+        if (isPermDeniedLike(e) || isPermDeniedLike(error)) {
+          devWarnOnce(`thumbs:permission-denied:${routeId}:${stopId}`, {
+            routeId,
+            stopId,
+            error: e?.message || String(e),
+            code: e?.code,
+          });
+        } else {
+          devWarnOnce(`thumbs:error:${routeId}:${stopId}`, {
+            routeId,
+            stopId,
+            error: e?.message || String(e),
+            code: e?.code,
+          });
+        }
       }
 
       const prev = mediaCacheRef.current.get(stopId) || {};
@@ -86,12 +130,15 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
       });
 
       if (error && !prev.__error) {
-        setGalleryState((s) => ({ ...s, errorCount: (Number(s?.errorCount) || 0) + 1 }));
+        setGalleryState((s) => ({
+          ...s,
+          errorCount: (Number(s?.errorCount) || 0) + 1,
+        }));
       }
 
       bumpMediaTick();
     },
-    [routeId, bumpMediaTick]
+    [routeId, bumpMediaTick, devWarnOnce, isPermDeniedLike]
   );
 
   // preload first 6 thumbs
@@ -163,6 +210,22 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
           } catch (e) {
             items = null;
             error = String(e?.code || e?.message || e || "unknown");
+
+            if (isPermDeniedLike(e) || isPermDeniedLike(error)) {
+              devWarnOnce(`gallery:permission-denied:${routeId}:${stopId}`, {
+                routeId,
+                stopId,
+                error: e?.message || String(e),
+                code: e?.code,
+              });
+            } else {
+              devWarnOnce(`gallery:error:${routeId}:${stopId}`, {
+                routeId,
+                stopId,
+                error: e?.message || String(e),
+                code: e?.code,
+              });
+            }
           }
 
           const before = mediaCacheRef.current.get(stopId) || {};
@@ -193,7 +256,12 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
       }));
 
       bumpMediaTick();
-    } catch {
+    } catch (e) {
+      devWarnOnce(`gallery:batch-throw:${routeId}`, {
+        routeId,
+        code: e?.code,
+        message: e?.message,
+      });
       if (galleryJobIdRef.current === jobId) {
         setGalleryState((s) => ({
           ...s,
@@ -204,7 +272,7 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
     } finally {
       galleryInFlightRef.current = false;
     }
-  }, [routeId, stops, bumpMediaTick]);
+  }, [routeId, stops, bumpMediaTick, devWarnOnce, isPermDeniedLike]);
 
   // Gallery IO
   useEffect(() => {
@@ -214,7 +282,14 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
 
     const rootEl = routeBodyRef.current;
     const sentinel = gallerySentinelRef.current;
-    if (!rootEl || !sentinel || typeof IntersectionObserver === "undefined") return;
+    if (!rootEl || !sentinel || typeof IntersectionObserver === "undefined") {
+      devWarnOnce(`gallery:io-missing-refs:${routeId}`, {
+        routeId,
+        hasRoot: !!rootEl,
+        hasSentinel: !!sentinel,
+      });
+      return;
+    }
 
     let alive = true;
     const io = new IntersectionObserver(
@@ -239,7 +314,7 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
         io.disconnect();
       } catch {}
     };
-  }, [galleryTabActive, loadNextGalleryBatch, galleryState?.done]);
+  }, [galleryTabActive, loadNextGalleryBatch, galleryState?.done, routeId, devWarnOnce]);
 
   // Upload
   const onPickMedia = useCallback(
@@ -277,6 +352,12 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
             });
             bumpMediaTick();
           } catch (e) {
+            devWarnOnce(`upload:error:${routeId}:${stopId}`, {
+              routeId,
+              stopId,
+              code: e?.code,
+              message: e?.message,
+            });
             if (process.env.NODE_ENV !== "production") {
               // eslint-disable-next-line no-console
               console.warn("upload hata:", e?.message || e);
@@ -292,7 +373,7 @@ export default function useRouteDetailMedia({ routeId, routeDoc, stops, tab }) {
       };
       input.click();
     },
-    [routeId, routeDoc, bumpMediaTick]
+    [routeId, routeDoc, bumpMediaTick, devWarnOnce]
   );
 
   const cancelUpload = useCallback(

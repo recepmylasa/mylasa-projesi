@@ -573,6 +573,77 @@ export default function RouteDetailMapPreviewShell({
     bumpTick();
   }, [mapInstance, bumpTick]);
 
+  /* =========================================================
+     ✅ EMİR 02 (REV-4) — DEBUG HOOK
+     Map hazır olunca window’a aç: __RD_MAP + __RD_MAP_FORCE()
+     ========================================================= */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (!mapInstance) {
+      try {
+        if (window.__RD_MAP) window.__RD_MAP = null;
+        if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
+      } catch {}
+      return;
+    }
+
+    try {
+      window.__RD_MAP = mapInstance;
+
+      window.__RD_MAP_FORCE = () => {
+        try {
+          // 1) global resize
+          try {
+            window.dispatchEvent(new Event("resize"));
+          } catch {}
+
+          // 2) google maps internal resize
+          try {
+            if (window.google?.maps?.event?.trigger) {
+              window.google.maps.event.trigger(mapInstance, "resize");
+            }
+          } catch {}
+
+          // 3) repaint nudge (zoom/center)
+          try {
+            const c = mapInstance.getCenter?.();
+            if (c && mapInstance.setCenter) mapInstance.setCenter(c);
+          } catch {}
+
+          try {
+            const z = mapInstance.getZoom?.();
+            if (Number.isFinite(z) && mapInstance.setZoom) mapInstance.setZoom(z);
+          } catch {}
+
+          // 4) microtask/raf wave (bazı cihazlarda 2. dalga şart)
+          try {
+            requestAnimationFrame(() => {
+              try {
+                if (window.google?.maps?.event?.trigger) {
+                  window.google.maps.event.trigger(mapInstance, "resize");
+                }
+              } catch {}
+              try {
+                const z2 = mapInstance.getZoom?.();
+                if (Number.isFinite(z2) && mapInstance.setZoom) mapInstance.setZoom(z2);
+              } catch {}
+            });
+          } catch {}
+        } catch {}
+      };
+    } catch {}
+
+    return () => {
+      try {
+        if (window.__RD_MAP === mapInstance) window.__RD_MAP = null;
+      } catch {}
+      try {
+        if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
+      } catch {}
+    };
+  }, [mapInstance]);
+
   // ✅ EMİR 02: Map gesture guard — sheet/scroll motoruna kaçışı kes
   const gestureGuardRef = useRef({ active: false, pointerId: null });
 

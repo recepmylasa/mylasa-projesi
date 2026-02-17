@@ -82,11 +82,17 @@ function stripQueryAndHash(v) {
   return s.split(/[?#]/)[0];
 }
 
+// ✅ placeholder cover say (mylasa-logo.* + route-default-cover.*)
 function isKnownAppLogoUrl(v) {
   const base = stripQueryAndHash(v).toLowerCase();
   if (!base) return false;
   const file = base.split("/").pop();
-  return file === "mylasa-logo.png" || file === "mylasa-logo.svg";
+  return (
+    file === "mylasa-logo.png" ||
+    file === "mylasa-logo.svg" ||
+    file === "route-default-cover.jpg" ||
+    file === "route-default-cover.png"
+  );
 }
 
 function normalizeCoverUrl(v) {
@@ -128,6 +134,36 @@ function pickFirst(obj, paths) {
     return v;
   }
   return undefined;
+}
+
+// ✅ cover objesinden (sadece cover objesi içinden) url seç — stopPreview türetme YOK
+function pickCoverUrlFromCoverObj(coverObj) {
+  if (!coverObj || typeof coverObj !== "object") return { url: "", sourceField: "" };
+
+  const pairs = [
+    ["cover.url", coverObj.url],
+    ["cover.downloadUrl", coverObj.downloadUrl],
+    ["cover.downloadURL", coverObj.downloadURL],
+    ["cover.httpsUrl", coverObj.httpsUrl],
+    ["cover.publicUrl", coverObj.publicUrl],
+
+    // geriye uyum: bazı eski cover objeleri url yerine path tutabilir
+    ["cover.storagePath", coverObj.storagePath],
+    ["cover.fullPath", coverObj.fullPath],
+    ["cover.path", coverObj.path],
+    ["cover.gsUrl", coverObj.gsUrl],
+    ["cover.gsURL", coverObj.gsURL],
+  ];
+
+  for (const [src, v] of pairs) {
+    if (!isNonEmptyString(v)) continue;
+    const u = normalizeCoverUrl(String(v).trim());
+    if (!u) continue;
+    if (isVideoUrl(u)) continue;
+    return { url: u, sourceField: src };
+  }
+
+  return { url: "", sourceField: "" };
 }
 
 function normalizeStopTitle(s) {
@@ -805,8 +841,30 @@ export default function useUserRoutes(ownerId, options = {}) {
               const finalThumbRaw = modelThumb || modelThumb2 || docThumb || finalCover || "";
               const finalThumb = finalThumbRaw && !isVideoUrl(finalThumbRaw) ? finalThumbRaw : "";
 
+              // ✅ CRITICAL: cover objesini modele taşı (model.cover yoksa raw.cover)
+              const rawCoverObj = raw?.cover && typeof raw.cover === "object" ? raw.cover : null;
+              const modelCoverObj = model?.cover && typeof model.cover === "object" ? model.cover : null;
+              const baseCoverObj = modelCoverObj || rawCoverObj;
+
+              let nextCoverObj = baseCoverObj;
+              if (baseCoverObj && typeof baseCoverObj === "object") {
+                const picked = pickCoverUrlFromCoverObj(baseCoverObj);
+                const safeUrl = picked.url && !isVideoUrl(picked.url) ? picked.url : "";
+                nextCoverObj = {
+                  ...baseCoverObj,
+                  url: safeUrl,
+                  sourceField:
+                    (isNonEmptyString(baseCoverObj.sourceField) && String(baseCoverObj.sourceField)) ||
+                    picked.sourceField ||
+                    "cover.url",
+                };
+              }
+
               const patched = {
                 ...model,
+
+                // ✅ canonical cover obj (UI pickCoverCandidate → route.cover.url)
+                ...(nextCoverObj ? { cover: nextCoverObj } : {}),
 
                 stopsPreview:
                   Array.isArray(model?.stopsPreview) && model.stopsPreview.length

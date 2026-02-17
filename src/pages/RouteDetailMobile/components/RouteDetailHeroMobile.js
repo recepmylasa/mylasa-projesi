@@ -50,11 +50,9 @@ export default function RouteDetailHeroMobile({
 
   // ✅ FIX: ownerState prop gelmezse "loading" diye kilitlenmesin.
   // Eğer isim veya avatar varsa asla skeleton gösterme.
-  const derivedOwnerState =
-    ownerState || (hasOwnerName || hasOwnerAvatar ? "fallback" : "loading");
+  const derivedOwnerState = ownerState || (hasOwnerName || hasOwnerAvatar ? "fallback" : "loading");
 
-  const showOwnerSkeleton =
-    derivedOwnerState === "loading" && !hasOwnerName && !hasOwnerAvatar;
+  const showOwnerSkeleton = derivedOwnerState === "loading" && !hasOwnerName && !hasOwnerAvatar;
 
   const canOpenProfile = typeof requestOpenProfile === "function";
 
@@ -275,12 +273,7 @@ export default function RouteDetailHeroMobile({
         >
           <div className="rd-hero__avatar" aria-hidden="true">
             {hasOwnerAvatar ? (
-              <img
-                src={ownerAvatarUrl}
-                alt={hasOwnerName ? ownerName : "Profil fotoğrafı"}
-                loading="lazy"
-                decoding="async"
-              />
+              <img src={ownerAvatarUrl} alt={hasOwnerName ? ownerName : "Profil fotoğrafı"} loading="lazy" decoding="async" />
             ) : showOwnerSkeleton ? (
               <span className="rd-hero__avatarSkeleton" aria-hidden="true" />
             ) : (
@@ -317,7 +310,8 @@ export default function RouteDetailHeroMobile({
             className={`rd-hero__favBtn ${isFav ? "is-active" : ""}`}
             onClick={(e) => {
               e?.stopPropagation?.();
-              onToggleFav(e);
+              if (!canToggleFav) return;
+              onToggleFav?.(e);
             }}
             aria-label={saveLabel}
             aria-pressed={!!isFav}
@@ -335,7 +329,8 @@ export default function RouteDetailHeroMobile({
                 aria-hidden="true"
                 focusable="false"
               >
-                <path d="M6 3h12a1 1 0 0 1 1 1v18l-7-4-7 4V4a1 0 0 1 1-1z" />
+                {/* ✅ Valid path (arc yok) */}
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
               </svg>
             </span>
           </button>

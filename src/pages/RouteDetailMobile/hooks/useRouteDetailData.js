@@ -67,6 +67,20 @@ export default function useRouteDetailData({
   // ✅ in-flight kırıcı (aynı ownerId için aynı mount'ta paralel fetch başlatma)
   const ownerInFlightRef = useRef(new Map()); // ownerId -> true
 
+  // ✅ debug warn (dev only, once per key)
+  const warnOnceRef = useRef(new Set());
+  const devWarnOnce = useCallback((key, payload) => {
+    try {
+      if (process.env.NODE_ENV === "production") return;
+      const k = String(key || "").trim();
+      if (!k) return;
+      if (warnOnceRef.current.has(k)) return;
+      warnOnceRef.current.add(k);
+      // eslint-disable-next-line no-console
+      console.warn(`[RouteDetailData] ${k}`, payload || {});
+    } catch {}
+  }, []);
+
   const now = () => {
     try {
       return Date.now();
@@ -150,42 +164,51 @@ export default function useRouteDetailData({
     }
   }, []);
 
-  const getCachedOwner = useCallback((ownerId) => {
-    try {
-      const key = String(ownerId || "").trim();
-      if (!key) return null;
-      const hit = OWNER_CACHE.get(key) || null;
-      if (!hit || !hit.data) return null;
+  const getCachedOwner = useCallback(
+    (ownerId) => {
+      try {
+        const key = String(ownerId || "").trim();
+        if (!key) return null;
+        const hit = OWNER_CACHE.get(key) || null;
+        if (!hit || !hit.data) return null;
 
-      const age = now() - (Number(hit.ts) || 0);
-      if (!Number.isFinite(age) || age < 0 || age > OWNER_CACHE_TTL_MS) {
-        try {
-          OWNER_CACHE.delete(key);
-        } catch {}
+        const age = now() - (Number(hit.ts) || 0);
+        if (!Number.isFinite(age) || age < 0 || age > OWNER_CACHE_TTL_MS) {
+          try {
+            OWNER_CACHE.delete(key);
+          } catch {}
+          return null;
+        }
+
+        return hit.data || null;
+      } catch {
         return null;
       }
+    },
+    [now]
+  );
 
-      return hit.data || null;
-    } catch {
-      return null;
-    }
-  }, []);
+  const setCacheOwner = useCallback(
+    (ownerId, data) => {
+      try {
+        const key = String(ownerId || "").trim();
+        if (!key || !data) return;
+        OWNER_CACHE.set(key, { data, ts: now() });
+      } catch {}
+    },
+    [now]
+  );
 
-  const setCacheOwner = useCallback((ownerId, data) => {
-    try {
-      const key = String(ownerId || "").trim();
-      if (!key || !data) return;
-      OWNER_CACHE.set(key, { data, ts: now() });
-    } catch {}
-  }, []);
-
-  const blockOwnerFetchPerm = useCallback((ownerId) => {
-    try {
-      const key = String(ownerId || "").trim();
-      if (!key) return;
-      OWNER_FETCH_BLOCK.set(key, { reason: "perm", at: now() });
-    } catch {}
-  }, []);
+  const blockOwnerFetchPerm = useCallback(
+    (ownerId) => {
+      try {
+        const key = String(ownerId || "").trim();
+        if (!key) return;
+        OWNER_FETCH_BLOCK.set(key, { reason: "perm", at: now() });
+      } catch {}
+    },
+    [now]
+  );
 
   const isOwnerFetchBlocked = useCallback((ownerId) => {
     try {
@@ -281,9 +304,22 @@ export default function useRouteDetailData({
       } catch (e) {
         const code = String(e?.code || e?.message || "");
         if (!alive) return;
-        if (code.includes("permission") || code.includes("denied"))
+
+        if (code.includes("permission") || code.includes("denied")) {
           setPermError("forbidden");
-        else setPermError(null);
+          devWarnOnce(`permcheck:permission-denied:${routeId}`, {
+            routeId,
+            code: e?.code,
+            message: e?.message,
+          });
+        } else {
+          setPermError(null);
+          devWarnOnce(`permcheck:error:${routeId}`, {
+            routeId,
+            code: e?.code,
+            message: e?.message,
+          });
+        }
       } finally {
         if (!alive) return;
         setPermChecked(true);
@@ -293,7 +329,7 @@ export default function useRouteDetailData({
     return () => {
       alive = false;
     };
-  }, [routeId, permCheckTick]);
+  }, [routeId, permCheckTick, devWarnOnce]);
 
   // ✅ auth değişince forbidden/private için otomatik re-check
   useEffect(() => {
@@ -350,7 +386,13 @@ export default function useRouteDetailData({
         { targetType: "route", targetId: routeId },
         (cnt) => setCommentsCount(typeof cnt === "number" ? cnt : 0)
       );
-    } catch {}
+    } catch (e) {
+      devWarnOnce(`commentsWatch:throw:${routeId}`, {
+        routeId,
+        code: e?.code,
+        message: e?.message,
+      });
+    }
     return () => {
       if (typeof unsubscribe === "function") {
         try {
@@ -358,7 +400,7 @@ export default function useRouteDetailData({
         } catch {}
       }
     };
-  }, [routeId, reloadTick, permError, permChecked]);
+  }, [routeId, reloadTick, permError, permChecked, devWarnOnce]);
 
   /**
    * ✅ Owner fetch (soft timeout 1500ms)
@@ -373,6 +415,7 @@ export default function useRouteDetailData({
         if (!key) return;
 
         if (isOwnerFetchBlocked(key)) {
+          devWarnOnce(`ownerFetch:blocked:${key}`, { ownerId: key });
           const cached = getCachedOwner(key);
           if (cached) {
             setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
@@ -388,7 +431,6 @@ export default function useRouteDetailData({
         let timedOut = false;
         const t = setTimeout(() => {
           timedOut = true;
-          // UI zaten fallback gösteriyor. Burada ekstra state basmıyoruz.
         }, 1500);
 
         getDoc(doc(db, "users", key))
@@ -410,7 +452,6 @@ export default function useRouteDetailData({
             setLockedOwnerDoc((prev) => mergeOwnerLike(prev, data));
             if (!setAsLockedOnly) setOwner((prev) => mergeOwnerLike(prev, data));
 
-            // timedOut olsa bile success override etmek serbest (mümkünse gerçek profil)
             void timedOut;
           })
           .catch((e) => {
@@ -418,6 +459,17 @@ export default function useRouteDetailData({
 
             if (isPermDenied(e)) {
               blockOwnerFetchPerm(key);
+              devWarnOnce(`ownerFetch:permission-denied:${key}`, {
+                ownerId: key,
+                code: e?.code,
+                message: e?.message,
+              });
+            } else {
+              devWarnOnce(`ownerFetch:error:${key}`, {
+                ownerId: key,
+                code: e?.code,
+                message: e?.message,
+              });
             }
 
             const cached = getCachedOwner(key);
@@ -425,7 +477,6 @@ export default function useRouteDetailData({
               setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
               if (!setAsLockedOnly) setOwner((prev) => mergeOwnerLike(prev, cached));
             } else {
-              // owner state'i null'a çekmek zorunda değiliz; hero fallback ownerId ile isim basacak
               if (!setAsLockedOnly) {
                 setOwner((prev) => {
                   const pid = prev?.id ? String(prev.id) : "";
@@ -448,6 +499,7 @@ export default function useRouteDetailData({
       setCacheOwner,
       isPermDenied,
       blockOwnerFetchPerm,
+      devWarnOnce,
     ]
   );
 
@@ -507,15 +559,19 @@ export default function useRouteDetailData({
         }
 
         // ✅ 3) user doc fetch (soft-timeout 1500ms)
-        // - UI beklemez, success gelirse override eder.
         try {
           startOwnerFetch(ownerId, { setAsLockedOnly: false });
         } catch {}
 
-        // lastOwnerId koruması: ownerId değişirse eski fetch gelirse de mergeOwnerLike id check'iyle güvenli.
         void lastOwnerId;
       });
-    } catch {}
+    } catch (e) {
+      devWarnOnce(`watchRoute:throw:${routeId}`, {
+        routeId,
+        code: e?.code,
+        message: e?.message,
+      });
+    }
 
     try {
       offStops = watchStops(routeId, (arr) => {
@@ -530,7 +586,13 @@ export default function useRouteDetailData({
         setStops(norm?.stops || sorted);
         setStopsLoaded(true);
       });
-    } catch {}
+    } catch (e) {
+      devWarnOnce(`watchStops:throw:${routeId}`, {
+        routeId,
+        code: e?.code,
+        message: e?.message,
+      });
+    }
 
     return () => {
       alive = false;
@@ -551,6 +613,7 @@ export default function useRouteDetailData({
     isOwnerFetchBlocked,
     getCachedOwner,
     startOwnerFetch,
+    devWarnOnce,
   ]);
 
   // locked owner resolve (for forbidden/private/not-found)
