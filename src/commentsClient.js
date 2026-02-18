@@ -1,4 +1,4 @@
-// src/commentsClient.js
+// FILE: src/commentsClient.js
 // Firestore tabanlı yorum okuma/ekleme yardımcıları (mobil IG davranışına yakın).
 import { auth, db } from "./firebase";
 import {
@@ -8,12 +8,13 @@ import {
   getCountFromServer,
   getDocs,
   limit,
-  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   startAfter,
 } from "firebase/firestore";
+import { onAuthStateChanged as onAuthStateChangedMod } from "firebase/auth";
+import { safeOnSnapshot } from "./utils/safeSnapshot";
 
 const COMMENTS_PATH = (contentKey) => collection(db, "content", contentKey, "comments");
 const CONTENT_DOC = (contentKey) => doc(db, "content", contentKey);
@@ -32,6 +33,17 @@ function logPermDeniedOnce(label, path, err) {
 
   // eslint-disable-next-line no-console
   console.warn("[perm-denied]", { label, path, code, message });
+}
+
+function isPermDenied(err) {
+  try {
+    const code = String(err?.code || "").toLowerCase();
+    const msg = String(err?.message || "").toLowerCase();
+    const t = `${code} ${msg}`;
+    return t.includes("permission") && t.includes("denied");
+  } catch {
+    return false;
+  }
 }
 // -------------------------------------------------------------------------------
 
@@ -83,7 +95,6 @@ function schedulePendingReset(entry) {
   if (!entry) return;
   clearPendingTimer(entry);
   entry.pendingTimer = setTimeout(() => {
-    // watcher hâlâ yaşıyor olabilir; callbacks boşsa detach zaten entry’yi silecek
     entry.pending = 0;
     const v = computeVisibleCount(entry);
     entry.last = v;
@@ -106,22 +117,14 @@ function bumpOptimisticCountByKey(key, delta) {
   entry.pending = clampNonNeg((entry.pending || 0) + d);
   entry.last = computeVisibleCount(entry);
 
-  // anında bas
   for (const cb of entry.callbacks) safeCall(cb, entry.last);
-
-  // TTL reset
   schedulePendingReset(entry);
 }
 // ---------------------------------------------------------------------------
 
 /**
- * Yorumları getir (sayfalı)
- * @param {object} args
- * @param {string} [args.contentId]
- * @param {string} [args.targetType]
- * @param {string} [args.targetId]
- * @param {number} [args.pageSize=25]
- * @param {*} [args.cursor] Firestore lastDoc
+ * ✅ getComments asla "uncaught" bırakmasın:
+ * - permission-denied vb. hatalarda boş döner.
  */
 export async function getComments({ contentId, targetType, targetId, pageSize = 25, cursor = null }) {
   let key;
@@ -131,37 +134,40 @@ export async function getComments({ contentId, targetType, targetId, pageSize = 
     return { items: [], nextCursor: null };
   }
 
-  const parts = [orderBy("createdAt", "desc"), limit(pageSize)];
-  if (cursor) parts.push(startAfter(cursor));
+  const size = Math.max(1, Math.min(50, Number(pageSize) || 25));
 
-  const q = query(COMMENTS_PATH(key), ...parts);
-  const snap = await getDocs(q);
+  try {
+    const parts = [orderBy("createdAt", "desc"), limit(size)];
+    if (cursor) parts.push(startAfter(cursor));
 
-  const docs = snap.docs;
-  const items = docs.map((d) => {
-    const x = d.data() || {};
-    return {
-      id: d.id,
-      text: x.text || "",
-      authorId: x.authorId || "",
-      authorName: x.authorName || "kullanıcı",
-      authorPhoto: x.authorPhoto || "",
-      createdAt: x.createdAt || null,
-    };
-  });
+    const q = query(COMMENTS_PATH(key), ...parts);
+    const snap = await getDocs(q);
 
-  const nextCursor = docs.length === pageSize ? docs[docs.length - 1] : null;
-  return { items, nextCursor };
+    const docs = snap.docs;
+    const items = docs.map((d) => {
+      const x = d.data() || {};
+      return {
+        id: d.id,
+        text: x.text || "",
+        authorId: x.authorId || "",
+        authorName: x.authorName || "kullanıcı",
+        authorPhoto: x.authorPhoto || "",
+        createdAt: x.createdAt || null,
+      };
+    });
+
+    const nextCursor = docs.length === size ? docs[docs.length - 1] : null;
+    return { items, nextCursor };
+  } catch (err) {
+    if (isPermDenied(err)) {
+      logPermDeniedOnce("comments:get", `content/${key}/comments`, err);
+      return { items: [], nextCursor: null };
+    }
+    // diğer hatalarda da UI’yi düşürmeyelim
+    return { items: [], nextCursor: null };
+  }
 }
 
-/**
- * Yorum ekle (auth zorunlu)
- * @param {object} args
- * @param {string} [args.contentId]
- * @param {string} [args.targetType]
- * @param {string} [args.targetId]
- * @param {string} args.text
- */
 export async function addComment({ contentId, targetType, targetId, text }) {
   const uid = auth?.currentUser?.uid;
   if (!uid) throw new Error("Oturum açmalısın.");
@@ -174,47 +180,76 @@ export async function addComment({ contentId, targetType, targetId, text }) {
   const authorName = user?.displayName || (user?.email ? user.email.split("@")[0] : "kullanıcı");
   const authorPhoto = user?.photoURL || "";
 
-  const ref = await addDoc(COMMENTS_PATH(key), {
-    text: clean,
-    authorId: uid,
-    authorName,
-    authorPhoto,
-    createdAt: serverTimestamp(),
-  });
+  try {
+    const ref = await addDoc(COMMENTS_PATH(key), {
+      text: clean,
+      authorId: uid,
+      authorName,
+      authorPhoto,
+      createdAt: serverTimestamp(),
+    });
 
-  // ✅ EMİR 14: optimistic rozet (watcher varsa anında +1)
-  bumpOptimisticCountByKey(key, +1);
+    // ✅ EMİR 14: optimistic rozet (watcher varsa anında +1)
+    bumpOptimisticCountByKey(key, +1);
 
-  // Optimistic UI için yerel obje döndür (serverTimestamp henüz gelmedi)
-  return {
-    id: ref.id,
-    text: clean,
-    authorId: uid,
-    authorName,
-    authorPhoto,
-    createdAt: new Date(),
-  };
+    return {
+      id: ref.id,
+      text: clean,
+      authorId: uid,
+      authorName,
+      authorPhoto,
+      createdAt: new Date(),
+    };
+  } catch (err) {
+    if (isPermDenied(err)) {
+      throw new Error("Yorum eklemek için yetkin yok (permission-denied).");
+    }
+    throw err;
+  }
 }
 
 // -------------------- EMİR 13 + EMİR 14: doc-field watcher (+ 1x fallback + optimistic pending) --------------------
 const __countBlockedPaths = new Set(); // permission-denied aldıysa aynı session'da tekrar dinleme
-// path -> {
-//   callbacks:Set<fn>,
-//   last:number,            // UI'ya basılan değer (lastDoc + pending)
-//   unsub:fn|null,
-//   fallbackDone:boolean,
-//   lastDoc:number,         // doc'tan (veya fallback) gelen gerçek değer
-//   pending:number,         // optimistic delta
-//   pendingTimer:any|null,  // setTimeout id
-// }
 const __countWatchers = new Map();
+
+/**
+ * ✅ Auth değişince:
+ * - daha önce permission-denied sebebiyle bloklanan path’leri temizle
+ * - böylece login/logout sonrası sayaç yeniden denenebilir
+ */
+let __authResetInited = false;
+function initAuthBlockedReset() {
+  if (__authResetInited) return;
+  __authResetInited = true;
+
+  const reset = () => {
+    try {
+      __countBlockedPaths.clear();
+    } catch {}
+  };
+
+  try {
+    if (auth && typeof auth.onAuthStateChanged === "function") {
+      auth.onAuthStateChanged(() => reset());
+      return;
+    }
+  } catch {
+    // no-op
+  }
+
+  try {
+    onAuthStateChangedMod(auth, () => reset());
+  } catch {
+    // no-op
+  }
+}
+initAuthBlockedReset();
 
 async function runFallbackOnce({ key, entry, docPath }) {
   if (!entry || entry.fallbackDone) return;
   entry.fallbackDone = true;
 
   try {
-    // 1 kere: collection count aggregation (geriye uyumluluk)
     const q = query(COMMENTS_PATH(key));
     const agg = await getCountFromServer(q);
     const n = clampNonNeg(agg?.data()?.count);
@@ -223,13 +258,11 @@ async function runFallbackOnce({ key, entry, docPath }) {
     entry.last = computeVisibleCount(entry);
     for (const cb of entry.callbacks) safeCall(cb, entry.last);
 
-    // pending varsa TTL garanti et
     if (entry.pending > 0) schedulePendingReset(entry);
   } catch (err) {
     const code = err?.code ? String(err.code) : "unknown";
     logPermDeniedOnce("comments:count:fallback", `content/${key}/comments`, err);
 
-    // degrade: 0
     entry.lastDoc = 0;
     entry.last = computeVisibleCount(entry);
     for (const cb of entry.callbacks) safeCall(cb, entry.last);
@@ -249,17 +282,14 @@ function ensureCountEntry(path, docRef, key) {
     last: 0,
     unsub: null,
     fallbackDone: false,
-
-    // EMİR 14
     lastDoc: 0,
     pending: 0,
     pendingTimer: null,
   };
 
-  entry.unsub = onSnapshot(
+  entry.unsub = safeOnSnapshot(
     docRef,
     (snap) => {
-      // doc yoksa: 0 + 1 kere fallback
       if (!snap || !snap.exists()) {
         entry.lastDoc = 0;
         entry.last = computeVisibleCount(entry);
@@ -273,9 +303,7 @@ function ensureCountEntry(path, docRef, key) {
       const data = snap.data() || {};
       const raw = data.commentsCount;
 
-      // field yoksa: mevcut lastDoc/last'ı bozma; 1 kere fallback dene
       if (raw === undefined || raw === null) {
-        // ilk kezse 0 bas (tutarlı başlangıç)
         if (!entry.fallbackDone && entry.lastDoc === 0 && entry.last === 0) {
           entry.last = computeVisibleCount(entry);
           for (const cb of entry.callbacks) safeCall(cb, entry.last);
@@ -289,19 +317,15 @@ function ensureCountEntry(path, docRef, key) {
       const prevDoc = clampNonNeg(entry.lastDoc);
       const prevShown = clampNonNeg(entry.last);
 
-      // doc güncellendi
       entry.lastDoc = nextDoc;
 
-      // EMİR 14: pending'i “yetişme” durumuna göre azalt/sıfırla
       if (entry.pending > 0) {
         const inc = nextDoc - prevDoc;
 
-        // Kısmi catch-up: doc artışı kadar pending düşür (overshoot’u engeller)
         if (inc > 0) {
           entry.pending = clampNonNeg(entry.pending - inc);
         }
 
-        // Basit kural: doc, ekranda gösterdiğin değere yetiştiyse (veya geçtiyse) pending'i sıfırla
         const recomputedShown = nextDoc + entry.pending;
         if (nextDoc >= prevShown || nextDoc >= recomputedShown) {
           entry.pending = 0;
@@ -321,14 +345,12 @@ function ensureCountEntry(path, docRef, key) {
       const code = err?.code ? String(err.code) : "unknown";
       logPermDeniedOnce("comments:count:doc", path, err);
 
-      // degrade: 0 (pending varsa onun kadar göstermek yerine 0+pending gösterelim: daha “dürüst”)
       entry.lastDoc = 0;
       entry.last = computeVisibleCount(entry);
       for (const cb of entry.callbacks) safeCall(cb, entry.last);
 
       if (entry.pending > 0) schedulePendingReset(entry);
 
-      // permission-denied → bu docPath için tekrar listener kurma (spam döngüsünü kır)
       if (code === "permission-denied") {
         __countBlockedPaths.add(path);
         try {
@@ -338,6 +360,11 @@ function ensureCountEntry(path, docRef, key) {
         }
         entry.unsub = null;
       }
+    },
+    {
+      label: "comments:count:doc",
+      path,
+      autoUnsubscribeOnPermissionDenied: true,
     }
   );
 
@@ -351,7 +378,6 @@ function detachCountCallback(path, cb) {
 
   entry.callbacks.delete(cb);
 
-  // kimse kalmadıysa listener'ı kapat + timer temizle
   if (entry.callbacks.size === 0) {
     clearPendingTimer(entry);
     try {
@@ -363,13 +389,6 @@ function detachCountCallback(path, cb) {
   }
 }
 
-/**
- * EMİR 13 + EMİR 14: Yorum sayısını gerçek zamanlı takip et (sekme etiketi için)
- * - content/{key} doc snapshot (commentsCount)
- * - Field/doc yoksa: 1 kere count aggregation fallback (geriye uyumluluk)
- * - Tek listener cache + permission-denied spam kırıcı
- * - addComment sonrası watcher varsa optimistic +1, 6sn TTL drift reset
- */
 export function watchCommentsCount({ contentId, targetType, targetId }, onChange) {
   if (typeof onChange !== "function") return () => {};
 
@@ -381,7 +400,6 @@ export function watchCommentsCount({ contentId, targetType, targetId }, onChange
     return () => {};
   }
 
-  // ✅ logged-in değilse listener açma (rules: content read signed-in)
   const uid = auth?.currentUser?.uid;
   if (!uid) {
     safeCall(onChange, 0);
@@ -391,17 +409,14 @@ export function watchCommentsCount({ contentId, targetType, targetId }, onChange
   const docRef = CONTENT_DOC(key);
   const path = docRef?.path ? String(docRef.path) : `content/${key}`;
 
-  // ✅ permission-denied gördüysek tekrar dinleme (session içinde)
   if (__countBlockedPaths.has(path)) {
     safeCall(onChange, 0);
     return () => {};
   }
 
-  // ✅ tek listener: aynı path’e bağlananlar callback set’ine eklenir
   const entry = ensureCountEntry(path, docRef, key);
   entry.callbacks.add(onChange);
 
-  // anlık last varsa hemen bas (pırıl pırıl)
   safeCall(onChange, entry.last);
 
   return () => detachCountCallback(path, onChange);

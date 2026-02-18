@@ -67,20 +67,6 @@ export default function useRouteDetailData({
   // ✅ in-flight kırıcı (aynı ownerId için aynı mount'ta paralel fetch başlatma)
   const ownerInFlightRef = useRef(new Map()); // ownerId -> true
 
-  // ✅ debug warn (dev only, once per key)
-  const warnOnceRef = useRef(new Set());
-  const devWarnOnce = useCallback((key, payload) => {
-    try {
-      if (process.env.NODE_ENV === "production") return;
-      const k = String(key || "").trim();
-      if (!k) return;
-      if (warnOnceRef.current.has(k)) return;
-      warnOnceRef.current.add(k);
-      // eslint-disable-next-line no-console
-      console.warn(`[RouteDetailData] ${k}`, payload || {});
-    } catch {}
-  }, []);
-
   const now = () => {
     try {
       return Date.now();
@@ -304,22 +290,9 @@ export default function useRouteDetailData({
       } catch (e) {
         const code = String(e?.code || e?.message || "");
         if (!alive) return;
-
-        if (code.includes("permission") || code.includes("denied")) {
+        if (code.includes("permission") || code.includes("denied"))
           setPermError("forbidden");
-          devWarnOnce(`permcheck:permission-denied:${routeId}`, {
-            routeId,
-            code: e?.code,
-            message: e?.message,
-          });
-        } else {
-          setPermError(null);
-          devWarnOnce(`permcheck:error:${routeId}`, {
-            routeId,
-            code: e?.code,
-            message: e?.message,
-          });
-        }
+        else setPermError(null);
       } finally {
         if (!alive) return;
         setPermChecked(true);
@@ -329,7 +302,7 @@ export default function useRouteDetailData({
     return () => {
       alive = false;
     };
-  }, [routeId, permCheckTick, devWarnOnce]);
+  }, [routeId, permCheckTick]);
 
   // ✅ auth değişince forbidden/private için otomatik re-check
   useEffect(() => {
@@ -386,13 +359,7 @@ export default function useRouteDetailData({
         { targetType: "route", targetId: routeId },
         (cnt) => setCommentsCount(typeof cnt === "number" ? cnt : 0)
       );
-    } catch (e) {
-      devWarnOnce(`commentsWatch:throw:${routeId}`, {
-        routeId,
-        code: e?.code,
-        message: e?.message,
-      });
-    }
+    } catch {}
     return () => {
       if (typeof unsubscribe === "function") {
         try {
@@ -400,7 +367,8 @@ export default function useRouteDetailData({
         } catch {}
       }
     };
-  }, [routeId, reloadTick, permError, permChecked, devWarnOnce]);
+    // ✅ authUid eklendi: login/logout olunca sayaç watcher yeniden kurulsun
+  }, [routeId, reloadTick, permError, permChecked, authUid]);
 
   /**
    * ✅ Owner fetch (soft timeout 1500ms)
@@ -415,11 +383,11 @@ export default function useRouteDetailData({
         if (!key) return;
 
         if (isOwnerFetchBlocked(key)) {
-          devWarnOnce(`ownerFetch:blocked:${key}`, { ownerId: key });
           const cached = getCachedOwner(key);
           if (cached) {
             setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
-            if (!setAsLockedOnly) setOwner((prev) => mergeOwnerLike(prev, cached));
+            if (!setAsLockedOnly)
+              setOwner((prev) => mergeOwnerLike(prev, cached));
           }
           return;
         }
@@ -431,6 +399,7 @@ export default function useRouteDetailData({
         let timedOut = false;
         const t = setTimeout(() => {
           timedOut = true;
+          // UI zaten fallback gösteriyor. Burada ekstra state basmıyoruz.
         }, 1500);
 
         getDoc(doc(db, "users", key))
@@ -440,7 +409,8 @@ export default function useRouteDetailData({
               const cached = getCachedOwner(key);
               if (cached) {
                 setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
-                if (!setAsLockedOnly) setOwner((prev) => mergeOwnerLike(prev, cached));
+                if (!setAsLockedOnly)
+                  setOwner((prev) => mergeOwnerLike(prev, cached));
               }
               return;
             }
@@ -459,23 +429,13 @@ export default function useRouteDetailData({
 
             if (isPermDenied(e)) {
               blockOwnerFetchPerm(key);
-              devWarnOnce(`ownerFetch:permission-denied:${key}`, {
-                ownerId: key,
-                code: e?.code,
-                message: e?.message,
-              });
-            } else {
-              devWarnOnce(`ownerFetch:error:${key}`, {
-                ownerId: key,
-                code: e?.code,
-                message: e?.message,
-              });
             }
 
             const cached = getCachedOwner(key);
             if (cached) {
               setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
-              if (!setAsLockedOnly) setOwner((prev) => mergeOwnerLike(prev, cached));
+              if (!setAsLockedOnly)
+                setOwner((prev) => mergeOwnerLike(prev, cached));
             } else {
               if (!setAsLockedOnly) {
                 setOwner((prev) => {
@@ -499,7 +459,6 @@ export default function useRouteDetailData({
       setCacheOwner,
       isPermDenied,
       blockOwnerFetchPerm,
-      devWarnOnce,
     ]
   );
 
@@ -516,83 +475,105 @@ export default function useRouteDetailData({
       return;
 
     let alive = true;
-    let lastOwnerId = "";
 
     let offRoute = () => {};
     let offStops = () => {};
 
-    try {
-      offRoute = watchRoute(routeId, (d) => {
-        if (!alive) return;
+    const stopAll = () => {
+      try {
+        offRoute?.();
+      } catch {}
+      try {
+        offStops?.();
+      } catch {}
+    };
 
-        setRouteDoc(d);
+    // ✅ spam kırıcı: permission-denied ilk yakalamada watcher’ları kapat
+    let deniedOnce = false;
 
-        const ownerId = d?.ownerId ? String(d.ownerId) : "";
-        if (!ownerId) {
-          lastOwnerId = "";
-          setOwner(null);
-          return;
-        }
+    const onSnapErr = (label) => (e) => {
+      if (!alive) return;
+      if (!isPermDenied(e)) return;
 
-        lastOwnerId = ownerId;
+      if (deniedOnce) return;
+      deniedOnce = true;
 
-        // ✅ 1) Route içinden owner preview üret (anon olsa bile)
-        try {
-          const preview = buildOwnerPreviewFromRoute(d, ownerId);
-          if (preview) {
-            setLockedOwnerDoc((prev) => mergeOwnerLike(prev, preview));
-          }
-        } catch {}
+      // UI degrade
+      setPermError((prev) => (prev === "forbidden" ? prev : "forbidden"));
 
-        // ✅ 2) perm-block ise tekrar deneme yok; cache varsa kullan
-        if (isOwnerFetchBlocked(ownerId)) {
-          const cached = getCachedOwner(ownerId);
-          if (cached) {
-            setOwner((prev) => {
-              const pid = prev?.id ? String(prev.id) : "";
-              if (pid === ownerId) return prev;
-              return cached;
-            });
-            setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
-          }
-          return;
-        }
-
-        // ✅ 3) user doc fetch (soft-timeout 1500ms)
-        try {
-          startOwnerFetch(ownerId, { setAsLockedOnly: false });
-        } catch {}
-
-        void lastOwnerId;
-      });
-    } catch (e) {
-      devWarnOnce(`watchRoute:throw:${routeId}`, {
-        routeId,
-        code: e?.code,
-        message: e?.message,
-      });
-    }
-
-    try {
-      offStops = watchStops(routeId, (arr) => {
-        if (!alive) return;
-
-        const sorted = (arr || [])
-          .slice()
-          .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-        // ✅ stops canonical (lat/lng root garantisi)
-        const norm = normalizeStopsForPreview(sorted);
-        setStops(norm?.stops || sorted);
+      // küçük güvenlik: spinners kalmasın
+      if (label === "stops") {
+        setStops([]);
         setStopsLoaded(true);
-      });
-    } catch (e) {
-      devWarnOnce(`watchStops:throw:${routeId}`, {
+      }
+
+      // ✅ en kritik hamle: permission-denied gelince watcher’ları kapat
+      stopAll();
+    };
+
+    try {
+      offRoute = watchRoute(
         routeId,
-        code: e?.code,
-        message: e?.message,
-      });
-    }
+        (d) => {
+          if (!alive) return;
+
+          setRouteDoc(d);
+
+          const ownerId = d?.ownerId ? String(d.ownerId) : "";
+          if (!ownerId) {
+            setOwner(null);
+            return;
+          }
+
+          // ✅ 1) Route içinden owner preview üret (anon olsa bile)
+          try {
+            const preview = buildOwnerPreviewFromRoute(d, ownerId);
+            if (preview) {
+              setLockedOwnerDoc((prev) => mergeOwnerLike(prev, preview));
+            }
+          } catch {}
+
+          // ✅ 2) perm-block ise tekrar deneme yok; cache varsa kullan
+          if (isOwnerFetchBlocked(ownerId)) {
+            const cached = getCachedOwner(ownerId);
+            if (cached) {
+              setOwner((prev) => {
+                const pid = prev?.id ? String(prev.id) : "";
+                if (pid === ownerId) return prev;
+                return cached;
+              });
+              setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
+            }
+            return;
+          }
+
+          // ✅ 3) user doc fetch (soft-timeout 1500ms)
+          try {
+            startOwnerFetch(ownerId, { setAsLockedOnly: false });
+          } catch {}
+        },
+        { label: "RouteDetailMobile:watchRoute", onError: onSnapErr("route") }
+      );
+    } catch {}
+
+    try {
+      offStops = watchStops(
+        routeId,
+        (arr) => {
+          if (!alive) return;
+
+          const sorted = (arr || [])
+            .slice()
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+          // ✅ stops canonical (lat/lng root garantisi)
+          const norm = normalizeStopsForPreview(sorted);
+          setStops(norm?.stops || sorted);
+          setStopsLoaded(true);
+        },
+        { label: "RouteDetailMobile:watchStops", onError: onSnapErr("stops") }
+      );
+    } catch {}
 
     return () => {
       alive = false;
@@ -613,7 +594,7 @@ export default function useRouteDetailData({
     isOwnerFetchBlocked,
     getCachedOwner,
     startOwnerFetch,
-    devWarnOnce,
+    isPermDenied,
   ]);
 
   // locked owner resolve (for forbidden/private/not-found)

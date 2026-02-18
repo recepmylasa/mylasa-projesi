@@ -1,7 +1,7 @@
-// src/firebase.js — STABİL (login + upload çalışır)
+// FILE: src/firebase.js — STABİL (login + upload çalışır)
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, setLogLevel } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
@@ -16,6 +16,16 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// ✅ DEV'de Firestore internal console spam'ini kapat (permission-denied "Uncaught..." dahil)
+if (process.env.NODE_ENV !== "production") {
+  try {
+    // default: silent (console temiz)
+    setLogLevel("silent");
+  } catch {
+    // no-op
+  }
+}
 
 // ✅ Tek ve doğru bucket (explicit veriyoruz)
 export const storage = getStorage(app, "gs://mylasa-final.firebasestorage.app");

@@ -1,4 +1,4 @@
-// src/App.js
+// FILE: src/App.js
 
 import { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
@@ -41,6 +41,34 @@ import RoutesExploreMobile from "./pages/RoutesExploreMobile";
 import AdminShareMetrics from "./pages/AdminShareMetrics";
 
 import "./App.css";
+
+const __DEV__ = process.env.NODE_ENV !== "production";
+const __snapErrSeen = new Set();
+
+function isPermDenied(err) {
+  try {
+    const code = String(err?.code || "").toLowerCase();
+    const msg = String(err?.message || "").toLowerCase();
+    return (
+      code.includes("permission-denied") ||
+      (code.includes("permission") && code.includes("denied")) ||
+      (msg.includes("missing") && msg.includes("insufficient") && msg.includes("permission"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function logSnapErrOnce(label, path, err) {
+  if (!__DEV__) return;
+  const code = err?.code ? String(err.code) : "unknown";
+  const msg = err?.message ? String(err.message) : "";
+  const key = `${label}|${path}|${code}`;
+  if (__snapErrSeen.has(key)) return;
+  __snapErrSeen.add(key);
+  // eslint-disable-next-line no-console
+  console.warn("[snapshot-error]", { label, path, code, msg });
+}
 
 const useWindowSize = () => {
   const [size, setSize] = useState([window.innerWidth, window.innerHeight]);
@@ -240,33 +268,66 @@ function App() {
     };
   }, [modalContent]);
 
+  // ✅ EMİR 02 (REV-5) — App seviyesinde permission-denied spam kırıcı
   useEffect(() => {
-    let unsubscribeProfile = () => {};
+    let unsubscribeProfile = null;
+
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      unsubscribeProfile();
-      setUser(currentUser);
-      if (currentUser) {
-        const userDocRef = doc(db, "users", currentUser.uid);
-        unsubscribeProfile = onSnapshot(
-          userDocRef,
-          (docSnap) => {
+      try {
+        unsubscribeProfile?.();
+      } catch {}
+      unsubscribeProfile = null;
+
+      setUser(currentUser || null);
+
+      if (!currentUser) {
+        setCurrentUserProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const path = userDocRef?.path ? String(userDocRef.path) : `users/${currentUser.uid}`;
+
+      unsubscribeProfile = onSnapshot(
+        userDocRef,
+        (docSnap) => {
+          try {
             if (docSnap.exists()) {
               setCurrentUserProfile({ id: docSnap.id, ...docSnap.data() });
             } else {
               setCurrentUserProfile(null);
             }
-            setLoading(false);
-          },
-          () => setLoading(false)
-        );
-      } else {
-        setCurrentUserProfile(null);
-        setLoading(false);
-      }
+          } catch {
+            setCurrentUserProfile(null);
+          }
+          setLoading(false);
+        },
+        (err) => {
+          // permission-denied (ve benzeri) → spam yok, UI çökmesin
+          logSnapErrOnce("AppUserProfile", path, err);
+
+          // listener’ı kapat (özellikle permission-denied’de tekrar tekrar denemesin)
+          if (isPermDenied(err)) {
+            try {
+              unsubscribeProfile?.();
+            } catch {}
+            unsubscribeProfile = null;
+          }
+
+          setCurrentUserProfile(null);
+          setLoading(false);
+        }
+      );
     });
+
     return () => {
-      unsubscribeAuth();
-      unsubscribeProfile();
+      try {
+        unsubscribeAuth?.();
+      } catch {}
+      try {
+        unsubscribeProfile?.();
+      } catch {}
     };
   }, []);
 

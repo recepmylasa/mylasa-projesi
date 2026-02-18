@@ -1,15 +1,9 @@
-// src/reputationClient.js
+// FILE: src/reputationClient.js
 // Oy verme: /content/<id>/ratings/<uid>
 // Not: Kök /content belgesini rater güncellemez. (Kurallara göre sadece author update edebilir.)
 
 import { auth, db } from "./firebase";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  serverTimestamp,
-  onSnapshot,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 
 export const CONTENT_COL = "content";
 export const RATINGS_SUBCOL = "ratings";
@@ -57,9 +51,84 @@ export async function rateContent({ contentId, authorId = "unknown", value, type
   return { ok: true };
 }
 
+// -------------------- EMİR 03: snapshot error callback + perm-denied spam kırıcı --------------------
+const __DEV__ = process.env.NODE_ENV !== "production";
+const __aggSeen = new Set();
+
+function isPermDeniedLike(err) {
+  try {
+    const code = String(err?.code || "").toLowerCase();
+    const msg = String(err?.message || err || "").toLowerCase();
+    const t = `${code} ${msg}`;
+    return t.includes("permission") && t.includes("denied");
+  } catch {
+    return false;
+  }
+}
+
+function logAggOnce(contentId, err) {
+  if (!__DEV__) return;
+  try {
+    const code = String(err?.code || "unknown");
+    const key = `content:agg:${String(contentId)}:${code}`;
+    if (__aggSeen.has(key)) return;
+    __aggSeen.add(key);
+    // eslint-disable-next-line no-console
+    console.warn("[content:agg] snapshot error", {
+      contentId: String(contentId),
+      code,
+      message: String(err?.message || err || ""),
+    });
+  } catch {}
+}
+
+function safeCall(cb, value) {
+  try {
+    cb?.(value);
+  } catch {
+    // no-op
+  }
+}
+// -----------------------------------------------------------------------------------------------
+
 /** İçerik aggregate canlı dinleme (UI eskisiyle uyumlu: agg.*) */
 export function onContentAggregate(contentId, cb) {
   if (!contentId) return () => {};
   const ref = doc(db, CONTENT_COL, String(contentId));
-  return onSnapshot(ref, (snap) => cb(snap.exists() ? (snap.data()?.agg || null) : null));
+
+  let unsub = () => {};
+
+  try {
+    unsub = onSnapshot(
+      ref,
+      (snap) => {
+        safeCall(cb, snap.exists() ? (snap.data()?.agg || null) : null);
+      },
+      (err) => {
+        // ✅ kritik: error callback yoksa "Uncaught Error in snapshot listener" olur
+        logAggOnce(contentId, err);
+
+        // permission-denied ise sessiz degrade + unsubscribe (retry/spam kır)
+        if (isPermDeniedLike(err)) {
+          safeCall(cb, null);
+          try {
+            unsub?.();
+          } catch {}
+          return;
+        }
+
+        // diğer hatalarda da UI çökmemeli
+        safeCall(cb, null);
+      }
+    );
+  } catch (err) {
+    logAggOnce(contentId, err);
+    safeCall(cb, null);
+  }
+
+  return () => {
+    try {
+      unsub?.();
+    } catch {}
+  };
 }
