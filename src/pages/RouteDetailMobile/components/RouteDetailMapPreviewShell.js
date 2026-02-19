@@ -1,6 +1,7 @@
 // FILE: src/pages/RouteDetailMobile/components/RouteDetailMapPreviewShell.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGoogleMaps } from "../../../hooks/useGoogleMaps";
+import useRDMapResizeAuthority from "../hooks/useRDMapResizeAuthority";
 
 function pickLocationLabelFromStops(stops) {
   const arr = Array.isArray(stops) ? stops : [];
@@ -500,7 +501,6 @@ export default function RouteDetailMapPreviewShell({
   const [mapInstance, setMapInstance] = useState(null);
   const mapInstanceRef = useRef(null);
 
-  // ✅ Hook bazı ortamlarda farklı status döndürebilir → toleranslı hazır kontrol
   const statusIsReady =
     gmapsStatus === "ready" ||
     gmapsStatus === "loaded" ||
@@ -508,7 +508,6 @@ export default function RouteDetailMapPreviewShell({
     gmapsStatus === "success" ||
     gmapsStatus === "done";
 
-  // ✅ Harita instance varsa "ready" kabul et
   const isReady = !isError && (statusIsReady || !!mapInstance);
   const isLoading = !isReady && !isError;
 
@@ -537,8 +536,6 @@ export default function RouteDetailMapPreviewShell({
 
   /* =========================================================
      ✅ EMİR 03 — HOST ATTACH GATING (0-height/unstable iken ASLA init etme)
-     - Map’in bağlandığı div: localDivRef (rdmps-map)
-     - Hook’a mapDivRef’yi ancak ölçü stabil olunca veriyoruz.
      ========================================================= */
   const localDivRef = useRef(null);
   const hostAttachedRef = useRef(false);
@@ -563,7 +560,6 @@ export default function RouteDetailMapPreviewShell({
     (node) => {
       if (!node) return;
 
-      // attach tek sefer; ama node değişirse ref’i güncelle
       if (!hostAttachedRef.current) {
         hostAttachedRef.current = true;
         setHostAttached(true);
@@ -580,7 +576,6 @@ export default function RouteDetailMapPreviewShell({
       const node = localDivRef.current;
       if (!node) return;
 
-      // eski raf’ı öldür
       try {
         if (hostWaitRef.current.raf) cancelAnimationFrame(hostWaitRef.current.raf);
       } catch {}
@@ -616,7 +611,6 @@ export default function RouteDetailMapPreviewShell({
         lastW = w;
         lastH = h;
 
-        // stabil kriter: 2 frame üst üste aynı (±1px)
         if (okSize && stableHit >= 1) {
           attachHost(el);
           hostWaitRef.current.active = false;
@@ -624,7 +618,6 @@ export default function RouteDetailMapPreviewShell({
           return;
         }
 
-        // max 20 deneme: eğer ölçü yeterliyse gene de attach (sonsuz bekleme yok)
         if (hostWaitRef.current.tries >= 20 && okSize) {
           attachHost(el);
           hostWaitRef.current.active = false;
@@ -644,13 +637,11 @@ export default function RouteDetailMapPreviewShell({
     (node) => {
       localDivRef.current = node;
 
-      // attached ise hook ref’ini güncelle
       if (node && hostAttachedRef.current) {
         forwardNodeToHook(node);
         return;
       }
 
-      // attached değilse: ölçü stabil olunca attach edeceğiz
       if (node && !hostAttachedRef.current) {
         startHostStabilityWait("setDivRef");
       }
@@ -672,11 +663,10 @@ export default function RouteDetailMapPreviewShell({
   }, [startHostStabilityWait]);
 
   useEffect(() => {
-    // routeId değiştiyse ve daha attach edilmemişsek tekrar dene
     if (!hostAttachedRef.current) startHostStabilityWait("route");
   }, [routeId, startHostStabilityWait]);
 
-  // ✅ Map instance probe — status'a bağımlı değil (bazı cihazlarda status gecikebiliyor)
+  // ✅ Map instance probe
   useEffect(() => {
     if (isError) {
       setMapInstance(null);
@@ -719,10 +709,7 @@ export default function RouteDetailMapPreviewShell({
     bumpTick();
   }, [mapInstance, bumpTick]);
 
-  /* =========================================================
-     ✅ EMİR 02 (REV-4) — DEBUG HOOK
-     Map hazır olunca window’a aç: __RD_MAP + __RD_MAP_FORCE()
-     ========================================================= */
+  // ✅ EMİR 02 — DEBUG HOOK
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -739,19 +726,16 @@ export default function RouteDetailMapPreviewShell({
 
       window.__RD_MAP_FORCE = () => {
         try {
-          // 1) global resize
           try {
             window.dispatchEvent(new Event("resize"));
           } catch {}
 
-          // 2) google maps internal resize
           try {
             if (window.google?.maps?.event?.trigger) {
               window.google.maps.event.trigger(mapInstance, "resize");
             }
           } catch {}
 
-          // 3) repaint nudge (zoom/center)
           try {
             const c = mapInstance.getCenter?.();
             if (c && mapInstance.setCenter) mapInstance.setCenter(c);
@@ -762,7 +746,6 @@ export default function RouteDetailMapPreviewShell({
             if (Number.isFinite(z) && mapInstance.setZoom) mapInstance.setZoom(z);
           } catch {}
 
-          // 4) microtask/raf wave (bazı cihazlarda 2. dalga şart)
           try {
             requestAnimationFrame(() => {
               try {
@@ -790,13 +773,13 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [mapInstance]);
 
-  // ✅ EMİR 02: Map gesture guard — sheet/scroll motoruna kaçışı kes
+  // ✅ Map gesture guard — sheet/scroll motoruna kaçışı kes
   const gestureGuardRef = useRef({ active: false, pointerId: null });
 
-  // ✅ EMİR 01: Shell kendi clamp'ını ASLA dayatmaz. %100 fill.
+  // ✅ Shell kendi clamp'ını ASLA dayatmaz. %100 fill.
   const shellH = "var(--rdmps-h, 100%)";
 
-  // ✅ EMİR 02: Map üstünde pointer/touch sheet’e kaçmasın
+  // ✅ Map üstünde pointer/touch sheet’e kaçmasın
   useEffect(() => {
     const host = shellRef.current;
     if (!host) return;
@@ -812,8 +795,9 @@ export default function RouteDetailMapPreviewShell({
     };
     const onTouchMove = (e) => {
       if (!state.active) return;
+      // ✅ cancelable değilse preventDefault yapma (Chrome warning + bazı cihazlarda bug)
       try {
-        e.preventDefault();
+        if (e?.cancelable) e.preventDefault();
       } catch {}
       try {
         e.stopPropagation();
@@ -883,7 +867,7 @@ export default function RouteDetailMapPreviewShell({
     };
   }, []);
 
-  // ✅ EMİR 02: Map options — map gesture map’te kalsın
+  // ✅ Map options
   useEffect(() => {
     if (!mapInstance) return;
     try {
@@ -1109,50 +1093,25 @@ export default function RouteDetailMapPreviewShell({
   }, [mapInstance, drawPoints, routeId]);
 
   /* =========================================================
-     ✅ EMİR 03 — RESIZE AUTHORITY (RO + visualViewport + throttle + loop-breaker)
+     ✅ EMİR 03 — JS Resize Authority (RO + IO + VV + signature + loop-breaker)
      ========================================================= */
-  const resizeAuthRef = useRef({
-    t: 0,
-    raf: 0,
-    lastSizeSig: "",
-    lastSizeAt: 0,
-    lastFitSig: "",
-    lastFitAt: 0,
-  });
+  const boundsRef = useRef(null);
 
-  const getHostRect = useCallback(() => {
-    const el = localDivRef.current;
-    if (!el) return null;
-    try {
-      return el.getBoundingClientRect();
-    } catch {
-      return null;
-    }
-  }, []);
+  const boundsKey = useMemo(() => {
+    const pts = Array.isArray(drawPoints) ? drawPoints : [];
+    if (!pts.length) return "none";
+    if (pts.length === 1) return `1:${round6(pts[0].lat)},${round6(pts[0].lng)}`;
 
-  const makeSizeSig = useCallback((rect) => {
-    const w = Math.round(rect?.width || 0);
-    const h = Math.round(rect?.height || 0);
-    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-    const dprR = Math.round(dpr * 100) / 100;
-    return `${w}x${h}@${dprR}`;
-  }, []);
-
-  const boundsHashFromPts = useCallback((pts) => {
-    const arr = Array.isArray(pts) ? pts : [];
-    if (!arr.length) return "none";
-    if (arr.length === 1) return `1:${round6(arr[0].lat)},${round6(arr[0].lng)}`;
-
-    const first = arr[0];
-    const last = arr[arr.length - 1];
+    const first = pts[0];
+    const last = pts[pts.length - 1];
 
     let minLat = first.lat,
       maxLat = first.lat,
       minLng = first.lng,
       maxLng = first.lng;
 
-    for (let i = 0; i < arr.length; i++) {
-      const p = arr[i];
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
       if (!p) continue;
       if (p.lat < minLat) minLat = p.lat;
       if (p.lat > maxLat) maxLat = p.lat;
@@ -1161,218 +1120,48 @@ export default function RouteDetailMapPreviewShell({
     }
 
     const bbox = `${round4(minLat)},${round4(minLng)},${round4(maxLat)},${round4(maxLng)}`;
-    return `${arr.length}:${round6(first.lat)},${round6(first.lng)}:${round6(last.lat)},${round6(last.lng)}:${bbox}`;
+    return `${pts.length}:${round6(first.lat)},${round6(first.lng)}:${round6(last.lat)},${round6(
+      last.lng
+    )}:${bbox}`;
+  }, [drawPoints]);
+
+  useEffect(() => {
+    boundsRef.current = null;
+
+    const g = window.google;
+    const mapNow = mapInstanceRef.current;
+
+    if (!mapNow || !g?.maps?.LatLngBounds) return;
+
+    const pts = Array.isArray(drawPoints) ? drawPoints : [];
+    if (pts.length < 2) return;
+
+    try {
+      const b = new g.maps.LatLngBounds();
+      for (const p of pts) b.extend(p);
+      boundsRef.current = b;
+    } catch {
+      boundsRef.current = null;
+    }
+  }, [mapInstance, boundsKey, routeId, drawPoints]);
+
+  // ✅ tek nokta için center/zoom döndür
+  const getBounds = useCallback(() => {
+    if (boundsRef.current) return boundsRef.current;
+    const pts = drawPointsRef.current;
+    if (Array.isArray(pts) && pts.length === 1) return { center: pts[0], zoom: 16 };
+    return null;
   }, []);
 
-  const scheduleResize = useCallback(
-    (reason = "ro") => {
-      const map = mapInstanceRef.current;
-      const g = window.google;
-      if (!map || !g?.maps) return;
-
-      const rect = getHostRect();
-      const w = rect?.width || 0;
-      const h = rect?.height || 0;
-
-      // host çok küçükken spam yok
-      if (w < 40 || h < 40) return;
-
-      const sizeSig = makeSizeSig(rect);
-      const now = Date.now();
-
-      // 120–200ms throttle + 300ms aynı sizeSig dedupe
-      if (resizeAuthRef.current.lastSizeSig === sizeSig && now - resizeAuthRef.current.lastSizeAt < 300) return;
-      resizeAuthRef.current.lastSizeSig = sizeSig;
-      resizeAuthRef.current.lastSizeAt = now;
-
-      try {
-        if (resizeAuthRef.current.t) clearTimeout(resizeAuthRef.current.t);
-      } catch {}
-      resizeAuthRef.current.t = 0;
-
-      resizeAuthRef.current.t = setTimeout(() => {
-        const mapNow = mapInstanceRef.current;
-        const gg = window.google;
-        if (!mapNow || !gg?.maps) return;
-
-        try {
-          if (resizeAuthRef.current.raf) cancelAnimationFrame(resizeAuthRef.current.raf);
-        } catch {}
-        resizeAuthRef.current.raf = requestAnimationFrame(() => {
-          const pts = drawPointsRef.current || [];
-          const rect2 = getHostRect();
-          const sizeSig2 = makeSizeSig(rect2);
-
-          // 1) gerçek google resize
-          try {
-            if (gg.maps.event?.trigger) gg.maps.event.trigger(mapNow, "resize");
-          } catch {}
-
-          // 2) fit / refresh (loop-breaker)
-          const boundsHash = boundsHashFromPts(pts);
-          const fitSig = `${boundsHash}@${sizeSig2}`;
-
-          if (resizeAuthRef.current.lastFitSig === fitSig) {
-            // sadece küçük refresh
-            try {
-              const c = mapNow.getCenter?.();
-              if (c && mapNow.setCenter) mapNow.setCenter(c);
-            } catch {}
-            return;
-          }
-
-          resizeAuthRef.current.lastFitSig = fitSig;
-          resizeAuthRef.current.lastFitAt = Date.now();
-
-          try {
-            if (!Array.isArray(pts) || pts.length < 1) {
-              const c = mapNow.getCenter?.();
-              if (c && mapNow.setCenter) mapNow.setCenter(c);
-              return;
-            }
-
-            if (pts.length === 1) {
-              const p0 = pts[0];
-              mapNow.setCenter(p0);
-              const z = mapNow.getZoom?.();
-              if (!Number.isFinite(z) || z < 14 || z > 18) mapNow.setZoom(16);
-              return;
-            }
-
-            const b = new gg.maps.LatLngBounds();
-            for (const p of pts) b.extend(p);
-
-            try {
-              mapNow.fitBounds(b, { top: 22, right: 22, bottom: 22, left: 22 });
-            } catch {
-              try {
-                mapNow.fitBounds(b);
-              } catch {}
-            }
-          } catch {
-            try {
-              const c2 = mapNow.getCenter?.();
-              if (c2 && mapNow.setCenter) mapNow.setCenter(c2);
-            } catch {}
-          }
-        });
-      }, 160);
-    },
-    [getHostRect, makeSizeSig, boundsHashFromPts]
-  );
-
-  // ✅ Map init olduktan sonra garanti dalgaları (post0 / post250 / fonts)
-  useEffect(() => {
-    if (!mapInstance) return;
-
-    scheduleResize("post0");
-    let t0 = 0;
-    let t1 = 0;
-    try {
-      t0 = setTimeout(() => scheduleResize("post0"), 0);
-      t1 = setTimeout(() => scheduleResize("post250"), 250);
-    } catch {}
-
-    let cancelled = false;
-    try {
-      const fr = document.fonts?.ready;
-      if (fr && typeof fr.then === "function") {
-        fr.then(() => {
-          if (cancelled) return;
-          scheduleResize("fonts");
-        });
-      }
-    } catch {}
-
-    return () => {
-      cancelled = true;
-      try {
-        if (t0) clearTimeout(t0);
-        if (t1) clearTimeout(t1);
-      } catch {}
-    };
-  }, [mapInstance, scheduleResize, routeId]);
-
-  // ✅ points değişince: fit+resize bir kere
-  useEffect(() => {
-    if (!mapInstance) return;
-    scheduleResize("points");
-  }, [mapInstance, drawPoints, scheduleResize]);
-
-  // ✅ ResizeObserver + visualViewport + window resize
-  useEffect(() => {
-    const host = localDivRef.current;
-
-    const onAny = () => {
-      // map daha attach edilmemişse: host stabil olana kadar bekle
-      if (!hostAttachedRef.current) {
-        startHostStabilityWait("resize");
-        return;
-      }
-      scheduleResize("ro");
-    };
-
-    let ro = null;
-    if (host && typeof ResizeObserver !== "undefined") {
-      try {
-        ro = new ResizeObserver(() => onAny());
-        ro.observe(host);
-      } catch {}
-    }
-
-    const vv = window.visualViewport;
-    const onVV = () => onAny();
-
-    try {
-      window.addEventListener("resize", onAny);
-      window.addEventListener("orientationchange", onAny);
-    } catch {}
-
-    try {
-      vv?.addEventListener("resize", onVV);
-      vv?.addEventListener("scroll", onVV);
-    } catch {}
-
-    return () => {
-      try {
-        ro?.disconnect();
-      } catch {}
-      try {
-        window.removeEventListener("resize", onAny);
-        window.removeEventListener("orientationchange", onAny);
-      } catch {}
-      try {
-        vv?.removeEventListener("resize", onVV);
-        vv?.removeEventListener("scroll", onVV);
-      } catch {}
-
-      // timers/raf cleanup
-      try {
-        if (resizeAuthRef.current.t) clearTimeout(resizeAuthRef.current.t);
-      } catch {}
-      resizeAuthRef.current.t = 0;
-
-      try {
-        if (resizeAuthRef.current.raf) cancelAnimationFrame(resizeAuthRef.current.raf);
-      } catch {}
-      resizeAuthRef.current.raf = 0;
-    };
-  }, [scheduleResize, startHostStabilityWait]);
-
-  // ✅ tab geri gelme / visibility
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "visible") scheduleResize("vis");
-    };
-    try {
-      document.addEventListener("visibilitychange", onVis);
-    } catch {}
-    return () => {
-      try {
-        document.removeEventListener("visibilitychange", onVis);
-      } catch {}
-    };
-  }, [scheduleResize]);
+  useRDMapResizeAuthority({
+    mapRef: mapInstanceRef,
+    // ✅ containerRef: SHELL değil, gerçek MAP DIV (repaint için daha doğru)
+    containerRef: localDivRef,
+    getBounds,
+    boundsKey,
+    enabled: !!mapInstance,
+    debug: false,
+  });
 
   const locationLabel = useMemo(() => {
     const fromProp = String(areaLabel || "").trim();
@@ -1664,7 +1453,6 @@ export default function RouteDetailMapPreviewShell({
           filter: contrast(1.05) saturate(0.88) brightness(0.96);
         }
 
-        /* ✅ global css max-width:100% map tile bozmasın */
         .gm-style img, .gm-style canvas {
           max-width: none !important;
         }
