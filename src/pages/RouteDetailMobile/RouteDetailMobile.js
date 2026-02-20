@@ -230,18 +230,142 @@ export default function RouteDetailMobile({
   // ✅ Main scroller ref (jitter fix: tek otorite)
   const mainBodyRef = React.useRef(null);
 
+  // ✅ EMİR 03 (Adım 4) — Map repaint/resize otoritesi (RO/IO/VV)
+  const mapCardHostRef = React.useRef(null);
+  const mapResizeRef = React.useRef({
+    raf: 0,
+    lastTs: 0,
+    lastRectKey: "",
+    lastReason: "",
+  });
+
+  const requestMapResize = useCallback((reason = "") => {
+    const ref = mapResizeRef.current;
+    ref.lastReason = reason || ref.lastReason || "";
+
+    try {
+      if (ref.raf) return;
+      ref.raf = window.requestAnimationFrame(() => {
+        ref.raf = 0;
+
+        const host = mapCardHostRef.current;
+        if (!host) return;
+
+        let r = null;
+        try {
+          r = host.getBoundingClientRect();
+        } catch {}
+
+        const w = r ? Math.round(r.width) : 0;
+        const h = r ? Math.round(r.height) : 0;
+        if (w < 16 || h < 16) return;
+
+        const top = r ? Math.round(r.top) : 0;
+
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        const rectKey = `${w}x${h}@${top}`;
+
+        // ✅ spam breaker: aynı ölçü + yakın zaman ise tekrar etme
+        if (ref.lastRectKey === rectKey && now - ref.lastTs < 450) return;
+
+        ref.lastRectKey = rectKey;
+        ref.lastTs = now;
+
+        // ✅ 1) Eğer map component kendi force fonksiyonunu expose ettiyse onu kullan
+        try {
+          if (typeof window.__RD_MAP_FORCE__ === "function") {
+            window.__RD_MAP_FORCE__();
+            return;
+          }
+        } catch {}
+
+        // ✅ 2) Global map instance fallback
+        try {
+          const map = window.__RD_MAP__;
+          if (map && window.google?.maps?.event?.trigger) {
+            window.google.maps.event.trigger(map, "resize");
+            const c = map.getCenter?.();
+            if (c) map.setCenter(c);
+            const z = map.getZoom?.();
+            if (typeof z === "number") map.setZoom(z);
+          }
+        } catch {}
+      });
+    } catch {}
+  }, []);
+
+  // ✅ EMİR 03 (Adım 4) — RO + IO + VisualViewport ile repaint tetikle
+  useEffect(() => {
+    const host = mapCardHostRef.current;
+    if (!host) return;
+
+    requestMapResize("mount");
+
+    let ro = null;
+    try {
+      ro = new ResizeObserver(() => requestMapResize("RO"));
+      ro.observe(host);
+    } catch {}
+
+    let io = null;
+    try {
+      io = new IntersectionObserver(
+        (entries) => {
+          const e = entries && entries[0];
+          if (!e) return;
+          const ratio = Number(e.intersectionRatio) || 0;
+          if (e.isIntersecting && ratio > 0.25) requestMapResize("IO");
+        },
+        {
+          root: mainBodyRef.current || null,
+          threshold: [0, 0.25, 0.55, 0.85],
+        }
+      );
+      io.observe(host);
+    } catch {}
+
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    const onVV = () => {
+      requestMapResize("VV");
+    };
+
+    try {
+      vv?.addEventListener("resize", onVV, { passive: true });
+      vv?.addEventListener("scroll", onVV, { passive: true });
+    } catch {}
+
+    try {
+      window.addEventListener("orientationchange", onVV, { passive: true });
+      window.addEventListener("resize", onVV, { passive: true });
+    } catch {}
+
+    return () => {
+      try {
+        ro?.disconnect();
+      } catch {}
+      try {
+        io?.disconnect();
+      } catch {}
+      try {
+        vv?.removeEventListener("resize", onVV);
+        vv?.removeEventListener("scroll", onVV);
+      } catch {}
+      try {
+        window.removeEventListener("orientationchange", onVV);
+        window.removeEventListener("resize", onVV);
+      } catch {}
+      try {
+        const ref = mapResizeRef.current;
+        if (ref?.raf) {
+          window.cancelAnimationFrame(ref.raf);
+          ref.raf = 0;
+        }
+      } catch {}
+    };
+  }, [routeId, requestMapResize]);
+
   // ✅ EMİR — route başına 1 kere "TOP reset" mandalı (StrictMode spam kırıcı)
   const initialTopResetRef = React.useRef({ routeId: null, done: false });
-
-  // ✅ PARÇA-1: Debug flag (prod’da kapalı)
-  const RD_DEBUG = useMemo(() => {
-    try {
-      if (process.env.NODE_ENV === "production") return false;
-      return typeof window !== "undefined" && window.localStorage.getItem("RD_DEBUG") === "1";
-    } catch {
-      return false;
-    }
-  }, []);
 
   // ✅ EMİR — HARD RESET px eşiği
   const HARD_RESET_TOP_PX = 2;
@@ -365,6 +489,11 @@ export default function RouteDetailMobile({
         scheduleHeroCollapse(0);
       } catch {}
 
+      // ✅ EMİR 03 (Adım 4): top reset anında map repaint (yarım kalma kırıcı)
+      try {
+        requestMapResize(`hardreset:${reason || "top"}`);
+      } catch {}
+
       try {
         backdropEl?.setAttribute("data-rd-hardfix-top", "1");
         if (process.env.NODE_ENV !== "production" && reason) {
@@ -373,8 +502,204 @@ export default function RouteDetailMobile({
         }
       } catch {}
     },
-    [HARD_RESET_TOP_PX, scheduleHeroCollapse, stripInlineTransform]
+    [HARD_RESET_TOP_PX, scheduleHeroCollapse, stripInlineTransform, requestMapResize]
   );
+
+  // ✅ PARÇA 1/5 — DEV ONLY: Global dump + manual repair (console komutları)
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (typeof window === "undefined") return;
+
+    const getRoot = () => {
+      const sheetEl = sheetRef.current;
+      return sheetEl?.closest?.(".route-detail-backdrop") || sheetEl || document;
+    };
+
+    const pick = (sel) => {
+      try {
+        const root = getRoot();
+        return root?.querySelector ? root.querySelector(sel) : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const rectOf = (el) => {
+      if (!el) return null;
+      try {
+        const r = el.getBoundingClientRect();
+        return {
+          top: Math.round(r.top),
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          bottom: Math.round(r.bottom),
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const styleOf = (el) => {
+      if (!el) return null;
+      try {
+        const cs = window.getComputedStyle(el);
+        return {
+          position: cs.position,
+          transform: cs.transform,
+          overflow: cs.overflow,
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const dumpNode = (selector, fallbackEl = null) => {
+      const el = pick(selector) || fallbackEl;
+      if (!el) return { selector, found: false };
+
+      let inlineTransform = "";
+      let inlineTranslate = "";
+      try {
+        inlineTransform = String(el.style?.transform || "");
+      } catch {}
+      try {
+        inlineTranslate = String(el.style?.translate || "");
+      } catch {}
+
+      return {
+        selector,
+        found: true,
+        rect: rectOf(el),
+        style: styleOf(el),
+        inline: {
+          transform: inlineTransform,
+          translate: inlineTranslate,
+        },
+      };
+    };
+
+    const dump = () => {
+      const sheetEl = pick(".route-detail-sheet") || sheetRef.current;
+      const bodyEl = pick(".route-detail-body") || mainBodyRef.current;
+      const heroEl = pick(".route-detail-hero");
+      const mapCardEl = pick(".rd-map-card");
+
+      const out = {
+        ts: Date.now(),
+        routeId: routeId || null,
+        bodyScrollTop: typeof bodyEl?.scrollTop === "number" ? Math.round(bodyEl.scrollTop) : null,
+        nodes: {
+          sheet: dumpNode(".route-detail-sheet", sheetEl),
+          body: dumpNode(".route-detail-body", bodyEl),
+          hero: dumpNode(".route-detail-hero", heroEl),
+          mapCard: dumpNode(".rd-map-card", mapCardEl),
+        },
+      };
+
+      try {
+        // eslint-disable-next-line no-console
+        console.groupCollapsed(`[RD] __RD_DUMP__ @${new Date(out.ts).toLocaleTimeString()}`);
+        // eslint-disable-next-line no-console
+        console.log(out);
+        // eslint-disable-next-line no-console
+        console.groupEnd();
+      } catch {}
+
+      try {
+        window.__RD_LAST_DUMP__ = out;
+      } catch {}
+
+      return out;
+    };
+
+    const stripInlineTransformOnly = (el) => {
+      if (!el) return false;
+      let changed = false;
+
+      try {
+        const t = el.style?.transform;
+        if (t && t !== "none") {
+          el.style.transform = "none";
+          changed = true;
+        }
+      } catch {}
+
+      try {
+        const tr = el.style?.translate;
+        if (tr && tr !== "none") {
+          el.style.translate = "none";
+          changed = true;
+        }
+      } catch {}
+
+      return changed;
+    };
+
+    const repairNow = () => {
+      const sheetEl = pick(".route-detail-sheet") || sheetRef.current;
+      const bodyEl = pick(".route-detail-body") || mainBodyRef.current;
+
+      // ✅ sadece inline: sheet/body
+      const changedSheet = stripInlineTransformOnly(sheetEl);
+      const changedBody = stripInlineTransformOnly(bodyEl);
+
+      // ✅ 2x RAF reflow
+      try {
+        window.requestAnimationFrame(() => {
+          try {
+            void sheetEl?.offsetHeight;
+            void bodyEl?.offsetHeight;
+          } catch {}
+
+          window.requestAnimationFrame(() => {
+            try {
+              void sheetEl?.offsetHeight;
+              void bodyEl?.offsetHeight;
+            } catch {}
+
+            // ✅ Map varsa: custom event
+            try {
+              const hasMap = !!(pick(".rd-map-card") || window.__RD_MAP__);
+              if (hasMap) {
+                window.dispatchEvent(new CustomEvent("rd:repair", { detail: { reason: "manual" } }));
+              }
+            } catch {}
+          });
+        });
+      } catch {}
+
+      try {
+        // eslint-disable-next-line no-console
+        console.log("[RD] __RD_REPAIR_NOW__ issued", { changedSheet, changedBody });
+      } catch {}
+    };
+
+    try {
+      window.__RD_DUMP__ = dump;
+      window.__RD_REPAIR_NOW__ = repairNow;
+    } catch {}
+
+    return () => {
+      try {
+        delete window.__RD_DUMP__;
+      } catch {}
+      try {
+        delete window.__RD_REPAIR_NOW__;
+      } catch {}
+    };
+  }, [routeId]);
+
+  // ✅ PARÇA-1: Debug flag (prod’da kapalı)
+  const RD_DEBUG = useMemo(() => {
+    try {
+      if (process.env.NODE_ENV === "production") return false;
+      return typeof window !== "undefined" && window.localStorage.getItem("RD_DEBUG") === "1";
+    } catch {
+      return false;
+    }
+  }, []);
 
   // ✅ PARÇA-1: TRANSFORM AVCISI + SCROLL OTORİTESİ LOGGER (debug-only)
   useEffect(() => {
@@ -521,7 +846,7 @@ export default function RouteDetailMobile({
         logCount++;
 
         const sst = typeof sheetEl.scrollTop === "number" ? Math.round(sheetEl.scrollTop) : 0;
-        const bst = typeof bodyEl?.scrollTop === "number" ? Math.round(bodyEl.scrollTop) : 0;
+        const bst = typeof bodyEl?.scrollTop === "number" ? Math.round(bodyEl?.scrollTop) : 0;
 
         // eslint-disable-next-line no-console
         console.groupCollapsed(
@@ -553,6 +878,252 @@ export default function RouteDetailMobile({
       }
     });
 
+    // ✅ EMİR 03 (V2) — DEV ONLY: Layout dump + Repair now (debug helper)
+    const pick = (sel) => {
+      try {
+        return rootEl.querySelector(sel);
+      } catch {
+        return null;
+      }
+    };
+
+    const rectOf = (el) => {
+      if (!el) return null;
+      try {
+        const r = el.getBoundingClientRect();
+        return {
+          x: Math.round(r.x),
+          y: Math.round(r.y),
+          top: Math.round(r.top),
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          bottom: Math.round(r.bottom),
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const styleOf = (el) => {
+      if (!el) return null;
+      try {
+        const cs = window.getComputedStyle(el);
+        return {
+          position: cs.position,
+          transform: cs.transform,
+          translate: cs.translate,
+          top: cs.top,
+          bottom: cs.bottom,
+          left: cs.left,
+          right: cs.right,
+          height: cs.height,
+          minHeight: cs.minHeight,
+          maxHeight: cs.maxHeight,
+          overflow: cs.overflow,
+          overflowX: cs.overflowX,
+          overflowY: cs.overflowY,
+          contain: cs.contain,
+          willChange: cs.willChange,
+          clipPath: cs.clipPath || cs.webkitClipPath,
+          borderRadius: cs.borderRadius,
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const nodeDump = (name, el) => {
+      if (!el) return { name, ok: false };
+      const st = typeof el.scrollTop === "number" ? Math.round(el.scrollTop) : null;
+      return {
+        name,
+        ok: true,
+        label: getLabel(el),
+        rect: rectOf(el),
+        style: styleOf(el),
+        scrollTop: st,
+        data: extractDataAttrs(el),
+      };
+    };
+
+    const dumpLayout = (label = "dump") => {
+      const backdrop = rootEl;
+      const sheet = pick(".route-detail-sheet");
+      const body = pick(".route-detail-body");
+      const hero = pick(".route-detail-hero") || pick("[data-hero-collapsed] .route-detail-hero");
+      const mapCard = pick(".rd-map-card") || pick("[data-rd-map-card='1']");
+      const mapCanvas = mapCard ? mapCard.querySelector(".rd-map-card__canvas") : null;
+      const gmStyle = mapCard ? mapCard.querySelector(".gm-style") : null;
+
+      const vv = (() => {
+        try {
+          const v = window.visualViewport;
+          if (!v) return null;
+          return {
+            width: Math.round(v.width),
+            height: Math.round(v.height),
+            scale: Number(v.scale) || 1,
+            offsetTop: Math.round(v.offsetTop || 0),
+            offsetLeft: Math.round(v.offsetLeft || 0),
+          };
+        } catch {
+          return null;
+        }
+      })();
+
+      const out = {
+        ts: Date.now(),
+        label: String(label || ""),
+        routeId: routeId || null,
+        viewport: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 },
+        visualViewport: vv,
+        atTopHint: (() => {
+          try {
+            const bst = typeof body?.scrollTop === "number" ? body.scrollTop : 0;
+            return bst <= HARD_RESET_TOP_PX;
+          } catch {
+            return null;
+          }
+        })(),
+        nodes: {
+          backdrop: nodeDump("backdrop", backdrop),
+          sheet: nodeDump("sheet", sheet),
+          hero: nodeDump("hero", hero),
+          body: nodeDump("body", body),
+          mapCard: nodeDump("mapCard", mapCard),
+          mapCanvas: nodeDump("mapCanvas", mapCanvas),
+          gmStyle: nodeDump("gmStyle", gmStyle),
+        },
+      };
+
+      try {
+        // eslint-disable-next-line no-console
+        console.groupCollapsed(`[RD_DEBUG][LAYOUT_DUMP] ${out.label} @${new Date(out.ts).toLocaleTimeString()}`);
+        // eslint-disable-next-line no-console
+        console.log(out);
+        // eslint-disable-next-line no-console
+        console.groupEnd();
+      } catch {}
+
+      try {
+        window.__RD_LAST_DUMP__ = out;
+      } catch {}
+
+      return out;
+    };
+
+    const repairNow = async (label = "repair") => {
+      const sheet = pick(".route-detail-sheet") || sheetEl;
+      const body = pick(".route-detail-body") || bodyEl;
+      const backdrop = rootEl;
+
+      try {
+        // eslint-disable-next-line no-console
+        console.groupCollapsed(`[RD_DEBUG][REPAIR_NOW] ${String(label || "")}`);
+      } catch {}
+
+      // 1) Inline transform/translate temizle
+      try {
+        stripInlineTransform(backdrop);
+      } catch {}
+      try {
+        stripInlineTransform(sheet);
+      } catch {}
+      try {
+        stripInlineTransform(body);
+      } catch {}
+      try {
+        stripInlineTransform(sheet?.parentElement);
+      } catch {}
+
+      // 2) Clip/contain “takıldıysa” DEV-ONLY gevşet (inline ile)
+      try {
+        if (sheet) {
+          sheet.style.clipPath = "none";
+          sheet.style.webkitClipPath = "none";
+          sheet.style.contain = "none";
+          sheet.style.willChange = "auto";
+        }
+      } catch {}
+      try {
+        if (body) {
+          body.style.contain = "none";
+          body.style.willChange = "auto";
+        }
+      } catch {}
+
+      // 3) 2x RAF + reflow
+      const raf = (fn) =>
+        new Promise((res) => {
+          try {
+            window.requestAnimationFrame(() => {
+              try {
+                fn?.();
+              } catch {}
+              res();
+            });
+          } catch {
+            try {
+              fn?.();
+            } catch {}
+            res();
+          }
+        });
+
+      await raf(() => {
+        try {
+          // force reflow
+          void sheet?.offsetHeight;
+          void body?.offsetHeight;
+        } catch {}
+      });
+
+      await raf(() => {
+        try {
+          void backdrop?.offsetHeight;
+        } catch {}
+      });
+
+      // 4) Hero collapse vars “0”a çek (bazen stuck)
+      try {
+        scheduleHeroCollapse(typeof body?.scrollTop === "number" ? body.scrollTop : 0);
+      } catch {}
+
+      // 5) Map resize dene (varsa)
+      try {
+        if (typeof window.__RD_MAP_FORCE__ === "function") {
+          window.__RD_MAP_FORCE__();
+        } else if (window.__RD_MAP__ && window.google?.maps?.event?.trigger) {
+          try {
+            window.google.maps.event.trigger(window.__RD_MAP__, "resize");
+          } catch {}
+          try {
+            const c = window.__RD_MAP__.getCenter?.();
+            if (c) window.__RD_MAP__.setCenter(c);
+          } catch {}
+          try {
+            const z = window.__RD_MAP__.getZoom?.();
+            if (typeof z === "number") window.__RD_MAP__.setZoom(z);
+          } catch {}
+        }
+      } catch {}
+
+      const after = dumpLayout(`after:${label}`);
+
+      try {
+        // eslint-disable-next-line no-console
+        console.log("[RD_DEBUG] repairNow complete.", after);
+      } catch {}
+      try {
+        // eslint-disable-next-line no-console
+        console.groupEnd();
+      } catch {}
+
+      return after;
+    };
+
     try {
       obs.observe(rootEl, {
         subtree: true,
@@ -561,6 +1132,16 @@ export default function RouteDetailMobile({
       });
       // eslint-disable-next-line no-console
       console.log("[RD_DEBUG] Transform Avcısı aktif. (localStorage RD_DEBUG=1)");
+    } catch {}
+
+    // ✅ Debug exports (DEV ONLY)
+    // Not: asıl istenen komutlar __RD_DUMP__ ve __RD_REPAIR_NOW__ (üstte, dev-only) — burada debug alias’ları var.
+    try {
+      window.__RD_LAYOUT_DUMP__ = dumpLayout;
+      window.__RD_REPAIR_DEBUG__ = repairNow;
+      window.__RD_REPAIR_DEBUG = repairNow;
+      // eslint-disable-next-line no-console
+      console.log("[RD_DEBUG] Debug API: __RD_LAYOUT_DUMP__('bug'), __RD_REPAIR_DEBUG__('bug')");
     } catch {}
 
     return () => {
@@ -580,6 +1161,13 @@ export default function RouteDetailMobile({
           if (fn) rootEl.removeEventListener(t, fn, evtOpts);
         } catch {}
       });
+
+      // ✅ cleanup — debug alias’ları
+      try {
+        delete window.__RD_LAYOUT_DUMP__;
+        delete window.__RD_REPAIR_DEBUG__;
+        delete window.__RD_REPAIR_DEBUG;
+      } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [RD_DEBUG, routeId]);
@@ -608,6 +1196,9 @@ export default function RouteDetailMobile({
       try {
         hardResetSheetMotor("gesture-end");
       } catch {}
+      try {
+        requestMapResize("gesture-end");
+      } catch {}
     };
 
     const opts = { passive: true };
@@ -627,7 +1218,7 @@ export default function RouteDetailMobile({
         sheetEl.removeEventListener("mouseup", onGestureEnd, opts);
       } catch {}
     };
-  }, [routeId, hardResetSheetMotor]);
+  }, [routeId, hardResetSheetMotor, requestMapResize]);
 
   // ✅ EMİR — scroll handler
   const handleBodyScroll = useCallback(
@@ -640,6 +1231,9 @@ export default function RouteDetailMobile({
 
       if (atTop) {
         hardResetSheetMotor("scroll@top");
+        try {
+          requestMapResize("scroll@top");
+        } catch {}
       }
 
       if (ref.lastAtTop !== atTop) {
@@ -650,7 +1244,7 @@ export default function RouteDetailMobile({
         } catch {}
       }
     },
-    [HARD_RESET_TOP_PX, hardResetSheetMotor, scheduleHeroCollapse]
+    [HARD_RESET_TOP_PX, hardResetSheetMotor, scheduleHeroCollapse, requestMapResize]
   );
 
   useEffect(() => {
@@ -763,6 +1357,9 @@ export default function RouteDetailMobile({
       try {
         hardResetSheetMotor("route-ready");
       } catch {}
+      try {
+        requestMapResize("route-ready");
+      } catch {}
     });
 
     return () => {
@@ -770,7 +1367,7 @@ export default function RouteDetailMobile({
         if (raf) window.cancelAnimationFrame(raf);
       } catch {}
     };
-  }, [routeId, routeDoc, tab, scheduleHeroCollapse, hardResetSheetMotor]);
+  }, [routeId, routeDoc, tab, scheduleHeroCollapse, hardResetSheetMotor, requestMapResize]);
 
   const rawPath = useMemo(() => {
     const m = routeDoc || initialRoute || {};
@@ -988,10 +1585,13 @@ export default function RouteDetailMobile({
         scheduleHeroCollapse(st);
         if (st <= HARD_RESET_TOP_PX) {
           hardResetSheetMotor("body-ref");
+          try {
+            requestMapResize("body-ref");
+          } catch {}
         }
       } catch {}
     },
-    [routeBodyRef, scheduleHeroCollapse, HARD_RESET_TOP_PX, hardResetSheetMotor]
+    [routeBodyRef, scheduleHeroCollapse, HARD_RESET_TOP_PX, hardResetSheetMotor, requestMapResize]
   );
 
   const {
@@ -1343,16 +1943,19 @@ export default function RouteDetailMobile({
             galleryCount={Array.isArray(galleryItems) ? galleryItems.length : 0}
           />
 
-          <RouteDetailMapCardMobile
-            routeId={routeId}
-            mapsRetryTick={mapsRetryTick}
-            retryMap={retryMap}
-            pathPts={pathPts}
-            stopsForPreview={stopsForPreview || []}
-            stopsLoaded={stopsLoaded}
-            mapBadgeCount={heroModel.mapBadgeCount}
-            mapAreaLabel={heroModel.mapAreaLabel}
-          />
+          {/* ✅ EMİR 03 (Adım 4): Map host wrapper (RO/IO/VV repaint) */}
+          <div ref={mapCardHostRef} data-rd-map-host="1" style={{ overflowAnchor: "none" }}>
+            <RouteDetailMapCardMobile
+              routeId={routeId}
+              mapsRetryTick={mapsRetryTick}
+              retryMap={retryMap}
+              pathPts={pathPts}
+              stopsForPreview={stopsForPreview || []}
+              stopsLoaded={stopsLoaded}
+              mapBadgeCount={heroModel.mapBadgeCount}
+              mapAreaLabel={heroModel.mapAreaLabel}
+            />
+          </div>
 
           {questUi}
 

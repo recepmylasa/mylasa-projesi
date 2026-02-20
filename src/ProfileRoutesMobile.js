@@ -64,6 +64,24 @@ function stripQueryAndHash(v) {
   return s.split(/[?#]/)[0];
 }
 
+function safeDecodeURIComponent(v) {
+  const s = (v || "").toString();
+  if (!s) return "";
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+// ✅ URL içinde gizlenmiş ".svg" (firebase o/<encodedPath> gibi) yakala
+function urlContainsSvgMarker(v) {
+  const s0 = (v || "").toString().trim();
+  if (!s0) return false;
+  const s = safeDecodeURIComponent(s0).toLowerCase();
+  return s.includes(".svg") || s.includes(".svgz") || s.includes("image/svg+xml") || s.includes("format=svg");
+}
+
 // ✅ EMİR: placeholder cover say (mylasa-logo.* + route-default-cover.jpg)
 function isKnownAppLogoUrl(v) {
   const base = stripQueryAndHash(v).toLowerCase();
@@ -81,14 +99,23 @@ function isSvgDataUrl(v) {
 }
 
 function isSvgHttpUrl(v) {
-  const base = stripQueryAndHash(v).toLowerCase();
+  const base0 = stripQueryAndHash(v);
+  const base = base0.toLowerCase();
   if (!base) return false;
-  return (
+
+  // klasik uzantı / mime
+  if (
     base.endsWith(".svg") ||
     base.endsWith(".svgz") ||
     base.includes("image/svg+xml") ||
     base.includes("format=svg")
-  );
+  )
+    return true;
+
+  // ✅ firebase encoded path / decode sonrası ".svg" yakala
+  if (urlContainsSvgMarker(base0)) return true;
+
+  return false;
 }
 
 // ✅ mime kaçsa bile içerikten svg yakala (utf8 veya base64)
@@ -125,8 +152,8 @@ function isHttpHttpsOrDataUrl(v) {
   const s = (v || "").toString().trim();
   if (!s) return false;
 
-  // ✅ HOTFIX: SVG render edilmez
-  if (isSvgAny(s)) return false;
+  // ✅ HOTFIX: SVG render edilmez (gizli svg dahil)
+  if (isSvgAny(s) || urlContainsSvgMarker(s)) return false;
 
   return /^https?:\/\//i.test(s) || /^data:image\//i.test(s);
 }
@@ -211,43 +238,53 @@ function toSameOriginAbsoluteUrl(v) {
 const __resolvedUrlCache = new Map(); // key -> { ok:boolean, url:string, errorCode?:string }
 const __inflight = new Map(); // key -> Promise
 
+function storagePathLooksSvg(gsOrPath) {
+  const s = (gsOrPath || "").toString().trim();
+  if (!s) return false;
+  const low = safeDecodeURIComponent(s).toLowerCase();
+  return low.includes(".svg") || low.includes(".svgz");
+}
+
 async function resolveToHttpsUrl(input) {
   const raw0 = (input || "").toString().trim();
   if (!raw0) return "";
 
-  // ✅ SVG data/url render etmiyoruz → boş dön
-  if (isSvgAny(raw0)) return "";
+  // ✅ SVG data/url render etmiyoruz → boş dön (gizli svg dahil)
+  if (isSvgAny(raw0) || urlContainsSvgMarker(raw0)) return "";
 
   // data:image ise direkt kabul (svg hariç)
   if (/^data:image\//i.test(raw0)) return raw0;
 
   // ✅ "/route-default-cover.jpg" gibi public asset → same-origin absolute URL
   if (raw0.startsWith("/")) {
-    try {
-      if (typeof window !== "undefined" && window.location && window.location.origin) {
-        return `${window.location.origin}${raw0}`;
-      }
-    } catch {
-      // no-op
-    }
-    return raw0;
+    const abs = toSameOriginAbsoluteUrl(raw0);
+    // svg ise yine blokla
+    if (isSvgAny(abs) || urlContainsSvgMarker(abs)) return "";
+    return abs;
   }
 
   // http(s) ise:
   // - Firebase Storage download URL ise mümkünse refresh (token/rules)
   // - değilse aynen kullan
   if (/^https?:\/\//i.test(raw0)) {
-    if (isSvgAny(raw0)) return "";
+    if (isSvgAny(raw0) || urlContainsSvgMarker(raw0)) return "";
 
     const gsFromHttp = parseFirebaseStorageHttpUrlToGs(raw0);
-    if (!gsFromHttp) return raw0;
+    if (!gsFromHttp) {
+      // normal http(s) ama decode içinde .svg var mı?
+      if (urlContainsSvgMarker(raw0)) return "";
+      return raw0;
+    }
+
+    // ✅ gs path svg ise kesin blokla (download url svg maskeli olsa bile)
+    if (storagePathLooksSvg(gsFromHttp)) return "";
 
     try {
       const storage = getStorage();
       const r = storageRef(storage, gsFromHttp);
       const https = await getDownloadURL(r);
 
-      if (isSvgAny(https)) return "";
+      if (isSvgAny(https) || urlContainsSvgMarker(https) || storagePathLooksSvg(gsFromHttp)) return "";
       return typeof https === "string" && /^https?:\/\//i.test(https) ? https : raw0;
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
@@ -277,12 +314,15 @@ async function resolveToHttpsUrl(input) {
     const base = raw0.split(/[?#]/)[0];
     const path = base.startsWith("/") ? base.slice(1) : base;
 
+    // ✅ storage path svg ise blokla
+    if (storagePathLooksSvg(path)) return "";
+
     try {
       const storage = getStorage();
       const r = storageRef(storage, path); // path hem gs:// hem relative kabul
       const https = await getDownloadURL(r);
 
-      if (isSvgAny(https)) return "";
+      if (isSvgAny(https) || urlContainsSvgMarker(https) || storagePathLooksSvg(path)) return "";
       return typeof https === "string" && /^https?:\/\//i.test(https) ? https : "";
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
@@ -685,7 +725,7 @@ function pickFirstStopImageCandidate(stop) {
     const u = String(v).trim();
     if (!u || isKnownAppLogoUrl(u)) continue;
     if (isVideoUrl(u)) continue;
-    if (isSvgAny(u)) continue;
+    if (isSvgAny(u) || urlContainsSvgMarker(u)) continue;
     return { url: u, fromVideoPoster: false };
   }
 
@@ -712,7 +752,7 @@ function pickFirstStopImageCandidate(stop) {
         const u = it.trim();
         if (!u || isKnownAppLogoUrl(u)) continue;
         if (isVideoUrl(u)) continue;
-        if (isSvgAny(u)) continue;
+        if (isSvgAny(u) || urlContainsSvgMarker(u)) continue;
         return { url: u, fromVideoPoster: false };
       }
 
@@ -747,14 +787,24 @@ function pickFirstStopImageCandidate(stop) {
           (urlStr ? isVideoUrl(urlStr) : false);
 
         if (isVid) {
-          if (posterStr && !isVideoUrl(posterStr) && !isKnownAppLogoUrl(posterStr) && !isSvgAny(posterStr)) {
+          if (
+            posterStr &&
+            !isVideoUrl(posterStr) &&
+            !isKnownAppLogoUrl(posterStr) &&
+            !(isSvgAny(posterStr) || urlContainsSvgMarker(posterStr))
+          ) {
             return { url: posterStr, fromVideoPoster: true };
           }
           continue;
         }
 
         const cand = urlStr || posterStr;
-        if (cand && !isVideoUrl(cand) && !isKnownAppLogoUrl(cand) && !isSvgAny(cand)) {
+        if (
+          cand &&
+          !isVideoUrl(cand) &&
+          !isKnownAppLogoUrl(cand) &&
+          !(isSvgAny(cand) || urlContainsSvgMarker(cand))
+        ) {
           return { url: cand, fromVideoPoster: false };
         }
       }
@@ -803,7 +853,7 @@ function pickCoverCandidate(route) {
     coverMetaUrl &&
     !isKnownAppLogoUrl(coverMetaUrl) &&
     !isVideoUrl(coverMetaUrl) &&
-    !isSvgAny(coverMetaUrl)
+    !(isSvgAny(coverMetaUrl) || urlContainsSvgMarker(coverMetaUrl))
   ) {
     return {
       kind: "image",
@@ -816,19 +866,19 @@ function pickCoverCandidate(route) {
 
   // (A) Yeni standart: route.cover.url
   const coverUrl = isNonEmptyString(route?.cover?.url) ? String(route.cover.url).trim() : "";
-  if (coverUrl && !isKnownAppLogoUrl(coverUrl) && !isVideoUrl(coverUrl) && !isSvgAny(coverUrl)) {
+  if (coverUrl && !isKnownAppLogoUrl(coverUrl) && !isVideoUrl(coverUrl) && !(isSvgAny(coverUrl) || urlContainsSvgMarker(coverUrl))) {
     return { kind: "image", url: coverUrl, hasVideo: false, sourceField: "cover.url" };
   }
 
   // (B) Legacy
   const legacy = resolveLegacyCoverUrl(route);
-  if (legacy && !isKnownAppLogoUrl(legacy) && !isVideoUrl(legacy) && !isSvgAny(legacy)) {
+  if (legacy && !isKnownAppLogoUrl(legacy) && !isVideoUrl(legacy) && !(isSvgAny(legacy) || urlContainsSvgMarker(legacy))) {
     return { kind: "image", url: legacy, hasVideo: false, sourceField: "legacy" };
   }
 
   // (C) Stop media fallback
   const stopPick = pickStopCoverCandidate(route);
-  if (stopPick.url && !isKnownAppLogoUrl(stopPick.url) && !isVideoUrl(stopPick.url) && !isSvgAny(stopPick.url)) {
+  if (stopPick.url && !isKnownAppLogoUrl(stopPick.url) && !isVideoUrl(stopPick.url) && !(isSvgAny(stopPick.url) || urlContainsSvgMarker(stopPick.url))) {
     return {
       kind: "image",
       url: stopPick.url,
@@ -1017,6 +1067,11 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
     }
 
     if (resolved?.status === "ok" && resolved?.ok && isHttpHttpsOrDataUrl(resolved.url)) {
+      // ✅ decode içinde ".svg" yakalanırsa yine render etme
+      if (urlContainsSvgMarker(resolved.url) || isSvgAny(resolved.url)) {
+        setImgSrc("");
+        return;
+      }
       setImgSrc(resolved.url);
       return;
     }
@@ -1065,7 +1120,17 @@ function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
             opacity: imgOk ? 1 : 0,
             transition: "opacity 180ms ease",
           }}
-          onLoad={() => {
+          onLoad={(e) => {
+            // ✅ bazen svg download url maskeli gelebilir → load olsa bile show etme
+            const cur = e?.currentTarget?.currentSrc || imgSrc || "";
+            if (urlContainsSvgMarker(cur) || isSvgAny(cur)) {
+              setImgOk(false);
+              setImgFinalFailed(true);
+              reportedRef.current = true;
+              onLoadEvent?.("error_all", cur);
+              return;
+            }
+
             setImgOk(true);
             reportedRef.current = true;
             onLoadEvent?.("load", imgSrc);

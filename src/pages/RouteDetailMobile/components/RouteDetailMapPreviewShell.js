@@ -460,6 +460,8 @@ export default function RouteDetailMapPreviewShell({
   badgeCount = 0,
   areaLabel = "",
   onRetry = () => {},
+  // ✅ PARÇA 2/5 — ileride gerekirse (şimdilik sadece taşınıyor)
+  scrollRootRef = null,
 }) {
   const API_KEY =
     process.env.REACT_APP_GOOGLE_MAPS_API_KEY ||
@@ -475,7 +477,30 @@ export default function RouteDetailMapPreviewShell({
 
   const hasMapId = !!MAP_ID;
 
-  const mapsOpts = useMemo(() => ({ API_KEY, MAP_ID }), [API_KEY, MAP_ID]);
+  /* =========================================================
+     ✅ ADIM 4 — ONE-SHOT REMOUNT FALLBACK (routeId başına 1 kez)
+     ========================================================= */
+  const [mapEpoch, setMapEpoch] = useState(0);
+  const remountOnceRef = useRef({ routeId: null, done: false });
+  const repairRef = useRef({ lastSig: "", lastAt: 0, softTries: 0, raf: 0, tmr: 0 });
+
+  useEffect(() => {
+    remountOnceRef.current = { routeId: routeId || null, done: false };
+    repairRef.current.lastSig = "";
+    repairRef.current.lastAt = 0;
+    repairRef.current.softTries = 0;
+    try {
+      if (repairRef.current.raf) cancelAnimationFrame(repairRef.current.raf);
+    } catch {}
+    try {
+      if (repairRef.current.tmr) clearTimeout(repairRef.current.tmr);
+    } catch {}
+    repairRef.current.raf = 0;
+    repairRef.current.tmr = 0;
+    setMapEpoch(0);
+  }, [routeId]);
+
+  const mapsOpts = useMemo(() => ({ API_KEY, MAP_ID, instanceKey: mapEpoch }), [API_KEY, MAP_ID, mapEpoch]);
   const gmaps = useGoogleMaps(mapsOpts) || {};
 
   const gmapsStatus =
@@ -569,69 +594,66 @@ export default function RouteDetailMapPreviewShell({
     [forwardNodeToHook]
   );
 
-  const startHostStabilityWait = useCallback(
-    (why = "mount") => {
-      if (hostAttachedRef.current) return;
+  const startHostStabilityWait = useCallback(() => {
+    if (hostAttachedRef.current) return;
 
-      const node = localDivRef.current;
-      if (!node) return;
+    const node = localDivRef.current;
+    if (!node) return;
 
+    try {
+      if (hostWaitRef.current.raf) cancelAnimationFrame(hostWaitRef.current.raf);
+    } catch {}
+    hostWaitRef.current = { raf: 0, active: true, tries: 0 };
+
+    let lastW = -1;
+    let lastH = -1;
+    let stableHit = 0;
+
+    const step = () => {
+      if (!hostWaitRef.current.active) return;
+      const el = localDivRef.current;
+      if (!el) return;
+
+      hostWaitRef.current.tries += 1;
+
+      let r;
       try {
-        if (hostWaitRef.current.raf) cancelAnimationFrame(hostWaitRef.current.raf);
-      } catch {}
-      hostWaitRef.current = { raf: 0, active: true, tries: 0 };
+        r = el.getBoundingClientRect();
+      } catch {
+        r = null;
+      }
 
-      let lastW = -1;
-      let lastH = -1;
-      let stableHit = 0;
+      const w = Math.round((r?.width || 0) * 1) / 1;
+      const h = Math.round((r?.height || 0) * 1) / 1;
 
-      const step = () => {
-        if (!hostWaitRef.current.active) return;
-        const el = localDivRef.current;
-        if (!el) return;
+      const okSize = w >= 100 && h >= 120;
+      const same = Math.abs(w - lastW) <= 1 && Math.abs(h - lastH) <= 1;
 
-        hostWaitRef.current.tries += 1;
+      if (okSize && same) stableHit += 1;
+      else stableHit = 0;
 
-        let r;
-        try {
-          r = el.getBoundingClientRect();
-        } catch {
-          r = null;
-        }
+      lastW = w;
+      lastH = h;
 
-        const w = Math.round((r?.width || 0) * 1) / 1;
-        const h = Math.round((r?.height || 0) * 1) / 1;
+      if (okSize && stableHit >= 1) {
+        attachHost(el);
+        hostWaitRef.current.active = false;
+        hostWaitRef.current.raf = 0;
+        return;
+      }
 
-        const okSize = w >= 100 && h >= 120;
-        const same = Math.abs(w - lastW) <= 1 && Math.abs(h - lastH) <= 1;
-
-        if (okSize && same) stableHit += 1;
-        else stableHit = 0;
-
-        lastW = w;
-        lastH = h;
-
-        if (okSize && stableHit >= 1) {
-          attachHost(el);
-          hostWaitRef.current.active = false;
-          hostWaitRef.current.raf = 0;
-          return;
-        }
-
-        if (hostWaitRef.current.tries >= 20 && okSize) {
-          attachHost(el);
-          hostWaitRef.current.active = false;
-          hostWaitRef.current.raf = 0;
-          return;
-        }
-
-        hostWaitRef.current.raf = requestAnimationFrame(step);
-      };
+      if (hostWaitRef.current.tries >= 20 && okSize) {
+        attachHost(el);
+        hostWaitRef.current.active = false;
+        hostWaitRef.current.raf = 0;
+        return;
+      }
 
       hostWaitRef.current.raf = requestAnimationFrame(step);
-    },
-    [attachHost]
-  );
+    };
+
+    hostWaitRef.current.raf = requestAnimationFrame(step);
+  }, [attachHost]);
 
   const setDivRef = useCallback(
     (node) => {
@@ -643,14 +665,14 @@ export default function RouteDetailMapPreviewShell({
       }
 
       if (node && !hostAttachedRef.current) {
-        startHostStabilityWait("setDivRef");
+        startHostStabilityWait();
       }
     },
     [forwardNodeToHook, startHostStabilityWait]
   );
 
   useEffect(() => {
-    startHostStabilityWait("mount");
+    startHostStabilityWait();
     return () => {
       try {
         hostWaitRef.current.active = false;
@@ -663,7 +685,7 @@ export default function RouteDetailMapPreviewShell({
   }, [startHostStabilityWait]);
 
   useEffect(() => {
-    if (!hostAttachedRef.current) startHostStabilityWait("route");
+    if (!hostAttachedRef.current) startHostStabilityWait();
   }, [routeId, startHostStabilityWait]);
 
   // ✅ Map instance probe
@@ -697,7 +719,7 @@ export default function RouteDetailMapPreviewShell({
         cancelAnimationFrame(raf);
       } catch {}
     };
-  }, [mapRefLike, isError, routeId]);
+  }, [mapRefLike, isError, routeId, mapEpoch]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -709,56 +731,362 @@ export default function RouteDetailMapPreviewShell({
     bumpTick();
   }, [mapInstance, bumpTick]);
 
-  // ✅ EMİR 02 — DEBUG HOOK
+  /* =========================================================
+     ✅ ADIM 4 — SOFT REPAIR + STUCK DETECTOR + ONE-SHOT REMOUNT
+     ========================================================= */
+  const softRepair = useCallback(() => {
+    const mapNow = mapInstanceRef.current;
+    if (!mapNow) return;
+
+    try {
+      window.dispatchEvent(new Event("resize"));
+    } catch {}
+
+    try {
+      if (window.google?.maps?.event?.trigger) {
+        window.google.maps.event.trigger(mapNow, "resize");
+      }
+    } catch {}
+
+    try {
+      const c = mapNow.getCenter?.();
+      if (c && mapNow.setCenter) mapNow.setCenter(c);
+    } catch {}
+
+    try {
+      const z = mapNow.getZoom?.();
+      if (Number.isFinite(z) && mapNow.setZoom) mapNow.setZoom(z);
+    } catch {}
+
+    try {
+      requestAnimationFrame(() => {
+        try {
+          if (window.google?.maps?.event?.trigger) {
+            window.google.maps.event.trigger(mapNow, "resize");
+          }
+        } catch {}
+        try {
+          const z2 = mapNow.getZoom?.();
+          if (Number.isFinite(z2) && mapNow.setZoom) mapNow.setZoom(z2);
+        } catch {}
+      });
+    } catch {}
+  }, []);
+
+  const doRemountOnce = useCallback(
+    (reason = "") => {
+      const rid = String(routeId || "");
+      if (!rid) return;
+
+      const st = remountOnceRef.current;
+      if (st.routeId === rid && st.done) return;
+
+      remountOnceRef.current = { routeId: rid, done: true };
+
+      try {
+        if (typeof gmapsReload === "function") gmapsReload();
+      } catch {}
+      try {
+        if (typeof gmapsAttemptLoad === "function") gmapsAttemptLoad(true);
+      } catch {}
+
+      try {
+        setMapInstance(null);
+      } catch {}
+      try {
+        mapInstanceRef.current = null;
+      } catch {}
+
+      try {
+        setMapEpoch((e) => e + 1);
+      } catch {}
+
+      if (process.env.NODE_ENV !== "production") {
+        try {
+          // eslint-disable-next-line no-console
+          console.debug(`[RD_MAP][REMOUNT] ${rid} (${reason || "stuck"})`);
+        } catch {}
+      }
+    },
+    [routeId, gmapsReload, gmapsAttemptLoad]
+  );
+
+  const measureMismatch = useCallback(() => {
+    const host = localDivRef.current;
+    if (!host) return { ok: true, reason: "no_host" };
+
+    let r;
+    try {
+      r = host.getBoundingClientRect();
+    } catch {
+      r = null;
+    }
+
+    const w = Math.round(r?.width || 0);
+    const h = Math.round(r?.height || 0);
+    if (w < 100 || h < 120) return { ok: true, reason: "small" };
+
+    let gmEl = null;
+    try {
+      gmEl = host.querySelector?.(".gm-style") || null;
+    } catch {
+      gmEl = null;
+    }
+
+    let gmh = 0;
+    let gmw = 0;
+    try {
+      const gr = gmEl?.getBoundingClientRect?.();
+      gmw = Math.round(gr?.width || 0);
+      gmh = Math.round(gr?.height || 0);
+    } catch {}
+
+    if (!gmEl) return { ok: false, reason: "gm_missing", w, h, gmw, gmh };
+
+    const dh = Math.abs(h - gmh);
+    const dw = Math.abs(w - gmw);
+
+    const badH = gmh <= 2 || dh >= Math.max(32, Math.round(h * 0.22));
+    const badW = gmw <= 2 || dw >= Math.max(32, Math.round(w * 0.22));
+
+    if (badH || badW) return { ok: false, reason: "mismatch", w, h, gmw, gmh, dh, dw };
+    return { ok: true, reason: "ok", w, h, gmw, gmh, dh, dw };
+  }, []);
+
+  const scheduleStuckCheck = useCallback(
+    (why = "tick") => {
+      if (!hostAttached) return;
+      if (!mapInstanceRef.current) return;
+      if (isError) return;
+
+      const now = Date.now();
+      if (now - (repairRef.current.lastAt || 0) < 450) return;
+      repairRef.current.lastAt = now;
+
+      const host = localDivRef.current;
+      if (!host) return;
+
+      const sig = (() => {
+        let r;
+        try {
+          r = host.getBoundingClientRect();
+        } catch {
+          r = null;
+        }
+        const w = Math.round(r?.width || 0);
+        const h = Math.round(r?.height || 0);
+        return `${String(routeId || "")}|${w}x${h}|${String(why || "")}|${String(mapEpoch)}|${String(
+          typeof boundsKey === "string" ? boundsKey : ""
+        )}`;
+      })();
+
+      if (repairRef.current.lastSig !== sig) {
+        repairRef.current.lastSig = sig;
+        repairRef.current.softTries = 0;
+      }
+
+      try {
+        if (repairRef.current.raf) cancelAnimationFrame(repairRef.current.raf);
+      } catch {}
+      try {
+        if (repairRef.current.tmr) clearTimeout(repairRef.current.tmr);
+      } catch {}
+
+      const run = () => {
+        const res = measureMismatch();
+        if (res.ok) {
+          repairRef.current.softTries = 0;
+          return;
+        }
+
+        repairRef.current.softTries += 1;
+        softRepair();
+
+        if (repairRef.current.softTries >= 2) {
+          doRemountOnce(res.reason);
+          repairRef.current.softTries = 0;
+          return;
+        }
+
+        try {
+          repairRef.current.tmr = window.setTimeout(() => {
+            scheduleStuckCheck(`after-soft:${res.reason}`);
+          }, 140);
+        } catch {}
+      };
+
+      try {
+        repairRef.current.raf = requestAnimationFrame(() => {
+          requestAnimationFrame(run);
+        });
+      } catch {
+        run();
+      }
+    },
+    [hostAttached, isError, routeId, mapEpoch, measureMismatch, softRepair, doRemountOnce]
+  );
+
+  // ✅ tick/ready/epoch değişimlerinde otomatik kontrol
+  useEffect(() => {
+    if (!isReady) return;
+    if (!hostAttached) return;
+    scheduleStuckCheck("ready");
+  }, [isReady, hostAttached, mapEpoch, scheduleStuckCheck]);
+
+  // ✅ window / visualViewport olaylarında otomatik kontrol
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onR = () => scheduleStuckCheck("win-resize");
+    const onO = () => scheduleStuckCheck("orientation");
+    let vv = null;
+
+    try {
+      window.addEventListener("resize", onR, { passive: true });
+      window.addEventListener("orientationchange", onO, { passive: true });
+    } catch {}
+
+    try {
+      vv = window.visualViewport || null;
+      vv?.addEventListener?.("resize", onR, { passive: true });
+      vv?.addEventListener?.("scroll", onR, { passive: true });
+    } catch {}
+
+    return () => {
+      try {
+        window.removeEventListener("resize", onR);
+        window.removeEventListener("orientationchange", onO);
+      } catch {}
+      try {
+        vv?.removeEventListener?.("resize", onR);
+        vv?.removeEventListener?.("scroll", onR);
+      } catch {}
+    };
+  }, [scheduleStuckCheck]);
+
+  /* =========================================================
+     ✅ PARÇA 2/5 — rd:repair listener (2x RAF + resize + same-set + optional fitBounds)
+     ========================================================= */
+  const repairEventStateRef = useRef({ raf1: 0, raf2: 0, lastFitAt: 0, lastFitKey: "" });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!mapInstance) return;
+
+    const st = repairEventStateRef.current;
+
+    const onRepair = (ev) => {
+      const mapNow = mapInstanceRef.current;
+      if (!mapNow) return;
+
+      try {
+        if (st.raf1) cancelAnimationFrame(st.raf1);
+      } catch {}
+      try {
+        if (st.raf2) cancelAnimationFrame(st.raf2);
+      } catch {}
+      st.raf1 = 0;
+      st.raf2 = 0;
+
+      st.raf1 = requestAnimationFrame(() => {
+        st.raf2 = requestAnimationFrame(() => {
+          const m = mapInstanceRef.current;
+          if (!m) return;
+
+          // 1) resize trigger
+          try {
+            if (window.google?.maps?.event?.trigger) window.google.maps.event.trigger(m, "resize");
+          } catch {}
+
+          // 2) center/zoom same-set repaint (safe)
+          try {
+            const c = m.getCenter?.();
+            if (c && m.setCenter) m.setCenter(c);
+          } catch {}
+          try {
+            const z = m.getZoom?.();
+            if (Number.isFinite(z) && m.setZoom) m.setZoom(z);
+          } catch {}
+
+          // 3) bounds varsa fit (throttle/dedupe)
+          const b = boundsRef.current;
+          const key = String(boundsKey || "");
+          if (!b) return;
+
+          const now = Date.now();
+          const within = now - (st.lastFitAt || 0) < 300;
+
+          // boundsKey değişmediyse: sadece resize (fit yok)
+          if (st.lastFitKey === key) return;
+
+          // 300ms pencerede max 1 fitBounds
+          if (within) return;
+
+          st.lastFitAt = now;
+
+          try {
+            // fit başarılı olursa key’yi güncelle
+            try {
+              m.fitBounds(b, { top: 44, right: 44, bottom: 44, left: 44 });
+            } catch {
+              m.fitBounds(b);
+            }
+            st.lastFitKey = key;
+          } catch {}
+        });
+      });
+    };
+
+    try {
+      window.addEventListener("rd:repair", onRepair);
+    } catch {}
+
+    return () => {
+      try {
+        window.removeEventListener("rd:repair", onRepair);
+      } catch {}
+      try {
+        if (st.raf1) cancelAnimationFrame(st.raf1);
+      } catch {}
+      try {
+        if (st.raf2) cancelAnimationFrame(st.raf2);
+      } catch {}
+      st.raf1 = 0;
+      st.raf2 = 0;
+    };
+  }, [mapInstance, boundsKey]);
+
+  // ✅ EMİR 02 — DEBUG HOOK (aliases + manual remount)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     if (!mapInstance) {
       try {
         if (window.__RD_MAP) window.__RD_MAP = null;
+        if (window.__RD_MAP__) window.__RD_MAP__ = null;
         if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
+        if (window.__RD_MAP_FORCE__) window.__RD_MAP_FORCE__ = null;
+        if (window.__RD_MAP_REMOUNT__) window.__RD_MAP_REMOUNT__ = null;
       } catch {}
       return;
     }
 
     try {
       window.__RD_MAP = mapInstance;
+      window.__RD_MAP__ = mapInstance;
 
-      window.__RD_MAP_FORCE = () => {
+      const force = () => {
         try {
-          try {
-            window.dispatchEvent(new Event("resize"));
-          } catch {}
+          softRepair();
+        } catch {}
+      };
 
-          try {
-            if (window.google?.maps?.event?.trigger) {
-              window.google.maps.event.trigger(mapInstance, "resize");
-            }
-          } catch {}
+      window.__RD_MAP_FORCE = force;
+      window.__RD_MAP_FORCE__ = force;
 
-          try {
-            const c = mapInstance.getCenter?.();
-            if (c && mapInstance.setCenter) mapInstance.setCenter(c);
-          } catch {}
-
-          try {
-            const z = mapInstance.getZoom?.();
-            if (Number.isFinite(z) && mapInstance.setZoom) mapInstance.setZoom(z);
-          } catch {}
-
-          try {
-            requestAnimationFrame(() => {
-              try {
-                if (window.google?.maps?.event?.trigger) {
-                  window.google.maps.event.trigger(mapInstance, "resize");
-                }
-              } catch {}
-              try {
-                const z2 = mapInstance.getZoom?.();
-                if (Number.isFinite(z2) && mapInstance.setZoom) mapInstance.setZoom(z2);
-              } catch {}
-            });
-          } catch {}
+      window.__RD_MAP_REMOUNT__ = () => {
+        try {
+          doRemountOnce("manual");
         } catch {}
       };
     } catch {}
@@ -766,12 +1094,15 @@ export default function RouteDetailMapPreviewShell({
     return () => {
       try {
         if (window.__RD_MAP === mapInstance) window.__RD_MAP = null;
+        if (window.__RD_MAP__ === mapInstance) window.__RD_MAP__ = null;
       } catch {}
       try {
         if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
+        if (window.__RD_MAP_FORCE__) window.__RD_MAP_FORCE__ = null;
+        if (window.__RD_MAP_REMOUNT__) window.__RD_MAP_REMOUNT__ = null;
       } catch {}
     };
-  }, [mapInstance]);
+  }, [mapInstance, softRepair, doRemountOnce]);
 
   // ✅ Map gesture guard — sheet/scroll motoruna kaçışı kes
   const gestureGuardRef = useRef({ active: false, pointerId: null });
@@ -795,7 +1126,6 @@ export default function RouteDetailMapPreviewShell({
     };
     const onTouchMove = (e) => {
       if (!state.active) return;
-      // ✅ cancelable değilse preventDefault yapma (Chrome warning + bazı cihazlarda bug)
       try {
         if (e?.cancelable) e.preventDefault();
       } catch {}
@@ -1090,7 +1420,7 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
 
     return () => cleanup();
-  }, [mapInstance, drawPoints, routeId]);
+  }, [mapInstance, drawPoints, routeId, mapEpoch]);
 
   /* =========================================================
      ✅ EMİR 03 — JS Resize Authority (RO + IO + VV + signature + loop-breaker)
@@ -1155,11 +1485,12 @@ export default function RouteDetailMapPreviewShell({
 
   useRDMapResizeAuthority({
     mapRef: mapInstanceRef,
-    // ✅ containerRef: SHELL değil, gerçek MAP DIV (repaint için daha doğru)
+    // ✅ containerRef: SHELL değil, gerçek MAP DIV
     containerRef: localDivRef,
     getBounds,
     boundsKey,
-    enabled: !!mapInstance,
+    // ✅ KRİTİK: host attach olmadan “resize authority” başlatma
+    enabled: !!mapInstance && hostAttached,
     debug: false,
   });
 
@@ -1302,8 +1633,10 @@ export default function RouteDetailMapPreviewShell({
       data-points={(points && points.length) || 0}
       data-hasmapid={hasMapId ? "1" : "0"}
       data-hostattached={hostAttached ? "1" : "0"}
+      data-epoch={String(mapEpoch)}
     >
       <div
+        key={`rdmps-map-${String(routeId || "0")}-${String(mapEpoch)}`}
         className="rdmps-map"
         ref={setDivRef}
         data-ready-tick={mapReadyTick}

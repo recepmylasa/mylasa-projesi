@@ -16,7 +16,6 @@ function getMap(mapRefLike) {
   try {
     if (!mapRefLike) return null;
 
-    // mapRefLike olabilir: map instance, ref.current=map, ref.current(ref)=map...
     const a = typeof mapRefLike === "object" && "current" in mapRefLike ? mapRefLike.current : mapRefLike;
     const b = a && typeof a === "object" && "current" in a ? a.current : a;
 
@@ -52,6 +51,9 @@ function shouldAllowSameSig(reason) {
     reason === "io" ||
     reason === "vv" ||
     reason === "scroll" ||
+    reason === "scroll-end" ||
+    reason === "snap-end" ||
+    reason === "rd-event" ||
     reason === "transition" ||
     reason === "animation" ||
     reason === "mutation" ||
@@ -97,9 +99,30 @@ function triggerGmapsResize(map) {
   try {
     const g = typeof window !== "undefined" ? window.google : null;
     g?.maps?.event?.trigger?.(map, "resize");
-  } catch {
-    // ignore
-  }
+  } catch {}
+}
+
+function eventHasTargetWithin(e, a, b, c) {
+  try {
+    const t = e?.target;
+    if (!t) return false;
+
+    if (a?.contains?.(t)) return true;
+    if (b?.contains?.(t)) return true;
+    if (c?.contains?.(t)) return true;
+
+    // composedPath fallback
+    const path = e?.composedPath?.();
+    if (Array.isArray(path) && path.length) {
+      for (const n of path) {
+        if (!n) continue;
+        if (a && n === a) return true;
+        if (b && n === b) return true;
+        if (c && n === c) return true;
+      }
+    }
+  } catch {}
+  return false;
 }
 
 export default function useRDMapResizeAuthority({
@@ -114,6 +137,11 @@ export default function useRDMapResizeAuthority({
 }) {
   const stRef = useRef({
     t: null,
+    scrollEndT: null,
+
+    pendingReason: "",
+    pendingForce: false,
+
     lastRunAt: 0,
     lastSig: "",
     lastFitAt: 0,
@@ -121,14 +149,27 @@ export default function useRDMapResizeAuthority({
     fitWinStart: 0,
     fitWinCount: 0,
     mounted: false,
+
+    // ✅ snap-end throttle
+    lastSnapAt: 0,
   });
 
   useEffect(() => {
     stRef.current.mounted = true;
     return () => {
       stRef.current.mounted = false;
-      if (stRef.current.t) clearTimeout(stRef.current.t);
+
+      try {
+        if (stRef.current.t) clearTimeout(stRef.current.t);
+      } catch {}
+      try {
+        if (stRef.current.scrollEndT) clearTimeout(stRef.current.scrollEndT);
+      } catch {}
+
       stRef.current.t = null;
+      stRef.current.scrollEndT = null;
+      stRef.current.pendingReason = "";
+      stRef.current.pendingForce = false;
     };
   }, []);
 
@@ -149,96 +190,118 @@ export default function useRDMapResizeAuthority({
       } catch {}
     };
 
+    const enqueuePending = (reason, force) => {
+      if (!reason) return;
+      st.pendingReason = reason;
+      st.pendingForce = st.pendingForce || !!force;
+    };
+
     const requestRun = (reason, force = false) => {
       if (!st.mounted) return;
-      if (st.t) return;
+
+      if (st.t) {
+        enqueuePending(reason, force);
+        return;
+      }
 
       st.t = setTimeout(() => {
         st.t = null;
 
-        const map = getMap(mapRef);
-        const el = getEl(containerRef);
-        if (!map || !el) return;
+        try {
+          const map = getMap(mapRef);
+          const el = getEl(containerRef);
+          if (!map || !el) return;
 
-        const rect = safeRect(el);
-        const w = rect?.width || 0;
-        const h = rect?.height || 0;
-        if (w < minSizePx || h < minSizePx) return;
+          const rect = safeRect(el);
+          const w = rect?.width || 0;
+          const h = rect?.height || 0;
+          if (w < minSizePx || h < minSizePx) return;
 
-        const sig = sigFromRect(rect);
-        const tnow = nowMs();
-        const since = tnow - (st.lastRunAt || 0);
+          const sig = sigFromRect(rect);
+          const tnow = nowMs();
+          const since = tnow - (st.lastRunAt || 0);
 
-        const allowSame =
-          force ||
-          sig !== st.lastSig ||
-          since > 900 ||
-          (shouldAllowSameSig(reason) && since > 220);
+          const allowSame =
+            force ||
+            sig !== st.lastSig ||
+            since > 900 ||
+            (shouldAllowSameSig(reason) && since > 220);
 
-        if (!allowSame) return;
+          if (!allowSame) return;
 
-        st.lastSig = sig;
-        st.lastRunAt = tnow;
+          st.lastSig = sig;
+          st.lastRunAt = tnow;
 
-        log("run", { reason, force, sig });
+          log("run", { reason, force, sig });
 
-        requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            const map2 = getMap(mapRef);
-            if (!map2) return;
+            requestAnimationFrame(() => {
+              const map2 = getMap(mapRef);
+              if (!map2) return;
 
-            triggerGmapsResize(map2);
+              triggerGmapsResize(map2);
 
-            let b = null;
-            try {
-              b = typeof getBounds === "function" ? getBounds() : null;
-            } catch {
-              b = null;
-            }
-
-            // Tek nokta desteği: {center, zoom}
-            if (b && typeof b === "object" && b.center && typeof b.zoom === "number") {
+              let b = null;
               try {
-                map2.setCenter(b.center);
-                map2.setZoom(b.zoom);
-              } catch {}
-              return;
-            }
+                b = typeof getBounds === "function" ? getBounds() : null;
+              } catch {
+                b = null;
+              }
 
-            const bounds = b && b.bounds ? b.bounds : b;
-            if (!bounds || typeof bounds.getSouthWest !== "function") return;
+              if (b && typeof b === "object" && b.center && typeof b.zoom === "number") {
+                try {
+                  map2.setCenter(b.center);
+                  map2.setZoom(b.zoom);
+                } catch {}
+                return;
+              }
 
-            // loop-breaker: 1 sn içinde max 3 fit
-            const t2 = nowMs();
-            if (t2 - st.fitWinStart > 1000) {
-              st.fitWinStart = t2;
-              st.fitWinCount = 0;
-            }
-            if (st.fitWinCount >= 3) return;
+              const bounds = b && b.bounds ? b.bounds : b;
+              if (!bounds || typeof bounds.getSouthWest !== "function") return;
 
-            const fitKey = `${sig}|${String(boundsKey || "")}`;
-            const fitSince = t2 - (st.lastFitAt || 0);
+              const t2 = nowMs();
+              if (t2 - st.fitWinStart > 1000) {
+                st.fitWinStart = t2;
+                st.fitWinCount = 0;
+              }
+              if (st.fitWinCount >= 3) return;
 
-            if (fitKey === st.lastFitKey && fitSince < 900) return;
+              const fitKey = `${sig}|${String(boundsKey || "")}`;
+              const fitSince = t2 - (st.lastFitAt || 0);
 
-            st.lastFitKey = fitKey;
-            st.lastFitAt = t2;
-            st.fitWinCount += 1;
+              if (fitKey === st.lastFitKey && fitSince < 900) return;
 
-            try {
-              map2.fitBounds(bounds, {
-                top: paddingPx,
-                right: paddingPx,
-                bottom: paddingPx,
-                left: paddingPx,
-              });
-            } catch {
+              st.lastFitKey = fitKey;
+              st.lastFitAt = t2;
+              st.fitWinCount += 1;
+
               try {
-                map2.fitBounds(bounds, paddingPx);
-              } catch {}
-            }
+                map2.fitBounds(bounds, {
+                  top: paddingPx,
+                  right: paddingPx,
+                  bottom: paddingPx,
+                  left: paddingPx,
+                });
+              } catch {
+                try {
+                  map2.fitBounds(bounds, paddingPx);
+                } catch {}
+              }
+            });
           });
-        });
+        } finally {
+          const pr = st.pendingReason;
+          const pf = st.pendingForce;
+
+          st.pendingReason = "";
+          st.pendingForce = false;
+
+          if (pr) {
+            try {
+              setTimeout(() => requestRun(pr, pf), 0);
+            } catch {}
+          }
+        }
       }, 160);
     };
 
@@ -260,7 +323,7 @@ export default function useRDMapResizeAuthority({
         } catch {}
       }
 
-      // IntersectionObserver (transform/scroll görünürlük)
+      // IntersectionObserver
       if (typeof IntersectionObserver !== "undefined") {
         io = new IntersectionObserver(
           (entries) => {
@@ -283,13 +346,27 @@ export default function useRDMapResizeAuthority({
         vv.addEventListener("scroll", onVV, { passive: true });
       }
 
-      // scroll root
-      const onScroll = () => requestRun("scroll");
+      // ✅ scroll root + scroll-end
+      const onScroll = () => {
+        requestRun("scroll");
+        try {
+          if (st.scrollEndT) clearTimeout(st.scrollEndT);
+        } catch {}
+        st.scrollEndT = setTimeout(() => {
+          requestRun("scroll-end", true);
+        }, 180);
+      };
+
+      const onScrollEnd = () => requestRun("scroll-end", true);
+
       if (scrollRoot && scrollRoot.addEventListener) {
         scrollRoot.addEventListener("scroll", onScroll, { passive: true });
+        try {
+          scrollRoot.addEventListener("scrollend", onScrollEnd, { passive: true });
+        } catch {}
       }
 
-      // transition / animation (sheet aç-kapa, transform)
+      // transition / animation
       const onTransition = () => requestRun("transition");
       const onAnimation = () => requestRun("animation");
       if (transitionHost && transitionHost.addEventListener) {
@@ -297,7 +374,7 @@ export default function useRDMapResizeAuthority({
         transitionHost.addEventListener("animationend", onAnimation, true);
       }
 
-      // mutation (style/class değişimi yakala)
+      // mutation
       if (typeof MutationObserver !== "undefined") {
         const target = transitionHost || scrollRoot || el;
         if (target) {
@@ -308,12 +385,39 @@ export default function useRDMapResizeAuthority({
         }
       }
 
+      // ✅ GLOBAL snap-end: sheet drag bittiğinde (pointerup/touchend) FORCE repair
+      const onSnapEnd = (e) => {
+        const t = nowMs();
+        if (t - (st.lastSnapAt || 0) < 90) return;
+
+        // sadece bizim layout alanımızla ilişkiliyse
+        const related = eventHasTargetWithin(e, transitionHost, scrollRoot, el);
+        if (!related) return;
+
+        st.lastSnapAt = t;
+        requestRun("snap-end", true);
+      };
+
+      window.addEventListener("pointerup", onSnapEnd, true);
+      window.addEventListener("pointercancel", onSnapEnd, true);
+      window.addEventListener("touchend", onSnapEnd, true);
+      window.addEventListener("touchcancel", onSnapEnd, true);
+      window.addEventListener("mouseup", onSnapEnd, true);
+
+      // ✅ custom event: rd:snap-end
+      const onRDEvent = () => {
+        const t = nowMs();
+        if (t - (st.lastSnapAt || 0) < 70) return;
+        st.lastSnapAt = t;
+        requestRun("rd-event", true);
+      };
+      window.addEventListener("rd:snap-end", onRDEvent, { passive: true });
+
       // window resize/orientation
       const onWin = () => requestRun("win");
       window.addEventListener("resize", onWin, { passive: true });
       window.addEventListener("orientationchange", onWin, { passive: true });
 
-      // ilk ve bounds değişimi
       requestRun("mount", true);
       requestRun("bounds", true);
 
@@ -331,7 +435,12 @@ export default function useRDMapResizeAuthority({
         } catch {}
 
         try {
-          if (scrollRoot && scrollRoot.removeEventListener) scrollRoot.removeEventListener("scroll", onScroll);
+          if (scrollRoot && scrollRoot.removeEventListener) {
+            scrollRoot.removeEventListener("scroll", onScroll);
+            try {
+              scrollRoot.removeEventListener("scrollend", onScrollEnd);
+            } catch {}
+          }
         } catch {}
 
         try {
@@ -340,6 +449,23 @@ export default function useRDMapResizeAuthority({
             transitionHost.removeEventListener("animationend", onAnimation, true);
           }
         } catch {}
+
+        try {
+          window.removeEventListener("pointerup", onSnapEnd, true);
+          window.removeEventListener("pointercancel", onSnapEnd, true);
+          window.removeEventListener("touchend", onSnapEnd, true);
+          window.removeEventListener("touchcancel", onSnapEnd, true);
+          window.removeEventListener("mouseup", onSnapEnd, true);
+        } catch {}
+
+        try {
+          window.removeEventListener("rd:snap-end", onRDEvent);
+        } catch {}
+
+        try {
+          if (st.scrollEndT) clearTimeout(st.scrollEndT);
+        } catch {}
+        st.scrollEndT = null;
 
         try {
           ro?.disconnect?.();
@@ -358,8 +484,16 @@ export default function useRDMapResizeAuthority({
     return () => {
       if (rafAttach) cancelAnimationFrame(rafAttach);
       if (detach) detach();
-      if (st.t) clearTimeout(st.t);
+      try {
+        if (st.t) clearTimeout(st.t);
+      } catch {}
+      try {
+        if (st.scrollEndT) clearTimeout(st.scrollEndT);
+      } catch {}
       st.t = null;
+      st.scrollEndT = null;
+      st.pendingReason = "";
+      st.pendingForce = false;
     };
   }, [mapRef, containerRef, getBounds, boundsKey, enabled, debug, paddingPx, minSizePx]);
 }
