@@ -239,7 +239,7 @@ function extractLatLng(any, depth = 0, seen, hint = "auto") {
     if (typeof any.lat === "function" && typeof any.lng === "function") {
       const lat = toFiniteNumber(any.lat());
       const lng = toFiniteNumber(any.lng());
-      if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
+      if (lat != null && lng !=null && inRangeLatLng(lat, lng)) return { lat, lng };
     }
   } catch {}
 
@@ -853,257 +853,6 @@ export default function RouteDetailMapPreviewShell({
     return { ok: true, reason: "ok", w, h, gmw, gmh, dh, dw };
   }, []);
 
-  const scheduleStuckCheck = useCallback(
-    (why = "tick") => {
-      if (!hostAttached) return;
-      if (!mapInstanceRef.current) return;
-      if (isError) return;
-
-      const now = Date.now();
-      if (now - (repairRef.current.lastAt || 0) < 450) return;
-      repairRef.current.lastAt = now;
-
-      const host = localDivRef.current;
-      if (!host) return;
-
-      const sig = (() => {
-        let r;
-        try {
-          r = host.getBoundingClientRect();
-        } catch {
-          r = null;
-        }
-        const w = Math.round(r?.width || 0);
-        const h = Math.round(r?.height || 0);
-        return `${String(routeId || "")}|${w}x${h}|${String(why || "")}|${String(mapEpoch)}|${String(
-          typeof boundsKey === "string" ? boundsKey : ""
-        )}`;
-      })();
-
-      if (repairRef.current.lastSig !== sig) {
-        repairRef.current.lastSig = sig;
-        repairRef.current.softTries = 0;
-      }
-
-      try {
-        if (repairRef.current.raf) cancelAnimationFrame(repairRef.current.raf);
-      } catch {}
-      try {
-        if (repairRef.current.tmr) clearTimeout(repairRef.current.tmr);
-      } catch {}
-
-      const run = () => {
-        const res = measureMismatch();
-        if (res.ok) {
-          repairRef.current.softTries = 0;
-          return;
-        }
-
-        repairRef.current.softTries += 1;
-        softRepair();
-
-        if (repairRef.current.softTries >= 2) {
-          doRemountOnce(res.reason);
-          repairRef.current.softTries = 0;
-          return;
-        }
-
-        try {
-          repairRef.current.tmr = window.setTimeout(() => {
-            scheduleStuckCheck(`after-soft:${res.reason}`);
-          }, 140);
-        } catch {}
-      };
-
-      try {
-        repairRef.current.raf = requestAnimationFrame(() => {
-          requestAnimationFrame(run);
-        });
-      } catch {
-        run();
-      }
-    },
-    [hostAttached, isError, routeId, mapEpoch, measureMismatch, softRepair, doRemountOnce]
-  );
-
-  // ✅ tick/ready/epoch değişimlerinde otomatik kontrol
-  useEffect(() => {
-    if (!isReady) return;
-    if (!hostAttached) return;
-    scheduleStuckCheck("ready");
-  }, [isReady, hostAttached, mapEpoch, scheduleStuckCheck]);
-
-  // ✅ window / visualViewport olaylarında otomatik kontrol
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const onR = () => scheduleStuckCheck("win-resize");
-    const onO = () => scheduleStuckCheck("orientation");
-    let vv = null;
-
-    try {
-      window.addEventListener("resize", onR, { passive: true });
-      window.addEventListener("orientationchange", onO, { passive: true });
-    } catch {}
-
-    try {
-      vv = window.visualViewport || null;
-      vv?.addEventListener?.("resize", onR, { passive: true });
-      vv?.addEventListener?.("scroll", onR, { passive: true });
-    } catch {}
-
-    return () => {
-      try {
-        window.removeEventListener("resize", onR);
-        window.removeEventListener("orientationchange", onO);
-      } catch {}
-      try {
-        vv?.removeEventListener?.("resize", onR);
-        vv?.removeEventListener?.("scroll", onR);
-      } catch {}
-    };
-  }, [scheduleStuckCheck]);
-
-  /* =========================================================
-     ✅ PARÇA 2/5 — rd:repair listener (2x RAF + resize + same-set + optional fitBounds)
-     ========================================================= */
-  const repairEventStateRef = useRef({ raf1: 0, raf2: 0, lastFitAt: 0, lastFitKey: "" });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!mapInstance) return;
-
-    const st = repairEventStateRef.current;
-
-    const onRepair = (ev) => {
-      const mapNow = mapInstanceRef.current;
-      if (!mapNow) return;
-
-      try {
-        if (st.raf1) cancelAnimationFrame(st.raf1);
-      } catch {}
-      try {
-        if (st.raf2) cancelAnimationFrame(st.raf2);
-      } catch {}
-      st.raf1 = 0;
-      st.raf2 = 0;
-
-      st.raf1 = requestAnimationFrame(() => {
-        st.raf2 = requestAnimationFrame(() => {
-          const m = mapInstanceRef.current;
-          if (!m) return;
-
-          // 1) resize trigger
-          try {
-            if (window.google?.maps?.event?.trigger) window.google.maps.event.trigger(m, "resize");
-          } catch {}
-
-          // 2) center/zoom same-set repaint (safe)
-          try {
-            const c = m.getCenter?.();
-            if (c && m.setCenter) m.setCenter(c);
-          } catch {}
-          try {
-            const z = m.getZoom?.();
-            if (Number.isFinite(z) && m.setZoom) m.setZoom(z);
-          } catch {}
-
-          // 3) bounds varsa fit (throttle/dedupe)
-          const b = boundsRef.current;
-          const key = String(boundsKey || "");
-          if (!b) return;
-
-          const now = Date.now();
-          const within = now - (st.lastFitAt || 0) < 300;
-
-          // boundsKey değişmediyse: sadece resize (fit yok)
-          if (st.lastFitKey === key) return;
-
-          // 300ms pencerede max 1 fitBounds
-          if (within) return;
-
-          st.lastFitAt = now;
-
-          try {
-            // fit başarılı olursa key’yi güncelle
-            try {
-              m.fitBounds(b, { top: 44, right: 44, bottom: 44, left: 44 });
-            } catch {
-              m.fitBounds(b);
-            }
-            st.lastFitKey = key;
-          } catch {}
-        });
-      });
-    };
-
-    try {
-      window.addEventListener("rd:repair", onRepair);
-    } catch {}
-
-    return () => {
-      try {
-        window.removeEventListener("rd:repair", onRepair);
-      } catch {}
-      try {
-        if (st.raf1) cancelAnimationFrame(st.raf1);
-      } catch {}
-      try {
-        if (st.raf2) cancelAnimationFrame(st.raf2);
-      } catch {}
-      st.raf1 = 0;
-      st.raf2 = 0;
-    };
-  }, [mapInstance, boundsKey]);
-
-  // ✅ EMİR 02 — DEBUG HOOK (aliases + manual remount)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if (!mapInstance) {
-      try {
-        if (window.__RD_MAP) window.__RD_MAP = null;
-        if (window.__RD_MAP__) window.__RD_MAP__ = null;
-        if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
-        if (window.__RD_MAP_FORCE__) window.__RD_MAP_FORCE__ = null;
-        if (window.__RD_MAP_REMOUNT__) window.__RD_MAP_REMOUNT__ = null;
-      } catch {}
-      return;
-    }
-
-    try {
-      window.__RD_MAP = mapInstance;
-      window.__RD_MAP__ = mapInstance;
-
-      const force = () => {
-        try {
-          softRepair();
-        } catch {}
-      };
-
-      window.__RD_MAP_FORCE = force;
-      window.__RD_MAP_FORCE__ = force;
-
-      window.__RD_MAP_REMOUNT__ = () => {
-        try {
-          doRemountOnce("manual");
-        } catch {}
-      };
-    } catch {}
-
-    return () => {
-      try {
-        if (window.__RD_MAP === mapInstance) window.__RD_MAP = null;
-        if (window.__RD_MAP__ === mapInstance) window.__RD_MAP__ = null;
-      } catch {}
-      try {
-        if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
-        if (window.__RD_MAP_FORCE__) window.__RD_MAP_FORCE__ = null;
-        if (window.__RD_MAP_REMOUNT__) window.__RD_MAP_REMOUNT__ = null;
-      } catch {}
-    };
-  }, [mapInstance, softRepair, doRemountOnce]);
-
   // ✅ Map gesture guard — sheet/scroll motoruna kaçışı kes
   const gestureGuardRef = useRef({ active: false, pointerId: null });
 
@@ -1493,6 +1242,258 @@ export default function RouteDetailMapPreviewShell({
     enabled: !!mapInstance && hostAttached,
     debug: false,
   });
+
+  /* =========================================================
+     ✅ ADIM 4 — STUCK DETECTOR (boundsKey TDZ fix: bu blok boundsKey'den SONRA)
+     ========================================================= */
+  const scheduleStuckCheck = useCallback(
+    (why = "tick") => {
+      if (!hostAttached) return;
+      if (!mapInstanceRef.current) return;
+      if (isError) return;
+
+      const now = Date.now();
+      if (now - (repairRef.current.lastAt || 0) < 450) return;
+      repairRef.current.lastAt = now;
+
+      const host = localDivRef.current;
+      if (!host) return;
+
+      const sig = (() => {
+        let r;
+        try {
+          r = host.getBoundingClientRect();
+        } catch {
+          r = null;
+        }
+        const w = Math.round(r?.width || 0);
+        const h = Math.round(r?.height || 0);
+        return `${String(routeId || "")}|${w}x${h}|${String(why || "")}|${String(mapEpoch)}|${String(boundsKey)}`;
+      })();
+
+      if (repairRef.current.lastSig !== sig) {
+        repairRef.current.lastSig = sig;
+        repairRef.current.softTries = 0;
+      }
+
+      try {
+        if (repairRef.current.raf) cancelAnimationFrame(repairRef.current.raf);
+      } catch {}
+      try {
+        if (repairRef.current.tmr) clearTimeout(repairRef.current.tmr);
+      } catch {}
+
+      const run = () => {
+        const res = measureMismatch();
+        if (res.ok) {
+          repairRef.current.softTries = 0;
+          return;
+        }
+
+        repairRef.current.softTries += 1;
+        softRepair();
+
+        if (repairRef.current.softTries >= 2) {
+          doRemountOnce(res.reason);
+          repairRef.current.softTries = 0;
+          return;
+        }
+
+        try {
+          repairRef.current.tmr = window.setTimeout(() => {
+            scheduleStuckCheck(`after-soft:${res.reason}`);
+          }, 140);
+        } catch {}
+      };
+
+      try {
+        repairRef.current.raf = requestAnimationFrame(() => {
+          requestAnimationFrame(run);
+        });
+      } catch {
+        run();
+      }
+    },
+    [hostAttached, isError, routeId, mapEpoch, boundsKey, measureMismatch, softRepair, doRemountOnce]
+  );
+
+  // ✅ tick/ready/epoch değişimlerinde otomatik kontrol
+  useEffect(() => {
+    if (!isReady) return;
+    if (!hostAttached) return;
+    scheduleStuckCheck("ready");
+  }, [isReady, hostAttached, mapEpoch, boundsKey, scheduleStuckCheck]);
+
+  // ✅ window / visualViewport olaylarında otomatik kontrol
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onR = () => scheduleStuckCheck("win-resize");
+    const onO = () => scheduleStuckCheck("orientation");
+    let vv = null;
+
+    try {
+      window.addEventListener("resize", onR, { passive: true });
+      window.addEventListener("orientationchange", onO, { passive: true });
+    } catch {}
+
+    try {
+      vv = window.visualViewport || null;
+      vv?.addEventListener?.("resize", onR, { passive: true });
+      vv?.addEventListener?.("scroll", onR, { passive: true });
+    } catch {}
+
+    return () => {
+      try {
+        window.removeEventListener("resize", onR);
+        window.removeEventListener("orientationchange", onO);
+      } catch {}
+      try {
+        vv?.removeEventListener?.("resize", onR);
+        vv?.removeEventListener?.("scroll", onR);
+      } catch {}
+    };
+  }, [scheduleStuckCheck]);
+
+  /* =========================================================
+     ✅ PARÇA 2/5 — rd:repair listener (2x RAF + resize + same-set + optional fitBounds)
+     ========================================================= */
+  const repairEventStateRef = useRef({ raf1: 0, raf2: 0, lastFitAt: 0, lastFitKey: "" });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!mapInstance) return;
+
+    const st = repairEventStateRef.current;
+
+    const onRepair = () => {
+      const mapNow = mapInstanceRef.current;
+      if (!mapNow) return;
+
+      try {
+        if (st.raf1) cancelAnimationFrame(st.raf1);
+      } catch {}
+      try {
+        if (st.raf2) cancelAnimationFrame(st.raf2);
+      } catch {}
+      st.raf1 = 0;
+      st.raf2 = 0;
+
+      st.raf1 = requestAnimationFrame(() => {
+        st.raf2 = requestAnimationFrame(() => {
+          const m = mapInstanceRef.current;
+          if (!m) return;
+
+          // 1) resize trigger
+          try {
+            if (window.google?.maps?.event?.trigger) window.google.maps.event.trigger(m, "resize");
+          } catch {}
+
+          // 2) center/zoom same-set repaint (safe)
+          try {
+            const c = m.getCenter?.();
+            if (c && m.setCenter) m.setCenter(c);
+          } catch {}
+          try {
+            const z = m.getZoom?.();
+            if (Number.isFinite(z) && m.setZoom) m.setZoom(z);
+          } catch {}
+
+          // 3) bounds varsa fit (throttle/dedupe)
+          const b = boundsRef.current;
+          const key = String(boundsKey || "");
+          if (!b) return;
+
+          const now = Date.now();
+          const within = now - (st.lastFitAt || 0) < 300;
+
+          // boundsKey değişmediyse: sadece resize (fit yok)
+          if (st.lastFitKey === key) return;
+
+          // 300ms pencerede max 1 fitBounds
+          if (within) return;
+
+          st.lastFitAt = now;
+
+          try {
+            // fit başarılı olursa key’yi güncelle
+            try {
+              m.fitBounds(b, { top: 44, right: 44, bottom: 44, left: 44 });
+            } catch {
+              m.fitBounds(b);
+            }
+            st.lastFitKey = key;
+          } catch {}
+        });
+      });
+    };
+
+    try {
+      window.addEventListener("rd:repair", onRepair);
+    } catch {}
+
+    return () => {
+      try {
+        window.removeEventListener("rd:repair", onRepair);
+      } catch {}
+      try {
+        if (st.raf1) cancelAnimationFrame(st.raf1);
+      } catch {}
+      try {
+        if (st.raf2) cancelAnimationFrame(st.raf2);
+      } catch {}
+      st.raf1 = 0;
+      st.raf2 = 0;
+    };
+  }, [mapInstance, boundsKey]);
+
+  // ✅ EMİR 02 — DEBUG HOOK (aliases + manual remount)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (!mapInstance) {
+      try {
+        if (window.__RD_MAP) window.__RD_MAP = null;
+        if (window.__RD_MAP__) window.__RD_MAP__ = null;
+        if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
+        if (window.__RD_MAP_FORCE__) window.__RD_MAP_FORCE__ = null;
+        if (window.__RD_MAP_REMOUNT__) window.__RD_MAP_REMOUNT__ = null;
+      } catch {}
+      return;
+    }
+
+    try {
+      window.__RD_MAP = mapInstance;
+      window.__RD_MAP__ = mapInstance;
+
+      const force = () => {
+        try {
+          softRepair();
+        } catch {}
+      };
+
+      window.__RD_MAP_FORCE = force;
+      window.__RD_MAP_FORCE__ = force;
+
+      window.__RD_MAP_REMOUNT__ = () => {
+        try {
+          doRemountOnce("manual");
+        } catch {}
+      };
+    } catch {}
+
+    return () => {
+      try {
+        if (window.__RD_MAP === mapInstance) window.__RD_MAP = null;
+        if (window.__RD_MAP__ === mapInstance) window.__RD_MAP__ = null;
+      } catch {}
+      try {
+        if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
+        if (window.__RD_MAP_FORCE__) window.__RD_MAP_FORCE__ = null;
+        if (window.__RD_MAP_REMOUNT__) window.__RD_MAP_REMOUNT__ = null;
+      } catch {}
+    };
+  }, [mapInstance, softRepair, doRemountOnce]);
 
   const locationLabel = useMemo(() => {
     const fromProp = String(areaLabel || "").trim();
