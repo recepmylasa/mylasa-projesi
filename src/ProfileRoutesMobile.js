@@ -13,10 +13,13 @@
 // ✅ HOTFIX (REV): SVG cover render edilmez (data/image svg veya svg içerikli data-url) → "<path d>" console hatasını keser.
 // ✅ Ayrıca: "default cover" görselini <img> olarak render ETMİYORUZ (placeholder gradient zaten var).
 //   Çünkü console’daki "Expected number … 4V4a1…" hatası büyük olasılıkla <img> ile parse edilen SVG’den geliyor.
+//
+// ✅ EMİR 05: Inline SVG yerine merkezi Phosphor ikon sistemi (src/icons.js) kullanılır.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./ProfileRoutesMobile.css";
 import useUserRoutes from "./hooks/useUserRoutes";
+import { Icon } from "./icons";
 
 import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage";
 
@@ -104,12 +107,7 @@ function isSvgHttpUrl(v) {
   if (!base) return false;
 
   // klasik uzantı / mime
-  if (
-    base.endsWith(".svg") ||
-    base.endsWith(".svgz") ||
-    base.includes("image/svg+xml") ||
-    base.includes("format=svg")
-  )
+  if (base.endsWith(".svg") || base.endsWith(".svgz") || base.includes("image/svg+xml") || base.includes("format=svg"))
     return true;
 
   // ✅ firebase encoded path / decode sonrası ".svg" yakala
@@ -134,10 +132,15 @@ function looksLikeSvgDataUrl(v) {
   if (!payload) return false;
 
   // utf8/plain svg
-  if (payload.includes("<svg") || payload.includes("%3csvg") || payload.includes("xmlns%3d") || payload.includes("xmlns="))
+  if (
+    payload.includes("<svg") ||
+    payload.includes("%3csvg") ||
+    payload.includes("xmlns%3d") ||
+    payload.includes("xmlns=")
+  )
     return true;
 
-  // base64 "<svg" => PHN2Zy
+  // base64 "<svg" => PHN2Zy (lowercase kontrol)
   if (payload.includes("phn2zy")) return true;
 
   return false;
@@ -296,10 +299,7 @@ async function resolveToHttpsUrl(input) {
         code === "storage/unauthenticated" ||
         code === "storage/unknown"
       ) {
-        warnOnce(
-          `dlwarn_http_${code}`,
-          `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — fallback’a düşülecek.`
-        );
+        warnOnce(`dlwarn_http_${code}`, `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — fallback’a düşülecek.`);
         return raw0;
       }
 
@@ -328,15 +328,8 @@ async function resolveToHttpsUrl(input) {
       const code = e?.code ? String(e.code) : "unknown";
 
       // ✅ yetki/permission spam kır (tek sefer warn)
-      if (
-        code === "permission-denied" ||
-        code === "storage/unauthorized" ||
-        code === "storage/unauthenticated"
-      ) {
-        warnOnce(
-          `dlwarn_gs_${code}`,
-          `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — placeholder kullanılacak.`
-        );
+      if (code === "permission-denied" || code === "storage/unauthorized" || code === "storage/unauthenticated") {
+        warnOnce(`dlwarn_gs_${code}`, `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — placeholder kullanılacak.`);
         return "";
       }
 
@@ -435,13 +428,7 @@ function formatDistanceKmFromRoute(route) {
     return `${fixed} km`;
   }
 
-  const m =
-    s.distanceM ??
-    s.distanceMeters ??
-    route.totalDistanceM ??
-    route.distanceMeters ??
-    route.distance ??
-    null;
+  const m = s.distanceM ?? s.distanceMeters ?? route.totalDistanceM ?? route.distanceMeters ?? route.distance ?? null;
 
   const mm = toFiniteNumber(m);
   if (mm == null || mm <= 0) return "";
@@ -451,9 +438,9 @@ function formatDistanceKmFromRoute(route) {
   return `${fixed} km`;
 }
 
-function getAudienceIcon(visibilityRaw) {
+function getAudienceIconName(visibilityRaw) {
   const raw = (visibilityRaw || "").toString().toLowerCase();
-  if (!raw || raw === "public" || raw === "everyone") return "🌍";
+  if (!raw || raw === "public" || raw === "everyone") return "globe";
   if (
     raw.includes("follower") ||
     raw === "friends" ||
@@ -461,9 +448,9 @@ function getAudienceIcon(visibilityRaw) {
     raw === "followers-only" ||
     raw === "followers"
   )
-    return "👥";
-  if (raw === "private" || raw === "only_me") return "🔒";
-  return "🔒";
+    return "users";
+  if (raw === "private" || raw === "only_me") return "lock";
+  return "lock";
 }
 
 function isDefaultRouteTitle(titleRaw) {
@@ -559,8 +546,7 @@ function getStopNameWithSource(stop) {
   }
 
   if (typeof s.place === "string" && s.place.trim()) return { name: s.place.trim(), source: "place(string)" };
-  if (typeof raw?.place === "string" && raw.place.trim())
-    return { name: raw.place.trim(), source: "raw.place(string)" };
+  if (typeof raw?.place === "string" && raw.place.trim()) return { name: raw.place.trim(), source: "raw.place(string)" };
 
   return { name: "", source: "" };
 }
@@ -799,12 +785,7 @@ function pickFirstStopImageCandidate(stop) {
         }
 
         const cand = urlStr || posterStr;
-        if (
-          cand &&
-          !isVideoUrl(cand) &&
-          !isKnownAppLogoUrl(cand) &&
-          !(isSvgAny(cand) || urlContainsSvgMarker(cand))
-        ) {
+        if (cand && !isVideoUrl(cand) && !isKnownAppLogoUrl(cand) && !(isSvgAny(cand) || urlContainsSvgMarker(cand))) {
           return { url: cand, fromVideoPoster: false };
         }
       }
@@ -1179,8 +1160,8 @@ function LockedRoutesCard({ variant = "login_required" }) {
         </div>
 
         <div className="profile-route-tile-badges" aria-hidden="true">
-          <div className="profile-route-tile-badge profile-route-tile-badge--left">
-            <span className="profile-route-tile-emoji">🔒</span>
+          <div className="profile-route-tile-badge profile-route-tile-badge--left" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="lock" size={18} weight="fill" />
           </div>
         </div>
 
@@ -1338,7 +1319,7 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
             : "";
 
         const coverCandidate = pickCoverCandidate(route);
-        const visibilityIcon = getAudienceIcon(route?.visibility);
+        const visibilityIconName = getAudienceIconName(route?.visibility);
 
         return (
           <button
@@ -1360,13 +1341,21 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
             />
 
             <div className="profile-route-tile-badges" aria-hidden="true">
-              <div className="profile-route-tile-badge profile-route-tile-badge--left">
-                <span className="profile-route-tile-emoji">{visibilityIcon}</span>
+              <div
+                className="profile-route-tile-badge profile-route-tile-badge--left"
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <Icon name={visibilityIconName} size={18} weight="fill" />
               </div>
 
               {/* ✅ sadece video posteri ise */}
               {coverCandidate?.hasVideo && (
-                <div className="profile-route-tile-badge profile-route-tile-badge--right">▶</div>
+                <div
+                  className="profile-route-tile-badge profile-route-tile-badge--right"
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  <Icon name="play" size={18} weight="fill" />
+                </div>
               )}
             </div>
 

@@ -1,5 +1,5 @@
 // FILE: src/icons.js
-// src/icons.js — Merkezi ikon sistemi (değişiklik yok)
+// src/icons.js — Merkezi ikon sistemi
 import React from "react";
 import * as Ph from "@phosphor-icons/react";
 
@@ -44,16 +44,16 @@ const registry = {
   // harita/ayar
   settings: Ph.Gear,
   layers: Ph.MapTrifold,
-  locate: (Ph.GpsFix || Ph.CrosshairSimple || Ph.Crosshair),
+  locate: Ph.GpsFix || Ph.CrosshairSimple || Ph.Crosshair,
+
+  // ✅ EMİR 05 — ProfileRoutesMobile SVG yerine ikonlar
+  globe: Ph.GlobeHemisphereWest || Ph.Globe,
+  users: Ph.UsersThree || Ph.Users,
+  lock: Ph.LockSimple || Ph.Lock,
+  play: Ph.Play,
 };
 
-export function Icon({
-  name,
-  size = 24,
-  color = "currentColor",
-  weight = "regular",
-  ...rest
-}) {
+export function Icon({ name, size = 24, color = "currentColor", weight = "regular", ...rest }) {
   const Cmp = registry[name];
   if (!Cmp) return <Ph.SquaresFour size={size} color={color} weight={weight} {...rest} />;
   return <Cmp size={size} color={color} weight={weight} {...rest} />;
@@ -91,9 +91,7 @@ export const HeartIcon = (p) => <Icon name="heart" {...p} />;
 export const MessageIcon = (p) => <Icon name="message" {...p} />;
 export const LocationIcon = (p) => <Icon name="location" {...p} />;
 
-export const KebabIcon = ({ direction = "vertical", ...rest }) => (
-  <Icon name={direction === "vertical" ? "menu-vertical" : "menu"} {...rest} />
-);
+export const KebabIcon = ({ direction = "vertical", ...rest }) => <Icon name={direction === "vertical" ? "menu-vertical" : "menu"} {...rest} />;
 
 export const MysteryBoxIcon = (p) => <Icon name="mystery" {...p} />;
 
@@ -104,3 +102,9 @@ export const VerifiedBadgeIcon = (p) => <Ph.SealCheck weight="regular" {...p} />
 export const LayersIcon = (p) => <Icon name="layers" {...p} />;
 export const SettingsIcon = (p) => <Icon name="settings" {...p} />;
 export const LocateIcon = (p) => <Icon name="locate" {...p} />;
+
+// ✅ opsiyonel kısayollar
+export const GlobeIcon = (p) => <Icon name="globe" {...p} />;
+export const UsersIcon = (p) => <Icon name="users" {...p} />;
+export const LockIcon = (p) => <Icon name="lock" {...p} />;
+export const PlayIcon = (p) => <Icon name="play" {...p} />;

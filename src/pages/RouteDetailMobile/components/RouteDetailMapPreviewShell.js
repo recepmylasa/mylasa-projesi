@@ -239,7 +239,7 @@ function extractLatLng(any, depth = 0, seen, hint = "auto") {
     if (typeof any.lat === "function" && typeof any.lng === "function") {
       const lat = toFiniteNumber(any.lat());
       const lng = toFiniteNumber(any.lng());
-      if (lat != null && lng !=null && inRangeLatLng(lat, lng)) return { lat, lng };
+      if (lat != null && lng != null && inRangeLatLng(lat, lng)) return { lat, lng };
     }
   } catch {}
 
@@ -460,7 +460,7 @@ export default function RouteDetailMapPreviewShell({
   badgeCount = 0,
   areaLabel = "",
   onRetry = () => {},
-  // ✅ PARÇA 2/5 — ileride gerekirse (şimdilik sadece taşınıyor)
+  // ✅ EMİR 04 PARÇA 2/3 — gerçek scroll root (RouteDetailMobile -> MapCard -> buraya pass)
   scrollRootRef = null,
 }) {
   const API_KEY =
@@ -478,14 +478,21 @@ export default function RouteDetailMapPreviewShell({
   const hasMapId = !!MAP_ID;
 
   /* =========================================================
-     ✅ ADIM 4 — ONE-SHOT REMOUNT FALLBACK (routeId başına 1 kez)
+     ✅ EMİR 04 (PARÇA 2/3) — WebGL context leak STOPPER
+     - remount/epoch kapalı (map key sabit)
      ========================================================= */
-  const [mapEpoch, setMapEpoch] = useState(0);
-  const remountOnceRef = useRef({ routeId: null, done: false });
+  const instanceKey = 0;
+
+  /* =========================================================
+     ✅ ADIM 4 — SOFT REPAIR yardımcı state (remount YOK)
+     ========================================================= */
   const repairRef = useRef({ lastSig: "", lastAt: 0, softTries: 0, raf: 0, tmr: 0 });
 
+  // routeId değişince state reset (remount yok)
+  const [mapInstance, setMapInstance] = useState(null);
+  const mapInstanceRef = useRef(null);
+
   useEffect(() => {
-    remountOnceRef.current = { routeId: routeId || null, done: false };
     repairRef.current.lastSig = "";
     repairRef.current.lastAt = 0;
     repairRef.current.softTries = 0;
@@ -497,16 +504,22 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
     repairRef.current.raf = 0;
     repairRef.current.tmr = 0;
-    setMapEpoch(0);
+
+    // ⚠️ route değişince instance ref’i bırak (leak stopper)
+    try {
+      setMapInstance(null);
+    } catch {}
+    try {
+      mapInstanceRef.current = null;
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
 
-  const mapsOpts = useMemo(() => ({ API_KEY, MAP_ID, instanceKey: mapEpoch }), [API_KEY, MAP_ID, mapEpoch]);
+  const mapsOpts = useMemo(() => ({ API_KEY, MAP_ID, instanceKey }), [API_KEY, MAP_ID, instanceKey]);
   const gmaps = useGoogleMaps(mapsOpts) || {};
 
   const gmapsStatus =
-    gmaps.gmapsStatus ||
-    gmaps.status ||
-    (gmaps.isLoaded ? "ready" : gmaps.error ? "error" : "loading");
+    gmaps.gmapsStatus || gmaps.status || (gmaps.isLoaded ? "ready" : gmaps.error ? "error" : "loading");
 
   const hookMapDivRef = gmaps.mapDivRef || gmaps.containerRef || gmaps.divRef || null;
   const mapRefLike = gmaps.mapRef || gmaps.map || null;
@@ -522,9 +535,9 @@ export default function RouteDetailMapPreviewShell({
 
   const isError = baseIsError || !API_KEY;
 
-  // ✅ KRİTİK FIX: mapRef.current değişimi re-render tetiklemez → state ile yakala
-  const [mapInstance, setMapInstance] = useState(null);
-  const mapInstanceRef = useRef(null);
+  useEffect(() => {
+    mapInstanceRef.current = mapInstance || null;
+  }, [mapInstance]);
 
   const statusIsReady =
     gmapsStatus === "ready" ||
@@ -535,10 +548,6 @@ export default function RouteDetailMapPreviewShell({
 
   const isReady = !isError && (statusIsReady || !!mapInstance);
   const isLoading = !isReady && !isError;
-
-  useEffect(() => {
-    mapInstanceRef.current = mapInstance || null;
-  }, [mapInstance]);
 
   const handleRetry = useCallback(() => {
     try {
@@ -560,7 +569,7 @@ export default function RouteDetailMapPreviewShell({
   const shellRef = useRef(null);
 
   /* =========================================================
-     ✅ EMİR 03 — HOST ATTACH GATING (0-height/unstable iken ASLA init etme)
+     ✅ HOST ATTACH GATING (0-height/unstable iken ASLA init etme)
      ========================================================= */
   const localDivRef = useRef(null);
   const hostAttachedRef = useRef(false);
@@ -719,7 +728,7 @@ export default function RouteDetailMapPreviewShell({
         cancelAnimationFrame(raf);
       } catch {}
     };
-  }, [mapRefLike, isError, routeId, mapEpoch]);
+  }, [mapRefLike, isError, routeId]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -732,15 +741,11 @@ export default function RouteDetailMapPreviewShell({
   }, [mapInstance, bumpTick]);
 
   /* =========================================================
-     ✅ ADIM 4 — SOFT REPAIR + STUCK DETECTOR + ONE-SHOT REMOUNT
+     ✅ SOFT REPAIR (remount yok)
      ========================================================= */
   const softRepair = useCallback(() => {
     const mapNow = mapInstanceRef.current;
     if (!mapNow) return;
-
-    try {
-      window.dispatchEvent(new Event("resize"));
-    } catch {}
 
     try {
       if (window.google?.maps?.event?.trigger) {
@@ -772,44 +777,6 @@ export default function RouteDetailMapPreviewShell({
       });
     } catch {}
   }, []);
-
-  const doRemountOnce = useCallback(
-    (reason = "") => {
-      const rid = String(routeId || "");
-      if (!rid) return;
-
-      const st = remountOnceRef.current;
-      if (st.routeId === rid && st.done) return;
-
-      remountOnceRef.current = { routeId: rid, done: true };
-
-      try {
-        if (typeof gmapsReload === "function") gmapsReload();
-      } catch {}
-      try {
-        if (typeof gmapsAttemptLoad === "function") gmapsAttemptLoad(true);
-      } catch {}
-
-      try {
-        setMapInstance(null);
-      } catch {}
-      try {
-        mapInstanceRef.current = null;
-      } catch {}
-
-      try {
-        setMapEpoch((e) => e + 1);
-      } catch {}
-
-      if (process.env.NODE_ENV !== "production") {
-        try {
-          // eslint-disable-next-line no-console
-          console.debug(`[RD_MAP][REMOUNT] ${rid} (${reason || "stuck"})`);
-        } catch {}
-      }
-    },
-    [routeId, gmapsReload, gmapsAttemptLoad]
-  );
 
   const measureMismatch = useCallback(() => {
     const host = localDivRef.current;
@@ -853,7 +820,9 @@ export default function RouteDetailMapPreviewShell({
     return { ok: true, reason: "ok", w, h, gmw, gmh, dh, dw };
   }, []);
 
-  // ✅ Map gesture guard — sheet/scroll motoruna kaçışı kes
+  /* =========================================================
+     ✅ Map gesture guard — sheet/scroll motoruna kaçışı kes
+     ========================================================= */
   const gestureGuardRef = useRef({ active: false, pointerId: null });
 
   // ✅ Shell kendi clamp'ını ASLA dayatmaz. %100 fill.
@@ -1169,10 +1138,10 @@ export default function RouteDetailMapPreviewShell({
     } catch {}
 
     return () => cleanup();
-  }, [mapInstance, drawPoints, routeId, mapEpoch]);
+  }, [mapInstance, drawPoints, routeId]);
 
   /* =========================================================
-     ✅ EMİR 03 — JS Resize Authority (RO + IO + VV + signature + loop-breaker)
+     ✅ Resize Authority (mevcut hook) — container gerçek host
      ========================================================= */
   const boundsRef = useRef(null);
 
@@ -1204,6 +1173,11 @@ export default function RouteDetailMapPreviewShell({
     )}:${bbox}`;
   }, [drawPoints]);
 
+  const boundsKeyRef = useRef("none");
+  useEffect(() => {
+    boundsKeyRef.current = String(boundsKey || "none");
+  }, [boundsKey]);
+
   useEffect(() => {
     boundsRef.current = null;
 
@@ -1224,7 +1198,6 @@ export default function RouteDetailMapPreviewShell({
     }
   }, [mapInstance, boundsKey, routeId, drawPoints]);
 
-  // ✅ tek nokta için center/zoom döndür
   const getBounds = useCallback(() => {
     if (boundsRef.current) return boundsRef.current;
     const pts = drawPointsRef.current;
@@ -1234,19 +1207,301 @@ export default function RouteDetailMapPreviewShell({
 
   useRDMapResizeAuthority({
     mapRef: mapInstanceRef,
-    // ✅ containerRef: SHELL değil, gerçek MAP DIV
     containerRef: localDivRef,
     getBounds,
     boundsKey,
-    // ✅ KRİTİK: host attach olmadan “resize authority” başlatma
     enabled: !!mapInstance && hostAttached,
     debug: false,
   });
 
   /* =========================================================
-     ✅ ADIM 4 — STUCK DETECTOR (boundsKey TDZ fix: bu blok boundsKey'den SONRA)
+     ✅ EMİR 04 (PARÇA 2/3) — Repaint Authority
+     A) scrollRootEl gerçek root (IO + scroll-end)
+     B) Scroll-End Repaint deterministik (2x RAF)
+     C) rd:repair tek otorite
+     D) Cleanup: listener/observer/raf + map listeners clear
      ========================================================= */
-  const scheduleStuckCheck = useCallback(
+  const repaintStateRef = useRef({
+    raf1: 0,
+    raf2: 0,
+    scrollTmr: 0,
+    lastFitAt: 0,
+    lastFitKey: "",
+    inView: true,
+  });
+
+  const getScrollRootEl = useCallback(() => {
+    try {
+      const el = scrollRootRef?.current;
+      if (el) return el;
+    } catch {}
+    try {
+      return document.querySelector(".route-detail-body") || null;
+    } catch {
+      return null;
+    }
+  }, [scrollRootRef]);
+
+  const runDeterministicRepaint = useCallback(
+    (reason = "repaint") => {
+      const m = mapInstanceRef.current;
+      if (!m) return;
+
+      const g = window.google;
+      if (!g?.maps?.event?.trigger) return;
+
+      const st = repaintStateRef.current;
+
+      // inView guard (scrollEnd/IO/RO için) — rd:repair her zaman çalışsın
+      const r = String(reason || "");
+      const mustRun = r === "rd:repair" || r.startsWith("rd:repair") || r.includes("topHardReset") || r.includes("stuck");
+      if (!mustRun && st.inView === false) return;
+
+      try {
+        if (st.raf1) cancelAnimationFrame(st.raf1);
+      } catch {}
+      try {
+        if (st.raf2) cancelAnimationFrame(st.raf2);
+      } catch {}
+      st.raf1 = 0;
+      st.raf2 = 0;
+
+      st.raf1 = requestAnimationFrame(() => {
+        try {
+          g.maps.event.trigger(m, "resize");
+        } catch {}
+        st.raf2 = requestAnimationFrame(() => {
+          const mm = mapInstanceRef.current;
+          if (!mm) return;
+
+          // resize + same-set
+          try {
+            g.maps.event.trigger(mm, "resize");
+          } catch {}
+          try {
+            const c = mm.getCenter?.();
+            if (c && mm.setCenter) mm.setCenter(c);
+          } catch {}
+          try {
+            const z = mm.getZoom?.();
+            if (Number.isFinite(z) && mm.setZoom) mm.setZoom(z);
+          } catch {}
+
+          // optional fitBounds (throttle + boundsKey dedupe)
+          const b = boundsRef.current;
+          const key = String(boundsKeyRef.current || "");
+          if (b && key && key !== "none") {
+            const now = Date.now();
+            const within = now - (st.lastFitAt || 0) < 300;
+
+            if (!within && st.lastFitKey !== key) {
+              st.lastFitAt = now;
+              st.lastFitKey = key;
+              try {
+                try {
+                  mm.fitBounds(b, { top: 44, right: 44, bottom: 44, left: 44 });
+                } catch {
+                  mm.fitBounds(b);
+                }
+              } catch {}
+            }
+          }
+
+          if (process.env.NODE_ENV !== "production") {
+            try {
+              // eslint-disable-next-line no-console
+              console.debug("[RD_MAP][repaint]", { routeId: String(routeId || ""), reason: r });
+            } catch {}
+          }
+        });
+      });
+    },
+    [routeId]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const state = repaintStateRef.current;
+
+    let scrollEl = null;
+    let io = null;
+    let ro = null;
+    let rafAttach = 0;
+    let attached = false;
+
+    const cleanupAll = () => {
+      try {
+        if (rafAttach) cancelAnimationFrame(rafAttach);
+      } catch {}
+      rafAttach = 0;
+
+      try {
+        if (state.scrollTmr) clearTimeout(state.scrollTmr);
+      } catch {}
+      state.scrollTmr = 0;
+
+      try {
+        if (state.raf1) cancelAnimationFrame(state.raf1);
+      } catch {}
+      try {
+        if (state.raf2) cancelAnimationFrame(state.raf2);
+      } catch {}
+      state.raf1 = 0;
+      state.raf2 = 0;
+
+      try {
+        io?.disconnect();
+      } catch {}
+      io = null;
+
+      try {
+        ro?.disconnect();
+      } catch {}
+      ro = null;
+
+      try {
+        if (scrollEl && attached) scrollEl.removeEventListener("scroll", onScroll, { passive: true });
+      } catch {}
+      attached = false;
+      scrollEl = null;
+    };
+
+    const onScroll = () => {
+      try {
+        if (state.scrollTmr) clearTimeout(state.scrollTmr);
+      } catch {}
+      state.scrollTmr = window.setTimeout(() => {
+        state.scrollTmr = 0;
+        runDeterministicRepaint("scrollEnd");
+      }, 120);
+    };
+
+    const attach = () => {
+      scrollEl = getScrollRootEl();
+      const host = localDivRef.current;
+
+      if (!scrollEl || !host) return false;
+
+      // scroll-end
+      try {
+        scrollEl.addEventListener("scroll", onScroll, { passive: true });
+        attached = true;
+      } catch {}
+
+      // IO root = scrollEl (viewport değil)
+      try {
+        io = new IntersectionObserver(
+          (entries) => {
+            const e = entries && entries[0];
+            if (!e) return;
+            const ratio = Number(e.intersectionRatio) || 0;
+            const inView = !!(e.isIntersecting && ratio > 0.15);
+            state.inView = inView;
+            if (inView) runDeterministicRepaint("IO");
+          },
+          { root: scrollEl, threshold: [0, 0.15, 0.35, 0.6, 0.9] }
+        );
+        io.observe(host);
+      } catch {}
+
+      // RO (host size değişince repaint)
+      try {
+        ro = new ResizeObserver(() => {
+          runDeterministicRepaint("RO");
+        });
+        ro.observe(host);
+      } catch {}
+
+      return true;
+    };
+
+    const retryAttach = () => {
+      // birkaç frame içinde body ref geç gelebilir
+      let tries = 0;
+      const step = () => {
+        tries += 1;
+        if (attach()) return;
+        if (tries < 40) {
+          rafAttach = requestAnimationFrame(step);
+        }
+      };
+      rafAttach = requestAnimationFrame(step);
+    };
+
+    cleanupAll();
+    retryAttach();
+
+    return () => {
+      cleanupAll();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId, getScrollRootEl, runDeterministicRepaint]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handler = (e) => {
+      const reason = String(e?.detail?.reason || "rd:repair");
+      runDeterministicRepaint(`rd:repair:${reason}`);
+    };
+
+    try {
+      window.addEventListener("rd:repair", handler);
+    } catch {}
+
+    return () => {
+      try {
+        window.removeEventListener("rd:repair", handler);
+      } catch {}
+    };
+  }, [runDeterministicRepaint]);
+
+  // ✅ Leak stopper cleanup: routeId değişiminde / unmount’ta map listener temizliği + refs null
+  useEffect(() => {
+    return () => {
+      const m = mapInstanceRef.current;
+      try {
+        if (m && window.google?.maps?.event?.clearInstanceListeners) {
+          window.google.maps.event.clearInstanceListeners(m);
+        }
+      } catch {}
+      try {
+        mapInstanceRef.current = null;
+      } catch {}
+      try {
+        setMapInstance(null);
+      } catch {}
+
+      try {
+        // overlay objelerini de bırak
+        if (polylineRef.current) polylineRef.current.setMap(null);
+        if (glowRef.current) glowRef.current.setMap(null);
+        if (startMarkerRef.current) startMarkerRef.current.setMap(null);
+        if (endMarkerRef.current) endMarkerRef.current.setMap(null);
+      } catch {}
+      polylineRef.current = null;
+      glowRef.current = null;
+      startMarkerRef.current = null;
+      endMarkerRef.current = null;
+
+      // softRepair timer/raf cleanup
+      try {
+        if (repairRef.current.raf) cancelAnimationFrame(repairRef.current.raf);
+      } catch {}
+      try {
+        if (repairRef.current.tmr) clearTimeout(repairRef.current.tmr);
+      } catch {}
+      repairRef.current.raf = 0;
+      repairRef.current.tmr = 0;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId]);
+
+  /* =========================================================
+     ✅ (opsiyonel) mismatch görürse softRepair (remount yok)
+     ========================================================= */
+  const scheduleSoftMismatchRepair = useCallback(
     (why = "tick") => {
       if (!hostAttached) return;
       if (!mapInstanceRef.current) return;
@@ -1259,6 +1514,8 @@ export default function RouteDetailMapPreviewShell({
       const host = localDivRef.current;
       if (!host) return;
 
+      const keyNow = String(boundsKeyRef.current || "");
+
       const sig = (() => {
         let r;
         try {
@@ -1268,7 +1525,7 @@ export default function RouteDetailMapPreviewShell({
         }
         const w = Math.round(r?.width || 0);
         const h = Math.round(r?.height || 0);
-        return `${String(routeId || "")}|${w}x${h}|${String(why || "")}|${String(mapEpoch)}|${String(boundsKey)}`;
+        return `${String(routeId || "")}|${w}x${h}|${String(why || "")}|${keyNow}`;
       })();
 
       if (repairRef.current.lastSig !== sig) {
@@ -1293,15 +1550,15 @@ export default function RouteDetailMapPreviewShell({
         repairRef.current.softTries += 1;
         softRepair();
 
+        // remount yok → 2. denemeden sonra bırak
         if (repairRef.current.softTries >= 2) {
-          doRemountOnce(res.reason);
           repairRef.current.softTries = 0;
           return;
         }
 
         try {
           repairRef.current.tmr = window.setTimeout(() => {
-            scheduleStuckCheck(`after-soft:${res.reason}`);
+            scheduleSoftMismatchRepair(`after-soft:${res.reason}`);
           }, 140);
         } catch {}
       };
@@ -1314,187 +1571,18 @@ export default function RouteDetailMapPreviewShell({
         run();
       }
     },
-    [hostAttached, isError, routeId, mapEpoch, boundsKey, measureMismatch, softRepair, doRemountOnce]
+    [hostAttached, isError, routeId, measureMismatch, softRepair]
   );
 
-  // ✅ tick/ready/epoch değişimlerinde otomatik kontrol
   useEffect(() => {
     if (!isReady) return;
     if (!hostAttached) return;
-    scheduleStuckCheck("ready");
-  }, [isReady, hostAttached, mapEpoch, boundsKey, scheduleStuckCheck]);
-
-  // ✅ window / visualViewport olaylarında otomatik kontrol
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const onR = () => scheduleStuckCheck("win-resize");
-    const onO = () => scheduleStuckCheck("orientation");
-    let vv = null;
-
-    try {
-      window.addEventListener("resize", onR, { passive: true });
-      window.addEventListener("orientationchange", onO, { passive: true });
-    } catch {}
-
-    try {
-      vv = window.visualViewport || null;
-      vv?.addEventListener?.("resize", onR, { passive: true });
-      vv?.addEventListener?.("scroll", onR, { passive: true });
-    } catch {}
-
-    return () => {
-      try {
-        window.removeEventListener("resize", onR);
-        window.removeEventListener("orientationchange", onO);
-      } catch {}
-      try {
-        vv?.removeEventListener?.("resize", onR);
-        vv?.removeEventListener?.("scroll", onR);
-      } catch {}
-    };
-  }, [scheduleStuckCheck]);
+    scheduleSoftMismatchRepair("ready");
+  }, [isReady, hostAttached, boundsKey, scheduleSoftMismatchRepair]);
 
   /* =========================================================
-     ✅ PARÇA 2/5 — rd:repair listener (2x RAF + resize + same-set + optional fitBounds)
+     UI
      ========================================================= */
-  const repairEventStateRef = useRef({ raf1: 0, raf2: 0, lastFitAt: 0, lastFitKey: "" });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!mapInstance) return;
-
-    const st = repairEventStateRef.current;
-
-    const onRepair = () => {
-      const mapNow = mapInstanceRef.current;
-      if (!mapNow) return;
-
-      try {
-        if (st.raf1) cancelAnimationFrame(st.raf1);
-      } catch {}
-      try {
-        if (st.raf2) cancelAnimationFrame(st.raf2);
-      } catch {}
-      st.raf1 = 0;
-      st.raf2 = 0;
-
-      st.raf1 = requestAnimationFrame(() => {
-        st.raf2 = requestAnimationFrame(() => {
-          const m = mapInstanceRef.current;
-          if (!m) return;
-
-          // 1) resize trigger
-          try {
-            if (window.google?.maps?.event?.trigger) window.google.maps.event.trigger(m, "resize");
-          } catch {}
-
-          // 2) center/zoom same-set repaint (safe)
-          try {
-            const c = m.getCenter?.();
-            if (c && m.setCenter) m.setCenter(c);
-          } catch {}
-          try {
-            const z = m.getZoom?.();
-            if (Number.isFinite(z) && m.setZoom) m.setZoom(z);
-          } catch {}
-
-          // 3) bounds varsa fit (throttle/dedupe)
-          const b = boundsRef.current;
-          const key = String(boundsKey || "");
-          if (!b) return;
-
-          const now = Date.now();
-          const within = now - (st.lastFitAt || 0) < 300;
-
-          // boundsKey değişmediyse: sadece resize (fit yok)
-          if (st.lastFitKey === key) return;
-
-          // 300ms pencerede max 1 fitBounds
-          if (within) return;
-
-          st.lastFitAt = now;
-
-          try {
-            // fit başarılı olursa key’yi güncelle
-            try {
-              m.fitBounds(b, { top: 44, right: 44, bottom: 44, left: 44 });
-            } catch {
-              m.fitBounds(b);
-            }
-            st.lastFitKey = key;
-          } catch {}
-        });
-      });
-    };
-
-    try {
-      window.addEventListener("rd:repair", onRepair);
-    } catch {}
-
-    return () => {
-      try {
-        window.removeEventListener("rd:repair", onRepair);
-      } catch {}
-      try {
-        if (st.raf1) cancelAnimationFrame(st.raf1);
-      } catch {}
-      try {
-        if (st.raf2) cancelAnimationFrame(st.raf2);
-      } catch {}
-      st.raf1 = 0;
-      st.raf2 = 0;
-    };
-  }, [mapInstance, boundsKey]);
-
-  // ✅ EMİR 02 — DEBUG HOOK (aliases + manual remount)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if (!mapInstance) {
-      try {
-        if (window.__RD_MAP) window.__RD_MAP = null;
-        if (window.__RD_MAP__) window.__RD_MAP__ = null;
-        if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
-        if (window.__RD_MAP_FORCE__) window.__RD_MAP_FORCE__ = null;
-        if (window.__RD_MAP_REMOUNT__) window.__RD_MAP_REMOUNT__ = null;
-      } catch {}
-      return;
-    }
-
-    try {
-      window.__RD_MAP = mapInstance;
-      window.__RD_MAP__ = mapInstance;
-
-      const force = () => {
-        try {
-          softRepair();
-        } catch {}
-      };
-
-      window.__RD_MAP_FORCE = force;
-      window.__RD_MAP_FORCE__ = force;
-
-      window.__RD_MAP_REMOUNT__ = () => {
-        try {
-          doRemountOnce("manual");
-        } catch {}
-      };
-    } catch {}
-
-    return () => {
-      try {
-        if (window.__RD_MAP === mapInstance) window.__RD_MAP = null;
-        if (window.__RD_MAP__ === mapInstance) window.__RD_MAP__ = null;
-      } catch {}
-      try {
-        if (window.__RD_MAP_FORCE) window.__RD_MAP_FORCE = null;
-        if (window.__RD_MAP_FORCE__) window.__RD_MAP_FORCE__ = null;
-        if (window.__RD_MAP_REMOUNT__) window.__RD_MAP_REMOUNT__ = null;
-      } catch {}
-    };
-  }, [mapInstance, softRepair, doRemountOnce]);
-
   const locationLabel = useMemo(() => {
     const fromProp = String(areaLabel || "").trim();
     const picked = stopsLoaded ? pickLocationLabelFromStops(stops) : "";
@@ -1634,10 +1722,10 @@ export default function RouteDetailMapPreviewShell({
       data-points={(points && points.length) || 0}
       data-hasmapid={hasMapId ? "1" : "0"}
       data-hostattached={hostAttached ? "1" : "0"}
-      data-epoch={String(mapEpoch)}
+      data-epoch={"0"}
     >
       <div
-        key={`rdmps-map-${String(routeId || "0")}-${String(mapEpoch)}`}
+        // ✅ WebGL leak stopper: key sabit (remount yok)
         className="rdmps-map"
         ref={setDivRef}
         data-ready-tick={mapReadyTick}

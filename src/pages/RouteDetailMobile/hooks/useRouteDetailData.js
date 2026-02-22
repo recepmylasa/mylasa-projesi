@@ -86,6 +86,17 @@ export default function useRouteDetailData({
     }
   }, []);
 
+  const isUnauth = useCallback((e) => {
+    try {
+      const code = String(e?.code || "").toLowerCase();
+      const msg = String(e?.message || "").toLowerCase();
+      const text = `${code} ${msg}`;
+      return text.includes("unauthenticated") || text.includes("auth") || text.includes("login");
+    } catch {
+      return false;
+    }
+  }, []);
+
   const buildOwnerPreviewFromRoute = useCallback((d, ownerId) => {
     try {
       const m = d || {};
@@ -290,8 +301,7 @@ export default function useRouteDetailData({
       } catch (e) {
         const code = String(e?.code || e?.message || "");
         if (!alive) return;
-        if (code.includes("permission") || code.includes("denied"))
-          setPermError("forbidden");
+        if (code.includes("permission") || code.includes("denied")) setPermError("forbidden");
         else setPermError(null);
       } finally {
         if (!alive) return;
@@ -341,25 +351,92 @@ export default function useRouteDetailData({
     setReloadTick((x) => x + 1);
   }, []);
 
+  // ✅ console dedupe: permission errors (route/stops/comments)
+  const permLogOnceRef = useRef({
+    route: false,
+    stops: false,
+    comments: false,
+    unauthComments: false,
+  });
+
   // comments count watch
   useEffect(() => {
     if (!routeId) return;
     if (!permChecked) return;
 
-    if (
-      permError === "forbidden" ||
-      permError === "private" ||
-      permError === "not-found"
-    )
-      return;
+    if (permError === "forbidden" || permError === "private" || permError === "not-found") return;
 
     let unsubscribe;
+
+    const onCount = (cnt) => setCommentsCount(typeof cnt === "number" ? cnt : 0);
+
+    // ✅ errorCb: permission-denied / unauthenticated → unsubscribe + graceful degrade
+    const onErr = (err) => {
+      const denied = isPermDenied(err);
+      const unauth = !denied && isUnauth(err);
+
+      if (denied) {
+        if (!permLogOnceRef.current.comments) {
+          permLogOnceRef.current.comments = true;
+          if (process.env.NODE_ENV !== "production") {
+            try {
+              // eslint-disable-next-line no-console
+              console.warn("[RouteDetailMobile] commentsCount permission-denied (silenced)", err);
+            } catch {}
+          }
+        }
+        try {
+          setCommentsCount(0);
+        } catch {}
+        try {
+          if (typeof unsubscribe === "function") unsubscribe();
+        } catch {}
+        return;
+      }
+
+      if (unauth) {
+        if (!permLogOnceRef.current.unauthComments) {
+          permLogOnceRef.current.unauthComments = true;
+          if (process.env.NODE_ENV !== "production") {
+            try {
+              // eslint-disable-next-line no-console
+              console.warn("[RouteDetailMobile] commentsCount unauthenticated (silenced)", err);
+            } catch {}
+          }
+        }
+        try {
+          setCommentsCount(0);
+        } catch {}
+        try {
+          if (typeof unsubscribe === "function") unsubscribe();
+        } catch {}
+        return;
+      }
+
+      // non-perm: 1 kez logla, sessiz fallback
+      if (!permLogOnceRef.current.comments && process.env.NODE_ENV !== "production") {
+        permLogOnceRef.current.comments = true;
+        try {
+          // eslint-disable-next-line no-console
+          console.warn("[RouteDetailMobile] commentsCount snapshot error (silenced)", err);
+        } catch {}
+      }
+      try {
+        setCommentsCount((prev) => (typeof prev === "number" ? prev : 0));
+      } catch {}
+    };
+
     try {
+      // ✅ extra arg güvenli: watchCommentsCount desteklemiyorsa görmezden gelir
       unsubscribe = watchCommentsCount(
         { targetType: "route", targetId: routeId },
-        (cnt) => setCommentsCount(typeof cnt === "number" ? cnt : 0)
+        onCount,
+        { label: "RouteDetailMobile:watchCommentsCount", onError: onErr }
       );
-    } catch {}
+    } catch (e) {
+      onErr(e);
+    }
+
     return () => {
       if (typeof unsubscribe === "function") {
         try {
@@ -368,7 +445,7 @@ export default function useRouteDetailData({
       }
     };
     // ✅ authUid eklendi: login/logout olunca sayaç watcher yeniden kurulsun
-  }, [routeId, reloadTick, permError, permChecked, authUid]);
+  }, [routeId, reloadTick, permError, permChecked, authUid, isPermDenied, isUnauth]);
 
   /**
    * ✅ Owner fetch (soft timeout 1500ms)
@@ -386,8 +463,7 @@ export default function useRouteDetailData({
           const cached = getCachedOwner(key);
           if (cached) {
             setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
-            if (!setAsLockedOnly)
-              setOwner((prev) => mergeOwnerLike(prev, cached));
+            if (!setAsLockedOnly) setOwner((prev) => mergeOwnerLike(prev, cached));
           }
           return;
         }
@@ -409,8 +485,7 @@ export default function useRouteDetailData({
               const cached = getCachedOwner(key);
               if (cached) {
                 setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
-                if (!setAsLockedOnly)
-                  setOwner((prev) => mergeOwnerLike(prev, cached));
+                if (!setAsLockedOnly) setOwner((prev) => mergeOwnerLike(prev, cached));
               }
               return;
             }
@@ -434,8 +509,7 @@ export default function useRouteDetailData({
             const cached = getCachedOwner(key);
             if (cached) {
               setLockedOwnerDoc((prev) => mergeOwnerLike(prev, cached));
-              if (!setAsLockedOnly)
-                setOwner((prev) => mergeOwnerLike(prev, cached));
+              if (!setAsLockedOnly) setOwner((prev) => mergeOwnerLike(prev, cached));
             } else {
               if (!setAsLockedOnly) {
                 setOwner((prev) => {
@@ -467,12 +541,7 @@ export default function useRouteDetailData({
     if (!routeId) return;
     if (!permChecked) return;
 
-    if (
-      permError === "forbidden" ||
-      permError === "private" ||
-      permError === "not-found"
-    )
-      return;
+    if (permError === "forbidden" || permError === "private" || permError === "not-found") return;
 
     let alive = true;
 
@@ -493,10 +562,42 @@ export default function useRouteDetailData({
 
     const onSnapErr = (label) => (e) => {
       if (!alive) return;
-      if (!isPermDenied(e)) return;
+
+      const denied = isPermDenied(e);
+      const unauth = !denied && isUnauth(e);
+
+      if (!denied && !unauth) {
+        // non-perm: 1 kez logla, sessiz fallback
+        if (process.env.NODE_ENV !== "production") {
+          const key = label === "route" ? "route" : "stops";
+          if (!permLogOnceRef.current[key]) {
+            permLogOnceRef.current[key] = true;
+            try {
+              // eslint-disable-next-line no-console
+              console.warn(`[RouteDetailMobile] ${label} snapshot error (silenced)`, e);
+            } catch {}
+          }
+        }
+        return;
+      }
 
       if (deniedOnce) return;
       deniedOnce = true;
+
+      // log dedupe (1 kez)
+      if (process.env.NODE_ENV !== "production") {
+        const key = label === "route" ? "route" : "stops";
+        if (!permLogOnceRef.current[key]) {
+          permLogOnceRef.current[key] = true;
+          try {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[RouteDetailMobile] ${label} ${denied ? "permission-denied" : "unauthenticated"} (silenced)`,
+              e
+            );
+          } catch {}
+        }
+      }
 
       // UI degrade
       setPermError((prev) => (prev === "forbidden" ? prev : "forbidden"));
@@ -554,7 +655,9 @@ export default function useRouteDetailData({
         },
         { label: "RouteDetailMobile:watchRoute", onError: onSnapErr("route") }
       );
-    } catch {}
+    } catch (e) {
+      onSnapErr("route")(e);
+    }
 
     try {
       offStops = watchStops(
@@ -562,9 +665,7 @@ export default function useRouteDetailData({
         (arr) => {
           if (!alive) return;
 
-          const sorted = (arr || [])
-            .slice()
-            .sort((a, b) => (a.order || 0) - (b.order || 0));
+          const sorted = (arr || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
 
           // ✅ stops canonical (lat/lng root garantisi)
           const norm = normalizeStopsForPreview(sorted);
@@ -573,7 +674,9 @@ export default function useRouteDetailData({
         },
         { label: "RouteDetailMobile:watchStops", onError: onSnapErr("stops") }
       );
-    } catch {}
+    } catch (e) {
+      onSnapErr("stops")(e);
+    }
 
     return () => {
       alive = false;
@@ -595,28 +698,17 @@ export default function useRouteDetailData({
     getCachedOwner,
     startOwnerFetch,
     isPermDenied,
+    isUnauth,
   ]);
 
   // locked owner resolve (for forbidden/private/not-found)
   useEffect(() => {
     if (!routeId) return;
-    if (
-      !(
-        permError === "forbidden" ||
-        permError === "private" ||
-        permError === "not-found"
-      )
-    )
-      return;
+    if (!(permError === "forbidden" || permError === "private" || permError === "not-found")) return;
 
     let alive = true;
     (async () => {
-      const direct =
-        ownerHint ||
-        routeModel?.ownerId ||
-        routeModel?.owner ||
-        owner?.id ||
-        null;
+      const direct = ownerHint || routeModel?.ownerId || routeModel?.owner || owner?.id || null;
       const baseOwnerId = direct ? String(direct) : null;
 
       const fetchOwnerDocLocked = async (uid) => {
@@ -664,8 +756,7 @@ export default function useRouteDetailData({
   }, [routeId, permError, ownerHint]);
 
   const ownerIdForProfile = useMemo(() => {
-    const fromRoute =
-      routeDoc?.ownerId || initialRoute?.ownerId || initialRoute?.owner || null;
+    const fromRoute = routeDoc?.ownerId || initialRoute?.ownerId || initialRoute?.owner || null;
     return (
       (fromRoute ? String(fromRoute) : null) ||
       (owner?.id ? String(owner.id) : null) ||

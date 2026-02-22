@@ -3,13 +3,13 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./RouteDetailMobile.css";
 import "./RouteDetailMobileVitreous.css";
 
-// ✅ Tabs/Pills stilleri (yoksa bar görünmeyebilir)
+// ✅ Tabs/Pills stillleri (yoksa bar görünmeyebilir)
 import "./styles/rd.sectionTabs.css";
 
 // ✅ MAP CARD base styles
 import "./styles/rd.map.css";
 
-// ✅ hero/yazar stilleri (base)
+// ✅ hero/yazar stillleri (base)
 import "./styles/rd.hero.css";
 
 // ❌ PARÇA-1 REGRESYON RESET: premium hissiyatı bozan hardfix şimdilik kapalı
@@ -115,7 +115,7 @@ function RouteDetailStickyTabsFallback({
       style={{
         position: "sticky",
         top: 0,
-        zIndex: 90, // ✅ üstte kesin dursun (map/hero altında kalmasın)
+        zIndex: 90,
         padding: "10px 12px 10px",
         background: bg,
         borderBottom: border,
@@ -229,6 +229,12 @@ export default function RouteDetailMobile({
 
   // ✅ Main scroller ref (jitter fix: tek otorite)
   const mainBodyRef = React.useRef(null);
+
+  // ✅ PARÇA 2/5 — bodyScrollRef (scroll-end + snap-end otoritesi + MapPreviewShell'e passthrough)
+  const bodyScrollRef = React.useRef(null);
+
+  // ✅ EMİR 06 — Scroll owner tracker (body | sheet)
+  const scrollOwnerRef = React.useRef("body");
 
   // ✅ EMİR 03 (Adım 4) — Map repaint/resize otoritesi (RO/IO/VV)
   const mapCardHostRef = React.useRef(null);
@@ -367,12 +373,19 @@ export default function RouteDetailMobile({
   // ✅ EMİR — route başına 1 kere "TOP reset" mandalı (StrictMode spam kırıcı)
   const initialTopResetRef = React.useRef({ routeId: null, done: false });
 
-  // ✅ EMİR — HARD RESET px eşiği
-  const HARD_RESET_TOP_PX = 2;
+  // ✅ EMİR 04 — HARD RESET px eşiği (zoom/rounding için büyüt)
+  const HARD_RESET_TOP_PX = 12;
 
   // ✅ EMİR — “Clamp & Reset” mandalı (spam kırıcı)
   const hardFixRef = React.useRef({
     lastAtTop: true,
+  });
+
+  // ✅ EMİR 04 — TOP hard reset gate (spam breaker)
+  const topHardResetGateRef = React.useRef({
+    routeId: null,
+    lastAt: 0,
+    lastReason: "",
   });
 
   // ✅ EMİR 01 — Collapsible hero (RAF + CSS vars)
@@ -440,6 +453,38 @@ export default function RouteDetailMobile({
     [applyHeroCollapseVars]
   );
 
+  /**
+   * ✅ EMİR 04 — PARÇA 3/3
+   * Hero Vars FORCE RESET (cache breaker)
+   */
+  const forceHeroExpanded = useCallback(
+    (reason = "") => {
+      try {
+        heroCollapseRef.current.lastInputTop = -1;
+      } catch {}
+      try {
+        heroCollapseRef.current.lastAppliedKey = "";
+      } catch {}
+
+      try {
+        applyHeroCollapseVars(0); // schedule değil, direkt
+      } catch {}
+
+      try {
+        const scopeEl = sheetRef.current?.closest(".route-detail-backdrop") || sheetRef.current;
+        scopeEl?.setAttribute?.("data-hero-collapsed", "0");
+      } catch {}
+
+      if (process.env.NODE_ENV !== "production") {
+        try {
+          // eslint-disable-next-line no-console
+          console.debug("[RD][forceHeroExpanded]", { routeId: String(routeId || ""), reason: String(reason || "") });
+        } catch {}
+      }
+    },
+    [applyHeroCollapseVars, routeId]
+  );
+
   // ✅ EMİR — inline transform “temizleyici”
   const stripInlineTransform = useCallback((el) => {
     if (!el) return;
@@ -464,7 +509,456 @@ export default function RouteDetailMobile({
     } catch {}
   }, []);
 
+  // ✅ PARÇA 2/5 — Layout Repair (scroll-end + snap-end)
+  const scrollEndRef = React.useRef({ tmr: 0 });
+  const snapEndGateRef = React.useRef({ lastAt: 0 });
+
+  // ✅ EMİR 04 — snap/scroll 2. dalga gate (300ms) + timer
+  const settleSecondWaveRef = React.useRef({ lastAt: 0, tmr: 0 });
+
+  // ✅ EMİR 04 — transitionend gate (250ms)
+  const transitionEndGateRef = React.useRef({ lastAt: 0 });
+
+  // ✅ EMİR 04 — scrollTop ref (scrollEnd anında st okumak için)
+  const lastScrollTopRef = React.useRef(0);
+
+  const clearInlineLayoutStuck = useCallback((el) => {
+    if (!el) return false;
+    let changed = false;
+
+    try {
+      const t = el.style?.transform;
+      if (t && t !== "none") {
+        el.style.transform = "none";
+        changed = true;
+      }
+    } catch {}
+
+    try {
+      const tr = el.style?.translate;
+      if (tr && tr !== "none") {
+        el.style.translate = "none";
+        changed = true;
+      }
+    } catch {}
+
+    // ✅ “takılı kalmış top/left/right/bottom” inline temizliği (özellikle snap sonrası)
+    try {
+      const top = el.style?.top;
+      if (typeof top === "string" && top !== "") {
+        el.style.top = "";
+        changed = true;
+      }
+    } catch {}
+    try {
+      const bottom = el.style?.bottom;
+      if (typeof bottom === "string" && bottom !== "") {
+        el.style.bottom = "";
+        changed = true;
+      }
+    } catch {}
+    try {
+      const left = el.style?.left;
+      if (typeof left === "string" && left !== "") {
+        el.style.left = "";
+        changed = true;
+      }
+    } catch {}
+    try {
+      const right = el.style?.right;
+      if (typeof right === "string" && right !== "") {
+        el.style.right = "";
+        changed = true;
+      }
+    } catch {}
+
+    return changed;
+  }, []);
+
+  /**
+   * ✅ EMİR 04 — ForceImportantReset
+   * Top’ta computed/transform/clip-path/state takılı kalırsa JS ile !important ez.
+   */
+  const forceImportantReset = useCallback(
+    (reason = "topHardReset") => {
+      const rid = String(routeId || "");
+      const gate = topHardResetGateRef.current;
+
+      // route değişince gate reset
+      if (gate.routeId !== rid) {
+        gate.routeId = rid;
+        gate.lastAt = 0;
+        gate.lastReason = "";
+      }
+
+      const now = Date.now();
+      // çok yakın zamanda aynı reason ile koştuysa spam kır
+      if (now - (gate.lastAt || 0) < 80 && gate.lastReason === String(reason || "")) return;
+      gate.lastAt = now;
+      gate.lastReason = String(reason || "");
+
+      const sheetEl = sheetRef.current;
+      if (!sheetEl) return;
+
+      const root = sheetEl.closest?.(".route-detail-backdrop") || sheetEl;
+
+      const bodyEl =
+        bodyScrollRef.current ||
+        mainBodyRef.current ||
+        root.querySelector?.(".route-detail-body") ||
+        root.querySelector?.(".content-body") ||
+        null;
+
+      const heroEl =
+        root.querySelector?.(".route-detail-hero") ||
+        root.querySelector?.(".rd-hero") ||
+        root.querySelector?.("[data-rd-hero]") ||
+        null;
+
+      const hubEl = root.querySelector?.(".rd-hero__hub") || heroEl?.querySelector?.(".rd-hero__hub") || null;
+
+      const nodes = [sheetEl, bodyEl, heroEl, hubEl].filter(Boolean);
+
+      const imp = (el, prop, val) => {
+        try {
+          el.style.setProperty(prop, val, "important");
+        } catch {}
+      };
+
+      const maybeAutoIfInline = (el, prop) => {
+        try {
+          const v = el.style.getPropertyValue(prop);
+          if (v && String(v).trim() !== "") imp(el, prop, "auto");
+        } catch {}
+      };
+
+      nodes.forEach((el) => {
+        imp(el, "transform", "none");
+        imp(el, "translate", "none");
+        imp(el, "will-change", "auto");
+        imp(el, "contain", "none");
+        imp(el, "filter", "none");
+        imp(el, "clip-path", "none");
+        imp(el, "-webkit-clip-path", "none");
+
+        // only if inline stuck
+        maybeAutoIfInline(el, "top");
+        maybeAutoIfInline(el, "left");
+        maybeAutoIfInline(el, "right");
+        maybeAutoIfInline(el, "bottom");
+      });
+
+      try {
+        window.dispatchEvent(new CustomEvent("rd:repair", { detail: { reason: String(reason || "topHardReset") } }));
+      } catch {}
+
+      if (process.env.NODE_ENV !== "production") {
+        try {
+          // eslint-disable-next-line no-console
+          console.debug("[RD][ForceImportantReset]", { routeId: rid, reason: String(reason || "") });
+        } catch {}
+      }
+    },
+    [routeId]
+  );
+
+  /**
+   * ✅ EMİR 04 — Stuck detector (harita değil: ALT BLOK hero altına gömülmüş mü?)
+   * scrollTop <= HARD_RESET_TOP_PX iken:
+   * bodyRect.top < heroRect.bottom - 2  => stuckUnderHero
+   */
+  const isAltBlockStuckUnderHero = useCallback(() => {
+    const sheetEl = sheetRef.current;
+    if (!sheetEl) return false;
+
+    const root = sheetEl.closest?.(".route-detail-backdrop") || sheetEl;
+
+    const bodyEl =
+      bodyScrollRef.current ||
+      mainBodyRef.current ||
+      root.querySelector?.(".route-detail-body") ||
+      root.querySelector?.(".content-body") ||
+      null;
+
+    const heroEl =
+      root.querySelector?.(".route-detail-hero") ||
+      root.querySelector?.(".rd-hero") ||
+      root.querySelector?.("[data-rd-hero]") ||
+      null;
+
+    if (!bodyEl || !heroEl) return false;
+
+    const st = Math.max(0, Math.round(Number(bodyEl.scrollTop) || 0));
+    if (st > HARD_RESET_TOP_PX) return false;
+
+    let heroRect = null;
+    let bodyRect = null;
+
+    try {
+      heroRect = heroEl.getBoundingClientRect();
+      bodyRect = bodyEl.getBoundingClientRect();
+    } catch {
+      heroRect = null;
+      bodyRect = null;
+    }
+
+    if (!heroRect || !bodyRect) return false;
+
+    // body top hero bottom'un altına çıkamadıysa stuck
+    return bodyRect.top < heroRect.bottom - 2;
+  }, [HARD_RESET_TOP_PX]);
+
+  /**
+   * ✅ EMİR 05 — Reason fix:
+   * - Normal top reset’te reason boşa düşmez; forceHeroExpanded(reason) + forceImportantReset(reason)
+   *
+   * ✅ EMİR 06 — Dual Top Reset:
+   * - Top’a yakınken sheetEl.scrollTop=0 + bodyEl.scrollTop=0
+   */
+  const checkTopHardReset = useCallback(
+    (reason = "topHardReset") => {
+      const sheetEl = sheetRef.current;
+      if (!sheetEl) return;
+
+      const root = sheetEl.closest?.(".route-detail-backdrop") || sheetEl;
+      const bodyEl =
+        bodyScrollRef.current ||
+        mainBodyRef.current ||
+        root.querySelector?.(".route-detail-body") ||
+        root.querySelector?.(".content-body") ||
+        null;
+
+      const owner = String(scrollOwnerRef.current || "body");
+      const sheetSt = Math.max(0, Math.round(Number(sheetEl.scrollTop) || 0));
+      const bodySt =
+        typeof bodyEl?.scrollTop === "number" ? Math.max(0, Math.round(Number(bodyEl.scrollTop) || 0)) : null;
+
+      const st = Math.max(
+        0,
+        Math.round(
+          owner === "sheet"
+            ? sheetSt
+            : bodySt != null
+            ? bodySt
+            : typeof lastScrollTopRef.current === "number"
+            ? lastScrollTopRef.current
+            : 0
+        )
+      );
+
+      if (st > HARD_RESET_TOP_PX) return;
+
+      // ✅ EMİR 06 — dual reset (top’a yakınken ikisini birden sıfırla)
+      try {
+        sheetEl.scrollTop = 0;
+      } catch {}
+      try {
+        if (bodyEl) bodyEl.scrollTop = 0;
+      } catch {}
+
+      // ✅ stuckUnderHero → önce hero expand, sonra reset, sonra map repaint
+      if (isAltBlockStuckUnderHero()) {
+        try {
+          forceHeroExpanded("stuckUnderHero");
+        } catch {}
+        try {
+          forceImportantReset("stuckUnderHero");
+        } catch {}
+        try {
+          requestMapResize("stuckUnderHero");
+        } catch {}
+        return;
+      }
+
+      const rsn = String(reason || "topHardReset");
+
+      // ✅ normal top reset → cache breaker + important reset (reason ile!)
+      try {
+        forceHeroExpanded(rsn);
+      } catch {}
+      try {
+        forceImportantReset(rsn);
+      } catch {}
+      try {
+        requestMapResize(rsn);
+      } catch {}
+    },
+    [
+      HARD_RESET_TOP_PX,
+      isAltBlockStuckUnderHero,
+      forceHeroExpanded,
+      forceImportantReset,
+      requestMapResize,
+      scrollOwnerRef,
+    ]
+  );
+
+  /**
+   * ✅ EMİR 05 — Scroll Nudge helper (micro scroll reflow)
+   * scrollTop <= HARD_RESET_TOP_PX iken 1->0 nudge + 2x RAF, sonra checkTopHardReset + requestMapResize
+   *
+   * ✅ EMİR 06 — owner aware:
+   * - target = (owner === "sheet") ? sheetEl : bodyEl
+   * ✅ EMİR 06 — Dual Top Reset:
+   * - Top’a yakınken sheetEl.scrollTop=0 + bodyEl.scrollTop=0
+   */
+  const nudgeGateRef = React.useRef({ lastAt: 0, raf1: 0, raf2: 0 });
+
+  const nudgeScrollTopToReflow = useCallback(
+    (reason = "nudge") => {
+      const sheetEl = sheetRef.current;
+      if (!sheetEl) return;
+
+      const root = sheetEl.closest?.(".route-detail-backdrop") || sheetEl;
+      const bodyEl =
+        bodyScrollRef.current ||
+        mainBodyRef.current ||
+        root.querySelector?.(".route-detail-body") ||
+        root.querySelector?.(".content-body") ||
+        null;
+
+      const owner = String(scrollOwnerRef.current || "body");
+      const target = owner === "sheet" ? sheetEl : bodyEl;
+
+      if (!target) return;
+
+      const st = Math.max(0, Math.round(Number(target.scrollTop) || 0));
+      if (st > HARD_RESET_TOP_PX) return;
+
+      const gate = nudgeGateRef.current;
+      const now = Date.now();
+      if (now - (gate.lastAt || 0) < 300) return;
+      gate.lastAt = now;
+
+      try {
+        if (gate.raf1) cancelAnimationFrame(gate.raf1);
+      } catch {}
+      try {
+        if (gate.raf2) cancelAnimationFrame(gate.raf2);
+      } catch {}
+      gate.raf1 = 0;
+      gate.raf2 = 0;
+
+      // ✅ EMİR 06 — dual reset (top’a yakınken ikisini birden sıfırla)
+      try {
+        sheetEl.scrollTop = 0;
+      } catch {}
+      try {
+        if (bodyEl) bodyEl.scrollTop = 0;
+      } catch {}
+
+      try {
+        target.scrollTop = 1;
+      } catch {}
+
+      try {
+        gate.raf1 = requestAnimationFrame(() => {
+          gate.raf1 = 0;
+          try {
+            target.scrollTop = 0;
+          } catch {}
+
+          gate.raf2 = requestAnimationFrame(() => {
+            gate.raf2 = 0;
+
+            // ✅ dual reset tekrar (özellikle owner=sheet iken body’nin 0 kalması için)
+            try {
+              sheetEl.scrollTop = 0;
+            } catch {}
+            try {
+              if (bodyEl) bodyEl.scrollTop = 0;
+            } catch {}
+
+            try {
+              checkTopHardReset(String(reason || "nudge"));
+            } catch {}
+            try {
+              requestMapResize(String(reason || "nudge"));
+            } catch {}
+          });
+        });
+      } catch {
+        try {
+          checkTopHardReset(String(reason || "nudge"));
+        } catch {}
+        try {
+          requestMapResize(String(reason || "nudge"));
+        } catch {}
+      }
+    },
+    [HARD_RESET_TOP_PX, checkTopHardReset, requestMapResize]
+  );
+
+  useEffect(() => {
+    return () => {
+      try {
+        const g = nudgeGateRef.current;
+        if (g?.raf1) cancelAnimationFrame(g.raf1);
+        if (g?.raf2) cancelAnimationFrame(g.raf2);
+        if (g) {
+          g.raf1 = 0;
+          g.raf2 = 0;
+        }
+      } catch {}
+    };
+  }, [routeId]);
+
+  const layoutRepair = useCallback(
+    (reason = "scrollEnd") => {
+      const sheetEl = sheetRef.current;
+      const bodyEl = bodyScrollRef.current || mainBodyRef.current;
+
+      // snapEnd spam kırıcı
+      try {
+        if (String(reason) === "snapEnd") {
+          const now = Date.now();
+          if (now - (snapEndGateRef.current.lastAt || 0) < 120) return;
+          snapEndGateRef.current.lastAt = now;
+        }
+      } catch {}
+
+      // ✅ sadece inline/ güvenli temizlik
+      try {
+        clearInlineLayoutStuck(sheetEl);
+      } catch {}
+      try {
+        clearInlineLayoutStuck(bodyEl);
+      } catch {}
+      try {
+        // bazen inline transform parent'a kalıyor (sheet motor)
+        clearInlineLayoutStuck(sheetEl?.parentElement);
+      } catch {}
+
+      // ✅ 2x RAF + reflow, sonra rd:repair event
+      const dispatch = () => {
+        try {
+          window.dispatchEvent(new CustomEvent("rd:repair", { detail: { reason: String(reason || "") } }));
+        } catch {}
+      };
+
+      try {
+        window.requestAnimationFrame(() => {
+          try {
+            void sheetEl?.offsetHeight;
+            void bodyEl?.offsetHeight;
+          } catch {}
+          window.requestAnimationFrame(() => {
+            try {
+              void sheetEl?.offsetHeight;
+              void bodyEl?.offsetHeight;
+            } catch {}
+            dispatch();
+          });
+        });
+      } catch {
+        dispatch();
+      }
+    },
+    [clearInlineLayoutStuck]
+  );
+
   // ✅ EMİR — HARD RESET: scrollTop=0 iken offset/transform “zorla 0”
+  // ✅ EMİR 06 — Dual Top Reset: top’a yakınken sheetEl.scrollTop=0 + bodyEl.scrollTop=0
   const hardResetSheetMotor = useCallback(
     (reason = "") => {
       const sheetEl = sheetRef.current;
@@ -475,8 +969,26 @@ export default function RouteDetailMobile({
         sheetEl.querySelector?.(".route-detail-body") ||
         sheetEl.querySelector?.(".content-body");
 
-      const st = typeof bodyEl?.scrollTop === "number" ? bodyEl.scrollTop : 0;
+      const owner = String(scrollOwnerRef.current || "body");
+      const st = Math.max(
+        0,
+        Math.round(
+          owner === "sheet"
+            ? Number(sheetEl.scrollTop) || 0
+            : typeof bodyEl?.scrollTop === "number"
+            ? Number(bodyEl.scrollTop) || 0
+            : 0
+        )
+      );
       if (st > HARD_RESET_TOP_PX) return;
+
+      // ✅ EMİR 06 — dual reset
+      try {
+        sheetEl.scrollTop = 0;
+      } catch {}
+      try {
+        if (bodyEl) bodyEl.scrollTop = 0;
+      } catch {}
 
       const backdropEl = sheetEl.closest?.(".route-detail-backdrop") || null;
 
@@ -494,6 +1006,11 @@ export default function RouteDetailMobile({
         requestMapResize(`hardreset:${reason || "top"}`);
       } catch {}
 
+      // ✅ computed bile takılsa hard reset
+      try {
+        checkTopHardReset(`topHardReset:${String(reason || "top")}`);
+      } catch {}
+
       try {
         backdropEl?.setAttribute("data-rd-hardfix-top", "1");
         if (process.env.NODE_ENV !== "production" && reason) {
@@ -502,7 +1019,7 @@ export default function RouteDetailMobile({
         }
       } catch {}
     },
-    [HARD_RESET_TOP_PX, scheduleHeroCollapse, stripInlineTransform, requestMapResize]
+    [HARD_RESET_TOP_PX, scheduleHeroCollapse, stripInlineTransform, requestMapResize, checkTopHardReset]
   );
 
   // ✅ PARÇA 1/5 — DEV ONLY: Global dump + manual repair (console komutları)
@@ -701,6 +1218,35 @@ export default function RouteDetailMobile({
     }
   }, []);
 
+  // ✅ EMİR 06 — Sheet scroll listener (capture): owner=sheet + st update + hero collapse sync
+  useEffect(() => {
+    const sheetEl = sheetRef.current;
+    if (!sheetEl) return;
+
+    const onSheetScroll = () => {
+      try {
+        scrollOwnerRef.current = "sheet";
+      } catch {}
+      const st = Math.max(0, Math.round(Number(sheetEl.scrollTop) || 0));
+      try {
+        lastScrollTopRef.current = st;
+      } catch {}
+      try {
+        scheduleHeroCollapse(st);
+      } catch {}
+    };
+
+    try {
+      sheetEl.addEventListener("scroll", onSheetScroll, { passive: true, capture: true });
+    } catch {}
+
+    return () => {
+      try {
+        sheetEl.removeEventListener("scroll", onSheetScroll, true);
+      } catch {}
+    };
+  }, [routeId, scheduleHeroCollapse]);
+
   // ✅ PARÇA-1: TRANSFORM AVCISI + SCROLL OTORİTESİ LOGGER (debug-only)
   useEffect(() => {
     if (!RD_DEBUG) return;
@@ -774,10 +1320,7 @@ export default function RouteDetailMobile({
 
     // Scroll otoritesi: aynı anda hem sheet hem body scroll mu?
     const bodyEl =
-      mainBodyRef.current ||
-      sheetEl.querySelector?.(".route-detail-body") ||
-      sheetEl.querySelector?.(".content-body") ||
-      null;
+      mainBodyRef.current || sheetEl.querySelector?.(".route-detail-body") || sheetEl.querySelector?.(".content-body") || null;
 
     const scrollLogRef = { lastTs: 0, lastKey: "" };
     const logScroll = (src) => {
@@ -786,7 +1329,8 @@ export default function RouteDetailMobile({
 
       const sst = typeof sheetEl.scrollTop === "number" ? Math.round(sheetEl.scrollTop) : 0;
       const bst = typeof bodyEl?.scrollTop === "number" ? Math.round(bodyEl.scrollTop) : 0;
-      const key = `${src}|s:${sst}|b:${bst}`;
+      const owner = String(scrollOwnerRef.current || "");
+      const key = `${src}|owner:${owner}|s:${sst}|b:${bst}`;
       if (scrollLogRef.lastKey === key) return;
 
       scrollLogRef.lastKey = key;
@@ -878,252 +1422,6 @@ export default function RouteDetailMobile({
       }
     });
 
-    // ✅ EMİR 03 (V2) — DEV ONLY: Layout dump + Repair now (debug helper)
-    const pick = (sel) => {
-      try {
-        return rootEl.querySelector(sel);
-      } catch {
-        return null;
-      }
-    };
-
-    const rectOf = (el) => {
-      if (!el) return null;
-      try {
-        const r = el.getBoundingClientRect();
-        return {
-          x: Math.round(r.x),
-          y: Math.round(r.y),
-          top: Math.round(r.top),
-          left: Math.round(r.left),
-          right: Math.round(r.right),
-          bottom: Math.round(r.bottom),
-          width: Math.round(r.width),
-          height: Math.round(r.height),
-        };
-      } catch {
-        return null;
-      }
-    };
-
-    const styleOf = (el) => {
-      if (!el) return null;
-      try {
-        const cs = window.getComputedStyle(el);
-        return {
-          position: cs.position,
-          transform: cs.transform,
-          translate: cs.translate,
-          top: cs.top,
-          bottom: cs.bottom,
-          left: cs.left,
-          right: cs.right,
-          height: cs.height,
-          minHeight: cs.minHeight,
-          maxHeight: cs.maxHeight,
-          overflow: cs.overflow,
-          overflowX: cs.overflowX,
-          overflowY: cs.overflowY,
-          contain: cs.contain,
-          willChange: cs.willChange,
-          clipPath: cs.clipPath || cs.webkitClipPath,
-          borderRadius: cs.borderRadius,
-        };
-      } catch {
-        return null;
-      }
-    };
-
-    const nodeDump = (name, el) => {
-      if (!el) return { name, ok: false };
-      const st = typeof el.scrollTop === "number" ? Math.round(el.scrollTop) : null;
-      return {
-        name,
-        ok: true,
-        label: getLabel(el),
-        rect: rectOf(el),
-        style: styleOf(el),
-        scrollTop: st,
-        data: extractDataAttrs(el),
-      };
-    };
-
-    const dumpLayout = (label = "dump") => {
-      const backdrop = rootEl;
-      const sheet = pick(".route-detail-sheet");
-      const body = pick(".route-detail-body");
-      const hero = pick(".route-detail-hero") || pick("[data-hero-collapsed] .route-detail-hero");
-      const mapCard = pick(".rd-map-card") || pick("[data-rd-map-card='1']");
-      const mapCanvas = mapCard ? mapCard.querySelector(".rd-map-card__canvas") : null;
-      const gmStyle = mapCard ? mapCard.querySelector(".gm-style") : null;
-
-      const vv = (() => {
-        try {
-          const v = window.visualViewport;
-          if (!v) return null;
-          return {
-            width: Math.round(v.width),
-            height: Math.round(v.height),
-            scale: Number(v.scale) || 1,
-            offsetTop: Math.round(v.offsetTop || 0),
-            offsetLeft: Math.round(v.offsetLeft || 0),
-          };
-        } catch {
-          return null;
-        }
-      })();
-
-      const out = {
-        ts: Date.now(),
-        label: String(label || ""),
-        routeId: routeId || null,
-        viewport: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 },
-        visualViewport: vv,
-        atTopHint: (() => {
-          try {
-            const bst = typeof body?.scrollTop === "number" ? body.scrollTop : 0;
-            return bst <= HARD_RESET_TOP_PX;
-          } catch {
-            return null;
-          }
-        })(),
-        nodes: {
-          backdrop: nodeDump("backdrop", backdrop),
-          sheet: nodeDump("sheet", sheet),
-          hero: nodeDump("hero", hero),
-          body: nodeDump("body", body),
-          mapCard: nodeDump("mapCard", mapCard),
-          mapCanvas: nodeDump("mapCanvas", mapCanvas),
-          gmStyle: nodeDump("gmStyle", gmStyle),
-        },
-      };
-
-      try {
-        // eslint-disable-next-line no-console
-        console.groupCollapsed(`[RD_DEBUG][LAYOUT_DUMP] ${out.label} @${new Date(out.ts).toLocaleTimeString()}`);
-        // eslint-disable-next-line no-console
-        console.log(out);
-        // eslint-disable-next-line no-console
-        console.groupEnd();
-      } catch {}
-
-      try {
-        window.__RD_LAST_DUMP__ = out;
-      } catch {}
-
-      return out;
-    };
-
-    const repairNow = async (label = "repair") => {
-      const sheet = pick(".route-detail-sheet") || sheetEl;
-      const body = pick(".route-detail-body") || bodyEl;
-      const backdrop = rootEl;
-
-      try {
-        // eslint-disable-next-line no-console
-        console.groupCollapsed(`[RD_DEBUG][REPAIR_NOW] ${String(label || "")}`);
-      } catch {}
-
-      // 1) Inline transform/translate temizle
-      try {
-        stripInlineTransform(backdrop);
-      } catch {}
-      try {
-        stripInlineTransform(sheet);
-      } catch {}
-      try {
-        stripInlineTransform(body);
-      } catch {}
-      try {
-        stripInlineTransform(sheet?.parentElement);
-      } catch {}
-
-      // 2) Clip/contain “takıldıysa” DEV-ONLY gevşet (inline ile)
-      try {
-        if (sheet) {
-          sheet.style.clipPath = "none";
-          sheet.style.webkitClipPath = "none";
-          sheet.style.contain = "none";
-          sheet.style.willChange = "auto";
-        }
-      } catch {}
-      try {
-        if (body) {
-          body.style.contain = "none";
-          body.style.willChange = "auto";
-        }
-      } catch {}
-
-      // 3) 2x RAF + reflow
-      const raf = (fn) =>
-        new Promise((res) => {
-          try {
-            window.requestAnimationFrame(() => {
-              try {
-                fn?.();
-              } catch {}
-              res();
-            });
-          } catch {
-            try {
-              fn?.();
-            } catch {}
-            res();
-          }
-        });
-
-      await raf(() => {
-        try {
-          // force reflow
-          void sheet?.offsetHeight;
-          void body?.offsetHeight;
-        } catch {}
-      });
-
-      await raf(() => {
-        try {
-          void backdrop?.offsetHeight;
-        } catch {}
-      });
-
-      // 4) Hero collapse vars “0”a çek (bazen stuck)
-      try {
-        scheduleHeroCollapse(typeof body?.scrollTop === "number" ? body.scrollTop : 0);
-      } catch {}
-
-      // 5) Map resize dene (varsa)
-      try {
-        if (typeof window.__RD_MAP_FORCE__ === "function") {
-          window.__RD_MAP_FORCE__();
-        } else if (window.__RD_MAP__ && window.google?.maps?.event?.trigger) {
-          try {
-            window.google.maps.event.trigger(window.__RD_MAP__, "resize");
-          } catch {}
-          try {
-            const c = window.__RD_MAP__.getCenter?.();
-            if (c) window.__RD_MAP__.setCenter(c);
-          } catch {}
-          try {
-            const z = window.__RD_MAP__.getZoom?.();
-            if (typeof z === "number") window.__RD_MAP__.setZoom(z);
-          } catch {}
-        }
-      } catch {}
-
-      const after = dumpLayout(`after:${label}`);
-
-      try {
-        // eslint-disable-next-line no-console
-        console.log("[RD_DEBUG] repairNow complete.", after);
-      } catch {}
-      try {
-        // eslint-disable-next-line no-console
-        console.groupEnd();
-      } catch {}
-
-      return after;
-    };
-
     try {
       obs.observe(rootEl, {
         subtree: true,
@@ -1132,16 +1430,6 @@ export default function RouteDetailMobile({
       });
       // eslint-disable-next-line no-console
       console.log("[RD_DEBUG] Transform Avcısı aktif. (localStorage RD_DEBUG=1)");
-    } catch {}
-
-    // ✅ Debug exports (DEV ONLY)
-    // Not: asıl istenen komutlar __RD_DUMP__ ve __RD_REPAIR_NOW__ (üstte, dev-only) — burada debug alias’ları var.
-    try {
-      window.__RD_LAYOUT_DUMP__ = dumpLayout;
-      window.__RD_REPAIR_DEBUG__ = repairNow;
-      window.__RD_REPAIR_DEBUG = repairNow;
-      // eslint-disable-next-line no-console
-      console.log("[RD_DEBUG] Debug API: __RD_LAYOUT_DUMP__('bug'), __RD_REPAIR_DEBUG__('bug')");
     } catch {}
 
     return () => {
@@ -1161,16 +1449,43 @@ export default function RouteDetailMobile({
           if (fn) rootEl.removeEventListener(t, fn, evtOpts);
         } catch {}
       });
-
-      // ✅ cleanup — debug alias’ları
-      try {
-        delete window.__RD_LAYOUT_DUMP__;
-        delete window.__RD_REPAIR_DEBUG__;
-        delete window.__RD_REPAIR_DEBUG;
-      } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [RD_DEBUG, routeId]);
+
+  // ✅ EMİR 04 — VisualViewport resize → top reset kontrolü
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const vv = window.visualViewport || null;
+    if (!vv) return;
+
+    const onVVResize = () => {
+      try {
+        checkTopHardReset("vv-resize");
+      } catch {}
+    };
+
+    try {
+      vv.addEventListener("resize", onVVResize, { passive: true });
+    } catch {}
+
+    return () => {
+      try {
+        vv.removeEventListener("resize", onVVResize);
+      } catch {}
+    };
+  }, [routeId, checkTopHardReset]);
+
+  // ✅ EMİR 04 — snap second-wave timer cleanup
+  useEffect(() => {
+    return () => {
+      try {
+        const r = settleSecondWaveRef.current;
+        if (r?.tmr) window.clearTimeout(r.tmr);
+        if (r) r.tmr = 0;
+      } catch {}
+    };
+  }, [routeId]);
 
   // ✅ EMİR — mount/route değişince: en baştan “temiz” başla
   useEffect(() => {
@@ -1179,13 +1494,70 @@ export default function RouteDetailMobile({
       try {
         hardResetSheetMotor("mount");
       } catch {}
+      try {
+        checkTopHardReset("mount");
+      } catch {}
     });
     return () => {
       try {
         if (raf) window.cancelAnimationFrame(raf);
       } catch {}
     };
-  }, [routeId, hardResetSheetMotor]);
+  }, [routeId, hardResetSheetMotor, checkTopHardReset]);
+
+  // ✅ PARÇA 2/5 — scrollEnd debounce cleanup
+  useEffect(() => {
+    return () => {
+      try {
+        const r = scrollEndRef.current;
+        if (r?.tmr) window.clearTimeout(r.tmr);
+        if (r) r.tmr = 0;
+      } catch {}
+    };
+  }, [routeId]);
+
+  // ✅ EMİR 04 — sheet transitionend settle listener (son “settle” anı)
+  useEffect(() => {
+    const sheetEl = sheetRef.current;
+    if (!sheetEl) return;
+
+    const props = new Set(["transform", "height", "top", "margin-top", "marginTop", "padding-top", "paddingTop"]);
+
+    const onTe = (e) => {
+      const pn = String(e?.propertyName || "").trim();
+      if (!pn) return;
+      if (!props.has(pn)) return;
+
+      const now = Date.now();
+      const gate = transitionEndGateRef.current;
+      if (now - (gate.lastAt || 0) < 250) return;
+      gate.lastAt = now;
+
+      const bodyEl = bodyScrollRef.current || mainBodyRef.current;
+      const st = Math.max(0, Math.round(Number(bodyEl?.scrollTop) || Number(lastScrollTopRef.current) || 0));
+      if (st > HARD_RESET_TOP_PX) return;
+
+      // ✅ EMİR 05: transitionend’de nudge (en deterministik reflow)
+      try {
+        nudgeScrollTopToReflow("transitionend+nudge");
+      } catch {}
+
+      // yine de settle anında reason’lı reset
+      try {
+        checkTopHardReset("transitionend");
+      } catch {}
+    };
+
+    try {
+      sheetEl.addEventListener("transitionend", onTe, { passive: true });
+    } catch {}
+
+    return () => {
+      try {
+        sheetEl.removeEventListener("transitionend", onTe);
+      } catch {}
+    };
+  }, [routeId, HARD_RESET_TOP_PX, checkTopHardReset, nudgeScrollTopToReflow]);
 
   // ✅ EMİR — gesture end: top’a döndüyse offset birikimi imkansız
   useEffect(() => {
@@ -1198,6 +1570,9 @@ export default function RouteDetailMobile({
       } catch {}
       try {
         requestMapResize("gesture-end");
+      } catch {}
+      try {
+        checkTopHardReset("gesture-end");
       } catch {}
     };
 
@@ -1218,12 +1593,19 @@ export default function RouteDetailMobile({
         sheetEl.removeEventListener("mouseup", onGestureEnd, opts);
       } catch {}
     };
-  }, [routeId, hardResetSheetMotor, requestMapResize]);
+  }, [routeId, hardResetSheetMotor, requestMapResize, checkTopHardReset]);
 
-  // ✅ EMİR — scroll handler
+  // ✅ EMİR — scroll handler (+ PARÇA 2/5 scrollEnd debounce)
   const handleBodyScroll = useCallback(
     (e) => {
+      // ✅ EMİR 06 — owner=body
+      try {
+        scrollOwnerRef.current = "body";
+      } catch {}
+
       const st = Math.max(0, Math.round(Number(e?.currentTarget?.scrollTop) || 0));
+      lastScrollTopRef.current = st;
+
       scheduleHeroCollapse(st);
 
       const atTop = st <= HARD_RESET_TOP_PX;
@@ -1234,6 +1616,10 @@ export default function RouteDetailMobile({
         try {
           requestMapResize("scroll@top");
         } catch {}
+        // ✅ top’ta computed bile takılsa hard reset
+        try {
+          checkTopHardReset("scroll@top");
+        } catch {}
       }
 
       if (ref.lastAtTop !== atTop) {
@@ -1243,9 +1629,79 @@ export default function RouteDetailMobile({
           if (backdropEl) backdropEl.setAttribute("data-rd-at-top", atTop ? "1" : "0");
         } catch {}
       }
+
+      // ✅ 120ms debounce ile “scroll end”
+      try {
+        const r = scrollEndRef.current;
+        if (r?.tmr) window.clearTimeout(r.tmr);
+        r.tmr = window.setTimeout(() => {
+          try {
+            r.tmr = 0;
+          } catch {}
+
+          layoutRepair("scrollEnd");
+
+          const stNow = Math.max(0, Math.round(Number(lastScrollTopRef.current) || 0));
+          if (stNow <= HARD_RESET_TOP_PX) {
+            // ✅ EMİR 05: scroll end’de nudge
+            try {
+              nudgeScrollTopToReflow("scrollEnd+nudge");
+            } catch {}
+            // ayrıca reason’lı reset
+            try {
+              checkTopHardReset("scrollEnd");
+            } catch {}
+          }
+        }, 120);
+      } catch {}
     },
-    [HARD_RESET_TOP_PX, hardResetSheetMotor, scheduleHeroCollapse, requestMapResize]
+    [
+      HARD_RESET_TOP_PX,
+      hardResetSheetMotor,
+      scheduleHeroCollapse,
+      requestMapResize,
+      layoutRepair,
+      checkTopHardReset,
+      nudgeScrollTopToReflow,
+    ]
   );
+
+  // ✅ Snap-End + 2. dalga reset (+160ms) (spam breaker 300ms)
+  const handleSnapEnd = useCallback(() => {
+    try {
+      layoutRepair("snapEnd");
+    } catch {}
+
+    try {
+      checkTopHardReset("snapEnd");
+    } catch {}
+
+    // 2. dalga (settle)
+    const now = Date.now();
+    const gate = settleSecondWaveRef.current;
+    if (now - (gate.lastAt || 0) < 300) return;
+    gate.lastAt = now;
+
+    try {
+      if (gate.tmr) window.clearTimeout(gate.tmr);
+    } catch {}
+    gate.tmr = window.setTimeout(() => {
+      try {
+        forceHeroExpanded("snapEnd+160");
+      } catch {}
+      try {
+        checkTopHardReset("snapEnd+160");
+      } catch {}
+      try {
+        requestMapResize("snapEnd+160");
+      } catch {}
+
+      // ✅ EMİR 05: snap-end ikinci dalgada nudge
+      try {
+        nudgeScrollTopToReflow("snapEnd+nudge");
+      } catch {}
+    }, 160);
+  }, [layoutRepair, checkTopHardReset, forceHeroExpanded, requestMapResize, nudgeScrollTopToReflow]);
 
   useEffect(() => {
     scheduleHeroCollapse(0);
@@ -1319,7 +1775,7 @@ export default function RouteDetailMobile({
 
   const routeModel = routeDoc || initialRoute;
 
-  // ✅ EMİR — route doc geldikten sonra 1 kez “TOP reset” (deep-link varsa dokunma)
+  // ✅ route doc geldikten sonra 1 kez “TOP reset” (deep-link varsa dokunma)
   useEffect(() => {
     if (!routeId) return;
     if (!routeDoc) return;
@@ -1339,10 +1795,7 @@ export default function RouteDetailMobile({
 
     const sheetEl = sheetRef.current;
     const bodyEl =
-      mainBodyRef.current ||
-      sheetEl?.querySelector?.(".route-detail-body") ||
-      sheetEl?.querySelector?.(".content-body") ||
-      null;
+      mainBodyRef.current || sheetEl?.querySelector?.(".route-detail-body") || sheetEl?.querySelector?.(".content-body") || null;
 
     if (!bodyEl) return;
 
@@ -1360,6 +1813,12 @@ export default function RouteDetailMobile({
       try {
         requestMapResize("route-ready");
       } catch {}
+      try {
+        checkTopHardReset("route-ready");
+      } catch {}
+      try {
+        nudgeScrollTopToReflow("route-ready+nudge");
+      } catch {}
     });
 
     return () => {
@@ -1367,7 +1826,16 @@ export default function RouteDetailMobile({
         if (raf) window.cancelAnimationFrame(raf);
       } catch {}
     };
-  }, [routeId, routeDoc, tab, scheduleHeroCollapse, hardResetSheetMotor, requestMapResize]);
+  }, [
+    routeId,
+    routeDoc,
+    tab,
+    scheduleHeroCollapse,
+    hardResetSheetMotor,
+    requestMapResize,
+    checkTopHardReset,
+    nudgeScrollTopToReflow,
+  ]);
 
   const rawPath = useMemo(() => {
     const m = routeDoc || initialRoute || {};
@@ -1376,10 +1844,7 @@ export default function RouteDetailMobile({
 
   const { pts: pathPts, dropped: pathDropped } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
 
-  const { stops: stopsForPreview, dropped: stopsDropped } = useMemo(
-    () => normalizeStopsForPreview(stops || []),
-    [stops]
-  );
+  const { stops: stopsForPreview, dropped: stopsDropped } = useMemo(() => normalizeStopsForPreview(stops || []), [stops]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -1456,9 +1921,7 @@ export default function RouteDetailMobile({
     const visitedCount = Number(ghostMetrics?.visitedCount) || 0;
 
     const completion =
-      typeof ghostMetrics?.completion === "number" && Number.isFinite(ghostMetrics.completion)
-        ? ghostMetrics.completion
-        : 0;
+      typeof ghostMetrics?.completion === "number" && Number.isFinite(ghostMetrics.completion) ? ghostMetrics.completion : 0;
 
     const pct = Math.max(0, Math.min(1, completion));
     const pctText = Math.round(pct * 100);
@@ -1500,9 +1963,7 @@ export default function RouteDetailMobile({
         )}
 
         <div className="route-detail-quest-metrics">
-          <span className={`route-detail-quest-pill ${offRoute ? "route-detail-quest-pill--warn" : ""}`}>
-            Sapma: {distText}
-          </span>
+          <span className={`route-detail-quest-pill ${offRoute ? "route-detail-quest-pill--warn" : ""}`}>Sapma: {distText}</span>
           <span className="route-detail-quest-pill">
             Checkpoint: {visitedCount}/{total || "—"}
           </span>
@@ -1541,18 +2002,7 @@ export default function RouteDetailMobile({
         )}
       </div>
     );
-  }, [
-    V3_ENABLED,
-    pathPts,
-    stopsForPreview,
-    ghostMetrics,
-    questState,
-    questLocLine,
-    startQuest,
-    stopQuest,
-    finishQuest,
-    authUid,
-  ]);
+  }, [V3_ENABLED, pathPts, stopsForPreview, ghostMetrics, questState, questLocLine, startQuest, stopQuest, finishQuest, authUid]);
 
   const {
     mediaCacheRef,
@@ -1579,19 +2029,32 @@ export default function RouteDetailMobile({
       try {
         mainBodyRef.current = el;
       } catch {}
+      try {
+        bodyScrollRef.current = el;
+      } catch {}
+
+      // ✅ EMİR 06 — body attach anında owner=body
+      try {
+        scrollOwnerRef.current = "body";
+      } catch {}
 
       try {
         const st = typeof el?.scrollTop === "number" ? el.scrollTop : 0;
+        lastScrollTopRef.current = Math.max(0, Math.round(Number(st) || 0));
+
         scheduleHeroCollapse(st);
         if (st <= HARD_RESET_TOP_PX) {
           hardResetSheetMotor("body-ref");
           try {
             requestMapResize("body-ref");
           } catch {}
+          try {
+            checkTopHardReset("body-ref");
+          } catch {}
         }
       } catch {}
     },
-    [routeBodyRef, scheduleHeroCollapse, HARD_RESET_TOP_PX, hardResetSheetMotor, requestMapResize]
+    [routeBodyRef, scheduleHeroCollapse, HARD_RESET_TOP_PX, hardResetSheetMotor, requestMapResize, checkTopHardReset]
   );
 
   const {
@@ -1926,6 +2389,9 @@ export default function RouteDetailMobile({
             overscrollBehavior: "contain",
           }}
           onScroll={handleBodyScroll}
+          onPointerUp={handleSnapEnd}
+          onTouchEnd={handleSnapEnd}
+          onTouchCancel={handleSnapEnd}
         >
           <RouteDetailStickyTabsFallback
             activeTab={activeTabKey}
@@ -1954,6 +2420,8 @@ export default function RouteDetailMobile({
               stopsLoaded={stopsLoaded}
               mapBadgeCount={heroModel.mapBadgeCount}
               mapAreaLabel={heroModel.mapAreaLabel}
+              // ✅ MapPreviewShell’e gerçek root paslanıyor
+              scrollRootRef={bodyScrollRef}
             />
           </div>
 
