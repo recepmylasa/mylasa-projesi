@@ -42,6 +42,11 @@
   }
 }
 
+/* ✅ EMİR 31/P2 — Flow spacer (default kapalı; simple-scroll modda açılır) */
+.rd-hero__flowSpacer {
+  display: none;
+}
+
 /* Ambient copper glow */
 .route-detail-hero::before {
   content: "";
@@ -266,6 +271,8 @@
   font-weight: 700;
   color: var(--rd-muted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* =========================================================
@@ -728,4 +735,55 @@
 .route-detail-backdrop .route-detail-sheet {
   position: relative !important;
   z-index: 10 !important;
+}
+
+/* =========================================================
+   ✅ EMİR 31/P2 — SIMPLE SCROLL: OVERLAY BİNDİRMEYİ KÖKTEN KES
+   - Hub artık absolute değil → flow içinde (hero alanı gerçek yükseklik kaplar)
+   - Body padding-top overlap yok (hub overlap kapalı)
+   ========================================================= */
+
+.route-detail-backdrop[data-simple-scroll="1"] {
+  --rd-hero-hub-overlap: 0px;
+}
+
+.route-detail-backdrop[data-simple-scroll="1"] .route-detail-hero {
+  height: auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.route-detail-backdrop[data-simple-scroll="1"] .rd-hero__flowSpacer {
+  display: block !important;
+  height: var(--rd-hero-h, clamp(300px, 56vh, 540px)) !important;
+  flex: 0 0 auto !important;
+}
+
+@supports (height: 100dvh) {
+  .route-detail-backdrop[data-simple-scroll="1"] .rd-hero__flowSpacer {
+    height: var(--rd-hero-h, clamp(300px, 56dvh, 540px)) !important;
+  }
+}
+
+.route-detail-backdrop[data-simple-scroll="1"] .rd-hero__hub {
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  translate: none !important;
+  will-change: auto !important;
+
+  width: auto !important;
+  max-width: none !important;
+  align-self: stretch !important;
+
+  margin: 14px 20px 12px !important;
+  z-index: 5 !important;
+}
+
+.route-detail-backdrop[data-simple-scroll="1"] .route-detail-body {
+  padding-top: 0 !important;
 }

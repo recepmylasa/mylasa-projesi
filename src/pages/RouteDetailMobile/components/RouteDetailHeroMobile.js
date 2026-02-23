@@ -103,6 +103,9 @@ export default function RouteDetailHeroMobile({
       <div className="rd-hero__overlay rd-hero__overlay--top" />
       <div className="rd-hero__overlay rd-hero__overlay--bottom" />
 
+      {/* ✅ EMİR 31/P2 — Simple scroll modda hero’nun flow alanını garanti eden spacer (CSS’de sadece o modda aktif) */}
+      <div className="rd-hero__flowSpacer" aria-hidden="true" />
+
       <div className="route-detail-hero__nav" onClick={(e) => e.stopPropagation()}>
         <div className="rd-hero-nav-left">
           <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onClose} title="Geri">
@@ -329,7 +332,6 @@ export default function RouteDetailHeroMobile({
                 aria-hidden="true"
                 focusable="false"
               >
-                {/* ✅ Valid path (arc yok) */}
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
               </svg>
             </span>

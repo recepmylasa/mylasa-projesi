@@ -63,6 +63,9 @@ import RouteDetailOverlaysMobile from "./components/RouteDetailOverlaysMobile";
 // ✅ Backward compatibility export’ları (IMPORTLAR BİTTİKTEN SONRA!)
 export { formatTimeAgo, formatCount, formatDateTR } from "./routeDetailCompat";
 
+// ✅ EMİR 31/P1 — Simple scroll scope flag (CSS: data-simple-scroll)
+const RD_SIMPLE_SCROLL = true;
+
 /**
  * ✅ FALLBACK STICKY TABS
  */
@@ -109,12 +112,16 @@ function RouteDetailStickyTabsFallback({
   const pillActiveBg = isLight ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.92)";
   const pillActiveText = isLight ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.92)";
 
+  // ✅ EMİR 31/P2 — Simple scroll modda sticky kapat (inline style olduğu için JS’ten garantile)
+  const tabsPosition = RD_SIMPLE_SCROLL ? "static" : "sticky";
+  const tabsTop = RD_SIMPLE_SCROLL ? "auto" : 0;
+
   return (
     <div
       ref={tabsBarRef}
       style={{
-        position: "sticky",
-        top: 0,
+        position: tabsPosition,
+        top: tabsTop,
         zIndex: 90,
         padding: "10px 12px 10px",
         background: bg,
@@ -399,6 +406,9 @@ export default function RouteDetailMobile({
   const clamp01 = (n) => Math.max(0, Math.min(1, n));
 
   const applyHeroCollapseVars = useCallback((scrollTop) => {
+    // ✅ EMİR 31/P2 — Simple Scroll modda collapse motoru KAPALI
+    if (RD_SIMPLE_SCROLL) return;
+
     const st = Math.max(0, Math.round(Number(scrollTop) || 0));
 
     const H_MAX = 500;
@@ -436,6 +446,9 @@ export default function RouteDetailMobile({
 
   const scheduleHeroCollapse = useCallback(
     (scrollTop) => {
+      // ✅ EMİR 31/P2 — Simple Scroll modda collapse motoru KAPALI
+      if (RD_SIMPLE_SCROLL) return;
+
       const st = Math.max(0, Math.round(Number(scrollTop) || 0));
       const ref = heroCollapseRef.current;
 
@@ -459,6 +472,9 @@ export default function RouteDetailMobile({
    */
   const forceHeroExpanded = useCallback(
     (reason = "") => {
+      // ✅ EMİR 31/P2 — Simple Scroll modda force/reset KAPALI
+      if (RD_SIMPLE_SCROLL) return;
+
       try {
         heroCollapseRef.current.lastInputTop = -1;
       } catch {}
@@ -577,14 +593,15 @@ export default function RouteDetailMobile({
 
   /**
    * ✅ EMİR 04 — ForceImportantReset
-   * Top’ta computed/transform/clip-path/state takılı kalırsa JS ile !important ez.
    */
   const forceImportantReset = useCallback(
     (reason = "topHardReset") => {
+      // ✅ EMİR 31/P2 — Simple Scroll modda reset motoru KAPALI
+      if (RD_SIMPLE_SCROLL) return;
+
       const rid = String(routeId || "");
       const gate = topHardResetGateRef.current;
 
-      // route değişince gate reset
       if (gate.routeId !== rid) {
         gate.routeId = rid;
         gate.lastAt = 0;
@@ -592,7 +609,6 @@ export default function RouteDetailMobile({
       }
 
       const now = Date.now();
-      // çok yakın zamanda aynı reason ile koştuysa spam kır
       if (now - (gate.lastAt || 0) < 80 && gate.lastReason === String(reason || "")) return;
       gate.lastAt = now;
       gate.lastReason = String(reason || "");
@@ -641,7 +657,6 @@ export default function RouteDetailMobile({
         imp(el, "clip-path", "none");
         imp(el, "-webkit-clip-path", "none");
 
-        // only if inline stuck
         maybeAutoIfInline(el, "top");
         maybeAutoIfInline(el, "left");
         maybeAutoIfInline(el, "right");
@@ -662,12 +677,10 @@ export default function RouteDetailMobile({
     [routeId]
   );
 
-  /**
-   * ✅ EMİR 04 — Stuck detector (harita değil: ALT BLOK hero altına gömülmüş mü?)
-   * scrollTop <= HARD_RESET_TOP_PX iken:
-   * bodyRect.top < heroRect.bottom - 2  => stuckUnderHero
-   */
   const isAltBlockStuckUnderHero = useCallback(() => {
+    // ✅ EMİR 31/P2 — Simple Scroll modda stuck detector kullanılmıyor
+    if (RD_SIMPLE_SCROLL) return false;
+
     const sheetEl = sheetRef.current;
     if (!sheetEl) return false;
 
@@ -704,19 +717,14 @@ export default function RouteDetailMobile({
 
     if (!heroRect || !bodyRect) return false;
 
-    // body top hero bottom'un altına çıkamadıysa stuck
     return bodyRect.top < heroRect.bottom - 2;
   }, [HARD_RESET_TOP_PX]);
 
-  /**
-   * ✅ EMİR 05 — Reason fix:
-   * - Normal top reset’te reason boşa düşmez; forceHeroExpanded(reason) + forceImportantReset(reason)
-   *
-   * ✅ EMİR 06 — Dual Top Reset:
-   * - Top’a yakınken sheetEl.scrollTop=0 + bodyEl.scrollTop=0
-   */
   const checkTopHardReset = useCallback(
     (reason = "topHardReset") => {
+      // ✅ EMİR 31/P2 — Simple Scroll modda reset motoru KAPALI
+      if (RD_SIMPLE_SCROLL) return;
+
       const sheetEl = sheetRef.current;
       if (!sheetEl) return;
 
@@ -748,7 +756,6 @@ export default function RouteDetailMobile({
 
       if (st > HARD_RESET_TOP_PX) return;
 
-      // ✅ EMİR 06 — dual reset (top’a yakınken ikisini birden sıfırla)
       try {
         sheetEl.scrollTop = 0;
       } catch {}
@@ -756,7 +763,6 @@ export default function RouteDetailMobile({
         if (bodyEl) bodyEl.scrollTop = 0;
       } catch {}
 
-      // ✅ stuckUnderHero → önce hero expand, sonra reset, sonra map repaint
       if (isAltBlockStuckUnderHero()) {
         try {
           forceHeroExpanded("stuckUnderHero");
@@ -772,7 +778,6 @@ export default function RouteDetailMobile({
 
       const rsn = String(reason || "topHardReset");
 
-      // ✅ normal top reset → cache breaker + important reset (reason ile!)
       try {
         forceHeroExpanded(rsn);
       } catch {}
@@ -793,19 +798,13 @@ export default function RouteDetailMobile({
     ]
   );
 
-  /**
-   * ✅ EMİR 05 — Scroll Nudge helper (micro scroll reflow)
-   * scrollTop <= HARD_RESET_TOP_PX iken 1->0 nudge + 2x RAF, sonra checkTopHardReset + requestMapResize
-   *
-   * ✅ EMİR 06 — owner aware:
-   * - target = (owner === "sheet") ? sheetEl : bodyEl
-   * ✅ EMİR 06 — Dual Top Reset:
-   * - Top’a yakınken sheetEl.scrollTop=0 + bodyEl.scrollTop=0
-   */
   const nudgeGateRef = React.useRef({ lastAt: 0, raf1: 0, raf2: 0 });
 
   const nudgeScrollTopToReflow = useCallback(
     (reason = "nudge") => {
+      // ✅ EMİR 31/P2 — Simple Scroll modda nudge KAPALI
+      if (RD_SIMPLE_SCROLL) return;
+
       const sheetEl = sheetRef.current;
       if (!sheetEl) return;
 
@@ -839,7 +838,6 @@ export default function RouteDetailMobile({
       gate.raf1 = 0;
       gate.raf2 = 0;
 
-      // ✅ EMİR 06 — dual reset (top’a yakınken ikisini birden sıfırla)
       try {
         sheetEl.scrollTop = 0;
       } catch {}
@@ -861,7 +859,6 @@ export default function RouteDetailMobile({
           gate.raf2 = requestAnimationFrame(() => {
             gate.raf2 = 0;
 
-            // ✅ dual reset tekrar (özellikle owner=sheet iken body’nin 0 kalması için)
             try {
               sheetEl.scrollTop = 0;
             } catch {}
@@ -905,10 +902,12 @@ export default function RouteDetailMobile({
 
   const layoutRepair = useCallback(
     (reason = "scrollEnd") => {
+      // ✅ EMİR 31/P2 — Simple Scroll modda repair KAPALI
+      if (RD_SIMPLE_SCROLL) return;
+
       const sheetEl = sheetRef.current;
       const bodyEl = bodyScrollRef.current || mainBodyRef.current;
 
-      // snapEnd spam kırıcı
       try {
         if (String(reason) === "snapEnd") {
           const now = Date.now();
@@ -917,7 +916,6 @@ export default function RouteDetailMobile({
         }
       } catch {}
 
-      // ✅ sadece inline/ güvenli temizlik
       try {
         clearInlineLayoutStuck(sheetEl);
       } catch {}
@@ -925,11 +923,9 @@ export default function RouteDetailMobile({
         clearInlineLayoutStuck(bodyEl);
       } catch {}
       try {
-        // bazen inline transform parent'a kalıyor (sheet motor)
         clearInlineLayoutStuck(sheetEl?.parentElement);
       } catch {}
 
-      // ✅ 2x RAF + reflow, sonra rd:repair event
       const dispatch = () => {
         try {
           window.dispatchEvent(new CustomEvent("rd:repair", { detail: { reason: String(reason || "") } }));
@@ -957,10 +953,11 @@ export default function RouteDetailMobile({
     [clearInlineLayoutStuck]
   );
 
-  // ✅ EMİR — HARD RESET: scrollTop=0 iken offset/transform “zorla 0”
-  // ✅ EMİR 06 — Dual Top Reset: top’a yakınken sheetEl.scrollTop=0 + bodyEl.scrollTop=0
   const hardResetSheetMotor = useCallback(
     (reason = "") => {
+      // ✅ EMİR 31/P2 — Simple Scroll modda hardreset KAPALI
+      if (RD_SIMPLE_SCROLL) return;
+
       const sheetEl = sheetRef.current;
       if (!sheetEl) return;
 
@@ -982,7 +979,6 @@ export default function RouteDetailMobile({
       );
       if (st > HARD_RESET_TOP_PX) return;
 
-      // ✅ EMİR 06 — dual reset
       try {
         sheetEl.scrollTop = 0;
       } catch {}
@@ -1001,12 +997,10 @@ export default function RouteDetailMobile({
         scheduleHeroCollapse(0);
       } catch {}
 
-      // ✅ EMİR 03 (Adım 4): top reset anında map repaint (yarım kalma kırıcı)
       try {
         requestMapResize(`hardreset:${reason || "top"}`);
       } catch {}
 
-      // ✅ computed bile takılsa hard reset
       try {
         checkTopHardReset(`topHardReset:${String(reason || "top")}`);
       } catch {}
@@ -1155,14 +1149,13 @@ export default function RouteDetailMobile({
     };
 
     const repairNow = () => {
+      // ✅ Simple scroll’da bile manuel “inline transform” temizliği işe yarayabilir — DEV ONLY
       const sheetEl = pick(".route-detail-sheet") || sheetRef.current;
       const bodyEl = pick(".route-detail-body") || mainBodyRef.current;
 
-      // ✅ sadece inline: sheet/body
       const changedSheet = stripInlineTransformOnly(sheetEl);
       const changedBody = stripInlineTransformOnly(bodyEl);
 
-      // ✅ 2x RAF reflow
       try {
         window.requestAnimationFrame(() => {
           try {
@@ -1176,7 +1169,6 @@ export default function RouteDetailMobile({
               void bodyEl?.offsetHeight;
             } catch {}
 
-            // ✅ Map varsa: custom event
             try {
               const hasMap = !!(pick(".rd-map-card") || window.__RD_MAP__);
               if (hasMap) {
@@ -1220,6 +1212,9 @@ export default function RouteDetailMobile({
 
   // ✅ EMİR 06 — Sheet scroll listener (capture): owner=sheet + st update + hero collapse sync
   useEffect(() => {
+    // ✅ EMİR 31/P2 — Simple Scroll modda sheet listener KAPALI
+    if (RD_SIMPLE_SCROLL) return;
+
     const sheetEl = sheetRef.current;
     if (!sheetEl) return;
 
@@ -1308,7 +1303,6 @@ export default function RouteDetailMobile({
       "wheel",
     ];
 
-    // ✅ cleanup düzgün olsun (aynı fn ref)
     const evtHandlers = {};
     evtTypes.forEach((t) => {
       try {
@@ -1318,9 +1312,11 @@ export default function RouteDetailMobile({
       } catch {}
     });
 
-    // Scroll otoritesi: aynı anda hem sheet hem body scroll mu?
     const bodyEl =
-      mainBodyRef.current || sheetEl.querySelector?.(".route-detail-body") || sheetEl.querySelector?.(".content-body") || null;
+      mainBodyRef.current ||
+      sheetEl.querySelector?.(".route-detail-body") ||
+      sheetEl.querySelector?.(".content-body") ||
+      null;
 
     const scrollLogRef = { lastTs: 0, lastKey: "" };
     const logScroll = (src) => {
@@ -1350,7 +1346,6 @@ export default function RouteDetailMobile({
       bodyEl?.addEventListener("scroll", onBodyScroll, { passive: true });
     } catch {}
 
-    // Transform avcısı: inline style değişince gerçek hedef node’u yakala
     const seen = new WeakMap();
     let logCount = 0;
     const MAX_LOG = 120;
@@ -1455,6 +1450,9 @@ export default function RouteDetailMobile({
 
   // ✅ EMİR 04 — VisualViewport resize → top reset kontrolü
   useEffect(() => {
+    // ✅ EMİR 31/P2 — Simple Scroll modda vv-resize reset KAPALI
+    if (RD_SIMPLE_SCROLL) return;
+
     if (typeof window === "undefined") return;
     const vv = window.visualViewport || null;
     if (!vv) return;
@@ -1489,6 +1487,9 @@ export default function RouteDetailMobile({
 
   // ✅ EMİR — mount/route değişince: en baştan “temiz” başla
   useEffect(() => {
+    // ✅ EMİR 31/P2 — Simple Scroll modda mount hardreset KAPALI
+    if (RD_SIMPLE_SCROLL) return;
+
     let raf = 0;
     raf = window.requestAnimationFrame(() => {
       try {
@@ -1516,8 +1517,11 @@ export default function RouteDetailMobile({
     };
   }, [routeId]);
 
-  // ✅ EMİR 04 — sheet transitionend settle listener (son “settle” anı)
+  // ✅ EMİR 04 — sheet transitionend settle listener
   useEffect(() => {
+    // ✅ EMİR 31/P2 — Simple Scroll modda transitionend KAPALI
+    if (RD_SIMPLE_SCROLL) return;
+
     const sheetEl = sheetRef.current;
     if (!sheetEl) return;
 
@@ -1537,12 +1541,10 @@ export default function RouteDetailMobile({
       const st = Math.max(0, Math.round(Number(bodyEl?.scrollTop) || Number(lastScrollTopRef.current) || 0));
       if (st > HARD_RESET_TOP_PX) return;
 
-      // ✅ EMİR 05: transitionend’de nudge (en deterministik reflow)
       try {
         nudgeScrollTopToReflow("transitionend+nudge");
       } catch {}
 
-      // yine de settle anında reason’lı reset
       try {
         checkTopHardReset("transitionend");
       } catch {}
@@ -1559,8 +1561,11 @@ export default function RouteDetailMobile({
     };
   }, [routeId, HARD_RESET_TOP_PX, checkTopHardReset, nudgeScrollTopToReflow]);
 
-  // ✅ EMİR — gesture end: top’a döndüyse offset birikimi imkansız
+  // ✅ EMİR — gesture end
   useEffect(() => {
+    // ✅ EMİR 31/P2 — Simple Scroll modda gesture-end KAPALI
+    if (RD_SIMPLE_SCROLL) return;
+
     const sheetEl = sheetRef.current;
     if (!sheetEl) return;
 
@@ -1595,16 +1600,31 @@ export default function RouteDetailMobile({
     };
   }, [routeId, hardResetSheetMotor, requestMapResize, checkTopHardReset]);
 
+  // ✅ Simple scroll’da map resize’i hafif debounced tetikle
+  const simpleScrollResizeGateRef = React.useRef({ lastAt: 0 });
+
   // ✅ EMİR — scroll handler (+ PARÇA 2/5 scrollEnd debounce)
   const handleBodyScroll = useCallback(
     (e) => {
-      // ✅ EMİR 06 — owner=body
       try {
         scrollOwnerRef.current = "body";
       } catch {}
 
       const st = Math.max(0, Math.round(Number(e?.currentTarget?.scrollTop) || 0));
       lastScrollTopRef.current = st;
+
+      // ✅ EMİR 31/P2 — Simple Scroll: yalnızca hafif map resize debounce
+      if (RD_SIMPLE_SCROLL) {
+        const now = Date.now();
+        const g = simpleScrollResizeGateRef.current;
+        if (now - (g.lastAt || 0) > 180) {
+          g.lastAt = now;
+          try {
+            requestMapResize("scroll");
+          } catch {}
+        }
+        return;
+      }
 
       scheduleHeroCollapse(st);
 
@@ -1616,7 +1636,6 @@ export default function RouteDetailMobile({
         try {
           requestMapResize("scroll@top");
         } catch {}
-        // ✅ top’ta computed bile takılsa hard reset
         try {
           checkTopHardReset("scroll@top");
         } catch {}
@@ -1630,7 +1649,6 @@ export default function RouteDetailMobile({
         } catch {}
       }
 
-      // ✅ 120ms debounce ile “scroll end”
       try {
         const r = scrollEndRef.current;
         if (r?.tmr) window.clearTimeout(r.tmr);
@@ -1643,11 +1661,9 @@ export default function RouteDetailMobile({
 
           const stNow = Math.max(0, Math.round(Number(lastScrollTopRef.current) || 0));
           if (stNow <= HARD_RESET_TOP_PX) {
-            // ✅ EMİR 05: scroll end’de nudge
             try {
               nudgeScrollTopToReflow("scrollEnd+nudge");
             } catch {}
-            // ayrıca reason’lı reset
             try {
               checkTopHardReset("scrollEnd");
             } catch {}
@@ -1666,8 +1682,11 @@ export default function RouteDetailMobile({
     ]
   );
 
-  // ✅ Snap-End + 2. dalga reset (+160ms) (spam breaker 300ms)
+  // ✅ Snap-End + 2. dalga reset (+160ms)
   const handleSnapEnd = useCallback(() => {
+    // ✅ EMİR 31/P2 — Simple Scroll modda snapEnd KAPALI
+    if (RD_SIMPLE_SCROLL) return;
+
     try {
       layoutRepair("snapEnd");
     } catch {}
@@ -1676,7 +1695,6 @@ export default function RouteDetailMobile({
       checkTopHardReset("snapEnd");
     } catch {}
 
-    // 2. dalga (settle)
     const now = Date.now();
     const gate = settleSecondWaveRef.current;
     if (now - (gate.lastAt || 0) < 300) return;
@@ -1695,8 +1713,6 @@ export default function RouteDetailMobile({
       try {
         requestMapResize("snapEnd+160");
       } catch {}
-
-      // ✅ EMİR 05: snap-end ikinci dalgada nudge
       try {
         nudgeScrollTopToReflow("snapEnd+nudge");
       } catch {}
@@ -1704,6 +1720,8 @@ export default function RouteDetailMobile({
   }, [layoutRepair, checkTopHardReset, forceHeroExpanded, requestMapResize, nudgeScrollTopToReflow]);
 
   useEffect(() => {
+    if (RD_SIMPLE_SCROLL) return;
+
     scheduleHeroCollapse(0);
     return () => {
       try {
@@ -1775,97 +1793,6 @@ export default function RouteDetailMobile({
 
   const routeModel = routeDoc || initialRoute;
 
-  // ✅ route doc geldikten sonra 1 kez “TOP reset” (deep-link varsa dokunma)
-  useEffect(() => {
-    if (!routeId) return;
-    if (!routeDoc) return;
-
-    const ref = initialTopResetRef.current;
-    if (ref.routeId === routeId && ref.done) return;
-    ref.routeId = routeId;
-    ref.done = true;
-
-    let hasHash = false;
-    try {
-      hasHash = typeof window !== "undefined" && !!(window.location.hash && window.location.hash.length > 1);
-    } catch {}
-
-    const hasExplicitTab = !!(tab && String(tab) !== "stops");
-    if (hasHash || hasExplicitTab) return;
-
-    const sheetEl = sheetRef.current;
-    const bodyEl =
-      mainBodyRef.current || sheetEl?.querySelector?.(".route-detail-body") || sheetEl?.querySelector?.(".content-body") || null;
-
-    if (!bodyEl) return;
-
-    let raf = 0;
-    raf = window.requestAnimationFrame(() => {
-      try {
-        bodyEl.scrollTop = 0;
-      } catch {}
-      try {
-        scheduleHeroCollapse(0);
-      } catch {}
-      try {
-        hardResetSheetMotor("route-ready");
-      } catch {}
-      try {
-        requestMapResize("route-ready");
-      } catch {}
-      try {
-        checkTopHardReset("route-ready");
-      } catch {}
-      try {
-        nudgeScrollTopToReflow("route-ready+nudge");
-      } catch {}
-    });
-
-    return () => {
-      try {
-        if (raf) window.cancelAnimationFrame(raf);
-      } catch {}
-    };
-  }, [
-    routeId,
-    routeDoc,
-    tab,
-    scheduleHeroCollapse,
-    hardResetSheetMotor,
-    requestMapResize,
-    checkTopHardReset,
-    nudgeScrollTopToReflow,
-  ]);
-
-  const rawPath = useMemo(() => {
-    const m = routeDoc || initialRoute || {};
-    return m?.path || m?.routePath || m?.polyline || m?.points || m?.raw?.path || m?.raw?.polyline || [];
-  }, [routeDoc, initialRoute]);
-
-  const { pts: pathPts, dropped: pathDropped } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
-
-  const { stops: stopsForPreview, dropped: stopsDropped } = useMemo(() => normalizeStopsForPreview(stops || []), [stops]);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
-    if (!routeId) return;
-    if (!routeDoc && !initialRoute) return;
-
-    try {
-      const rawLen = Array.isArray(rawPath) ? rawPath.length : 0;
-      if (pathDropped > 0) {
-        // eslint-disable-next-line no-console
-        console.warn(`[RouteDetailMobile] path normalize dropped ${pathDropped}/${rawLen}`, { routeId });
-      }
-      const totalStops = (stops || []).length;
-      if (totalStops > 0 && stopsDropped > 0) {
-        // eslint-disable-next-line no-console
-        console.warn(`[RouteDetailMobile] stops missing coords ${stopsDropped}/${totalStops}`, { routeId });
-      }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeId, pathDropped, stopsDropped, routeDoc, initialRoute]);
-
   const normalizeMediaType = useCallback((it) => {
     try {
       const t = String(it?.type || it?.mime || it?.contentType || "").toLowerCase();
@@ -1903,6 +1830,15 @@ export default function RouteDetailMobile({
     defaultConstUrl: DEFAULT_ROUTE_COVER_URL,
     maxLogs: 80,
   });
+
+  const rawPath = useMemo(() => {
+    const m = routeDoc || initialRoute || {};
+    return m?.path || m?.routePath || m?.polyline || m?.points || m?.raw?.path || m?.raw?.polyline || [];
+  }, [routeDoc, initialRoute]);
+
+  const { pts: pathPts } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
+
+  const { stops: stopsForPreview } = useMemo(() => normalizeStopsForPreview(stops || []), [stops]);
 
   const { questState, startQuest, stopQuest, finishQuest, questLocLine, ghostMetrics } = useRouteDetailQuest({
     routeId,
@@ -2033,7 +1969,6 @@ export default function RouteDetailMobile({
         bodyScrollRef.current = el;
       } catch {}
 
-      // ✅ EMİR 06 — body attach anında owner=body
       try {
         scrollOwnerRef.current = "body";
       } catch {}
@@ -2041,6 +1976,13 @@ export default function RouteDetailMobile({
       try {
         const st = typeof el?.scrollTop === "number" ? el.scrollTop : 0;
         lastScrollTopRef.current = Math.max(0, Math.round(Number(st) || 0));
+
+        if (RD_SIMPLE_SCROLL) {
+          try {
+            requestMapResize("body-ref");
+          } catch {}
+          return;
+        }
 
         scheduleHeroCollapse(st);
         if (st <= HARD_RESET_TOP_PX) {
@@ -2328,10 +2270,20 @@ export default function RouteDetailMobile({
       data-theme={rdTheme}
       data-theme-source={rdThemeSource}
       data-theme-anim={themeAnimOn ? "1" : "0"}
+      data-simple-scroll={RD_SIMPLE_SCROLL ? "1" : "0"}
+      // ✅ Simple scroll modda overlap padding’i kapat
+      style={
+        RD_SIMPLE_SCROLL
+          ? {
+              "--rd-hero-hub-overlap": "0px",
+            }
+          : undefined
+      }
       onClick={handleBackdropClick}
     >
       <div className="route-detail-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
-        <div className="route-detail-grab" />
+        {/* ✅ Simple scroll: grab bar yok */}
+        {!RD_SIMPLE_SCROLL && <div className="route-detail-grab" />}
 
         <div style={{ overflowAnchor: "none" }}>
           <RouteDetailHeroMobile
@@ -2389,9 +2341,10 @@ export default function RouteDetailMobile({
             overscrollBehavior: "contain",
           }}
           onScroll={handleBodyScroll}
-          onPointerUp={handleSnapEnd}
-          onTouchEnd={handleSnapEnd}
-          onTouchCancel={handleSnapEnd}
+          // ✅ Simple scroll: snapEnd handler yok
+          onPointerUp={RD_SIMPLE_SCROLL ? undefined : handleSnapEnd}
+          onTouchEnd={RD_SIMPLE_SCROLL ? undefined : handleSnapEnd}
+          onTouchCancel={RD_SIMPLE_SCROLL ? undefined : handleSnapEnd}
         >
           <RouteDetailStickyTabsFallback
             activeTab={activeTabKey}
@@ -2420,7 +2373,6 @@ export default function RouteDetailMobile({
               stopsLoaded={stopsLoaded}
               mapBadgeCount={heroModel.mapBadgeCount}
               mapAreaLabel={heroModel.mapAreaLabel}
-              // ✅ MapPreviewShell’e gerçek root paslanıyor
               scrollRootRef={bodyScrollRef}
             />
           </div>

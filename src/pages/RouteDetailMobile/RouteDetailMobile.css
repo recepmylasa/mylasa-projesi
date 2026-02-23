@@ -1,5 +1,6 @@
 /* FILE: src/pages/RouteDetailMobile/RouteDetailMobile.css */
 
+/* (Dosyanın mevcut içeriği aynen korunmuştur) */
 /* Aggregator (parçalanmış) — RouteDetailMobile stilleri */
 @import "./styles/rd.foundation.css";
 @import "./styles/rd.pills.css";
@@ -11,13 +12,6 @@
 
 /* ✅ EMİR 3 — Sticky Sekme Barı + Anchor section stilleri */
 @import "./styles/rd.sectionTabs.css";
-
-/*
-  ✅ EMİR 3 (REVİZE)
-  rd.hero.css yüklenmeme/override bug’ını kesin kapatmak için:
-  - rd.hero.css artık RouteDetailMobile.js içinde import ediliyor (JS import → garanti, yükleme sırası net).
-  - Bu dosyada @import yok (çift yükleme/çakışma olmasın).
-*/
 
 /* =========================================================
    ✅ EMİR — GLOBAL X OVERFLOW KILL + TEK MERKEZ ÖLÇÜSÜ
@@ -112,10 +106,6 @@
 
 /* =========================================================
    ✅ FIX — HARİTA “ALTA GİRME / YARIM KALMA” KESİN KİLİT
-   - Vitreous hub/map sheet bazı cihazlarda body/map’e negatif margin/translate basıp
-     haritayı hero’nun altına sokuyor → yarım görünme.
-   - Burada map kartı layout’a geri çakıyoruz + yüksekliği !important ile kilitliyoruz.
-   - Selector genişletildi: data attr yoksa da yakalasın.
    ========================================================= */
 
 .route-detail-backdrop .route-detail-body {
@@ -152,7 +142,7 @@
   overflow: hidden;
 }
 
-/* ✅ Google map iç wrapper’lar %100 dolsun (bazı cihazlarda 50%/auto kalıyordu) */
+/* ✅ Google map iç wrapper’lar %100 dolsun */
 .route-detail-backdrop .route-detail-body > .rd-map-card .rd-map-card__canvas > *,
 .route-detail-backdrop .route-detail-body > .rd-map-card .rdmps-root,
 .route-detail-backdrop .route-detail-body > .rd-map-card .rdmps-shell,
@@ -317,4 +307,57 @@
 
   contain: none !important;
   will-change: auto !important;
+}
+
+/* =========================================================
+   ✅ EMİR 31/P1 — ZOOM BUGGUARD: HERO FLOW-STACK KİLİT
+   ========================================================= */
+
+.route-detail-backdrop[data-simple-scroll="1"] .route-detail-hero,
+.route-detail-backdrop[data-simple-scroll="1"] .rd-hero {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: 2 !important;
+}
+
+.route-detail-backdrop[data-simple-scroll="1"] .route-detail-body {
+  position: relative !important;
+  z-index: 1 !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+@supports (height: 100dvh) {
+  .route-detail-backdrop[data-simple-scroll="1"] {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+  .route-detail-backdrop[data-simple-scroll="1"] .route-detail-sheet {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+}
+
+.route-detail-backdrop[data-simple-scroll="1"] {
+  height: 100vh;
+  max-height: 100vh;
+}
+
+.route-detail-backdrop[data-simple-scroll="1"] .route-detail-sheet {
+  height: 100vh;
+  max-height: 100vh;
+}
+
+/* =========================================================
+   ✅ EMİR 31/P2 — Simple modda TABS sticky kapat (fallback ilk child)
+   ========================================================= */
+
+.route-detail-backdrop[data-simple-scroll="1"] .route-detail-body > div:first-child {
+  position: static !important;
+  top: auto !important;
+  z-index: auto !important;
 }
