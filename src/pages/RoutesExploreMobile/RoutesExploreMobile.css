@@ -1,0 +1,162 @@
+/* FILE: src/pages/RoutesExploreMobile/RoutesExploreMobile.css */
+
+/* ✅ EMİR 32 / PARÇA 3 — Manus Discover/Home skin imports */
+@import "../../routes/RouteCardManusMobile.css";
+@import "../../routes/RoutesDiscoverHeroManusMobile.css";
+
+/* =========================================================
+   Manus wrapper flag
+   ========================================================= */
+.RoutesExploreMobile[data-route-skin="manus"] {
+  --manus-gutter: 12px;
+  --manus-gap: 12px;
+  background: #ffffff;
+}
+
+/* =========================================================
+   Manus appbar (sticky)
+   ========================================================= */
+.routes-toolbar.routes-toolbar--manus {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.86);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.manus-appbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--manus-gutter) 8px;
+  gap: 10px;
+}
+
+.manus-appbar-brand {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  color: rgba(17, 24, 39, 0.92);
+}
+
+.manus-appbar-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.manus-appbar-tab {
+  border: 0;
+  background: transparent;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.78);
+  cursor: pointer;
+}
+
+.manus-appbar-tab.is-active {
+  background: rgba(17, 24, 39, 0.92);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.manus-appbar-tab.is-disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* mevcut segment row spacing (var olan stillerle çatışmasın) */
+.routes-toolbar.routes-toolbar--manus .routes-toolbar-segment {
+  padding: 0 var(--manus-gutter) 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* =========================================================
+   Hero wrap
+   ========================================================= */
+.manus-hero-wrap {
+  padding: 12px var(--manus-gutter) 6px;
+}
+
+/* =========================================================
+   Grid anchor
+   ========================================================= */
+.manus-grid-anchor {
+  height: 1px;
+}
+
+/* =========================================================
+   Group header (Manus look, ama mantık aynı)
+   ========================================================= */
+.manus-groupHeader {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 8px 2px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.manus-groupHeader .ExploreGroupHeaderTitle {
+  font-size: 13px;
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.88);
+}
+
+.manus-groupHeader .ExploreGroupHeaderBadge {
+  min-width: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.04);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+  color: rgba(17, 24, 39, 0.70);
+}
+
+/* =========================================================
+   Manus 2-column grid
+   ========================================================= */
+.manus-explore-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--manus-gap);
+  padding-top: 8px;
+}
+
+.manus-explore-cell {
+  width: 100%;
+}
+
+.manus-explore-cell-skel {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  border-radius: 18px;
+  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 40%, #f3f4f6 80%);
+  background-size: 200% 100%;
+  animation: manus-explore-skel 1.2s ease-in-out infinite;
+}
+
+@keyframes manus-explore-skel {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

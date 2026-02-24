@@ -22,6 +22,7 @@ import useUserRoutes from "./hooks/useUserRoutes";
 import { Icon } from "./icons";
 
 import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage";
+import RouteCardManusMobile from "./routes/RouteCardManusMobile";
 
 const __DEV__ = process.env.NODE_ENV !== "production";
 const DEFAULT_ROUTE_COVER_URL = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
@@ -94,8 +95,6 @@ function isKnownAppLogoUrl(v) {
 }
 
 // ✅ SVG tespit (console "<path d>" hatası için HOTFIX)
-// Not: bazı svg data-url’lar "data:image/svg" ya da "data:image/svg+xml;base64,PHN2Zy..." formatında gelebilir.
-// Not2: bazen mime "data:image/*" diye gelir ama içerik svg olur (PHN2Zy / %3Csvg).
 function isSvgDataUrl(v) {
   const s = (v || "").toString().trim().toLowerCase();
   return s.startsWith("data:image/svg+xml") || s.startsWith("data:image/svg");
@@ -106,17 +105,14 @@ function isSvgHttpUrl(v) {
   const base = base0.toLowerCase();
   if (!base) return false;
 
-  // klasik uzantı / mime
   if (base.endsWith(".svg") || base.endsWith(".svgz") || base.includes("image/svg+xml") || base.includes("format=svg"))
     return true;
 
-  // ✅ firebase encoded path / decode sonrası ".svg" yakala
   if (urlContainsSvgMarker(base0)) return true;
 
   return false;
 }
 
-// ✅ mime kaçsa bile içerikten svg yakala (utf8 veya base64)
 function looksLikeSvgDataUrl(v) {
   const s0 = (v || "").toString().trim();
   if (!s0) return false;
@@ -128,10 +124,9 @@ function looksLikeSvgDataUrl(v) {
   const comma = s.indexOf(",");
   if (comma === -1) return false;
 
-  const payload = s.slice(comma + 1, comma + 1 + 240); // ilk parçaya bakmak yeter
+  const payload = s.slice(comma + 1, comma + 1 + 240);
   if (!payload) return false;
 
-  // utf8/plain svg
   if (
     payload.includes("<svg") ||
     payload.includes("%3csvg") ||
@@ -140,7 +135,6 @@ function looksLikeSvgDataUrl(v) {
   )
     return true;
 
-  // base64 "<svg" => PHN2Zy (lowercase kontrol)
   if (payload.includes("phn2zy")) return true;
 
   return false;
@@ -173,10 +167,8 @@ function looksLikeRelativeStoragePath(v) {
   if (isHttpHttpsOrDataUrl(s)) return false;
   if (s.startsWith("gs://")) return true;
 
-  // ✅ "/foo.png" public asset olabilir → storage sanma
   if (s.startsWith("/")) return false;
 
-  // relative storage path hissi
   if (s.includes("\\\\")) return true;
   if (s.includes("..")) return true;
   if (s.includes("/")) return true;
@@ -189,7 +181,6 @@ function parseFirebaseStorageHttpUrlToGs(urlStr) {
     const u = new URL(urlStr);
     const host = (u.hostname || "").toLowerCase();
 
-    // firebasestorage.googleapis.com/v0/b/<bucket>/o/<pathEncoded>?...
     if (host.includes("firebasestorage.googleapis.com")) {
       const parts = u.pathname.split("/").filter(Boolean);
       const bi = parts.indexOf("b");
@@ -202,7 +193,6 @@ function parseFirebaseStorageHttpUrlToGs(urlStr) {
       }
     }
 
-    // storage.googleapis.com/<bucket>/<path>
     if (host === "storage.googleapis.com") {
       const p = u.pathname.split("/").filter(Boolean);
       if (p.length >= 2) {
@@ -228,9 +218,7 @@ function toSameOriginAbsoluteUrl(v) {
       if (typeof window !== "undefined" && window.location && window.location.origin) {
         return `${window.location.origin}${s}`;
       }
-    } catch {
-      // no-op
-    }
+    } catch {}
     return s;
   }
 
@@ -252,34 +240,25 @@ async function resolveToHttpsUrl(input) {
   const raw0 = (input || "").toString().trim();
   if (!raw0) return "";
 
-  // ✅ SVG data/url render etmiyoruz → boş dön (gizli svg dahil)
   if (isSvgAny(raw0) || urlContainsSvgMarker(raw0)) return "";
 
-  // data:image ise direkt kabul (svg hariç)
   if (/^data:image\//i.test(raw0)) return raw0;
 
-  // ✅ "/route-default-cover.jpg" gibi public asset → same-origin absolute URL
   if (raw0.startsWith("/")) {
     const abs = toSameOriginAbsoluteUrl(raw0);
-    // svg ise yine blokla
     if (isSvgAny(abs) || urlContainsSvgMarker(abs)) return "";
     return abs;
   }
 
-  // http(s) ise:
-  // - Firebase Storage download URL ise mümkünse refresh (token/rules)
-  // - değilse aynen kullan
   if (/^https?:\/\//i.test(raw0)) {
     if (isSvgAny(raw0) || urlContainsSvgMarker(raw0)) return "";
 
     const gsFromHttp = parseFirebaseStorageHttpUrlToGs(raw0);
     if (!gsFromHttp) {
-      // normal http(s) ama decode içinde .svg var mı?
       if (urlContainsSvgMarker(raw0)) return "";
       return raw0;
     }
 
-    // ✅ gs path svg ise kesin blokla (download url svg maskeli olsa bile)
     if (storagePathLooksSvg(gsFromHttp)) return "";
 
     try {
@@ -292,7 +271,6 @@ async function resolveToHttpsUrl(input) {
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
 
-      // ✅ yetki/permission spam kır (tek sefer warn)
       if (
         code === "permission-denied" ||
         code === "storage/unauthorized" ||
@@ -309,17 +287,15 @@ async function resolveToHttpsUrl(input) {
     }
   }
 
-  // gs:// veya relative storage path
   if (isGsUrl(raw0) || looksLikeRelativeStoragePath(raw0)) {
     const base = raw0.split(/[?#]/)[0];
     const path = base.startsWith("/") ? base.slice(1) : base;
 
-    // ✅ storage path svg ise blokla
     if (storagePathLooksSvg(path)) return "";
 
     try {
       const storage = getStorage();
-      const r = storageRef(storage, path); // path hem gs:// hem relative kabul
+      const r = storageRef(storage, path);
       const https = await getDownloadURL(r);
 
       if (isSvgAny(https) || urlContainsSvgMarker(https) || storagePathLooksSvg(path)) return "";
@@ -327,7 +303,6 @@ async function resolveToHttpsUrl(input) {
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
 
-      // ✅ yetki/permission spam kır (tek sefer warn)
       if (code === "permission-denied" || code === "storage/unauthorized" || code === "storage/unauthenticated") {
         warnOnce(`dlwarn_gs_${code}`, `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — placeholder kullanılacak.`);
         return "";
@@ -436,6 +411,83 @@ function formatDistanceKmFromRoute(route) {
   const km = mm / 1000;
   const fixed = km >= 10 ? Math.round(km) : Math.round(km * 10) / 10;
   return `${fixed} km`;
+}
+
+function formatDurationFromRoute(route) {
+  const ms =
+    toFiniteNumber(route?.stats?.durationMs) ??
+    toFiniteNumber(route?.durationMs) ??
+    (toFiniteNumber(route?.durationSeconds) != null ? toFiniteNumber(route?.durationSeconds) * 1000 : null) ??
+    (toFiniteNumber(route?.stats?.durationSeconds) != null ? toFiniteNumber(route?.stats?.durationSeconds) * 1000 : null) ??
+    null;
+
+  if (ms == null || ms <= 0) return "";
+
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 60) return `${totalMin} dk`;
+
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+
+  if (h <= 0) return `${totalMin} dk`;
+  if (m <= 0) return `${h} sa`;
+  return `${h} sa ${m} dk`;
+}
+
+function formatCompactCount(nRaw) {
+  const n = toFiniteNumber(nRaw);
+  if (n == null || n < 0) return "";
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1000000) return `${Math.round((n / 1000) * 10) / 10}K`;
+  return `${Math.round((n / 1000000) * 10) / 10}M`;
+}
+
+function extractMetric(route, keys) {
+  const r = route || {};
+  const raw = r.raw || r.data || r.doc || {};
+  const metrics = r.metrics || raw.metrics || raw.agg || {};
+  for (const k of keys) {
+    const v =
+      (k.startsWith("metrics.") ? metrics?.[k.slice("metrics.".length)] : r?.[k]) ??
+      raw?.[k] ??
+      (k.startsWith("raw.") ? raw?.[k.slice("raw.".length)] : undefined);
+    const n = toFiniteNumber(v);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+function inferCityOrTag(route) {
+  const r = route || {};
+  const raw = r.raw || {};
+  const city =
+    (r.areas && (r.areas.city || r.areas.town)) ||
+    (raw.areas && (raw.areas.city || raw.areas.town)) ||
+    r.city ||
+    r.town ||
+    raw.city ||
+    raw.town ||
+    "";
+  if (isNonEmptyString(city)) return String(city).trim();
+
+  const tags = Array.isArray(r.tags) ? r.tags : Array.isArray(raw.tags) ? raw.tags : [];
+  const firstTag = tags.find((t) => typeof t === "string" && t.trim());
+  return firstTag ? String(firstTag).trim() : "";
+}
+
+function inferAuthorName(route) {
+  const r = route || {};
+  const raw = r.raw || {};
+  const cand =
+    r.authorName ||
+    r.ownerName ||
+    r.userName ||
+    raw.authorName ||
+    raw.ownerName ||
+    raw.userName ||
+    (raw.owner && (raw.owner.name || raw.owner.username)) ||
+    "";
+  return isNonEmptyString(cand) ? String(cand).trim() : "";
 }
 
 function getAudienceIconName(visibilityRaw) {
@@ -561,7 +613,6 @@ function buildSmartTitleProof(route, fallbackTitle) {
   const first = getStopNameWithSource(stops[0]);
   const last = getStopNameWithSource(stops[stops.length - 1]);
 
-  // ✅ tek durak / aynı isim → ok yok
   if (first.name && last.name) {
     const a = first.name.trim();
     const b = last.name.trim();
@@ -824,7 +875,6 @@ function pickCoverCandidate(route) {
       sourceField: "default",
     };
 
-  // (A0) Model cover meta’sı (useUserRoutes / routeCardModel set edebilir)
   const coverObj = route?.cover && typeof route.cover === "object" ? route.cover : null;
   const coverMetaUrl = isNonEmptyString(coverObj?.url) ? String(coverObj.url).trim() : "";
   const coverMetaField = isNonEmptyString(coverObj?.sourceField) ? String(coverObj.sourceField).trim() : "";
@@ -845,21 +895,33 @@ function pickCoverCandidate(route) {
     };
   }
 
-  // (A) Yeni standart: route.cover.url
   const coverUrl = isNonEmptyString(route?.cover?.url) ? String(route.cover.url).trim() : "";
-  if (coverUrl && !isKnownAppLogoUrl(coverUrl) && !isVideoUrl(coverUrl) && !(isSvgAny(coverUrl) || urlContainsSvgMarker(coverUrl))) {
+  if (
+    coverUrl &&
+    !isKnownAppLogoUrl(coverUrl) &&
+    !isVideoUrl(coverUrl) &&
+    !(isSvgAny(coverUrl) || urlContainsSvgMarker(coverUrl))
+  ) {
     return { kind: "image", url: coverUrl, hasVideo: false, sourceField: "cover.url" };
   }
 
-  // (B) Legacy
   const legacy = resolveLegacyCoverUrl(route);
-  if (legacy && !isKnownAppLogoUrl(legacy) && !isVideoUrl(legacy) && !(isSvgAny(legacy) || urlContainsSvgMarker(legacy))) {
+  if (
+    legacy &&
+    !isKnownAppLogoUrl(legacy) &&
+    !isVideoUrl(legacy) &&
+    !(isSvgAny(legacy) || urlContainsSvgMarker(legacy))
+  ) {
     return { kind: "image", url: legacy, hasVideo: false, sourceField: "legacy" };
   }
 
-  // (C) Stop media fallback
   const stopPick = pickStopCoverCandidate(route);
-  if (stopPick.url && !isKnownAppLogoUrl(stopPick.url) && !isVideoUrl(stopPick.url) && !(isSvgAny(stopPick.url) || urlContainsSvgMarker(stopPick.url))) {
+  if (
+    stopPick.url &&
+    !isKnownAppLogoUrl(stopPick.url) &&
+    !isVideoUrl(stopPick.url) &&
+    !(isSvgAny(stopPick.url) || urlContainsSvgMarker(stopPick.url))
+  ) {
     return {
       kind: "image",
       url: stopPick.url,
@@ -869,7 +931,6 @@ function pickCoverCandidate(route) {
     };
   }
 
-  // (D) Placeholder only (no img)
   return { kind: "default", url: "", hasVideo: false, sourceField: "default" };
 }
 
@@ -1023,115 +1084,6 @@ function printRouteTileProof({ route, rawTitle, smartTitleProof, coverCandidate,
   console.groupEnd();
 }
 
-function RouteTileMedia({ routeId, coverCandidate, onLoadEvent }) {
-  const rawInput = coverCandidate?.url || "";
-  const resolved = useResolvedMediaUrl(rawInput);
-
-  const [imgSrc, setImgSrc] = useState("");
-  const [imgOk, setImgOk] = useState(false);
-  const [imgFinalFailed, setImgFinalFailed] = useState(false);
-
-  const reportedRef = useRef(false);
-
-  useEffect(() => {
-    setImgOk(false);
-    setImgFinalFailed(false);
-    reportedRef.current = false;
-    setImgSrc("");
-  }, [rawInput, resolved?.url]);
-
-  useEffect(() => {
-    // ✅ default cover img render ETMİYORUZ → sadece placeholder
-    if (!rawInput) {
-      setImgSrc("");
-      return;
-    }
-
-    if (resolved?.status === "ok" && resolved?.ok && isHttpHttpsOrDataUrl(resolved.url)) {
-      // ✅ decode içinde ".svg" yakalanırsa yine render etme
-      if (urlContainsSvgMarker(resolved.url) || isSvgAny(resolved.url)) {
-        setImgSrc("");
-        return;
-      }
-      setImgSrc(resolved.url);
-      return;
-    }
-
-    // resolve fail → placeholder (img yok)
-    if (resolved?.status === "fail") {
-      setImgSrc("");
-    }
-  }, [rawInput, resolved?.status, resolved?.ok, resolved?.url]);
-
-  const shouldRenderImg = isHttpHttpsOrDataUrl(imgSrc) && !imgFinalFailed;
-
-  const placeholderStyle = {
-    position: "absolute",
-    inset: 0,
-    borderRadius: 14,
-    background: "linear-gradient(135deg, rgba(245,245,245,1) 0%, rgba(235,235,235,1) 40%, rgba(250,250,250,1) 100%)",
-  };
-
-  const mediaWrapStyle = {
-    position: "relative",
-    width: "100%",
-    height: "100%",
-    overflow: "hidden",
-    borderRadius: 14,
-    backgroundColor: "#f2f2f2",
-  };
-
-  return (
-    <div className="profile-route-tile-media" aria-hidden="true" data-route-id={routeId} style={mediaWrapStyle}>
-      <div className="profile-route-tile-placeholder" style={placeholderStyle} />
-
-      {shouldRenderImg ? (
-        <img
-          src={imgSrc}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="profile-route-tile-img"
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            opacity: imgOk ? 1 : 0,
-            transition: "opacity 180ms ease",
-          }}
-          onLoad={(e) => {
-            // ✅ bazen svg download url maskeli gelebilir → load olsa bile show etme
-            const cur = e?.currentTarget?.currentSrc || imgSrc || "";
-            if (urlContainsSvgMarker(cur) || isSvgAny(cur)) {
-              setImgOk(false);
-              setImgFinalFailed(true);
-              reportedRef.current = true;
-              onLoadEvent?.("error_all", cur);
-              return;
-            }
-
-            setImgOk(true);
-            reportedRef.current = true;
-            onLoadEvent?.("load", imgSrc);
-          }}
-          onError={() => {
-            setImgOk(false);
-            setImgFinalFailed(true);
-            if (!reportedRef.current) {
-              reportedRef.current = true;
-              onLoadEvent?.("error_all", imgSrc);
-            } else {
-              onLoadEvent?.("error_all", imgSrc);
-            }
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
 function LockedRoutesCard({ variant = "login_required" }) {
   const title = "Rotalar gizli";
   const subtitle = variant === "login_required" ? "Görmek için giriş yap." : "Bu rotaları görüntülemek için yetkin yok.";
@@ -1141,26 +1093,30 @@ function LockedRoutesCard({ variant = "login_required" }) {
     width: "100%",
     height: 220,
     overflow: "hidden",
-    borderRadius: 14,
-    backgroundColor: "#f2f2f2",
+    borderRadius: 18,
+    backgroundColor: "#0b1220",
   };
 
   const placeholderStyle = {
     position: "absolute",
     inset: 0,
-    borderRadius: 14,
-    background: "linear-gradient(135deg, rgba(245,245,245,1) 0%, rgba(235,235,235,1) 40%, rgba(250,250,250,1) 100%)",
+    borderRadius: 18,
+    background:
+      "radial-gradient(160px 140px at 20% 20%, rgba(255,255,255,0.18), transparent 62%), linear-gradient(135deg, rgba(10,10,12,1) 0%, rgba(17,24,39,1) 45%, rgba(15,23,42,1) 100%)",
   };
 
   return (
-    <div className="profile-routes-list" aria-label="Rotalar kilitli">
+    <div className="profile-routes-list" aria-label="Rotalar kilitli" data-route-skin="manus">
       <div className="profile-route-tile" role="note" aria-label={`${title}. ${subtitle}`}>
         <div className="profile-route-tile-media" aria-hidden="true" style={mediaWrapStyle}>
           <div className="profile-route-tile-placeholder" style={placeholderStyle} />
         </div>
 
         <div className="profile-route-tile-badges" aria-hidden="true">
-          <div className="profile-route-tile-badge profile-route-tile-badge--left" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <div
+            className="profile-route-tile-badge profile-route-tile-badge--left"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+          >
             <Icon name="lock" size={18} weight="fill" />
           </div>
         </div>
@@ -1171,6 +1127,85 @@ function LockedRoutesCard({ variant = "login_required" }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function ManusRouteCardTile({
+  route,
+  onOpen,
+  isProofTarget,
+  onProofLoadEvent,
+}) {
+  const rid = route?.id ? String(route.id) : "";
+
+  const rawTitle =
+    (route?.title && route.title.toString().trim()) ||
+    (route?.raw?.title && route.raw.title.toString().trim()) ||
+    (route?.raw?.name && route.raw.name.toString().trim()) ||
+    (route?.name && route.name.toString().trim()) ||
+    "Adsız rota";
+
+  const smartTitleProof = buildSmartTitleProof(route, rawTitle);
+  const title = smartTitleProof.smartTitle;
+
+  const coverCandidate = pickCoverCandidate(route);
+  const resolved = useResolvedMediaUrl(coverCandidate?.url || "");
+  const coverResolved = resolved?.ok && resolved?.status === "ok" ? resolved.url : "";
+
+  const cityOrTag = inferCityOrTag(route);
+  const authorName = inferAuthorName(route);
+
+  const ratingAvg =
+    toFiniteNumber(route?.ratingAvg) ??
+    toFiniteNumber(route?.avgRating) ??
+    toFiniteNumber(route?.raw?.ratingAvg) ??
+    0;
+
+  const distanceText = formatDistanceKmFromRoute(route) || "—";
+  const durationText = formatDurationFromRoute(route) || "—";
+
+  const viewsN = extractMetric(route, [
+    "views",
+    "viewCount",
+    "viewsCount",
+    "metrics.views",
+    "metrics.viewCount",
+    "metrics.viewsCount",
+  ]);
+  const savesN = extractMetric(route, [
+    "saves",
+    "saveCount",
+    "savesCount",
+    "bookmarks",
+    "bookmarkCount",
+    "metrics.saves",
+    "metrics.saveCount",
+    "metrics.savesCount",
+  ]);
+
+  const viewsText = formatCompactCount(viewsN) || "—";
+  const savesText = formatCompactCount(savesN) || "—";
+
+  return (
+    <RouteCardManusMobile
+      title={title}
+      coverUrl={coverResolved || ""}
+      cityOrTag={cityOrTag}
+      authorName={authorName}
+      ratingAvg={ratingAvg}
+      distanceText={distanceText}
+      durationText={durationText}
+      viewsText={viewsText}
+      savesText={savesText}
+      onOpen={onOpen}
+      onCoverLoadEvent={(evt, src) => {
+        if (!isProofTarget) return;
+        try {
+          onProofLoadEvent?.(evt, src);
+        } catch {}
+      }}
+      data-route-id={rid}
+    />
   );
 }
 
@@ -1198,9 +1233,7 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
           detail: { routeId: id, route: routePrefill, source: "profile" },
         })
       );
-    } catch {
-      // no-op
-    }
+    } catch {}
   }, []);
 
   const proofTarget = useMemo(() => {
@@ -1215,12 +1248,10 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
     const rid = proofTarget?.id ? String(proofTarget.id) : "";
     if (!rid) return;
 
-    // ✅ Dev proof: route bazlı tek sefer
     if (__devProofLoggedRouteIds.has(rid)) return;
 
     if (!proofRouteIdRef.current) proofRouteIdRef.current = rid;
 
-    // event gelmeden basmayalım
     if (!proofImgLoadEvent && !proofImgSrc) return;
 
     const rawTitle =
@@ -1271,7 +1302,7 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
 
   if (loading && !routes.length) {
     return (
-      <div className="profile-routes-list">
+      <div className="profile-routes-list" data-route-skin="manus">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="profile-routes-skel" />
         ))}
@@ -1292,78 +1323,24 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
   }
 
   return (
-    <div className="profile-routes-list">
+    <div className="profile-routes-list" data-route-skin="manus">
       {routes.map((route) => {
         const rid = route?.id ? String(route.id) : "";
-
-        const rawTitle =
-          (route?.title && route.title.toString().trim()) ||
-          (route?.raw?.title && route.raw.title.toString().trim()) ||
-          (route?.raw?.name && route.raw.name.toString().trim()) ||
-          (route?.name && route.name.toString().trim()) ||
-          "Adsız rota";
-
-        const smartTitleProof = buildSmartTitleProof(route, rawTitle);
-        const smartTitle = smartTitleProof.smartTitle;
-
-        const stopCount = inferStopCount(route);
-        const distanceText = formatDistanceKmFromRoute(route);
-
-        const infoText =
-          stopCount > 0 && distanceText
-            ? `📍 ${stopCount} durak · 📏 ${distanceText}`
-            : stopCount > 0
-            ? `📍 ${stopCount} durak`
-            : distanceText
-            ? `📏 ${distanceText}`
-            : "";
-
-        const coverCandidate = pickCoverCandidate(route);
-        const visibilityIconName = getAudienceIconName(route?.visibility);
+        const isProofTarget = !!(proofRouteIdRef.current && rid === proofRouteIdRef.current);
 
         return (
-          <button
-            key={rid || route.id}
-            type="button"
-            className="profile-route-tile"
-            onClick={() => handleClick(route)}
-            aria-label={`${smartTitle} rotasını aç`}
-          >
-            <RouteTileMedia
-              routeId={rid}
-              coverCandidate={coverCandidate}
-              onLoadEvent={(evt, src) => {
-                if (proofRouteIdRef.current && rid === proofRouteIdRef.current) {
-                  setProofImgLoadEvent(evt || "");
-                  setProofImgSrc(src || "");
-                }
+          <div key={rid || route.id} className="profile-route-cardWrap">
+            <ManusRouteCardTile
+              route={route}
+              onOpen={() => handleClick(route)}
+              isProofTarget={isProofTarget}
+              onProofLoadEvent={(evt, src) => {
+                if (!isProofTarget) return;
+                setProofImgLoadEvent(evt || "");
+                setProofImgSrc(src || "");
               }}
             />
-
-            <div className="profile-route-tile-badges" aria-hidden="true">
-              <div
-                className="profile-route-tile-badge profile-route-tile-badge--left"
-                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-              >
-                <Icon name={visibilityIconName} size={18} weight="fill" />
-              </div>
-
-              {/* ✅ sadece video posteri ise */}
-              {coverCandidate?.hasVideo && (
-                <div
-                  className="profile-route-tile-badge profile-route-tile-badge--right"
-                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  <Icon name="play" size={18} weight="fill" />
-                </div>
-              )}
-            </div>
-
-            <div className="profile-route-tile-overlay" aria-hidden="true">
-              {infoText && <div className="profile-route-tile-meta">{infoText}</div>}
-              <div className="profile-route-tile-title">{smartTitle}</div>
-            </div>
-          </button>
+          </div>
         );
       })}
 

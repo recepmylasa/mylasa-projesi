@@ -1,4 +1,4 @@
-// src/pages/RoutesExploreMobile/RoutesExploreMobile.jsx
+// FILE: src/pages/RoutesExploreMobile/RoutesExploreMobile.jsx
 // Keşif ekranı – Hepsi/Takip, Yakınımda/En yeni/En çok oy/En yüksek puan,
 // arama (debounce + AbortController + son aramalar),
 // URL/LocalStorage senkronu (m/a/s/q/sel + groupBy/city/country/tags),
@@ -6,22 +6,20 @@
 // near/search/non-near veri akışı ve sonsuz kaydırma (useRoutesData).
 // EMİR 11: RouteFilterSheet lazy-load + memoization
 // EMİR 12: Hafif windowing (useWindowedList) + dupe-guard (useRoutesData içinde)
+//
+// ✅ EMİR 32 / PARÇA 3: Manus Discover/Home Hero + 2 sütun keşfet grid (RouteCardManusMobile)
+// - Mantık/fetch/pagination/sort/filtre/route open akışı korunur
+// - Sadece UI giydirme + kart component swap + hero ekleme
+// - Desktop'a dokunulmaz
 
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useMemo,
-  Suspense,
-  lazy,
-} from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo, Suspense, lazy } from "react";
 import { auth } from "../../firebase";
+
+import "./RoutesExploreMobile.css";
 
 import { getFollowingUids } from "../../services/follows";
 
 import NearbyPromptMobile from "../../components/NearbyPromptMobile";
-import RouteCardMobile from "../../components/RouteCardMobile";
 
 import {
   DEFAULT_AUDIENCE,
@@ -42,13 +40,15 @@ import useWindowedList from "./hooks/useWindowedList";
 // EMİR 9: eksik import FIX
 import SearchBarMobile from "./components/SearchBarMobile";
 
+// ✅ EMİR 32: Manus hero + kart
+import RoutesDiscoverHeroManusMobile from "../../routes/RoutesDiscoverHeroManusMobile";
+import RouteCardManusMobile from "../../routes/RouteCardManusMobile";
+
 // NearMapPane lazy-load (EMİR 9)
 const NearMapPane = lazy(() => import("./components/NearMapPane"));
 
 // RouteFilterSheet lazy-load (EMİR 11)
-const RouteFilterSheetLazy = lazy(() =>
-  import("../../components/RouteFilterSheet")
-);
+const RouteFilterSheetLazy = lazy(() => import("../../components/RouteFilterSheet"));
 
 function RoutesExploreMobile() {
   const initialRef = useRef(null);
@@ -89,9 +89,7 @@ function RoutesExploreMobile() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
-  const [selectedRouteId, setSelectedRouteId] = useState(
-    initialRef.current.ui.selectedId || null
-  );
+  const [selectedRouteId, setSelectedRouteId] = useState(initialRef.current.ui.selectedId || null);
 
   const [nearBounds, setNearBounds] = useState(null);
 
@@ -104,6 +102,9 @@ function RoutesExploreMobile() {
 
   // EMİR 13: Haritaya giden pin listesi için ayrı state
   const [itemsForMap, setItemsForMap] = useState([]);
+
+  // ✅ EMİR 32: Hero -> Grid scroll anchor
+  const gridAnchorRef = useRef(null);
 
   // URL & LocalStorage senkronu (m/a/s/q/sel + groupBy/city/country/tags)
   useExploreParamsSync({
@@ -390,11 +391,7 @@ function RoutesExploreMobile() {
             detail: {
               routeId: id,
               route,
-              source: hasSearch
-                ? "search"
-                : sort === "near"
-                ? "near"
-                : "explore",
+              source: hasSearch ? "search" : sort === "near" ? "near" : "explore",
             },
           })
         );
@@ -405,16 +402,10 @@ function RoutesExploreMobile() {
     [sort, mapReady, mapRef, hasSearch]
   );
 
-  const hasActiveFilters =
-    !!filters.city ||
-    !!filters.country ||
-    (filters.tags && filters.tags.length > 0);
+  const hasActiveFilters = !!filters.city || !!filters.country || (filters.tags && filters.tags.length > 0);
 
   // Gruplar (EMİR 11)
-  const groups = useMemo(
-    () => makeGroups(visibleItems, group),
-    [visibleItems, group]
-  );
+  const groups = useMemo(() => makeGroups(visibleItems, group), [visibleItems, group]);
 
   // EMİR 12: windowing için düz index haritası
   const { flatIndexById, totalItemCount } = useMemo(() => {
@@ -422,8 +413,7 @@ function RoutesExploreMobile() {
     let idx = 0;
     for (const g of groups) {
       for (const r of g.items) {
-        const id =
-          r && r.id !== undefined && r.id !== null ? String(r.id) : null;
+        const id = r && r.id !== undefined && r.id !== null ? String(r.id) : null;
         if (!id) {
           idx += 1;
           continue;
@@ -442,24 +432,18 @@ function RoutesExploreMobile() {
   const { start: windowStart, end: windowEnd } = useWindowedList({
     containerRef: listContainerRef,
     itemCount: totalItemCount,
-    estimatedItemHeight: 96,
+    estimatedItemHeight: 260, // ✅ Manus grid tile için yaklaşık
     overscan: 6,
     disabled: windowingDisabled,
   });
 
-  const showNearbyPrompt =
-    sort === "near" && !hasSearch && !near && locationStatus === "denied";
+  const showNearbyPrompt = sort === "near" && !hasSearch && !near && locationStatus === "denied";
 
-  const groupLabel =
-    group === "city" ? "Şehir" : group === "country" ? "Ülke" : "";
+  const groupLabel = group === "city" ? "Şehir" : group === "country" ? "Ülke" : "";
 
   const nearMetaText =
     sort === "near" && !hasSearch && initialized
-      ? `${totalCount} rota${
-          Number.isFinite(radius) && radius > 0
-            ? ` • yaklaşık ${radius.toFixed(1)} km`
-            : ""
-        }`
+      ? `${totalCount} rota${Number.isFinite(radius) && radius > 0 ? ` • yaklaşık ${radius.toFixed(1)} km` : ""}`
       : "";
 
   const showFollowingNearEmptyBadge =
@@ -482,30 +466,138 @@ function RoutesExploreMobile() {
       ? "Aramana uygun rota bulunamadı."
       : "Hiç rota bulunamadı.";
 
+  // ✅ EMİR 32: “Rotaları Keşfet” → grid anchor scroll
+  const scrollToGrid = useCallback(() => {
+    const el = gridAnchorRef.current;
+    if (!el || typeof el.scrollIntoView !== "function") return;
+    try {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  // ✅ EMİR 32: “Rotayı Başlat” entrypoint (varsa) — yoksa disabled
+  const canStartRoute = useMemo(() => {
+    try {
+      return typeof window !== "undefined" && typeof window.__MYLASA_START_ROUTE__ === "function";
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const startRoute = useCallback(() => {
+    try {
+      if (typeof window !== "undefined" && typeof window.__MYLASA_START_ROUTE__ === "function") {
+        window.__MYLASA_START_ROUTE__();
+      }
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  // ✅ Manus card prop mapper (UI fallback’li)
+  const buildManusCardProps = useCallback((r) => {
+    const title = (r?.title || r?.name || "Rota").toString();
+
+    const coverUrl =
+      (r?.coverUrl && String(r.coverUrl)) ||
+      (r?.cover?.url && String(r.cover.url)) ||
+      (r?.coverResolved && String(r.coverResolved)) ||
+      (r?.previewUrl && String(r.previewUrl)) ||
+      (r?.thumbnailUrl && String(r.thumbnailUrl)) ||
+      "";
+
+    const cityOrTag =
+      (r?.areas?.city && String(r.areas.city)) ||
+      (Array.isArray(r?.tags) && r.tags.length ? `#${String(r.tags[0])}` : "—");
+
+    const authorName =
+      (r?.ownerName && String(r.ownerName)) ||
+      (r?.authorName && String(r.authorName)) ||
+      (r?.userName && String(r.userName)) ||
+      (r?.owner?.name && String(r.owner.name)) ||
+      "—";
+
+    const ratingAvg =
+      typeof r?.ratingAvg === "number"
+        ? r.ratingAvg
+        : typeof r?.avgRating === "number"
+        ? r.avgRating
+        : typeof r?.rating === "number"
+        ? r.rating
+        : null;
+
+    const distanceText =
+      (r?.distanceText && String(r.distanceText)) ||
+      (typeof r?.distanceKm === "number" && Number.isFinite(r.distanceKm) ? `${Math.round(r.distanceKm * 10) / 10} km` : "—");
+
+    const durationText =
+      (r?.durationText && String(r.durationText)) ||
+      (typeof r?.durationMs === "number" && Number.isFinite(r.durationMs) ? `${Math.max(1, Math.round(r.durationMs / 60000))} dk` : "—");
+
+    const viewsText =
+      (r?.viewsText && String(r.viewsText)) ||
+      (typeof r?.views === "number" && Number.isFinite(r.views) ? String(r.views) : "—");
+
+    const savesText =
+      (r?.savesText && String(r.savesText)) ||
+      (typeof r?.saves === "number" && Number.isFinite(r.saves) ? String(r.saves) : "—");
+
+    return {
+      title,
+      coverUrl,
+      cityOrTag,
+      authorName,
+      ratingAvg,
+      distanceText,
+      durationText,
+      viewsText,
+      savesText,
+    };
+  }, []);
+
   return (
     <div
       className="RoutesExploreMobile"
+      data-route-skin="manus"
       style={{
         padding: "0 0 80px",
         maxWidth: 720,
         margin: "0 auto",
       }}
     >
-      {/* Katman 1 — Sticky toolbar */}
-      <header
-        className="routes-toolbar"
-        role="region"
-        aria-label="Rotalar araç çubuğu"
-      >
-        <div className="routes-toolbar-title">Rotalar</div>
+      {/* ✅ EMİR 32: Manus appbar (Keşfet/Başla) + mevcut segment/filter korunur */}
+      <header className="routes-toolbar routes-toolbar--manus" role="region" aria-label="Rotalar araç çubuğu">
+        <div className="manus-appbar-row">
+          <div className="manus-appbar-brand" aria-label="Mylasa">
+            Mylasa
+          </div>
+
+          <div className="manus-appbar-tabs" role="tablist" aria-label="Keşfet sekmeleri">
+            <button type="button" className="manus-appbar-tab is-active" role="tab" aria-selected="true">
+              Keşfet
+            </button>
+            <button
+              type="button"
+              className={"manus-appbar-tab" + (!canStartRoute ? " is-disabled" : "")}
+              role="tab"
+              aria-selected="false"
+              disabled={!canStartRoute}
+              title={!canStartRoute ? "Şimdilik devre dışı." : ""}
+              onClick={canStartRoute ? startRoute : undefined}
+            >
+              Başla
+            </button>
+          </div>
+        </div>
+
+        {/* Mevcut kontrol satırı (mantık aynı) */}
         <div className="routes-toolbar-segment">
           <div className="routes-segment" aria-label="Kapsam">
             <button
               type="button"
-              className={
-                "routes-segment-btn" +
-                (audience === "all" ? " routes-segment-btn--active" : "")
-              }
+              className={"routes-segment-btn" + (audience === "all" ? " routes-segment-btn--active" : "")}
               onClick={() => setAudience("all")}
               aria-pressed={audience === "all"}
             >
@@ -513,17 +605,11 @@ function RoutesExploreMobile() {
             </button>
             <button
               type="button"
-              className={
-                "routes-segment-btn" +
-                (audience === "following"
-                  ? " routes-segment-btn--active"
-                  : "")
-              }
+              className={"routes-segment-btn" + (audience === "following" ? " routes-segment-btn--active" : "")}
               onClick={() => {
                 if (!auth?.currentUser?.uid) {
                   setAudience("all");
-                  const msg =
-                    "Takip ettiğin kullanıcıların rotalarını görmek için giriş yapmalısın.";
+                  const msg = "Takip ettiğin kullanıcıların rotalarını görmek için giriş yapmalısın.";
                   setToastMessage(msg);
                   if (toastTimerRef.current) {
                     clearTimeout(toastTimerRef.current);
@@ -540,15 +626,22 @@ function RoutesExploreMobile() {
               Takip
             </button>
           </div>
+
+          <button type="button" className="routes-filter-btn" onClick={() => setFilterSheetOpen(true)}>
+            Sırala
+          </button>
         </div>
-        <button
-          type="button"
-          className="routes-filter-btn"
-          onClick={() => setFilterSheetOpen(true)}
-        >
-          Sırala
-        </button>
       </header>
+
+      {/* ✅ EMİR 32: Manus Hero */}
+      <div className="manus-hero-wrap">
+        <RoutesDiscoverHeroManusMobile
+          routesCount={Array.isArray(items) ? items.length : 0}
+          onScrollToGrid={scrollToGrid}
+          onStartRoute={canStartRoute ? startRoute : null}
+          startDisabledHint={!canStartRoute ? "Şimdilik devre dışı." : ""}
+        />
+      </div>
 
       {/* Katman 1.5 — Arama kutusu + son aramalar */}
       <SearchBarMobile
@@ -605,11 +698,7 @@ function RoutesExploreMobile() {
         </button>
 
         {groupLabel && (
-          <button
-            type="button"
-            className="routes-badge"
-            onClick={() => setFilterSheetOpen(true)}
-          >
+          <button type="button" className="routes-badge" onClick={() => setFilterSheetOpen(true)}>
             Grup: {groupLabel}
           </button>
         )}
@@ -628,9 +717,7 @@ function RoutesExploreMobile() {
             color: "#4b5563",
           }}
         >
-          <span className="routes-badge">
-            Takip ettiklerinden yakında rota yok.
-          </span>
+          <span className="routes-badge">Takip ettiklerinden yakında rota yok.</span>
           <button
             type="button"
             className="routes-info-link"
@@ -653,12 +740,7 @@ function RoutesExploreMobile() {
       )}
 
       {/* Yakınımda: konum izni reddedildiyse prompt */}
-      {showNearbyPrompt && (
-        <NearbyPromptMobile
-          onAllow={requestLocation}
-          onCancel={() => setSort("new")}
-        />
-      )}
+      {showNearbyPrompt && <NearbyPromptMobile onAllow={requestLocation} onCancel={() => setSort("new")} />}
 
       {/* Yakınımda: meta + harita alanı (lazy load) */}
       {sort === "near" && !hasSearch && !showNearbyPrompt && (
@@ -694,8 +776,7 @@ function RoutesExploreMobile() {
                     style={{
                       position: "absolute",
                       inset: 0,
-                      background:
-                        "linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%)",
+                      background: "linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%)",
                       animation: "near-skel-pulse 1.4s ease infinite",
                     }}
                   />
@@ -725,22 +806,13 @@ function RoutesExploreMobile() {
                 gap: 6,
               }}
             >
-              {filters.city && (
-                <span className="chip chip--filter">
-                  Şehir: {filters.city}
+              {filters.city && <span className="chip chip--filter">Şehir: {filters.city}</span>}
+              {filters.country && <span className="chip chip--filter">Ülke: {filters.country}</span>}
+              {filters.tags && filters.tags.map((t) => (
+                <span key={t} className="chip chip--filter">
+                  #{t}
                 </span>
-              )}
-              {filters.country && (
-                <span className="chip chip--filter">
-                  Ülke: {filters.country}
-                </span>
-              )}
-              {filters.tags &&
-                filters.tags.map((t) => (
-                  <span key={t} className="chip chip--filter">
-                    #{t}
-                  </span>
-                ))}
+              ))}
             </div>
           )}
         </>
@@ -754,15 +826,12 @@ function RoutesExploreMobile() {
         </div>
       )}
 
+      {/* ✅ EMİR 32: Grid anchor (Hero CTA scroll target) */}
+      <div ref={gridAnchorRef} className="manus-grid-anchor" aria-hidden="true" />
+
       {/* Liste alanı */}
-      <div
-        aria-busy={loading && !initialized}
-        style={{ paddingTop: 4, paddingInline: 10 }}
-        ref={listContainerRef}
-      >
-        {!initialized && !loading && (
-          <div style={{ padding: "20px 4px" }}>Yükleniyor…</div>
-        )}
+      <div aria-busy={loading && !initialized} style={{ paddingTop: 4, paddingInline: 12 }} ref={listContainerRef}>
+        {!initialized && !loading && <div style={{ padding: "20px 4px" }}>Yükleniyor…</div>}
 
         {initialized && !visibleItems.length && !loading && (
           <div
@@ -797,136 +866,72 @@ function RoutesExploreMobile() {
         )}
 
         {/* Near modunda ilk yükleme sırasında skeleton kartlar */}
-        {sort === "near" &&
-          !hasSearch &&
-          loading &&
-          !visibleItems.length && (
-            <div style={{ padding: "8px 2px" }}>
-              <div
-                className="near-skel"
-                style={{
-                  height: 80,
-                  marginBottom: 8,
-                  borderRadius: 12,
-                  background: "#f3f4f6",
-                }}
-              />
-              <div
-                className="near-skel"
-                style={{
-                  height: 80,
-                  marginBottom: 8,
-                  borderRadius: 12,
-                  background: "#f3f4f6",
-                }}
-              />
-              <div
-                className="near-skel"
-                style={{
-                  height: 80,
-                  marginBottom: 8,
-                  borderRadius: 12,
-                  background: "#f3f4f6",
-                }}
-              />
-            </div>
-          )}
+        {sort === "near" && !hasSearch && loading && !visibleItems.length && (
+          <div style={{ padding: "8px 2px" }}>
+            <div className="near-skel" style={{ height: 120, marginBottom: 10, borderRadius: 18, background: "#f3f4f6" }} />
+            <div className="near-skel" style={{ height: 120, marginBottom: 10, borderRadius: 18, background: "#f3f4f6" }} />
+            <div className="near-skel" style={{ height: 120, marginBottom: 10, borderRadius: 18, background: "#f3f4f6" }} />
+          </div>
+        )}
 
-        {/* EMİR 12: Hafif windowing – pencere dışındaki kartlar boş blok olarak kalıyor */}
+        {/* ✅ EMİR 32: Manus 2 sütun grid (group header korunur) */}
         {groups.map((g) => (
-          <section
-            key={g.key}
-            className="ExploreGroup"
-            style={{ marginBottom: 8 }}
-          >
+          <section key={g.key} className="ExploreGroup" style={{ marginBottom: 14 }}>
             {g.label && (
-              <header
-                className="ExploreGroupHeader"
-                style={{
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 5,
-                  background: "#fff",
-                  padding: "4px 2px 4px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  borderBottom: "1px solid #eee",
-                }}
-              >
-                <span
-                  className="ExploreGroupHeaderTitle"
-                  style={{ fontSize: 13, fontWeight: 700 }}
-                >
-                  {g.label}
-                </span>
-                <span
-                  className="ExploreGroupHeaderBadge"
-                  style={{
-                    minWidth: 22,
-                    padding: "2px 6px",
-                    borderRadius: 999,
-                    background: "#f3f4f6",
-                    fontSize: 11,
-                    textAlign: "center",
-                  }}
-                >
-                  {g.items.length}
-                </span>
+              <header className="ExploreGroupHeader manus-groupHeader">
+                <span className="ExploreGroupHeaderTitle">{g.label}</span>
+                <span className="ExploreGroupHeaderBadge">{g.items.length}</span>
               </header>
             )}
-            <div
-              className="ExploreGroupBody"
-              style={{ paddingTop: g.label ? 6 : 0 }}
-            >
-              {g.items.map((r) => {
-                const id =
-                  r && r.id !== undefined && r.id !== null ? String(r.id) : "";
-                const flatIndex =
-                  id && flatIndexById.has(id)
-                    ? flatIndexById.get(id)
-                    : 0;
 
-                const shouldRenderCard =
-                  windowingDisabled ||
-                  (flatIndex >= windowStart && flatIndex < windowEnd);
+            <div className={"ExploreGroupBody" + (g.label ? " has-label" : "")}>
+              <div className="manus-explore-grid">
+                {g.items.map((r) => {
+                  const id = r && r.id !== undefined && r.id !== null ? String(r.id) : "";
+                  const flatIndex = id && flatIndexById.has(id) ? flatIndexById.get(id) : 0;
 
-                const selected =
-                  !!selectedRouteId &&
-                  String(selectedRouteId) === String(r.id);
+                  const shouldRenderCard = windowingDisabled || (flatIndex >= windowStart && flatIndex < windowEnd);
 
-                return (
-                  <div
-                    key={r.id}
-                    style={{
-                      marginBottom: 8,
-                      minHeight: 88, // yaklaşık kart yüksekliği
-                    }}
-                  >
-                    {shouldRenderCard && (
-                      <div
-                        ref={(el) => {
-                          if (!id) return;
-                          if (!el) {
-                            delete cardRefs.current[id];
-                          } else {
-                            cardRefs.current[id] = el;
-                          }
-                        }}
-                      >
-                        <RouteCardMobile
-                          route={r}
-                          selected={selected}
-                          onClick={() => handleRouteCardClick(r)}
-                          highlightQuery={
-                            hasSearch ? debouncedQuery : ""
-                          }
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  const selected = !!selectedRouteId && String(selectedRouteId) === String(r.id);
+
+                  // props map
+                  const p = buildManusCardProps(r);
+
+                  return (
+                    <div key={r.id} className="manus-explore-cell">
+                      {shouldRenderCard ? (
+                        <div
+                          ref={(el) => {
+                            if (!id) return;
+                            if (!el) {
+                              delete cardRefs.current[id];
+                            } else {
+                              cardRefs.current[id] = el;
+                            }
+                          }}
+                        >
+                          <RouteCardManusMobile
+                            title={p.title}
+                            coverUrl={p.coverUrl}
+                            cityOrTag={p.cityOrTag}
+                            authorName={p.authorName}
+                            ratingAvg={p.ratingAvg}
+                            distanceText={p.distanceText}
+                            durationText={p.durationText}
+                            viewsText={p.viewsText}
+                            savesText={p.savesText}
+                            selected={selected}
+                            onClick={() => handleRouteCardClick(r)}
+                            highlightQuery={hasSearch ? debouncedQuery : ""}
+                          />
+                        </div>
+                      ) : (
+                        <div className="manus-explore-cell-skel" aria-hidden="true" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </section>
         ))}
@@ -936,28 +941,10 @@ function RoutesExploreMobile() {
 
         {/* Alt yükleme durumu */}
         {loading && sort !== "near" && visibleItems.length > 0 && (
-          <div
-            style={{
-              padding: 12,
-              textAlign: "center",
-              opacity: 0.65,
-              fontSize: 13,
-            }}
-          >
-            Yükleniyor…
-          </div>
+          <div style={{ padding: 12, textAlign: "center", opacity: 0.65, fontSize: 13 }}>Yükleniyor…</div>
         )}
         {isEnd && !loading && items.length > 0 && (
-          <div
-            style={{
-              padding: 12,
-              textAlign: "center",
-              opacity: 0.6,
-              fontSize: 12,
-            }}
-          >
-            Hepsi bu kadar.
-          </div>
+          <div style={{ padding: 12, textAlign: "center", opacity: 0.6, fontSize: 12 }}>Hepsi bu kadar.</div>
         )}
       </div>
 
@@ -986,21 +973,5 @@ function RoutesExploreMobile() {
     </div>
   );
 }
-
-// HIZLI TEST (EMİR #1–5 + 8 + 9 + 10 + 11 + 12 + 13)
-// [ ] Proje build oluyor, RoutesExploreMobile import hatası yok.
-// [ ] Mobil “Rotalar” sekmesi açılıyor, Hepsi/Takip ve Yakınımda/En yeni/En çok oy/En yüksek puan eskisi gibi çalışıyor.
-// [ ] Arama kutusu: yazınca ~300ms sonra arıyor, Enter’a basınca anında arıyor, ESC aramayı temizliyor.
-// [ ] Son aramalar (r_recentq) listesi çalışıyor, yeni aramalar listeye ekleniyor.
-// [ ] Yakınımda: Harita yükleniyor, konum izni prompt’u çıkıyor, pin/kart senkronu ve “Bu alanda ara” butonu çalışıyor.
-//     → Haritada yeni bir alana kaydır/zoom yap, CTA çıksın; tıklayınca liste resetlenip yeni alana göre near sonuçları geliyor.
-// [ ] Near/search/non-near veri akışları useRoutesData içinden yönetiliyor; sonsuz kaydırma sentinel üzerinden çalışıyor.
-// [ ] Geri/ileri ile m/a/s/q/sel + groupBy/city/country/tags state’i doğru geri yükleniyor.
-// [ ] “Hepsi bu kadar.” metni doğru yerde ve sadece verinin sonuna gelindiğinde çıkıyor.
-// [ ] EMİR 9: Google Maps bundle’ı sadece Yakınımda modunda yükleniyor, listener sayısı artmıyor.
-// [ ] EMİR 10: Sentinel rootMargin = "600px 0px 1200px 0px"; aynı cursor için çift istek yok; resetAll() sonrası ilk sayfa temiz yükleniyor.
-// [ ] EMİR 11: RouteFilterSheet chunk’ı lazy-load; idle prefetch sonrası “Sırala” anında açılıyor; makeGroups memoize.
-// [ ] EMİR 12: Büyük listelerde scroll sırasında sadece pencere içindeki kartlar gerçek <RouteCardMobile> olarak render ediliyor; pencere dışı kartlar boş blok olarak kalıyor (hafif windowing). Dupe-guard sayesinde aynı id’ye sahip rota iki kez görünmüyor.
-// [ ] EMİR 13: Yakınımda modunda harita pinleri useRoutesData.items ile senkron (itemsForMap); chunked pin render + marker clusterer ile 200+ pin sahnesinde FPS stabil.
 
 export default RoutesExploreMobile;

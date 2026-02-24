@@ -1,0 +1,71 @@
+/* FILE: src/pages/RouteDetailMobile/styles/rd.manus.skin.css
+   Manus skin override (P1) — sadece RouteDetailMobile scope
+   Davranışa dokunmaz: sadece renk/border/blur/shadow/typography
+*/
+
+.route-detail-backdrop[data-route-skin="manus"] {
+  background: var(--mn-bg);
+}
+
+/* Hero title: gradient text */
+.route-detail-backdrop[data-route-skin="manus"] .rd-hero__title {
+  background: var(--mn-title-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  text-shadow: var(--mn-title-glow);
+}
+
+/* Hero nav buttons: glass + cyan edge */
+.route-detail-backdrop[data-route-skin="manus"] .rd-hero-nav-btn {
+  border-color: rgba(82, 255, 240, 0.14);
+  background: var(--mn-glass-2);
+  backdrop-filter: blur(var(--mn-blur)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--mn-blur)) saturate(170%);
+  box-shadow: var(--mn-shadow-soft);
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-hero-nav-btn:active {
+  box-shadow: var(--mn-shadow-soft), var(--mn-glow-cyan);
+}
+
+/* Tabs wrap: glass bar */
+.route-detail-backdrop[data-route-skin="manus"] .rd-sectionTabsWrap {
+  border-color: rgba(82, 255, 240, 0.10);
+  background: var(--mn-glass);
+  backdrop-filter: blur(var(--mn-blur)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--mn-blur)) saturate(170%);
+  box-shadow: var(--mn-shadow-soft);
+}
+
+/* Tabs buttons */
+.route-detail-backdrop[data-route-skin="manus"] .rd-sectionTabBtn {
+  border-color: rgba(255, 255, 255, 0.10);
+  background: var(--mn-glass);
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-sectionTabBtn.is-active {
+  border-color: rgba(82, 255, 240, 0.22);
+  background: rgba(82, 255, 240, 0.10);
+  box-shadow: var(--mn-glow-cyan);
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-sectionTabBtn.is-active::after {
+  background: rgba(82, 255, 240, 0.95);
+}
+
+/* Map card: clean border + soft glow */
+.route-detail-backdrop[data-route-skin="manus"] .rd-map-card {
+  border-color: rgba(82, 255, 240, 0.12);
+  box-shadow: var(--mn-shadow), var(--mn-glow-cyan);
+}
+
+/* Comments/GPX cards: match glass */
+.route-detail-backdrop[data-route-skin="manus"] .rd-commentsCard,
+.route-detail-backdrop[data-route-skin="manus"] .rd-gpxCard {
+  background: var(--mn-glass);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow: var(--mn-shadow-soft);
+  backdrop-filter: blur(var(--mn-blur)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--mn-blur)) saturate(170%);
+}

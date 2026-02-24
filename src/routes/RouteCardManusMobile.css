@@ -1,0 +1,211 @@
+/* FILE: src/routes/RouteCardManusMobile.css */
+
+.rcm-card {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  display: block;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  aspect-ratio: 4/5;
+  border-radius: 18px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+
+  /* glass + glow */
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+    0 0 22px rgba(99, 102, 241, 0.10);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rcm-card:active {
+  transform: scale(0.99);
+}
+
+.rcm-cover {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.rcm-coverPlaceholder {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(160px 140px at 20% 20%, rgba(255, 255, 255, 0.22), transparent 62%),
+    radial-gradient(220px 160px at 80% 25%, rgba(99, 102, 241, 0.14), transparent 62%),
+    radial-gradient(220px 160px at 30% 85%, rgba(16, 185, 129, 0.12), transparent 62%),
+    linear-gradient(135deg, rgba(10, 10, 12, 1) 0%, rgba(17, 24, 39, 1) 35%, rgba(15, 23, 42, 1) 70%, rgba(10, 10, 12, 1) 100%);
+}
+
+.rcm-coverImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity 180ms ease;
+}
+
+.rcm-coverGradient {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.10) 35%, rgba(0, 0, 0, 0.62) 100%);
+  pointer-events: none;
+}
+
+.rcm-pill {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+
+  max-width: calc(100% - 20px);
+  padding: 7px 10px;
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(0, 0, 0, 0.44);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.rcm-glass {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+
+  padding: 10px 10px 9px;
+  border-radius: 16px;
+
+  background: rgba(10, 10, 12, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+
+.rcm-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rcm-title {
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.96);
+
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.rcm-author {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.78);
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rcm-author.is-empty {
+  opacity: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.rcm-ratingRow {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rcm-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.94);
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.28));
+}
+
+.rcm-ratingVal {
+  font-size: 12.5px;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: 0.2px;
+}
+
+.rcm-ratingBadge {
+  font-size: 11.5px;
+  font-weight: 900;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: rgba(0, 0, 0, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.rcm-ratingBar {
+  margin-left: auto;
+  width: 64px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.rcm-ratingBarFill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.rcm-stats {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+}
+
+.rcm-statLabel {
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.62);
+  letter-spacing: 0.2px;
+}
+
+.rcm-statVal {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.90);
+}

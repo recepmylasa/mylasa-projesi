@@ -13,6 +13,10 @@
 /* ✅ EMİR 3 — Sticky Sekme Barı + Anchor section stilleri */
 @import "./styles/rd.sectionTabs.css";
 
+/* ✅ EMİR 32 (P1) — Manus skin (route-scope, override katmanı) */
+@import "./styles/rd.manus.tokens.css";
+@import "./styles/rd.manus.skin.css";
+
 /* =========================================================
    ✅ EMİR — GLOBAL X OVERFLOW KILL + TEK MERKEZ ÖLÇÜSÜ
    ========================================================= */
@@ -207,149 +211,18 @@
 }
 
 /* =========================================================
-   ✅ EMİR 01 — ÜST BÖLÜM PARİTESİ
+   ✅ EMİR 31/P1 — ZOOM BUGGUARD (REV) — vh/dvh kilidini kullanma
+   (backdrop zaten fixed + inset:0; height kilidi zoom rounding kırıcı)
    ========================================================= */
-
-.route-detail-backdrop {
-  background:
-    radial-gradient(900px 520px at 50% -10%, rgba(255, 255, 255, 0.06), transparent 60%),
-    linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0.18) 0%,
-      rgba(0, 0, 0, 0.26) 42%,
-      rgba(0, 0, 0, 0.34) 100%
-    ) !important;
-
-  backdrop-filter: blur(3px) saturate(120%);
-  -webkit-backdrop-filter: blur(3px) saturate(120%);
-}
-
-.route-detail-backdrop[data-theme="light"],
-.route-detail-backdrop.route-detail-light {
-  background:
-    radial-gradient(900px 520px at 50% -10%, rgba(255, 255, 255, 0.10), transparent 62%),
-    linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0.06) 0%,
-      rgba(0, 0, 0, 0.10) 42%,
-      rgba(0, 0, 0, 0.14) 100%
-    ) !important;
-
-  backdrop-filter: blur(2px) saturate(120%);
-  -webkit-backdrop-filter: blur(2px) saturate(120%);
-}
-
-.route-detail-backdrop .route-detail-sheet {
-  border-top-left-radius: 28px !important;
-  border-top-right-radius: 28px !important;
-
-  overflow: hidden !important;
-
-  isolation: isolate;
-
-  /* ✅ EMİR 02 (REV-2) SAFE MODE: compositing + clip kapalı */
-  transform: none !important;
-  clip-path: none !important;
-  -webkit-clip-path: none !important;
-
-  padding-top: 0 !important;
-}
-
-.route-detail-backdrop .route-detail-sheet > .route-detail-grab {
-  position: absolute !important;
-  top: 10px !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
-
-  width: 46px !important;
-  height: 5px !important;
-  border-radius: 999px !important;
-
-  background: rgba(255, 255, 255, 0.32) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18) !important;
-
-  z-index: 20 !important;
-  pointer-events: none !important;
-}
-
-.route-detail-backdrop[data-theme="light"] .route-detail-sheet > .route-detail-grab,
-.route-detail-backdrop.route-detail-light .route-detail-sheet > .route-detail-grab {
-  background: rgba(0, 0, 0, 0.14) !important;
-  border: 1px solid rgba(0, 0, 0, 0.10) !important;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.10) !important;
-}
-
-.route-detail-backdrop .route-detail-hero {
-  margin-top: 0 !important;
-}
-
-.route-detail-backdrop .route-detail-sheet > .route-detail-hero,
-.route-detail-backdrop .route-detail-sheet > .route-detail-hero * {
-  scroll-margin-top: 0;
-}
-
-/* =========================================================
-   ✅ EMİR 02 (REV-2) — Body sticky kesin ölüm (EN ALT OVERRIDE)
-   ========================================================= */
-
-.route-detail-backdrop .route-detail-sheet > .route-detail-body {
-  position: relative !important;
-
-  top: auto !important;
-  bottom: auto !important;
-  left: auto !important;
-  right: auto !important;
-  inset: auto !important;
-
-  transform: none !important;
-  translate: none !important;
-
-  contain: none !important;
-  will-change: auto !important;
-}
-
-/* =========================================================
-   ✅ EMİR 31/P1 — ZOOM BUGGUARD: HERO FLOW-STACK KİLİT
-   ========================================================= */
-
-.route-detail-backdrop[data-simple-scroll="1"] .route-detail-hero,
-.route-detail-backdrop[data-simple-scroll="1"] .rd-hero {
-  position: relative !important;
-  inset: auto !important;
-  top: auto !important;
-  left: auto !important;
-  right: auto !important;
-  bottom: auto !important;
-  z-index: 2 !important;
-}
-
-.route-detail-backdrop[data-simple-scroll="1"] .route-detail-body {
-  position: relative !important;
-  z-index: 1 !important;
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-
-@supports (height: 100dvh) {
-  .route-detail-backdrop[data-simple-scroll="1"] {
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-  }
-  .route-detail-backdrop[data-simple-scroll="1"] .route-detail-sheet {
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-  }
-}
 
 .route-detail-backdrop[data-simple-scroll="1"] {
-  height: 100vh;
-  max-height: 100vh;
+  height: auto !important;
+  max-height: none !important;
 }
 
 .route-detail-backdrop[data-simple-scroll="1"] .route-detail-sheet {
-  height: 100vh;
-  max-height: 100vh;
+  height: 100% !important;
+  max-height: 100% !important;
 }
 
 /* =========================================================

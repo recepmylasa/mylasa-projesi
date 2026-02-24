@@ -466,10 +466,6 @@ export default function RouteDetailMobile({
     [applyHeroCollapseVars]
   );
 
-  /**
-   * ✅ EMİR 04 — PARÇA 3/3
-   * Hero Vars FORCE RESET (cache breaker)
-   */
   const forceHeroExpanded = useCallback(
     (reason = "") => {
       // ✅ EMİR 31/P2 — Simple Scroll modda force/reset KAPALI
@@ -501,7 +497,6 @@ export default function RouteDetailMobile({
     [applyHeroCollapseVars, routeId]
   );
 
-  // ✅ EMİR — inline transform “temizleyici”
   const stripInlineTransform = useCallback((el) => {
     if (!el) return;
     try {
@@ -525,17 +520,10 @@ export default function RouteDetailMobile({
     } catch {}
   }, []);
 
-  // ✅ PARÇA 2/5 — Layout Repair (scroll-end + snap-end)
   const scrollEndRef = React.useRef({ tmr: 0 });
   const snapEndGateRef = React.useRef({ lastAt: 0 });
-
-  // ✅ EMİR 04 — snap/scroll 2. dalga gate (300ms) + timer
   const settleSecondWaveRef = React.useRef({ lastAt: 0, tmr: 0 });
-
-  // ✅ EMİR 04 — transitionend gate (250ms)
   const transitionEndGateRef = React.useRef({ lastAt: 0 });
-
-  // ✅ EMİR 04 — scrollTop ref (scrollEnd anında st okumak için)
   const lastScrollTopRef = React.useRef(0);
 
   const clearInlineLayoutStuck = useCallback((el) => {
@@ -558,7 +546,6 @@ export default function RouteDetailMobile({
       }
     } catch {}
 
-    // ✅ “takılı kalmış top/left/right/bottom” inline temizliği (özellikle snap sonrası)
     try {
       const top = el.style?.top;
       if (typeof top === "string" && top !== "") {
@@ -591,9 +578,6 @@ export default function RouteDetailMobile({
     return changed;
   }, []);
 
-  /**
-   * ✅ EMİR 04 — ForceImportantReset
-   */
   const forceImportantReset = useCallback(
     (reason = "topHardReset") => {
       // ✅ EMİR 31/P2 — Simple Scroll modda reset motoru KAPALI
@@ -1448,162 +1432,10 @@ export default function RouteDetailMobile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [RD_DEBUG, routeId]);
 
-  // ✅ EMİR 04 — VisualViewport resize → top reset kontrolü
-  useEffect(() => {
-    // ✅ EMİR 31/P2 — Simple Scroll modda vv-resize reset KAPALI
-    if (RD_SIMPLE_SCROLL) return;
-
-    if (typeof window === "undefined") return;
-    const vv = window.visualViewport || null;
-    if (!vv) return;
-
-    const onVVResize = () => {
-      try {
-        checkTopHardReset("vv-resize");
-      } catch {}
-    };
-
-    try {
-      vv.addEventListener("resize", onVVResize, { passive: true });
-    } catch {}
-
-    return () => {
-      try {
-        vv.removeEventListener("resize", onVVResize);
-      } catch {}
-    };
-  }, [routeId, checkTopHardReset]);
-
-  // ✅ EMİR 04 — snap second-wave timer cleanup
-  useEffect(() => {
-    return () => {
-      try {
-        const r = settleSecondWaveRef.current;
-        if (r?.tmr) window.clearTimeout(r.tmr);
-        if (r) r.tmr = 0;
-      } catch {}
-    };
-  }, [routeId]);
-
-  // ✅ EMİR — mount/route değişince: en baştan “temiz” başla
-  useEffect(() => {
-    // ✅ EMİR 31/P2 — Simple Scroll modda mount hardreset KAPALI
-    if (RD_SIMPLE_SCROLL) return;
-
-    let raf = 0;
-    raf = window.requestAnimationFrame(() => {
-      try {
-        hardResetSheetMotor("mount");
-      } catch {}
-      try {
-        checkTopHardReset("mount");
-      } catch {}
-    });
-    return () => {
-      try {
-        if (raf) window.cancelAnimationFrame(raf);
-      } catch {}
-    };
-  }, [routeId, hardResetSheetMotor, checkTopHardReset]);
-
-  // ✅ PARÇA 2/5 — scrollEnd debounce cleanup
-  useEffect(() => {
-    return () => {
-      try {
-        const r = scrollEndRef.current;
-        if (r?.tmr) window.clearTimeout(r.tmr);
-        if (r) r.tmr = 0;
-      } catch {}
-    };
-  }, [routeId]);
-
-  // ✅ EMİR 04 — sheet transitionend settle listener
-  useEffect(() => {
-    // ✅ EMİR 31/P2 — Simple Scroll modda transitionend KAPALI
-    if (RD_SIMPLE_SCROLL) return;
-
-    const sheetEl = sheetRef.current;
-    if (!sheetEl) return;
-
-    const props = new Set(["transform", "height", "top", "margin-top", "marginTop", "padding-top", "paddingTop"]);
-
-    const onTe = (e) => {
-      const pn = String(e?.propertyName || "").trim();
-      if (!pn) return;
-      if (!props.has(pn)) return;
-
-      const now = Date.now();
-      const gate = transitionEndGateRef.current;
-      if (now - (gate.lastAt || 0) < 250) return;
-      gate.lastAt = now;
-
-      const bodyEl = bodyScrollRef.current || mainBodyRef.current;
-      const st = Math.max(0, Math.round(Number(bodyEl?.scrollTop) || Number(lastScrollTopRef.current) || 0));
-      if (st > HARD_RESET_TOP_PX) return;
-
-      try {
-        nudgeScrollTopToReflow("transitionend+nudge");
-      } catch {}
-
-      try {
-        checkTopHardReset("transitionend");
-      } catch {}
-    };
-
-    try {
-      sheetEl.addEventListener("transitionend", onTe, { passive: true });
-    } catch {}
-
-    return () => {
-      try {
-        sheetEl.removeEventListener("transitionend", onTe);
-      } catch {}
-    };
-  }, [routeId, HARD_RESET_TOP_PX, checkTopHardReset, nudgeScrollTopToReflow]);
-
-  // ✅ EMİR — gesture end
-  useEffect(() => {
-    // ✅ EMİR 31/P2 — Simple Scroll modda gesture-end KAPALI
-    if (RD_SIMPLE_SCROLL) return;
-
-    const sheetEl = sheetRef.current;
-    if (!sheetEl) return;
-
-    const onGestureEnd = () => {
-      try {
-        hardResetSheetMotor("gesture-end");
-      } catch {}
-      try {
-        requestMapResize("gesture-end");
-      } catch {}
-      try {
-        checkTopHardReset("gesture-end");
-      } catch {}
-    };
-
-    const opts = { passive: true };
-
-    sheetEl.addEventListener("touchend", onGestureEnd, opts);
-    sheetEl.addEventListener("touchcancel", onGestureEnd, opts);
-    sheetEl.addEventListener("pointerup", onGestureEnd, opts);
-    sheetEl.addEventListener("pointercancel", onGestureEnd, opts);
-    sheetEl.addEventListener("mouseup", onGestureEnd, opts);
-
-    return () => {
-      try {
-        sheetEl.removeEventListener("touchend", onGestureEnd, opts);
-        sheetEl.removeEventListener("touchcancel", onGestureEnd, opts);
-        sheetEl.removeEventListener("pointerup", onGestureEnd, opts);
-        sheetEl.removeEventListener("pointercancel", onGestureEnd, opts);
-        sheetEl.removeEventListener("mouseup", onGestureEnd, opts);
-      } catch {}
-    };
-  }, [routeId, hardResetSheetMotor, requestMapResize, checkTopHardReset]);
-
   // ✅ Simple scroll’da map resize’i hafif debounced tetikle
   const simpleScrollResizeGateRef = React.useRef({ lastAt: 0 });
 
-  // ✅ EMİR — scroll handler (+ PARÇA 2/5 scrollEnd debounce)
+  // ✅ EMİR — scroll handler
   const handleBodyScroll = useCallback(
     (e) => {
       try {
@@ -1718,21 +1550,6 @@ export default function RouteDetailMobile({
       } catch {}
     }, 160);
   }, [layoutRepair, checkTopHardReset, forceHeroExpanded, requestMapResize, nudgeScrollTopToReflow]);
-
-  useEffect(() => {
-    if (RD_SIMPLE_SCROLL) return;
-
-    scheduleHeroCollapse(0);
-    return () => {
-      try {
-        const r = heroCollapseRef.current;
-        if (r?.raf) {
-          window.cancelAnimationFrame(r.raf);
-          r.raf = 0;
-        }
-      } catch {}
-    };
-  }, [routeId, scheduleHeroCollapse]);
 
   // ✅ Portals + scroll lock
   const { withPortal, commentsPortalEl, setCommentsPortalEl, lightboxPortalEl, setLightboxPortalEl } =
@@ -2271,6 +2088,7 @@ export default function RouteDetailMobile({
       data-theme-source={rdThemeSource}
       data-theme-anim={themeAnimOn ? "1" : "0"}
       data-simple-scroll={RD_SIMPLE_SCROLL ? "1" : "0"}
+      data-route-skin="manus"
       // ✅ Simple scroll modda overlap padding’i kapat
       style={
         RD_SIMPLE_SCROLL
@@ -2284,53 +2102,6 @@ export default function RouteDetailMobile({
       <div className="route-detail-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
         {/* ✅ Simple scroll: grab bar yok */}
         {!RD_SIMPLE_SCROLL && <div className="route-detail-grab" />}
-
-        <div style={{ overflowAnchor: "none" }}>
-          <RouteDetailHeroMobile
-            coverResolved={coverUi.coverResolved}
-            handleImgLoadProof={handleImgLoadProof}
-            handleImgErrorToDefault={handleImgErrorToDefault}
-            heroMenuOpen={heroMenuOpen}
-            toggleHeroMenu={toggleHeroMenu}
-            closeHeroMenu={closeHeroMenu}
-            enterEdit={() => {
-              if (!isOwner) return;
-              try {
-                setMode("edit");
-              } catch {}
-            }}
-            exitEdit={() => {
-              try {
-                setMode("view");
-              } catch {}
-              try {
-                blockInteractionsBriefly(240);
-              } catch {}
-            }}
-            isOwner={!!isOwner}
-            isEditMode={isEditMode}
-            onClose={onClose}
-            onShare={onShare}
-            onExportGpx={onExportGpx}
-            onToggleTheme={onToggleTheme}
-            onOpenReport={() => handleTabChange("report")}
-            onOpenShareSheet={() => setShowShareSheet(true)}
-            rdTheme={rdTheme}
-            heroCategory={heroModel.heroCategory}
-            heroTitle={heroModel.heroTitle}
-            heroStarsModel={heroModel.heroStarsModel}
-            heroRatingBadgeText={heroModel.heroExplorerLabel || "(0 Kaşif)"}
-            heroAvgRating={heroModel.heroRatingInfo?.avg}
-            ownerName={heroModel.ownerName}
-            ownerAvatarUrl={heroModel.ownerAvatarUrl}
-            timeAgoLine={heroModel.timeAgoLine}
-            ownerState={heroModel.ownerState}
-            isFav={isFav}
-            onToggleFav={onToggleFav}
-            canToggleFav={canToggleFav}
-            requestOpenProfile={requestOpenProfile}
-          />
-        </div>
 
         <div
           className="route-detail-body"
@@ -2346,6 +2117,54 @@ export default function RouteDetailMobile({
           onTouchEnd={RD_SIMPLE_SCROLL ? undefined : handleSnapEnd}
           onTouchCancel={RD_SIMPLE_SCROLL ? undefined : handleSnapEnd}
         >
+          {/* ✅✅✅ EMİR 31 / PARÇA 1 — HERO artık scroller içinde (natural flow) */}
+          <div style={{ overflowAnchor: "none" }}>
+            <RouteDetailHeroMobile
+              coverResolved={coverUi.coverResolved}
+              handleImgLoadProof={handleImgLoadProof}
+              handleImgErrorToDefault={handleImgErrorToDefault}
+              heroMenuOpen={heroMenuOpen}
+              toggleHeroMenu={toggleHeroMenu}
+              closeHeroMenu={closeHeroMenu}
+              enterEdit={() => {
+                if (!isOwner) return;
+                try {
+                  setMode("edit");
+                } catch {}
+              }}
+              exitEdit={() => {
+                try {
+                  setMode("view");
+                } catch {}
+                try {
+                  blockInteractionsBriefly(240);
+                } catch {}
+              }}
+              isOwner={!!isOwner}
+              isEditMode={isEditMode}
+              onClose={onClose}
+              onShare={onShare}
+              onExportGpx={onExportGpx}
+              onToggleTheme={onToggleTheme}
+              onOpenReport={() => handleTabChange("report")}
+              onOpenShareSheet={() => setShowShareSheet(true)}
+              rdTheme={rdTheme}
+              heroCategory={heroModel.heroCategory}
+              heroTitle={heroModel.heroTitle}
+              heroStarsModel={heroModel.heroStarsModel}
+              heroRatingBadgeText={heroModel.heroExplorerLabel || "(0 Kaşif)"}
+              heroAvgRating={heroModel.heroRatingInfo?.avg}
+              ownerName={heroModel.ownerName}
+              ownerAvatarUrl={heroModel.ownerAvatarUrl}
+              timeAgoLine={heroModel.timeAgoLine}
+              ownerState={heroModel.ownerState}
+              isFav={isFav}
+              onToggleFav={onToggleFav}
+              canToggleFav={canToggleFav}
+              requestOpenProfile={requestOpenProfile}
+            />
+          </div>
+
           <RouteDetailStickyTabsFallback
             activeTab={activeTabKey}
             onTabChange={(key) => {

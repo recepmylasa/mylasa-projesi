@@ -1,0 +1,132 @@
+/* FILE: src/routes/RoutesDiscoverHeroManusMobile.css */
+
+.manus-discover-hero {
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  background: rgba(12, 18, 32, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.manus-discover-hero__bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(520px 260px at 20% 10%, rgba(99, 102, 241, 0.22), transparent 60%),
+    radial-gradient(520px 260px at 80% 30%, rgba(16, 185, 129, 0.16), transparent 60%),
+    radial-gradient(520px 260px at 50% 100%, rgba(255, 56, 92, 0.16), transparent 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.84));
+  filter: saturate(1.05);
+}
+
+.manus-discover-hero__inner {
+  position: relative;
+  padding: 16px 14px 14px;
+}
+
+.manus-discover-hero__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  color: rgba(17, 24, 39, 0.76);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.manus-discover-hero__title {
+  margin: 10px 0 0;
+  font-size: 24px;
+  line-height: 1.1;
+  font-weight: 950;
+  letter-spacing: -0.4px;
+  color: rgba(17, 24, 39, 0.94);
+}
+
+.manus-discover-hero__titleGrad {
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.95), rgba(255, 56, 92, 0.95));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.manus-discover-hero__desc {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 650;
+  color: rgba(17, 24, 39, 0.70);
+  max-width: 46ch;
+}
+
+.manus-discover-hero__ctas {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.manus-discover-hero__btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 950;
+  cursor: pointer;
+  user-select: none;
+}
+
+.manus-discover-hero__btn--primary {
+  background: rgba(17, 24, 39, 0.92);
+  color: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.10);
+}
+
+.manus-discover-hero__btn--primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.manus-discover-hero__btn--ghost {
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(17, 24, 39, 0.88);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.manus-discover-hero__stats {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.manus-discover-hero__stat {
+  border-radius: 16px;
+  padding: 10px 10px 9px;
+  background: rgba(255, 255, 255, 0.70);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.manus-discover-hero__statVal {
+  font-size: 16px;
+  font-weight: 950;
+  color: rgba(17, 24, 39, 0.92);
+  letter-spacing: -0.2px;
+}
+
+.manus-discover-hero__statLbl {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(17, 24, 39, 0.62);
+}
