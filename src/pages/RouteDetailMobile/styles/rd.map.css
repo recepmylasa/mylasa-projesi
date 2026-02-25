@@ -22,9 +22,6 @@
 
   /* =========================================================
      ✅ EMİR 02 — PIPELINE KIRICI GPU/CONTAIN/FILTER KESİCİ
-     - %100 zoom’da “yarım/alta girme” bug’ı için:
-       transform/translate/contain/filter/backdrop-filter → NONE
-     - Başka dosya translateZ(0) basıyor olsa bile burada öldür.
      ========================================================= */
   transform: none !important;
   translate: none !important;
@@ -118,36 +115,91 @@
   border-radius: inherit !important;
 }
 
-/* Bottom-right location label */
-.rd-map-card__label,
-.route-detail-sheet .rd-map-card__label {
+/* =========================================================
+   ✅ Manus polish overlays
+   ========================================================= */
+
+.route-detail-backdrop .rd-map-card__badges {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  display: inline-flex;
+  gap: 8px;
+  pointer-events: none !important;
+}
+
+.route-detail-backdrop .rd-map-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 7px 10px;
   border-radius: 999px;
 
-  background: var(--rd-glass-2, var(--nav-bg, rgba(255, 255, 255, 0.78)));
-  border: 1px solid var(--rd-border, var(--glass-border, rgba(0, 0, 0, 0.10)));
-  color: var(--rd-text, var(--text-main, #111));
+  background: var(--rd-glass-2, rgba(255, 255, 255, 0.78));
+  border: 1px solid var(--rd-border, rgba(0, 0, 0, 0.10));
+  color: var(--rd-text, #111);
+
+  backdrop-filter: blur(var(--blur, 10px)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--blur, 10px)) saturate(170%);
+
+  box-shadow: var(--rd-pill-shadow, 0 10px 24px rgba(0, 0, 0, 0.12));
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 900;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.route-detail-backdrop .rd-map-card__badgeNum {
+  min-width: 18px;
+  text-align: center;
+}
+
+.route-detail-backdrop .rd-map-card__badge--primary {
+  box-shadow:
+    var(--rd-pill-shadow, 0 10px 24px rgba(0, 0, 0, 0.12)),
+    0 0 0 1px rgba(34, 211, 238, 0.32) inset,
+    0 0 18px rgba(34, 211, 238, 0.10);
+}
+
+/* Bottom-right location label (Manus) */
+.route-detail-backdrop .rd-map-card__label {
+  position: absolute;
+  right: 10px;
+  left: auto;
+  bottom: 10px;
+  z-index: 3;
+
+  max-width: calc(100% - 20px);
+  padding: 7px 10px;
+  border-radius: 999px;
+
+  background: var(--rd-glass-2, rgba(255, 255, 255, 0.78));
+  border: 1px solid var(--rd-border, rgba(0, 0, 0, 0.10));
+  color: var(--rd-text, #111);
 
   font-weight: 900;
   font-size: 11px;
   letter-spacing: 0.4px;
 
-  /* label blur kalsın (map canvas container değil) */
   backdrop-filter: blur(var(--blur, 10px)) saturate(160%);
   -webkit-backdrop-filter: blur(var(--blur, 10px)) saturate(160%);
 
   box-shadow: var(--rd-pill-shadow, 0 10px 24px rgba(0, 0, 0, 0.12));
-  pointer-events: none;
+  pointer-events: none !important;
+
   text-transform: uppercase;
-  max-width: calc(100% - 20px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.route-detail-backdrop .rd-map-card__labelText {
+  display: inline-block;
+}
+
+/* kill overlay pointer */
 .rd-map-card::before,
 .rd-map-card::after,
 .route-detail-sheet .rd-map-card::before,

@@ -82,7 +82,7 @@ export default function RouteDetailStopsTab({
       <div className="rd-stops">
         {list.map((s, idx) => {
           const cache = mediaCacheRef?.current?.get?.(s.id) || {};
-          const media = cache.items || [];
+          const media = Array.isArray(cache.items) ? cache.items : [];
           const up = uploadState?.[s.id];
           const hadPermErr = cache.__error && String(cache.__error).includes("permission");
 
@@ -92,19 +92,24 @@ export default function RouteDetailStopsTab({
 
           const isLast = idx === len - 1;
 
+          // ✅ Manus: 1–2 thumb (fazlası +N)
+          const preview = media.slice(0, 2);
+          const extraCount = Math.max(0, media.length - preview.length);
+
           return (
             <div
               key={s.id}
-              className={`rd-stop rdglass-card${isLast ? " is-last" : ""}`}
+              className={`rd-stop rd-stopItem rdglass-card${isLast ? " is-last" : ""}`}
               data-last={isLast ? "1" : "0"}
               data-is-last={isLast ? "true" : "false"} // ✅ CSS paritesi için ek sinyal
-              onMouseEnter={() => requestThumbs(s.id)}
+              onPointerEnter={() => requestThumbs(s.id)}
+              onFocus={() => requestThumbs(s.id)}
               onTouchStart={() => requestThumbs(s.id)}
             >
-              {/* Sol: index card */}
+              {/* Sol: index card (mevcut davranış bozulmasın) */}
               <div className="rd-stop-left" aria-hidden="true">
                 <div className="rd-stop-indexCard">
-                  <span className="rd-stop-indexCard__label">Sıra</span>
+                  <span className="rd-stop-indexCard__label">Durak</span>
                   <span className="rd-stop-indexCard__num">{nLabel}</span>
                 </div>
               </div>
@@ -165,10 +170,10 @@ export default function RouteDetailStopsTab({
                 {/* Açıklama: yoksa hiç render olmasın */}
                 {s.note ? <div className="rd-stop-desc">{s.note}</div> : null}
 
-                {/* Medya row: Foto yoksa row gizli (boşluk yok) */}
-                {media.length > 0 ? (
-                  <div className="rd-stop-media">
-                    {media.slice(0, 12).map((m, mIdx) => {
+                {/* Medya row: Manus -> 1–2 thumb + “+N” */}
+                {preview.length > 0 ? (
+                  <div className="rd-stop-media" data-thumb-count={String(preview.length)}>
+                    {preview.map((m, mIdx) => {
                       const isVideo = normalizeMediaType?.(m) === "video";
                       return (
                         <button
@@ -215,6 +220,12 @@ export default function RouteDetailStopsTab({
                         </button>
                       );
                     })}
+
+                    {extraCount > 0 ? (
+                      <div className="rd-stop-mediaMore" aria-hidden="true" title={`+${extraCount} medya`}>
+                        +{extraCount}
+                      </div>
+                    ) : null}
                   </div>
                 ) : hadPermErr ? (
                   <div className="rd-stop-mediaHint rdglass-muted">Medya erişimi kısıtlı.</div>

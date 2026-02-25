@@ -50,16 +50,19 @@ export default function RouteDetailHeroMobile({
 
   // ✅ FIX: ownerState prop gelmezse "loading" diye kilitlenmesin.
   // Eğer isim veya avatar varsa asla skeleton gösterme.
-  const derivedOwnerState = ownerState || (hasOwnerName || hasOwnerAvatar ? "fallback" : "loading");
+  const derivedOwnerState =
+    ownerState || (hasOwnerName || hasOwnerAvatar ? "fallback" : "loading");
 
-  const showOwnerSkeleton = derivedOwnerState === "loading" && !hasOwnerName && !hasOwnerAvatar;
+  const showOwnerSkeleton =
+    derivedOwnerState === "loading" && !hasOwnerName && !hasOwnerAvatar;
 
   const canOpenProfile = typeof requestOpenProfile === "function";
 
   const saveLabel = isFav ? "Kaydedilenlerden çıkar" : "Kaydet";
   const saveTitle = !canToggleFav ? "Kaydetmek için giriş yapmalısın." : saveLabel;
 
-  const categoryText = (heroCategory && String(heroCategory).trim()) || "Macera";
+  const categoryText =
+    (heroCategory && String(heroCategory).trim()) || "Macera";
 
   const avgNum = Number(heroAvgRating);
   const hasAvg = Number.isFinite(avgNum) && avgNum > 0;
@@ -106,9 +109,18 @@ export default function RouteDetailHeroMobile({
       {/* ✅ EMİR 31/P2 — Simple scroll modda hero’nun flow alanını garanti eden spacer (CSS’de sadece o modda aktif) */}
       <div className="rd-hero__flowSpacer" aria-hidden="true" />
 
-      <div className="route-detail-hero__nav" onClick={(e) => e.stopPropagation()}>
+      {/* ✅ EMİR 32 (FINAL): Floating glass action buttons */}
+      <div
+        className="route-detail-hero__nav rd-hero-nav--floating"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="rd-hero-nav-left">
-          <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onClose} title="Geri">
+          <button
+            type="button"
+            className="rd-hero-nav-btn rd-hero-nav-btn--icononly rd-hero-nav-btn--glass"
+            onClick={onClose}
+            title="Geri"
+          >
             <span className="rd-hero-nav-btn__icon" aria-hidden="true">
               ←
             </span>
@@ -117,7 +129,12 @@ export default function RouteDetailHeroMobile({
 
         <div className="rd-hero-nav-right">
           {!isEditMode && (
-            <button type="button" className="rd-hero-nav-btn rd-hero-nav-btn--icononly" onClick={onShare} title="Paylaş">
+            <button
+              type="button"
+              className="rd-hero-nav-btn rd-hero-nav-btn--icononly rd-hero-nav-btn--glass"
+              onClick={onShare}
+              title="Paylaş"
+            >
               <span className="rd-hero-nav-btn__icon" aria-hidden="true">
                 ⤴
               </span>
@@ -126,7 +143,7 @@ export default function RouteDetailHeroMobile({
 
           <button
             type="button"
-            className="rd-hero-nav-btn rd-hero-nav-btn--icononly"
+            className="rd-hero-nav-btn rd-hero-nav-btn--icononly rd-hero-nav-btn--glass"
             onClick={toggleHeroMenu}
             aria-expanded={heroMenuOpen}
             aria-label="Menü"
@@ -276,7 +293,12 @@ export default function RouteDetailHeroMobile({
         >
           <div className="rd-hero__avatar" aria-hidden="true">
             {hasOwnerAvatar ? (
-              <img src={ownerAvatarUrl} alt={hasOwnerName ? ownerName : "Profil fotoğrafı"} loading="lazy" decoding="async" />
+              <img
+                src={ownerAvatarUrl}
+                alt={hasOwnerName ? ownerName : "Profil fotoğrafı"}
+                loading="lazy"
+                decoding="async"
+              />
             ) : showOwnerSkeleton ? (
               <span className="rd-hero__avatarSkeleton" aria-hidden="true" />
             ) : (

@@ -234,3 +234,130 @@
   top: auto !important;
   z-index: auto !important;
 }
+
+/* =========================================================
+   ✅ EMİR 32 (FINAL) — Manus premium polish (mobile-only, safe)
+   ========================================================= */
+
+/* Floating nav: Manus “glass” hissi */
+.route-detail-backdrop[data-route-skin="manus"] .rd-hero-nav--floating {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-hero-nav--floating .rd-hero-nav-left,
+.route-detail-backdrop[data-route-skin="manus"] .rd-hero-nav--floating .rd-hero-nav-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-hero-nav-btn--glass {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(10, 10, 12, 0.28);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  color: rgba(255, 255, 255, 0.92);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-backdrop[data-theme="light"][data-route-skin="manus"] .rd-hero-nav-btn--glass {
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.10),
+    0 0 0 1px rgba(0, 0, 0, 0.05) inset;
+  color: rgba(17, 24, 39, 0.92);
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-hero-nav-btn--glass:active {
+  transform: scale(0.98);
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-hero-nav-btn--glass:focus-visible {
+  outline: none;
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.22),
+    0 0 0 2px rgba(34, 211, 238, 0.42);
+}
+
+/* CTA row (RouteDetailMobile.js’deki sınıflar için güvenli dokunuş) */
+.route-detail-backdrop[data-route-skin="manus"] .rd-manus-ctaRow {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-manus-ctaBtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.42);
+}
+
+/* Stops timeline wrapper: markup yoksa bile zarar vermez */
+.route-detail-backdrop[data-route-skin="manus"] .rd-stopsTimeline {
+  position: relative;
+  counter-reset: rdStop;
+}
+
+/* Dikey çizgi (container seviyesinde) */
+.route-detail-backdrop[data-route-skin="manus"] .rd-stopsTimeline::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    rgba(34, 211, 238, 0.0),
+    rgba(34, 211, 238, 0.42),
+    rgba(34, 211, 238, 0.0)
+  );
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+/* Yaygın item tipleri için sayaç + badge (eşleşmezse uygulanmaz) */
+.route-detail-backdrop[data-route-skin="manus"] .rd-stopsTimeline :where(li, .rd-stopCard, .rd-stopItem, .rd-stopsItem) {
+  position: relative;
+  counter-increment: rdStop;
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-stopsTimeline :where(li, .rd-stopCard, .rd-stopItem, .rd-stopsItem)::before {
+  content: counter(rdStop, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 30px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  color: rgba(0, 0, 0, 0.92);
+  background: rgba(34, 211, 238, 0.92);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.route-detail-backdrop[data-route-skin="manus"] .rd-stopsTimeline :where(li, .rd-stopCard, .rd-stopItem, .rd-stopsItem) {
+  padding-left: 44px;
+}

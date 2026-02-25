@@ -278,13 +278,11 @@ export default function RouteDetailMobile({
         const now = typeof performance !== "undefined" ? performance.now() : Date.now();
         const rectKey = `${w}x${h}@${top}`;
 
-        // ✅ spam breaker: aynı ölçü + yakın zaman ise tekrar etme
         if (ref.lastRectKey === rectKey && now - ref.lastTs < 450) return;
 
         ref.lastRectKey = rectKey;
         ref.lastTs = now;
 
-        // ✅ 1) Eğer map component kendi force fonksiyonunu expose ettiyse onu kullan
         try {
           if (typeof window.__RD_MAP_FORCE__ === "function") {
             window.__RD_MAP_FORCE__();
@@ -292,7 +290,6 @@ export default function RouteDetailMobile({
           }
         } catch {}
 
-        // ✅ 2) Global map instance fallback
         try {
           const map = window.__RD_MAP__;
           if (map && window.google?.maps?.event?.trigger) {
@@ -307,7 +304,6 @@ export default function RouteDetailMobile({
     } catch {}
   }, []);
 
-  // ✅ EMİR 03 (Adım 4) — RO + IO + VisualViewport ile repaint tetikle
   useEffect(() => {
     const host = mapCardHostRef.current;
     if (!host) return;
@@ -377,25 +373,19 @@ export default function RouteDetailMobile({
     };
   }, [routeId, requestMapResize]);
 
-  // ✅ EMİR — route başına 1 kere "TOP reset" mandalı (StrictMode spam kırıcı)
   const initialTopResetRef = React.useRef({ routeId: null, done: false });
-
-  // ✅ EMİR 04 — HARD RESET px eşiği (zoom/rounding için büyüt)
   const HARD_RESET_TOP_PX = 12;
 
-  // ✅ EMİR — “Clamp & Reset” mandalı (spam kırıcı)
   const hardFixRef = React.useRef({
     lastAtTop: true,
   });
 
-  // ✅ EMİR 04 — TOP hard reset gate (spam breaker)
   const topHardResetGateRef = React.useRef({
     routeId: null,
     lastAt: 0,
     lastReason: "",
   });
 
-  // ✅ EMİR 01 — Collapsible hero (RAF + CSS vars)
   const heroCollapseRef = React.useRef({
     raf: 0,
     lastTop: 0,
@@ -406,7 +396,6 @@ export default function RouteDetailMobile({
   const clamp01 = (n) => Math.max(0, Math.min(1, n));
 
   const applyHeroCollapseVars = useCallback((scrollTop) => {
-    // ✅ EMİR 31/P2 — Simple Scroll modda collapse motoru KAPALI
     if (RD_SIMPLE_SCROLL) return;
 
     const st = Math.max(0, Math.round(Number(scrollTop) || 0));
@@ -446,7 +435,6 @@ export default function RouteDetailMobile({
 
   const scheduleHeroCollapse = useCallback(
     (scrollTop) => {
-      // ✅ EMİR 31/P2 — Simple Scroll modda collapse motoru KAPALI
       if (RD_SIMPLE_SCROLL) return;
 
       const st = Math.max(0, Math.round(Number(scrollTop) || 0));
@@ -468,7 +456,6 @@ export default function RouteDetailMobile({
 
   const forceHeroExpanded = useCallback(
     (reason = "") => {
-      // ✅ EMİR 31/P2 — Simple Scroll modda force/reset KAPALI
       if (RD_SIMPLE_SCROLL) return;
 
       try {
@@ -479,7 +466,7 @@ export default function RouteDetailMobile({
       } catch {}
 
       try {
-        applyHeroCollapseVars(0); // schedule değil, direkt
+        applyHeroCollapseVars(0);
       } catch {}
 
       try {
@@ -580,7 +567,6 @@ export default function RouteDetailMobile({
 
   const forceImportantReset = useCallback(
     (reason = "topHardReset") => {
-      // ✅ EMİR 31/P2 — Simple Scroll modda reset motoru KAPALI
       if (RD_SIMPLE_SCROLL) return;
 
       const rid = String(routeId || "");
@@ -650,19 +636,11 @@ export default function RouteDetailMobile({
       try {
         window.dispatchEvent(new CustomEvent("rd:repair", { detail: { reason: String(reason || "topHardReset") } }));
       } catch {}
-
-      if (process.env.NODE_ENV !== "production") {
-        try {
-          // eslint-disable-next-line no-console
-          console.debug("[RD][ForceImportantReset]", { routeId: rid, reason: String(reason || "") });
-        } catch {}
-      }
     },
     [routeId]
   );
 
   const isAltBlockStuckUnderHero = useCallback(() => {
-    // ✅ EMİR 31/P2 — Simple Scroll modda stuck detector kullanılmıyor
     if (RD_SIMPLE_SCROLL) return false;
 
     const sheetEl = sheetRef.current;
@@ -706,7 +684,6 @@ export default function RouteDetailMobile({
 
   const checkTopHardReset = useCallback(
     (reason = "topHardReset") => {
-      // ✅ EMİR 31/P2 — Simple Scroll modda reset motoru KAPALI
       if (RD_SIMPLE_SCROLL) return;
 
       const sheetEl = sheetRef.current;
@@ -761,7 +738,6 @@ export default function RouteDetailMobile({
       }
 
       const rsn = String(reason || "topHardReset");
-
       try {
         forceHeroExpanded(rsn);
       } catch {}
@@ -772,21 +748,13 @@ export default function RouteDetailMobile({
         requestMapResize(rsn);
       } catch {}
     },
-    [
-      HARD_RESET_TOP_PX,
-      isAltBlockStuckUnderHero,
-      forceHeroExpanded,
-      forceImportantReset,
-      requestMapResize,
-      scrollOwnerRef,
-    ]
+    [HARD_RESET_TOP_PX, isAltBlockStuckUnderHero, forceHeroExpanded, forceImportantReset, requestMapResize]
   );
 
   const nudgeGateRef = React.useRef({ lastAt: 0, raf1: 0, raf2: 0 });
 
   const nudgeScrollTopToReflow = useCallback(
     (reason = "nudge") => {
-      // ✅ EMİR 31/P2 — Simple Scroll modda nudge KAPALI
       if (RD_SIMPLE_SCROLL) return;
 
       const sheetEl = sheetRef.current;
@@ -802,7 +770,6 @@ export default function RouteDetailMobile({
 
       const owner = String(scrollOwnerRef.current || "body");
       const target = owner === "sheet" ? sheetEl : bodyEl;
-
       if (!target) return;
 
       const st = Math.max(0, Math.round(Number(target.scrollTop) || 0));
@@ -886,7 +853,6 @@ export default function RouteDetailMobile({
 
   const layoutRepair = useCallback(
     (reason = "scrollEnd") => {
-      // ✅ EMİR 31/P2 — Simple Scroll modda repair KAPALI
       if (RD_SIMPLE_SCROLL) return;
 
       const sheetEl = sheetRef.current;
@@ -939,7 +905,6 @@ export default function RouteDetailMobile({
 
   const hardResetSheetMotor = useCallback(
     (reason = "") => {
-      // ✅ EMİR 31/P2 — Simple Scroll modda hardreset KAPALI
       if (RD_SIMPLE_SCROLL) return;
 
       const sheetEl = sheetRef.current;
@@ -988,568 +953,9 @@ export default function RouteDetailMobile({
       try {
         checkTopHardReset(`topHardReset:${String(reason || "top")}`);
       } catch {}
-
-      try {
-        backdropEl?.setAttribute("data-rd-hardfix-top", "1");
-        if (process.env.NODE_ENV !== "production" && reason) {
-          // eslint-disable-next-line no-console
-          console.debug(`[RD HARD-FIX] reset @top (${reason})`);
-        }
-      } catch {}
     },
     [HARD_RESET_TOP_PX, scheduleHeroCollapse, stripInlineTransform, requestMapResize, checkTopHardReset]
   );
-
-  // ✅ PARÇA 1/5 — DEV ONLY: Global dump + manual repair (console komutları)
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
-    if (typeof window === "undefined") return;
-
-    const getRoot = () => {
-      const sheetEl = sheetRef.current;
-      return sheetEl?.closest?.(".route-detail-backdrop") || sheetEl || document;
-    };
-
-    const pick = (sel) => {
-      try {
-        const root = getRoot();
-        return root?.querySelector ? root.querySelector(sel) : null;
-      } catch {
-        return null;
-      }
-    };
-
-    const rectOf = (el) => {
-      if (!el) return null;
-      try {
-        const r = el.getBoundingClientRect();
-        return {
-          top: Math.round(r.top),
-          left: Math.round(r.left),
-          right: Math.round(r.right),
-          bottom: Math.round(r.bottom),
-          width: Math.round(r.width),
-          height: Math.round(r.height),
-        };
-      } catch {
-        return null;
-      }
-    };
-
-    const styleOf = (el) => {
-      if (!el) return null;
-      try {
-        const cs = window.getComputedStyle(el);
-        return {
-          position: cs.position,
-          transform: cs.transform,
-          overflow: cs.overflow,
-        };
-      } catch {
-        return null;
-      }
-    };
-
-    const dumpNode = (selector, fallbackEl = null) => {
-      const el = pick(selector) || fallbackEl;
-      if (!el) return { selector, found: false };
-
-      let inlineTransform = "";
-      let inlineTranslate = "";
-      try {
-        inlineTransform = String(el.style?.transform || "");
-      } catch {}
-      try {
-        inlineTranslate = String(el.style?.translate || "");
-      } catch {}
-
-      return {
-        selector,
-        found: true,
-        rect: rectOf(el),
-        style: styleOf(el),
-        inline: {
-          transform: inlineTransform,
-          translate: inlineTranslate,
-        },
-      };
-    };
-
-    const dump = () => {
-      const sheetEl = pick(".route-detail-sheet") || sheetRef.current;
-      const bodyEl = pick(".route-detail-body") || mainBodyRef.current;
-      const heroEl = pick(".route-detail-hero");
-      const mapCardEl = pick(".rd-map-card");
-
-      const out = {
-        ts: Date.now(),
-        routeId: routeId || null,
-        bodyScrollTop: typeof bodyEl?.scrollTop === "number" ? Math.round(bodyEl.scrollTop) : null,
-        nodes: {
-          sheet: dumpNode(".route-detail-sheet", sheetEl),
-          body: dumpNode(".route-detail-body", bodyEl),
-          hero: dumpNode(".route-detail-hero", heroEl),
-          mapCard: dumpNode(".rd-map-card", mapCardEl),
-        },
-      };
-
-      try {
-        // eslint-disable-next-line no-console
-        console.groupCollapsed(`[RD] __RD_DUMP__ @${new Date(out.ts).toLocaleTimeString()}`);
-        // eslint-disable-next-line no-console
-        console.log(out);
-        // eslint-disable-next-line no-console
-        console.groupEnd();
-      } catch {}
-
-      try {
-        window.__RD_LAST_DUMP__ = out;
-      } catch {}
-
-      return out;
-    };
-
-    const stripInlineTransformOnly = (el) => {
-      if (!el) return false;
-      let changed = false;
-
-      try {
-        const t = el.style?.transform;
-        if (t && t !== "none") {
-          el.style.transform = "none";
-          changed = true;
-        }
-      } catch {}
-
-      try {
-        const tr = el.style?.translate;
-        if (tr && tr !== "none") {
-          el.style.translate = "none";
-          changed = true;
-        }
-      } catch {}
-
-      return changed;
-    };
-
-    const repairNow = () => {
-      // ✅ Simple scroll’da bile manuel “inline transform” temizliği işe yarayabilir — DEV ONLY
-      const sheetEl = pick(".route-detail-sheet") || sheetRef.current;
-      const bodyEl = pick(".route-detail-body") || mainBodyRef.current;
-
-      const changedSheet = stripInlineTransformOnly(sheetEl);
-      const changedBody = stripInlineTransformOnly(bodyEl);
-
-      try {
-        window.requestAnimationFrame(() => {
-          try {
-            void sheetEl?.offsetHeight;
-            void bodyEl?.offsetHeight;
-          } catch {}
-
-          window.requestAnimationFrame(() => {
-            try {
-              void sheetEl?.offsetHeight;
-              void bodyEl?.offsetHeight;
-            } catch {}
-
-            try {
-              const hasMap = !!(pick(".rd-map-card") || window.__RD_MAP__);
-              if (hasMap) {
-                window.dispatchEvent(new CustomEvent("rd:repair", { detail: { reason: "manual" } }));
-              }
-            } catch {}
-          });
-        });
-      } catch {}
-
-      try {
-        // eslint-disable-next-line no-console
-        console.log("[RD] __RD_REPAIR_NOW__ issued", { changedSheet, changedBody });
-      } catch {}
-    };
-
-    try {
-      window.__RD_DUMP__ = dump;
-      window.__RD_REPAIR_NOW__ = repairNow;
-    } catch {}
-
-    return () => {
-      try {
-        delete window.__RD_DUMP__;
-      } catch {}
-      try {
-        delete window.__RD_REPAIR_NOW__;
-      } catch {}
-    };
-  }, [routeId]);
-
-  // ✅ PARÇA-1: Debug flag (prod’da kapalı)
-  const RD_DEBUG = useMemo(() => {
-    try {
-      if (process.env.NODE_ENV === "production") return false;
-      return typeof window !== "undefined" && window.localStorage.getItem("RD_DEBUG") === "1";
-    } catch {
-      return false;
-    }
-  }, []);
-
-  // ✅ EMİR 06 — Sheet scroll listener (capture): owner=sheet + st update + hero collapse sync
-  useEffect(() => {
-    // ✅ EMİR 31/P2 — Simple Scroll modda sheet listener KAPALI
-    if (RD_SIMPLE_SCROLL) return;
-
-    const sheetEl = sheetRef.current;
-    if (!sheetEl) return;
-
-    const onSheetScroll = () => {
-      try {
-        scrollOwnerRef.current = "sheet";
-      } catch {}
-      const st = Math.max(0, Math.round(Number(sheetEl.scrollTop) || 0));
-      try {
-        lastScrollTopRef.current = st;
-      } catch {}
-      try {
-        scheduleHeroCollapse(st);
-      } catch {}
-    };
-
-    try {
-      sheetEl.addEventListener("scroll", onSheetScroll, { passive: true, capture: true });
-    } catch {}
-
-    return () => {
-      try {
-        sheetEl.removeEventListener("scroll", onSheetScroll, true);
-      } catch {}
-    };
-  }, [routeId, scheduleHeroCollapse]);
-
-  // ✅ PARÇA-1: TRANSFORM AVCISI + SCROLL OTORİTESİ LOGGER (debug-only)
-  useEffect(() => {
-    if (!RD_DEBUG) return;
-
-    const sheetEl = sheetRef.current;
-    if (!sheetEl) return;
-
-    const rootEl = sheetEl.closest(".route-detail-backdrop") || sheetEl;
-
-    const getLabel = (el) => {
-      try {
-        const tag = String(el.tagName || "").toLowerCase();
-        const clsRaw = String(el.className || "");
-        const cls = clsRaw && typeof clsRaw === "string" ? clsRaw.trim().replace(/\s+/g, ".") : "";
-        const id = el.id ? `#${el.id}` : "";
-        return `${tag}${id}${cls ? "." + cls : ""}`;
-      } catch {
-        return "node";
-      }
-    };
-
-    const extractDataAttrs = (el) => {
-      try {
-        const out = {};
-        const attrs = el.getAttributeNames?.() || [];
-        attrs.forEach((a) => {
-          if (!a || !a.startsWith("data-")) return;
-          out[a] = el.getAttribute(a);
-        });
-        return out;
-      } catch {
-        return {};
-      }
-    };
-
-    const lastEvtRef = { type: "init", ts: Date.now() };
-    const markEvt = (type) => {
-      try {
-        lastEvtRef.type = type;
-        lastEvtRef.ts = typeof performance !== "undefined" ? performance.now() : Date.now();
-      } catch {}
-    };
-
-    const evtOpts = { capture: true, passive: true };
-    const evtTypes = [
-      "scroll",
-      "touchstart",
-      "touchmove",
-      "touchend",
-      "touchcancel",
-      "touchcancel",
-      "pointerdown",
-      "pointermove",
-      "pointerup",
-      "pointercancel",
-      "mousedown",
-      "mousemove",
-      "mouseup",
-      "wheel",
-    ];
-
-    const evtHandlers = {};
-    evtTypes.forEach((t) => {
-      try {
-        const fn = () => markEvt(t);
-        evtHandlers[t] = fn;
-        rootEl.addEventListener(t, fn, evtOpts);
-      } catch {}
-    });
-
-    const bodyEl =
-      mainBodyRef.current ||
-      sheetEl.querySelector?.(".route-detail-body") ||
-      sheetEl.querySelector?.(".content-body") ||
-      null;
-
-    const scrollLogRef = { lastTs: 0, lastKey: "" };
-    const logScroll = (src) => {
-      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-      if (now - scrollLogRef.lastTs < 220) return;
-
-      const sst = typeof sheetEl.scrollTop === "number" ? Math.round(sheetEl.scrollTop) : 0;
-      const bst = typeof bodyEl?.scrollTop === "number" ? Math.round(bodyEl.scrollTop) : 0;
-      const owner = String(scrollOwnerRef.current || "");
-      const key = `${src}|owner:${owner}|s:${sst}|b:${bst}`;
-      if (scrollLogRef.lastKey === key) return;
-
-      scrollLogRef.lastKey = key;
-      scrollLogRef.lastTs = now;
-
-      // eslint-disable-next-line no-console
-      console.log(`[RD_DEBUG][scroll] ${key}`, { sheet: sheetEl, body: bodyEl });
-    };
-
-    const onSheetScroll = () => logScroll("sheet");
-    const onBodyScroll = () => logScroll("body");
-
-    try {
-      sheetEl.addEventListener("scroll", onSheetScroll, { passive: true });
-    } catch {}
-    try {
-      bodyEl?.addEventListener("scroll", onBodyScroll, { passive: true });
-    } catch {}
-
-    const seen = new WeakMap();
-    let logCount = 0;
-    const MAX_LOG = 120;
-
-    const obs = new MutationObserver((list) => {
-      if (!list || !list.length) return;
-      if (logCount >= MAX_LOG) return;
-
-      for (const m of list) {
-        if (logCount >= MAX_LOG) break;
-        if (m.type !== "attributes") continue;
-        if (m.attributeName !== "style") continue;
-
-        const el = m.target;
-        if (!(el instanceof HTMLElement)) continue;
-
-        let styleStr = "";
-        try {
-          styleStr = String(el.getAttribute("style") || "");
-        } catch {}
-
-        let tf = "none";
-        try {
-          tf = String(window.getComputedStyle(el).transform || "none");
-        } catch {}
-
-        const looksLikeTransform =
-          tf !== "none" || styleStr.includes("transform") || styleStr.includes("translate") || styleStr.includes("matrix");
-
-        if (!looksLikeTransform) continue;
-
-        const lastKey = seen.get(el) || "";
-        const key = `${tf}||${styleStr}`;
-        if (lastKey === key) continue;
-
-        seen.set(el, key);
-        logCount++;
-
-        const sst = typeof sheetEl.scrollTop === "number" ? Math.round(sheetEl.scrollTop) : 0;
-        const bst = typeof bodyEl?.scrollTop === "number" ? Math.round(bodyEl?.scrollTop) : 0;
-
-        // eslint-disable-next-line no-console
-        console.groupCollapsed(
-          `[RD_DEBUG][transform#${logCount}] ${getLabel(el)} | tf:${tf !== "none" ? "YES" : "maybe"} | evt:${
-            lastEvtRef.type
-          } | s:${sst} b:${bst}`
-        );
-        // eslint-disable-next-line no-console
-        console.log("node:", el);
-        // eslint-disable-next-line no-console
-        console.log("label:", getLabel(el));
-        // eslint-disable-next-line no-console
-        console.log("data:", extractDataAttrs(el));
-        // eslint-disable-next-line no-console
-        console.log("computed.transform:", tf);
-        // eslint-disable-next-line no-console
-        console.log("inline style:", styleStr);
-        // eslint-disable-next-line no-console
-        console.log("lastEvent:", { ...lastEvtRef });
-        // eslint-disable-next-line no-console
-        console.groupEnd();
-      }
-
-      if (logCount >= MAX_LOG) {
-        try {
-          // eslint-disable-next-line no-console
-          console.warn("[RD_DEBUG] MAX_LOG reached, observer muted.");
-        } catch {}
-      }
-    });
-
-    try {
-      obs.observe(rootEl, {
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["style"],
-      });
-      // eslint-disable-next-line no-console
-      console.log("[RD_DEBUG] Transform Avcısı aktif. (localStorage RD_DEBUG=1)");
-    } catch {}
-
-    return () => {
-      try {
-        obs.disconnect();
-      } catch {}
-      try {
-        sheetEl.removeEventListener("scroll", onSheetScroll);
-      } catch {}
-      try {
-        bodyEl?.removeEventListener("scroll", onBodyScroll);
-      } catch {}
-
-      evtTypes.forEach((t) => {
-        try {
-          const fn = evtHandlers[t];
-          if (fn) rootEl.removeEventListener(t, fn, evtOpts);
-        } catch {}
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [RD_DEBUG, routeId]);
-
-  // ✅ Simple scroll’da map resize’i hafif debounced tetikle
-  const simpleScrollResizeGateRef = React.useRef({ lastAt: 0 });
-
-  // ✅ EMİR — scroll handler
-  const handleBodyScroll = useCallback(
-    (e) => {
-      try {
-        scrollOwnerRef.current = "body";
-      } catch {}
-
-      const st = Math.max(0, Math.round(Number(e?.currentTarget?.scrollTop) || 0));
-      lastScrollTopRef.current = st;
-
-      // ✅ EMİR 31/P2 — Simple Scroll: yalnızca hafif map resize debounce
-      if (RD_SIMPLE_SCROLL) {
-        const now = Date.now();
-        const g = simpleScrollResizeGateRef.current;
-        if (now - (g.lastAt || 0) > 180) {
-          g.lastAt = now;
-          try {
-            requestMapResize("scroll");
-          } catch {}
-        }
-        return;
-      }
-
-      scheduleHeroCollapse(st);
-
-      const atTop = st <= HARD_RESET_TOP_PX;
-      const ref = hardFixRef.current;
-
-      if (atTop) {
-        hardResetSheetMotor("scroll@top");
-        try {
-          requestMapResize("scroll@top");
-        } catch {}
-        try {
-          checkTopHardReset("scroll@top");
-        } catch {}
-      }
-
-      if (ref.lastAtTop !== atTop) {
-        ref.lastAtTop = atTop;
-        try {
-          const backdropEl = sheetRef.current?.closest?.(".route-detail-backdrop");
-          if (backdropEl) backdropEl.setAttribute("data-rd-at-top", atTop ? "1" : "0");
-        } catch {}
-      }
-
-      try {
-        const r = scrollEndRef.current;
-        if (r?.tmr) window.clearTimeout(r.tmr);
-        r.tmr = window.setTimeout(() => {
-          try {
-            r.tmr = 0;
-          } catch {}
-
-          layoutRepair("scrollEnd");
-
-          const stNow = Math.max(0, Math.round(Number(lastScrollTopRef.current) || 0));
-          if (stNow <= HARD_RESET_TOP_PX) {
-            try {
-              nudgeScrollTopToReflow("scrollEnd+nudge");
-            } catch {}
-            try {
-              checkTopHardReset("scrollEnd");
-            } catch {}
-          }
-        }, 120);
-      } catch {}
-    },
-    [
-      HARD_RESET_TOP_PX,
-      hardResetSheetMotor,
-      scheduleHeroCollapse,
-      requestMapResize,
-      layoutRepair,
-      checkTopHardReset,
-      nudgeScrollTopToReflow,
-    ]
-  );
-
-  // ✅ Snap-End + 2. dalga reset (+160ms)
-  const handleSnapEnd = useCallback(() => {
-    // ✅ EMİR 31/P2 — Simple Scroll modda snapEnd KAPALI
-    if (RD_SIMPLE_SCROLL) return;
-
-    try {
-      layoutRepair("snapEnd");
-    } catch {}
-
-    try {
-      checkTopHardReset("snapEnd");
-    } catch {}
-
-    const now = Date.now();
-    const gate = settleSecondWaveRef.current;
-    if (now - (gate.lastAt || 0) < 300) return;
-    gate.lastAt = now;
-
-    try {
-      if (gate.tmr) window.clearTimeout(gate.tmr);
-    } catch {}
-    gate.tmr = window.setTimeout(() => {
-      try {
-        forceHeroExpanded("snapEnd+160");
-      } catch {}
-      try {
-        checkTopHardReset("snapEnd+160");
-      } catch {}
-      try {
-        requestMapResize("snapEnd+160");
-      } catch {}
-      try {
-        nudgeScrollTopToReflow("snapEnd+nudge");
-      } catch {}
-    }, 160);
-  }, [layoutRepair, checkTopHardReset, forceHeroExpanded, requestMapResize, nudgeScrollTopToReflow]);
 
   // ✅ Portals + scroll lock
   const { withPortal, commentsPortalEl, setCommentsPortalEl, lightboxPortalEl, setLightboxPortalEl } =
@@ -1591,22 +997,13 @@ export default function RouteDetailMobile({
     [onTabChange]
   );
 
-  const {
-    routeDoc,
-    stops,
-    stopsLoaded,
-    owner,
-    permError,
-    commentsCount,
-    ownerIdForProfile,
-    lockedOwnerDoc,
-    authUid,
-  } = useRouteDetailData({
-    routeId,
-    initialRoute,
-    followInitially,
-    ownerFromLink,
-  });
+  const { routeDoc, stops, stopsLoaded, owner, permError, commentsCount, ownerIdForProfile, lockedOwnerDoc, authUid } =
+    useRouteDetailData({
+      routeId,
+      initialRoute,
+      followInitially,
+      ownerFromLink,
+    });
 
   const routeModel = routeDoc || initialRoute;
 
@@ -1654,7 +1051,6 @@ export default function RouteDetailMobile({
   }, [routeDoc, initialRoute]);
 
   const { pts: pathPts } = useMemo(() => normalizePathForPreview(rawPath), [rawPath]);
-
   const { stops: stopsForPreview } = useMemo(() => normalizeStopsForPreview(stops || []), [stops]);
 
   const { questState, startQuest, stopQuest, finishQuest, questLocLine, ghostMetrics } = useRouteDetailQuest({
@@ -1756,6 +1152,29 @@ export default function RouteDetailMobile({
       </div>
     );
   }, [V3_ENABLED, pathPts, stopsForPreview, ghostMetrics, questState, questLocLine, startQuest, stopQuest, finishQuest, authUid]);
+
+  // ✅ EMİR 32 (FINAL): Manus CTA row (GPX + Başlat) — yalnız UI, handler mevcut
+  const manusCta = useMemo(() => {
+    const hasPath = Array.isArray(pathPts) && pathPts.length >= 2;
+    const hasStops = Array.isArray(stopsForPreview) && stopsForPreview.length >= 1;
+
+    const v3 = !!V3_ENABLED;
+
+    let startDisabledReason = "";
+    if (!v3) startDisabledReason = "Şimdilik devre dışı.";
+    else if (!hasPath) startDisabledReason = "Bu rotada iz bulunamadı.";
+    else if (!hasStops) startDisabledReason = "Bu rotada checkpoint bulunamadı.";
+    else if (questState !== "idle") startDisabledReason = "Bu rota zaten aktif.";
+
+    const startDisabled = !!startDisabledReason;
+    const startTitle = startDisabledReason || "Rotayı başlat";
+
+    return {
+      startDisabled,
+      startTitle,
+      canStart: !startDisabled && typeof startQuest === "function",
+    };
+  }, [V3_ENABLED, pathPts, stopsForPreview, questState, startQuest]);
 
   const {
     mediaCacheRef,
@@ -1937,16 +1356,7 @@ export default function RouteDetailMobile({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [
-    onClose,
-    lightboxItems,
-    coverPickerOpen,
-    closeCoverPicker,
-    isEditMode,
-    showShareSheet,
-    commentsOverlayOpen,
-    blockInteractionsBriefly,
-  ]);
+  }, [onClose, lightboxItems, coverPickerOpen, closeCoverPicker, isEditMode, showShareSheet, commentsOverlayOpen, blockInteractionsBriefly]);
 
   const heroModel = useRDHeroModel({
     routeModel,
@@ -2025,6 +1435,122 @@ export default function RouteDetailMobile({
     );
   }, [routeDoc, initialRoute, coverUi.coverKindUi, coverUi.coverResolved, owner, routeId]);
 
+  // ✅✅✅ FIX: HOOKS MUST BE ABOVE EARLY RETURNS (Rules of Hooks)
+  const simpleScrollResizeGateRef = React.useRef({ lastAt: 0 });
+
+  const handleBodyScroll = useCallback(
+    (e) => {
+      try {
+        scrollOwnerRef.current = "body";
+      } catch {}
+
+      const st = Math.max(0, Math.round(Number(e?.currentTarget?.scrollTop) || 0));
+      lastScrollTopRef.current = st;
+
+      if (RD_SIMPLE_SCROLL) {
+        const now = Date.now();
+        const g = simpleScrollResizeGateRef.current;
+        if (now - (g.lastAt || 0) > 180) {
+          g.lastAt = now;
+          try {
+            requestMapResize("scroll");
+          } catch {}
+        }
+        return;
+      }
+
+      scheduleHeroCollapse(st);
+
+      const atTop = st <= HARD_RESET_TOP_PX;
+      const ref = hardFixRef.current;
+
+      if (atTop) {
+        hardResetSheetMotor("scroll@top");
+        try {
+          requestMapResize("scroll@top");
+        } catch {}
+        try {
+          checkTopHardReset("scroll@top");
+        } catch {}
+      }
+
+      if (ref.lastAtTop !== atTop) {
+        ref.lastAtTop = atTop;
+        try {
+          const backdropEl = sheetRef.current?.closest?.(".route-detail-backdrop");
+          if (backdropEl) backdropEl.setAttribute("data-rd-at-top", atTop ? "1" : "0");
+        } catch {}
+      }
+
+      try {
+        const r = scrollEndRef.current;
+        if (r?.tmr) window.clearTimeout(r.tmr);
+        r.tmr = window.setTimeout(() => {
+          try {
+            r.tmr = 0;
+          } catch {}
+
+          layoutRepair("scrollEnd");
+
+          const stNow = Math.max(0, Math.round(Number(lastScrollTopRef.current) || 0));
+          if (stNow <= HARD_RESET_TOP_PX) {
+            try {
+              nudgeScrollTopToReflow("scrollEnd+nudge");
+            } catch {}
+            try {
+              checkTopHardReset("scrollEnd");
+            } catch {}
+          }
+        }, 120);
+      } catch {}
+    },
+    [
+      HARD_RESET_TOP_PX,
+      hardResetSheetMotor,
+      scheduleHeroCollapse,
+      requestMapResize,
+      layoutRepair,
+      checkTopHardReset,
+      nudgeScrollTopToReflow,
+    ]
+  );
+
+  const handleSnapEnd = useCallback(() => {
+    if (RD_SIMPLE_SCROLL) return;
+
+    try {
+      layoutRepair("snapEnd");
+    } catch {}
+
+    try {
+      checkTopHardReset("snapEnd");
+    } catch {}
+
+    const now = Date.now();
+    const gate = settleSecondWaveRef.current;
+    if (now - (gate.lastAt || 0) < 300) return;
+    gate.lastAt = now;
+
+    try {
+      if (gate.tmr) window.clearTimeout(gate.tmr);
+    } catch {}
+    gate.tmr = window.setTimeout(() => {
+      try {
+        forceHeroExpanded("snapEnd+160");
+      } catch {}
+      try {
+        checkTopHardReset("snapEnd+160");
+      } catch {}
+      try {
+        requestMapResize("snapEnd+160");
+      } catch {}
+      try {
+        nudgeScrollTopToReflow("snapEnd+nudge");
+      } catch {}
+    }, 160);
+  }, [layoutRepair, checkTopHardReset, forceHeroExpanded, requestMapResize, nudgeScrollTopToReflow]);
+
+  // ✅ EARLY RETURNS (now safe: no hooks below)
   if (!routeId)
     return withPortal(<RouteDetailAccessSheet kind="not-found" followInitially={followInitially} onClose={onClose} />);
 
@@ -2089,18 +1615,10 @@ export default function RouteDetailMobile({
       data-theme-anim={themeAnimOn ? "1" : "0"}
       data-simple-scroll={RD_SIMPLE_SCROLL ? "1" : "0"}
       data-route-skin="manus"
-      // ✅ Simple scroll modda overlap padding’i kapat
-      style={
-        RD_SIMPLE_SCROLL
-          ? {
-              "--rd-hero-hub-overlap": "0px",
-            }
-          : undefined
-      }
+      style={RD_SIMPLE_SCROLL ? { "--rd-hero-hub-overlap": "0px" } : undefined}
       onClick={handleBackdropClick}
     >
       <div className="route-detail-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
-        {/* ✅ Simple scroll: grab bar yok */}
         {!RD_SIMPLE_SCROLL && <div className="route-detail-grab" />}
 
         <div
@@ -2112,12 +1630,10 @@ export default function RouteDetailMobile({
             overscrollBehavior: "contain",
           }}
           onScroll={handleBodyScroll}
-          // ✅ Simple scroll: snapEnd handler yok
           onPointerUp={RD_SIMPLE_SCROLL ? undefined : handleSnapEnd}
           onTouchEnd={RD_SIMPLE_SCROLL ? undefined : handleSnapEnd}
           onTouchCancel={RD_SIMPLE_SCROLL ? undefined : handleSnapEnd}
         >
-          {/* ✅✅✅ EMİR 31 / PARÇA 1 — HERO artık scroller içinde (natural flow) */}
           <div style={{ overflowAnchor: "none" }}>
             <RouteDetailHeroMobile
               coverResolved={coverUi.coverResolved}
@@ -2181,7 +1697,6 @@ export default function RouteDetailMobile({
             galleryCount={Array.isArray(galleryItems) ? galleryItems.length : 0}
           />
 
-          {/* ✅ EMİR 03 (Adım 4): Map host wrapper (RO/IO/VV repaint) */}
           <div ref={mapCardHostRef} data-rd-map-host="1" style={{ overflowAnchor: "none" }}>
             <RouteDetailMapCardMobile
               routeId={routeId}
@@ -2197,6 +1712,94 @@ export default function RouteDetailMobile({
           </div>
 
           {questUi}
+
+          {!isEditMode && <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />}
+
+          {!isEditMode && (
+            <div
+              className="rd-manus-ctaRow"
+              data-route-skin="manus"
+              style={{
+                margin: "12px 12px 4px",
+                padding: `12px 12px calc(12px + env(safe-area-inset-bottom))`,
+                borderRadius: 18,
+                background: rdTheme === "light" ? "rgba(255,255,255,0.86)" : "rgba(10,10,12,0.55)",
+                border:
+                  rdTheme === "light"
+                    ? "1px solid rgba(0,0,0,0.08)"
+                    : "1px solid rgba(255,255,255,0.10)",
+                backdropFilter: "blur(14px)",
+                WebkitBackdropFilter: "blur(14px)",
+                boxShadow:
+                  rdTheme === "light" ? "0 10px 26px rgba(0,0,0,0.10)" : "0 10px 26px rgba(0,0,0,0.28)",
+                display: "flex",
+                gap: 10,
+                alignItems: "stretch",
+              }}
+            >
+              <button
+                type="button"
+                className="rd-manus-ctaBtn rd-manus-ctaBtn--secondary"
+                onClick={(e) => {
+                  e?.stopPropagation?.();
+                  try {
+                    onExportGpx?.();
+                  } catch {}
+                  try {
+                    blockInteractionsBriefly(160);
+                  } catch {}
+                }}
+                style={{
+                  flex: 1,
+                  borderRadius: 14,
+                  border:
+                    rdTheme === "light"
+                      ? "1px solid rgba(0,0,0,0.10)"
+                      : "1px solid rgba(255,255,255,0.12)",
+                  background: rdTheme === "light" ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)",
+                  color: rdTheme === "light" ? "rgba(0,0,0,0.88)" : "rgba(255,255,255,0.92)",
+                  fontWeight: 900,
+                  fontSize: 13,
+                  padding: "12px 12px",
+                  cursor: "pointer",
+                }}
+                title="GPX indir"
+              >
+                GPX indir
+              </button>
+
+              <button
+                type="button"
+                className="rd-manus-ctaBtn rd-manus-ctaBtn--primary"
+                onClick={(e) => {
+                  e?.stopPropagation?.();
+                  if (!manusCta.canStart) return;
+                  try {
+                    startQuest?.();
+                  } catch {}
+                  try {
+                    blockInteractionsBriefly(180);
+                  } catch {}
+                }}
+                disabled={!manusCta.canStart}
+                title={manusCta.startTitle}
+                style={{
+                  flex: 1,
+                  borderRadius: 14,
+                  border: "1px solid transparent",
+                  background: rdTheme === "light" ? "rgba(17,24,39,0.92)" : "rgba(255,255,255,0.92)",
+                  color: rdTheme === "light" ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.92)",
+                  fontWeight: 900,
+                  fontSize: 13,
+                  padding: "12px 12px",
+                  cursor: manusCta.canStart ? "pointer" : "default",
+                  opacity: manusCta.canStart ? 1 : 0.55,
+                }}
+              >
+                Rotayı başlat
+              </button>
+            </div>
+          )}
 
           {isEditMode && (
             <RouteDetailCoverRow
@@ -2219,8 +1822,6 @@ export default function RouteDetailMobile({
               onImgError={(e) => handleImgErrorToDefault(e, { scope: "cover_thumb" })}
             />
           )}
-
-          {!isEditMode && <RouteDetailRateRow canRateRoute={canRateRoute} onRouteRate={onRouteRate} />}
 
           <RouteDetailSectionsMobile
             stopsSectionRef={stopsSectionRef}

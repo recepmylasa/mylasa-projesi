@@ -647,8 +647,6 @@ function App() {
   }, []);
 
   // Global event → profil modal aç
-  // Not: Route forbidden sheet’ten gelince (open-profile-modal), asla redirect yok:
-  // route permalink korunur; profil kapanınca tekrar route modalına dönülebilir.
   useEffect(() => {
     const handler = (e) => {
       const userId = e?.detail?.userId;
@@ -662,8 +660,6 @@ function App() {
         currentModal === "viewingRoute" && !!currentData?.id;
 
       if (cameFromRouteModal || isRoutePermalinkPath(pathname)) {
-        // Route -> Profil geçişinde URL’yi bozma/redirect yapma.
-        // Geri dönüş için mevcut route modal state’ini sakla.
         modalReturnRef.current = {
           modalContent: "viewingRoute",
           modalData: currentData,
@@ -671,8 +667,6 @@ function App() {
           url: window.location.pathname + window.location.search,
         };
       } else {
-        // Post/Clip permalinklerinde (veya başka durumlarda) mevcut davranış: URL’yi temizle
-        // (Bu, PermalinkPage ile App’in karışmaması için.)
         try {
           if (isPostOrClipPermalinkPath(pathname)) {
             window.history.replaceState({}, "", "/");
@@ -694,7 +688,6 @@ function App() {
   }, []);
 
   const handleNavChange = (tab) => {
-    // Profil modalı route üzerinden açıldıysa, tab değişince geri dönüş stack’ini iptal et.
     modalReturnRef.current = null;
 
     const path = window.location.pathname;
@@ -711,7 +704,8 @@ function App() {
     }
 
     if (tab === "explore") {
-      const target = "/explore";
+      // ✅ EMİR 32 (FINAL): Mobilde Explore tab'ı direkt RoutesExploreMobile'e gitsin
+      const target = isMobile ? "/explore/routes" : "/explore";
       if (window.location.pathname !== target) {
         window.history.pushState({}, "", target);
       }
@@ -852,7 +846,6 @@ function App() {
     if (!modalContent) return null;
 
     const closeModal = () => {
-      // Eğer profil, route’dan “Profili aç” ile açıldıysa: kapatınca route modalına dön
       if (modalContent === "viewingProfile" && modalReturnRef.current) {
         const ret = modalReturnRef.current;
         modalReturnRef.current = null;

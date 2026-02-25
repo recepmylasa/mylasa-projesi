@@ -14,7 +14,9 @@ function sigFromRect(rect) {
   if (!rect) return "";
   const w = Math.round(rect.width || 0);
   const h = Math.round(rect.height || 0);
-  const dpr = Math.round(((typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1) * 100);
+  const dpr = Math.round(
+    (((typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1) * 100)
+  );
   return `${w}x${h}@${dpr}`;
 }
 
@@ -27,6 +29,9 @@ export default function RouteDetailMapCardMobile({
   stopsLoaded,
   mapBadgeCount,
   mapAreaLabel,
+
+  // (optional) forward-compat
+  scrollRootRef,
 }) {
   const badgeCount = useMemo(() => {
     const n = Number(mapBadgeCount) || 0;
@@ -172,15 +177,18 @@ export default function RouteDetailMapCardMobile({
         document.removeEventListener("visibilitychange", onVis);
       } catch {}
     };
-    // mapsRetryTick değişince zaten remount oluyor, burada dependency’ye koymaya gerek yok.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryMap, routeId]);
+
+  const showBadges = badgeCount > 0;
+  const showLabel = !!areaLabel;
 
   return (
     <div
       ref={cardRef}
       className="rd-map-card"
       data-rd-map-card="1"
+      data-map-skin="manus"
       style={{
         position: "relative",
         width: "100%",
@@ -195,6 +203,22 @@ export default function RouteDetailMapCardMobile({
         "--rdmps-h": "100%",
       }}
     >
+      {/* ✅ Manus overlays (harita default gibi bağırmasın) */}
+      {showBadges ? (
+        <div className="rd-map-card__badges" aria-hidden="true">
+          <div className="rd-map-card__badge rd-map-card__badge--primary">
+            <span className="rd-map-card__badgeNum">{badgeCount}</span>
+            <span className="rd-map-card__badgeTxt">Nokta</span>
+          </div>
+        </div>
+      ) : null}
+
+      {showLabel ? (
+        <div className="rd-map-card__label" aria-hidden="true" title={areaLabel}>
+          <span className="rd-map-card__labelText">{areaLabel}</span>
+        </div>
+      ) : null}
+
       <div
         className="rd-map-card__canvas"
         style={{
@@ -216,6 +240,10 @@ export default function RouteDetailMapCardMobile({
           badgeCount={badgeCount}
           areaLabel={areaLabel}
           onRetry={() => retryMap()}
+          // ✅ forward-compat (Shell isterse kullanır)
+          scrollRootRef={scrollRootRef}
+          markerLabelMode="manus"
+          startEndBadgeLabels={["1", "2"]}
         />
       </div>
     </div>

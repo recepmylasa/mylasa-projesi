@@ -444,6 +444,39 @@ function makePinSvg({ fill = "#00E5FF", stroke = "rgba(0,0,0,0.65)" } = {}) {
   return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg.trim());
 }
 
+// ✅ Manus: “1 / 2” cyan badge marker
+function makeBadgeSvg({
+  label = "1",
+  fill = "#00E5FF",
+  stroke = "rgba(0,0,0,0.65)",
+  text = "rgba(255,255,255,0.96)",
+} = {}) {
+  const safeLabel = String(label || "").slice(0, 3);
+  const svg = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    <defs>
+      <filter id="ds" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.45)"/>
+      </filter>
+      <radialGradient id="hi" cx="30%" cy="25%" r="80%">
+        <stop offset="0%" stop-color="rgba(255,255,255,0.55)"/>
+        <stop offset="55%" stop-color="rgba(255,255,255,0.10)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0.10)"/>
+      </radialGradient>
+    </defs>
+    <g filter="url(#ds)">
+      <circle cx="16" cy="16" r="13.6" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/>
+      <circle cx="16" cy="16" r="13.6" fill="url(#hi)" opacity="0.55"/>
+      <text x="16" y="16"
+        text-anchor="middle" dominant-baseline="central"
+        font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial"
+        font-size="14" font-weight="900"
+        fill="${text}" letter-spacing="0.2">${safeLabel}</text>
+    </g>
+  </svg>`;
+  return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg.trim());
+}
+
 function getMapInstanceFromRef(mapRefLike) {
   try {
     const m = mapRefLike?.current ? mapRefLike.current : mapRefLike;
@@ -462,6 +495,10 @@ export default function RouteDetailMapPreviewShell({
   onRetry = () => {},
   // ✅ EMİR 04 PARÇA 2/3 — gerçek scroll root (RouteDetailMobile -> MapCard -> buraya pass)
   scrollRootRef = null,
+
+  // ✅ Manus polish inputs (optional)
+  markerLabelMode = "pin", // "pin" | "manus"
+  startEndBadgeLabels = null, // ["1","2"]
 }) {
   const API_KEY =
     process.env.REACT_APP_GOOGLE_MAPS_API_KEY ||
@@ -1002,6 +1039,13 @@ export default function RouteDetailMapPreviewShell({
   const startMarkerRef = useRef(null);
   const endMarkerRef = useRef(null);
 
+  const markerLabels = useMemo(() => {
+    const arr = Array.isArray(startEndBadgeLabels) ? startEndBadgeLabels : null;
+    const a = arr && arr.length >= 1 ? String(arr[0]) : "1";
+    const b = arr && arr.length >= 2 ? String(arr[1]) : "2";
+    return [a || "1", b || "2"];
+  }, [startEndBadgeLabels]);
+
   useEffect(() => {
     const map = mapInstance;
     const g = window.google;
@@ -1026,12 +1070,25 @@ export default function RouteDetailMapPreviewShell({
     }
 
     const cyan = "#00E5FF";
-    const iconUrl = makePinSvg({ fill: cyan });
 
-    const icon = {
-      url: iconUrl,
+    const useManusBadges = String(markerLabelMode || "").toLowerCase() === "manus";
+
+    const pinIcon = {
+      url: makePinSvg({ fill: cyan }),
       scaledSize: new g.maps.Size(30, 30),
       anchor: new g.maps.Point(15, 27),
+    };
+
+    const startBadgeIcon = {
+      url: makeBadgeSvg({ label: markerLabels[0], fill: cyan }),
+      scaledSize: new g.maps.Size(30, 30),
+      anchor: new g.maps.Point(15, 15),
+    };
+
+    const endBadgeIcon = {
+      url: makeBadgeSvg({ label: markerLabels[1], fill: cyan }),
+      scaledSize: new g.maps.Size(30, 30),
+      anchor: new g.maps.Point(15, 15),
     };
 
     if (drawPoints.length === 1) {
@@ -1045,17 +1102,19 @@ export default function RouteDetailMapPreviewShell({
       const p0 = drawPoints[0];
 
       try {
+        const icon = useManusBadges ? startBadgeIcon : pinIcon;
         if (!startMarkerRef.current) {
           startMarkerRef.current = new g.maps.Marker({
             position: p0,
             map,
             clickable: false,
-            zIndex: 4,
+            zIndex: 6,
             icon,
             title: "Konum",
           });
         } else {
           startMarkerRef.current.setPosition(p0);
+          startMarkerRef.current.setIcon(icon);
           startMarkerRef.current.setMap(map);
         }
       } catch {}
@@ -1108,17 +1167,21 @@ export default function RouteDetailMapPreviewShell({
     const end = drawPoints[drawPoints.length - 1];
 
     try {
+      const sIcon = useManusBadges ? startBadgeIcon : pinIcon;
+      const eIcon = useManusBadges ? endBadgeIcon : pinIcon;
+
       if (!startMarkerRef.current) {
         startMarkerRef.current = new g.maps.Marker({
           position: start,
           map,
           clickable: false,
-          zIndex: 4,
-          icon,
+          zIndex: 6,
+          icon: sIcon,
           title: "Başlangıç",
         });
       } else {
         startMarkerRef.current.setPosition(start);
+        startMarkerRef.current.setIcon(sIcon);
         startMarkerRef.current.setMap(map);
       }
 
@@ -1127,18 +1190,19 @@ export default function RouteDetailMapPreviewShell({
           position: end,
           map,
           clickable: false,
-          zIndex: 4,
-          icon,
+          zIndex: 6,
+          icon: eIcon,
           title: "Bitiş",
         });
       } else {
         endMarkerRef.current.setPosition(end);
+        endMarkerRef.current.setIcon(eIcon);
         endMarkerRef.current.setMap(map);
       }
     } catch {}
 
     return () => cleanup();
-  }, [mapInstance, drawPoints, routeId]);
+  }, [mapInstance, drawPoints, routeId, markerLabelMode, markerLabels]);
 
   /* =========================================================
      ✅ Resize Authority (mevcut hook) — container gerçek host
@@ -1216,10 +1280,6 @@ export default function RouteDetailMapPreviewShell({
 
   /* =========================================================
      ✅ EMİR 04 (PARÇA 2/3) — Repaint Authority
-     A) scrollRootEl gerçek root (IO + scroll-end)
-     B) Scroll-End Repaint deterministik (2x RAF)
-     C) rd:repair tek otorite
-     D) Cleanup: listener/observer/raf + map listeners clear
      ========================================================= */
   const repaintStateRef = useRef({
     raf1: 0,
@@ -1252,7 +1312,6 @@ export default function RouteDetailMapPreviewShell({
 
       const st = repaintStateRef.current;
 
-      // inView guard (scrollEnd/IO/RO için) — rd:repair her zaman çalışsın
       const r = String(reason || "");
       const mustRun = r === "rd:repair" || r.startsWith("rd:repair") || r.includes("topHardReset") || r.includes("stuck");
       if (!mustRun && st.inView === false) return;
@@ -1274,7 +1333,6 @@ export default function RouteDetailMapPreviewShell({
           const mm = mapInstanceRef.current;
           if (!mm) return;
 
-          // resize + same-set
           try {
             g.maps.event.trigger(mm, "resize");
           } catch {}
@@ -1287,7 +1345,6 @@ export default function RouteDetailMapPreviewShell({
             if (Number.isFinite(z) && mm.setZoom) mm.setZoom(z);
           } catch {}
 
-          // optional fitBounds (throttle + boundsKey dedupe)
           const b = boundsRef.current;
           const key = String(boundsKeyRef.current || "");
           if (b && key && key !== "none") {
@@ -1306,13 +1363,6 @@ export default function RouteDetailMapPreviewShell({
               } catch {}
             }
           }
-
-          if (process.env.NODE_ENV !== "production") {
-            try {
-              // eslint-disable-next-line no-console
-              console.debug("[RD_MAP][repaint]", { routeId: String(routeId || ""), reason: r });
-            } catch {}
-          }
         });
       });
     },
@@ -1329,6 +1379,16 @@ export default function RouteDetailMapPreviewShell({
     let ro = null;
     let rafAttach = 0;
     let attached = false;
+
+    const onScroll = () => {
+      try {
+        if (state.scrollTmr) clearTimeout(state.scrollTmr);
+      } catch {}
+      state.scrollTmr = window.setTimeout(() => {
+        state.scrollTmr = 0;
+        runDeterministicRepaint("scrollEnd");
+      }, 120);
+    };
 
     const cleanupAll = () => {
       try {
@@ -1367,29 +1427,17 @@ export default function RouteDetailMapPreviewShell({
       scrollEl = null;
     };
 
-    const onScroll = () => {
-      try {
-        if (state.scrollTmr) clearTimeout(state.scrollTmr);
-      } catch {}
-      state.scrollTmr = window.setTimeout(() => {
-        state.scrollTmr = 0;
-        runDeterministicRepaint("scrollEnd");
-      }, 120);
-    };
-
     const attach = () => {
       scrollEl = getScrollRootEl();
       const host = localDivRef.current;
 
       if (!scrollEl || !host) return false;
 
-      // scroll-end
       try {
         scrollEl.addEventListener("scroll", onScroll, { passive: true });
         attached = true;
       } catch {}
 
-      // IO root = scrollEl (viewport değil)
       try {
         io = new IntersectionObserver(
           (entries) => {
@@ -1405,7 +1453,6 @@ export default function RouteDetailMapPreviewShell({
         io.observe(host);
       } catch {}
 
-      // RO (host size değişince repaint)
       try {
         ro = new ResizeObserver(() => {
           runDeterministicRepaint("RO");
@@ -1417,14 +1464,11 @@ export default function RouteDetailMapPreviewShell({
     };
 
     const retryAttach = () => {
-      // birkaç frame içinde body ref geç gelebilir
       let tries = 0;
       const step = () => {
         tries += 1;
         if (attach()) return;
-        if (tries < 40) {
-          rafAttach = requestAnimationFrame(step);
-        }
+        if (tries < 40) rafAttach = requestAnimationFrame(step);
       };
       rafAttach = requestAnimationFrame(step);
     };
@@ -1432,9 +1476,7 @@ export default function RouteDetailMapPreviewShell({
     cleanupAll();
     retryAttach();
 
-    return () => {
-      cleanupAll();
-    };
+    return () => cleanupAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId, getScrollRootEl, runDeterministicRepaint]);
 
@@ -1457,7 +1499,7 @@ export default function RouteDetailMapPreviewShell({
     };
   }, [runDeterministicRepaint]);
 
-  // ✅ Leak stopper cleanup: routeId değişiminde / unmount’ta map listener temizliği + refs null
+  // ✅ Leak stopper cleanup
   useEffect(() => {
     return () => {
       const m = mapInstanceRef.current;
@@ -1474,7 +1516,6 @@ export default function RouteDetailMapPreviewShell({
       } catch {}
 
       try {
-        // overlay objelerini de bırak
         if (polylineRef.current) polylineRef.current.setMap(null);
         if (glowRef.current) glowRef.current.setMap(null);
         if (startMarkerRef.current) startMarkerRef.current.setMap(null);
@@ -1485,7 +1526,6 @@ export default function RouteDetailMapPreviewShell({
       startMarkerRef.current = null;
       endMarkerRef.current = null;
 
-      // softRepair timer/raf cleanup
       try {
         if (repairRef.current.raf) cancelAnimationFrame(repairRef.current.raf);
       } catch {}
@@ -1550,7 +1590,6 @@ export default function RouteDetailMapPreviewShell({
         repairRef.current.softTries += 1;
         softRepair();
 
-        // remount yok → 2. denemeden sonra bırak
         if (repairRef.current.softTries >= 2) {
           repairRef.current.softTries = 0;
           return;
@@ -1702,6 +1741,9 @@ export default function RouteDetailMapPreviewShell({
   const showNoPoints = isReady && hasAnyInput && (!points || points.length === 0);
   const bc = Math.max(0, Math.min(12, Math.floor(Number(badgeCount) || 0)));
 
+  // ✅ Manus: üst rozetler/label artık MapCard dış overlay’de — burada gizle
+  const showInternalOverlays = String(markerLabelMode || "").toLowerCase() !== "manus";
+
   return (
     <div
       ref={shellRef}
@@ -1725,7 +1767,6 @@ export default function RouteDetailMapPreviewShell({
       data-epoch={"0"}
     >
       <div
-        // ✅ WebGL leak stopper: key sabit (remount yok)
         className="rdmps-map"
         ref={setDivRef}
         data-ready-tick={mapReadyTick}
@@ -1740,45 +1781,49 @@ export default function RouteDetailMapPreviewShell({
         }}
       />
 
-      <div
-        className="rd-map-badges"
-        style={{
-          position: "absolute",
-          top: 10,
-          left: 10,
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-          pointerEvents: "none",
-          zIndex: 4,
-        }}
-      >
-        {isReady && rawPointCount > 0 ? (
-          <div className="rd-map-badge">{rawPointCount} NOKTA</div>
-        ) : (
-          <div className="rd-map-badge">{isLoading ? "YÜKLENİYOR" : "HARİTA"}</div>
-        )}
+      {showInternalOverlays ? (
+        <>
+          <div
+            className="rd-map-badges"
+            style={{
+              position: "absolute",
+              top: 10,
+              left: 10,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              pointerEvents: "none",
+              zIndex: 4,
+            }}
+          >
+            {isReady && rawPointCount > 0 ? (
+              <div className="rd-map-badge">{rawPointCount} NOKTA</div>
+            ) : (
+              <div className="rd-map-badge">{isLoading ? "YÜKLENİYOR" : "HARİTA"}</div>
+            )}
 
-        {bc > 0 &&
-          Array.from({ length: bc }).map((_, i) => (
-            <div key={i} className="rd-map-badge rd-map-badge--mini">
-              {i + 1}
-            </div>
-          ))}
-      </div>
+            {bc > 0 &&
+              Array.from({ length: bc }).map((_, i) => (
+                <div key={i} className="rd-map-badge rd-map-badge--mini">
+                  {i + 1}
+                </div>
+              ))}
+          </div>
 
-      <div
-        className="rd-map-loc"
-        style={{
-          position: "absolute",
-          right: 10,
-          bottom: 10,
-          pointerEvents: "none",
-          zIndex: 4,
-        }}
-      >
-        {locationLabel}
-      </div>
+          <div
+            className="rd-map-loc"
+            style={{
+              position: "absolute",
+              right: 10,
+              bottom: 10,
+              pointerEvents: "none",
+              zIndex: 4,
+            }}
+          >
+            {locationLabel}
+          </div>
+        </>
+      ) : null}
 
       {isLoading ? (
         <div style={overlayBase} aria-label="Harita yükleniyor">

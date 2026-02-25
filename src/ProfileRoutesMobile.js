@@ -1130,12 +1130,7 @@ function LockedRoutesCard({ variant = "login_required" }) {
   );
 }
 
-function ManusRouteCardTile({
-  route,
-  onOpen,
-  isProofTarget,
-  onProofLoadEvent,
-}) {
+function ManusRouteCardTile({ route, onClick, isProofTarget, onProofLoadEvent }) {
   const rid = route?.id ? String(route.id) : "";
 
   const rawTitle =
@@ -1197,7 +1192,8 @@ function ManusRouteCardTile({
       durationText={durationText}
       viewsText={viewsText}
       savesText={savesText}
-      onOpen={onOpen}
+      // ✅ PARÇA 3/3: Profilde tek otorite onClick
+      onClick={onClick}
       onCoverLoadEvent={(evt, src) => {
         if (!isProofTarget) return;
         try {
@@ -1332,7 +1328,7 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
           <div key={rid || route.id} className="profile-route-cardWrap">
             <ManusRouteCardTile
               route={route}
-              onOpen={() => handleClick(route)}
+              onClick={() => handleClick(route)}
               isProofTarget={isProofTarget}
               onProofLoadEvent={(evt, src) => {
                 if (!isProofTarget) return;

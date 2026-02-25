@@ -68,7 +68,7 @@ export default function RouteDetailSectionsMobile({
   }, [tab]);
 
   return (
-    <div className="rd-sections" data-active-tab={activeTab}>
+    <div className="rd-sections" data-active-tab={activeTab} data-route-skin="manus">
       {/* ✅ KURAL: Sections her zaman DOM’da. Kaybolma/alta kaçma burada bitiyor. */}
 
       <section ref={stopsSectionRef} className="rd-section" data-section="stops">
@@ -76,24 +76,27 @@ export default function RouteDetailSectionsMobile({
           <div className="rd-sectionTitle">Duraklar</div>
         </div>
 
-        <RouteDetailStopsTab
-          mode={modeForTabs}
-          isOwner={!!isOwner}
-          canInteract={canInteract}
-          stops={stops}
-          stopsLoaded={stopsLoaded}
-          stopAgg={stopAgg}
-          uploadState={uploadState}
-          mediaCacheRef={mediaCacheRef}
-          ensureStopThumbs={ensureStopThumbs}
-          onStopRate={onStopRate}
-          onPickMedia={onPickMedia}
-          cancelUpload={cancelUpload}
-          normalizeMediaType={normalizeMediaType}
-          buildLightboxItems={buildLightboxItems}
-          openLightbox={openLightbox}
-          onImgError={onImgError}
-        />
+        {/* ✅ EMİR 32 (FINAL): Manus timeline wrapper (CSS sayaç/çizgi burada devreye girer) */}
+        <div className="rd-stopsTimeline" data-variant="timeline">
+          <RouteDetailStopsTab
+            mode={modeForTabs}
+            isOwner={!!isOwner}
+            canInteract={canInteract}
+            stops={stops}
+            stopsLoaded={stopsLoaded}
+            stopAgg={stopAgg}
+            uploadState={uploadState}
+            mediaCacheRef={mediaCacheRef}
+            ensureStopThumbs={ensureStopThumbs}
+            onStopRate={onStopRate}
+            onPickMedia={onPickMedia}
+            cancelUpload={cancelUpload}
+            normalizeMediaType={normalizeMediaType}
+            buildLightboxItems={buildLightboxItems}
+            openLightbox={openLightbox}
+            onImgError={onImgError}
+          />
+        </div>
       </section>
 
       <section ref={gallerySectionRef} className="rd-section" data-section="gallery">
