@@ -16,6 +16,16 @@
   --rd-hero-info-y: 0px;
   --rd-hero-img-scale: 1.045;
   --rd-hero-hub-y: 0px;
+
+  /* ✅ EMİR 34/P1 — cover rounding defaults (no-op for non-manus unless overridden) */
+  --rd-hero-cover-radius: 0px;
+  --rd-hero-cover-inset: 0px;
+}
+
+/* ✅ EMİR 34/P1 — Manus: rounded + inset frame values */
+.route-detail-backdrop[data-route-skin="manus"] {
+  --rd-hero-cover-radius: 26px;
+  --rd-hero-cover-inset: 6px;
 }
 
 /* =========================================================
@@ -68,8 +78,22 @@
   position: absolute;
   inset: 0;
   z-index: 0;
+
+  /* ✅ EMİR 34/P1 — Outer cover card */
+  border-radius: var(--rd-hero-cover-radius, 0px);
+  overflow: hidden;
 }
 
+.route-detail-hero__mediaInset {
+  position: absolute;
+  inset: var(--rd-hero-cover-inset, 0px);
+
+  /* Inner radius = outer - inset */
+  border-radius: calc(var(--rd-hero-cover-radius, 0px) - var(--rd-hero-cover-inset, 0px));
+  overflow: hidden;
+}
+
+/* img */
 .route-detail-hero__img {
   width: 100%;
   height: 100%;
@@ -77,6 +101,9 @@
   object-position: 50% 34%;
   display: block;
   transform: scale(var(--rd-hero-img-scale, 1.045));
+
+  /* ✅ EMİR 34/P1 — ensure rounded clipping even if future wrappers change */
+  border-radius: inherit;
 }
 
 .route-detail-hero__media img {
@@ -92,6 +119,9 @@
   inset: 0;
   z-index: 2;
   pointer-events: none;
+
+  /* ✅ keep overlay rounded inside inset wrapper */
+  border-radius: inherit;
 }
 
 .rd-hero__overlay--top {

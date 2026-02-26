@@ -91,20 +91,24 @@ export default function RouteDetailHeroMobile({
         if (heroMenuOpen) closeHeroMenu();
       }}
     >
+      {/* ✅ EMİR 34/P1 — Cover rounded + inset (card-in-card) */}
       <div className="route-detail-hero__media">
-        <img
-          className="route-detail-hero__img"
-          src={coverResolved || (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg"}
-          alt="Rota kapağı"
-          loading="eager"
-          decoding="async"
-          onLoad={(e) => handleImgLoadProof(e, { scope: "hero_cover" })}
-          onError={(e) => handleImgErrorToDefault(e, { scope: "hero_cover" })}
-        />
-      </div>
+        <div className="route-detail-hero__mediaInset">
+          <img
+            className="route-detail-hero__img"
+            src={coverResolved || (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg"}
+            alt="Rota kapağı"
+            loading="eager"
+            decoding="async"
+            onLoad={(e) => handleImgLoadProof(e, { scope: "hero_cover" })}
+            onError={(e) => handleImgErrorToDefault(e, { scope: "hero_cover" })}
+          />
 
-      <div className="rd-hero__overlay rd-hero__overlay--top" />
-      <div className="rd-hero__overlay rd-hero__overlay--bottom" />
+          {/* Overlay’ler de inset wrapper içinde kalsın ki köşeler yuvarlak kalsın */}
+          <div className="rd-hero__overlay rd-hero__overlay--top" />
+          <div className="rd-hero__overlay rd-hero__overlay--bottom" />
+        </div>
+      </div>
 
       {/* ✅ EMİR 31/P2 — Simple scroll modda hero’nun flow alanını garanti eden spacer (CSS’de sadece o modda aktif) */}
       <div className="rd-hero__flowSpacer" aria-hidden="true" />

@@ -11,7 +11,11 @@
 // - Mantık/fetch/pagination/sort/filtre/route open akışı korunur
 // - Sadece UI giydirme + kart component swap + hero ekleme
 // - Desktop'a dokunulmaz
+//
+// ✅ EMİR 34 / PARÇA 2: Global sözleşme kilidi
+// - RouteCardManusMobile çağrılarında data-route-id aktarımı (rest props)
 
+/* eslint-disable no-unused-vars */
 import React, { useCallback, useEffect, useRef, useState, useMemo, Suspense, lazy } from "react";
 import { auth } from "../../firebase";
 
@@ -530,11 +534,15 @@ function RoutesExploreMobile() {
 
     const distanceText =
       (r?.distanceText && String(r.distanceText)) ||
-      (typeof r?.distanceKm === "number" && Number.isFinite(r.distanceKm) ? `${Math.round(r.distanceKm * 10) / 10} km` : "—");
+      (typeof r?.distanceKm === "number" && Number.isFinite(r.distanceKm)
+        ? `${Math.round(r.distanceKm * 10) / 10} km`
+        : "—");
 
     const durationText =
       (r?.durationText && String(r.durationText)) ||
-      (typeof r?.durationMs === "number" && Number.isFinite(r.durationMs) ? `${Math.max(1, Math.round(r.durationMs / 60000))} dk` : "—");
+      (typeof r?.durationMs === "number" && Number.isFinite(r.durationMs)
+        ? `${Math.max(1, Math.round(r.durationMs / 60000))} dk`
+        : "—");
 
     const viewsText =
       (r?.viewsText && String(r.viewsText)) ||
@@ -808,11 +816,12 @@ function RoutesExploreMobile() {
             >
               {filters.city && <span className="chip chip--filter">Şehir: {filters.city}</span>}
               {filters.country && <span className="chip chip--filter">Ülke: {filters.country}</span>}
-              {filters.tags && filters.tags.map((t) => (
-                <span key={t} className="chip chip--filter">
-                  #{t}
-                </span>
-              ))}
+              {filters.tags &&
+                filters.tags.map((t) => (
+                  <span key={t} className="chip chip--filter">
+                    #{t}
+                  </span>
+                ))}
             </div>
           )}
         </>
@@ -868,9 +877,18 @@ function RoutesExploreMobile() {
         {/* Near modunda ilk yükleme sırasında skeleton kartlar */}
         {sort === "near" && !hasSearch && loading && !visibleItems.length && (
           <div style={{ padding: "8px 2px" }}>
-            <div className="near-skel" style={{ height: 120, marginBottom: 10, borderRadius: 18, background: "#f3f4f6" }} />
-            <div className="near-skel" style={{ height: 120, marginBottom: 10, borderRadius: 18, background: "#f3f4f6" }} />
-            <div className="near-skel" style={{ height: 120, marginBottom: 10, borderRadius: 18, background: "#f3f4f6" }} />
+            <div
+              className="near-skel"
+              style={{ height: 120, marginBottom: 10, borderRadius: 18, background: "#f3f4f6" }}
+            />
+            <div
+              className="near-skel"
+              style={{ height: 120, marginBottom: 10, borderRadius: 18, background: "#f3f4f6" }}
+            />
+            <div
+              className="near-skel"
+              style={{ height: 120, marginBottom: 10, borderRadius: 18, background: "#f3f4f6" }}
+            />
           </div>
         )}
 
@@ -923,6 +941,8 @@ function RoutesExploreMobile() {
                             selected={selected}
                             onClick={() => handleRouteCardClick(r)}
                             highlightQuery={hasSearch ? debouncedQuery : ""}
+                            // ✅ EMİR 34/P2: rest props ile root’a geçsin (debug/telemetry için)
+                            data-route-id={id}
                           />
                         </div>
                       ) : (

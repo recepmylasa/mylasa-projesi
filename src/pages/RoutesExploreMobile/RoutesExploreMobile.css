@@ -1,29 +1,77 @@
 /* FILE: src/pages/RoutesExploreMobile/RoutesExploreMobile.css */
 
-/* ✅ EMİR 32 / PARÇA 3 — Manus Discover/Home skin imports */
+/* ✅ EMİR 34 / PARÇA 3 — Manus parity (dark/tek-parça hissi) */
 @import "../../routes/RouteCardManusMobile.css";
 @import "../../routes/RoutesDiscoverHeroManusMobile.css";
 
 /* =========================================================
-   Manus wrapper flag
+   Manus wrapper flag (DARK SKIN)
    ========================================================= */
 .RoutesExploreMobile[data-route-skin="manus"] {
   --manus-gutter: 12px;
   --manus-gap: 12px;
-  background: #ffffff;
+
+  /* daha koyu tek-parça temel */
+  --manus-bg0: #05070c;
+  --manus-bg1: #070b14;
+
+  --manus-glass: rgba(10, 10, 12, 0.62);
+  --manus-glass-strong: rgba(10, 10, 12, 0.74);
+
+  --manus-border: rgba(255, 255, 255, 0.10);
+  --manus-border-soft: rgba(255, 255, 255, 0.08);
+
+  --manus-text: rgba(255, 255, 255, 0.92);
+  --manus-muted: rgba(255, 255, 255, 0.68);
+  --manus-muted2: rgba(255, 255, 255, 0.54);
+
+  --manus-accent: rgba(34, 211, 238, 0.95);
+  --manus-accent2: rgba(99, 102, 241, 0.95);
+
+  background: var(--manus-bg0);
+  color: var(--manus-text);
+  position: relative;
+  isolation: isolate;
+
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+@supports (min-height: 100dvh) {
+  .RoutesExploreMobile[data-route-skin="manus"] {
+    min-height: 100dvh;
+  }
+}
+
+.RoutesExploreMobile[data-route-skin="manus"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 520px at 18% 0%, rgba(99, 102, 241, 0.18), transparent 62%),
+    radial-gradient(820px 520px at 82% 8%, rgba(34, 211, 238, 0.10), transparent 62%),
+    radial-gradient(900px 620px at 50% 100%, rgba(255, 56, 92, 0.10), transparent 70%),
+    linear-gradient(180deg, var(--manus-bg1), var(--manus-bg0));
+  filter: saturate(1.02);
 }
 
 /* =========================================================
-   Manus appbar (sticky)
+   Manus appbar (sticky) — DARK glass
    ========================================================= */
 .routes-toolbar.routes-toolbar--manus {
   position: sticky;
   top: 0;
-  z-index: 30;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: rgba(255, 255, 255, 0.86);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  z-index: 40;
+
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  background: rgba(8, 10, 14, 0.78);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.30);
 }
 
 .manus-appbar-row {
@@ -36,9 +84,10 @@
 
 .manus-appbar-brand {
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 950;
   letter-spacing: 0.2px;
-  color: rgba(17, 24, 39, 0.92);
+  color: rgba(255, 255, 255, 0.94);
+  text-shadow: 0 10px 22px rgba(0, 0, 0, 0.40);
 }
 
 .manus-appbar-tabs {
@@ -47,8 +96,8 @@
   gap: 6px;
   padding: 4px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.04);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .manus-appbar-tab {
@@ -57,14 +106,14 @@
   padding: 8px 12px;
   border-radius: 999px;
   font-size: 12.5px;
-  font-weight: 900;
-  color: rgba(17, 24, 39, 0.78);
+  font-weight: 950;
+  color: rgba(255, 255, 255, 0.74);
   cursor: pointer;
 }
 
 .manus-appbar-tab.is-active {
-  background: rgba(17, 24, 39, 0.92);
-  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(0, 0, 0, 0.92);
 }
 
 .manus-appbar-tab.is-disabled {
@@ -81,11 +130,110 @@
   gap: 10px;
 }
 
+/* ✅ segment/buttons dark override (mantığa dokunmadan görünüm) */
+.RoutesExploreMobile[data-route-skin="manus"] .routes-segment {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  padding: 4px;
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .routes-segment-btn {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 950;
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .routes-segment-btn--active {
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(0, 0, 0, 0.92);
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .routes-filter-btn {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.88);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 900;
+}
+
 /* =========================================================
    Hero wrap
    ========================================================= */
 .manus-hero-wrap {
   padding: 12px var(--manus-gutter) 6px;
+}
+
+/* =========================================================
+   SearchBar / Results meta (dark assist)
+   ========================================================= */
+.RoutesExploreMobile[data-route-skin="manus"] .routes-results-meta,
+.RoutesExploreMobile[data-route-skin="manus"] .routes-info-row {
+  color: rgba(255, 255, 255, 0.68) !important;
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .routes-results-title,
+.RoutesExploreMobile[data-route-skin="manus"] .routes-results-count {
+  color: rgba(255, 255, 255, 0.74) !important;
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .routes-badge {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  color: rgba(255, 255, 255, 0.80) !important;
+  border-radius: 999px;
+}
+
+/* =========================================================
+   Chip row (dark override)
+   ========================================================= */
+.RoutesExploreMobile[data-route-skin="manus"] .routes-chiprow {
+  padding-inline: var(--manus-gutter);
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .chip {
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.80);
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .chip--active {
+  border-color: rgba(34, 211, 238, 0.38);
+  box-shadow:
+    0 0 0 2px rgba(34, 211, 238, 0.22) inset,
+    0 16px 34px rgba(0, 0, 0, 0.22);
+  background: rgba(34, 211, 238, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* filter chips (near filters row) */
+.RoutesExploreMobile[data-route-skin="manus"] .chip--filter {
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+/* =========================================================
+   Near-map area (fallback inline styles override)
+   ========================================================= */
+.RoutesExploreMobile[data-route-skin="manus"] .near-mapWrap {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.30);
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .near-skel {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.10) 40%,
+    rgba(255, 255, 255, 0.06) 80%
+  ) !important;
 }
 
 /* =========================================================
@@ -96,37 +244,38 @@
 }
 
 /* =========================================================
-   Group header (Manus look, ama mantık aynı)
+   Group header (sticky) — DARK
    ========================================================= */
 .manus-groupHeader {
   position: sticky;
   top: 0;
-  z-index: 5;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  z-index: 8;
+  background: rgba(8, 10, 14, 0.72);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
   padding: 8px 2px 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .manus-groupHeader .ExploreGroupHeaderTitle {
   font-size: 13px;
-  font-weight: 900;
-  color: rgba(17, 24, 39, 0.88);
+  font-weight: 950;
+  color: rgba(255, 255, 255, 0.90);
 }
 
 .manus-groupHeader .ExploreGroupHeaderBadge {
   min-width: 22px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 950;
   text-align: center;
-  color: rgba(17, 24, 39, 0.70);
+  color: rgba(255, 255, 255, 0.74);
 }
 
 /* =========================================================
@@ -137,6 +286,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--manus-gap);
   padding-top: 8px;
+  padding-bottom: 12px;
 }
 
 .manus-explore-cell {
@@ -147,9 +297,15 @@
   width: 100%;
   aspect-ratio: 4 / 5;
   border-radius: 18px;
-  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 40%, #f3f4f6 80%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.10) 40%,
+    rgba(255, 255, 255, 0.06) 80%
+  );
   background-size: 200% 100%;
   animation: manus-explore-skel 1.2s ease-in-out infinite;
+  border: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 @keyframes manus-explore-skel {
@@ -159,4 +315,26 @@
   100% {
     background-position: -200% 0;
   }
+}
+
+/* =========================================================
+   Toast (dark glass)
+   ========================================================= */
+.RoutesExploreMobile[data-route-skin="manus"] .explore-toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 18px;
+  z-index: 9999;
+
+  padding: 10px 12px;
+  border-radius: 999px;
+
+  background: rgba(10, 10, 12, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.90);
+
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
 }
