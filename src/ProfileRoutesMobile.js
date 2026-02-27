@@ -15,6 +15,13 @@
 //   Çünkü console’daki "Expected number … 4V4a1…" hatası büyük olasılıkla <img> ile parse edilen SVG’den geliyor.
 //
 // ✅ EMİR 05: Inline SVG yerine merkezi Phosphor ikon sistemi (src/icons.js) kullanılır.
+//
+// ✅ EMİR PAKETİ 3/3: ProfileRoutesMobile “Rota oluştur” FAB (entrypoint)
+// - Mobile only
+// - Map builder bozulmaz (sadece entrypoint)
+// - Eğer global entrypoint varsa onu çağır
+// - Yoksa minimal bottom sheet: “Rota oluştur (yakında)” + “Haritada oluştur (gelişmiş)”
+// - safe-area uyumlu + glass + cyan glow
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./ProfileRoutesMobile.css";
@@ -490,21 +497,6 @@ function inferAuthorName(route) {
   return isNonEmptyString(cand) ? String(cand).trim() : "";
 }
 
-function getAudienceIconName(visibilityRaw) {
-  const raw = (visibilityRaw || "").toString().toLowerCase();
-  if (!raw || raw === "public" || raw === "everyone") return "globe";
-  if (
-    raw.includes("follower") ||
-    raw === "friends" ||
-    raw === "followers_only" ||
-    raw === "followers-only" ||
-    raw === "followers"
-  )
-    return "users";
-  if (raw === "private" || raw === "only_me") return "lock";
-  return "lock";
-}
-
 function isDefaultRouteTitle(titleRaw) {
   const t = (titleRaw || "").toString().trim();
   if (!t) return true;
@@ -662,26 +654,6 @@ function buildSmartTitleProof(route, fallbackTitle) {
   } catch {
     return { smartTitle: "Yeni sürüş", startName: "", endName: "", startSource: "dateFallback", endSource: "" };
   }
-}
-
-function inferStopCount(route) {
-  const direct =
-    route?.stats?.stopCount ??
-    route?.stats?.stops ??
-    route?.stopCount ??
-    route?.stopsCount ??
-    route?.durakSayisi ??
-    route?.raw?.stats?.stopCount ??
-    route?.raw?.stats?.stops ??
-    route?.raw?.stopCount ??
-    route?.raw?.stopsCount ??
-    null;
-
-  const n = toFiniteNumber(direct);
-  if (n != null && n > 0) return Math.round(n);
-
-  const stops = getStopsArray(route);
-  return stops.length;
 }
 
 function isVideoUrl(url) {
@@ -1205,6 +1177,126 @@ function ManusRouteCardTile({ route, onClick, isProofTarget, onProofLoadEvent })
   );
 }
 
+/* ===========================
+   ✅ EMİR PAKETİ 3/3 helpers
+   =========================== */
+
+function getRouteCreateEntrypoint() {
+  try {
+    if (typeof window === "undefined") return null;
+    const w = window;
+
+    // (Varsa) proje içi otorite fonksiyon isimleri (bozmadan “varsa çağır”)
+    const candidates = [
+      w.__MYLASA_CREATE_ROUTE__,
+      w.__MYLASA_OPEN_ROUTE_CREATE__,
+      w.__MYLASA_ROUTE_CREATE__,
+      w.__MYLASA_START_ROUTE__, // Explore’da zaten kontrol ediliyor
+    ].filter(Boolean);
+
+    const fn = candidates.find((f) => typeof f === "function");
+    return typeof fn === "function" ? fn : null;
+  } catch {
+    return null;
+  }
+}
+
+function tryNavigateToMap() {
+  try {
+    if (typeof window === "undefined") return false;
+    const w = window;
+
+    // (Varsa) doğrudan “map aç” fonksiyonu
+    const navFns = [
+      w.__MYLASA_OPEN_MAP__,
+      w.__MYLASA_NAVIGATE_MAP__,
+      w.__MYLASA_GO_MAP__,
+    ].filter(Boolean);
+
+    const fn = navFns.find((f) => typeof f === "function");
+    if (fn) {
+      try {
+        fn({ source: "profile_routes_fab" });
+      } catch {
+        fn();
+      }
+      return true;
+    }
+
+    // Event tabanlı entegrasyon (listener varsa çalışır, yoksa no-op)
+    try {
+      w.dispatchEvent(new CustomEvent("mylasa:openMap", { detail: { source: "profile_routes_fab" } }));
+      return true;
+    } catch {}
+
+    try {
+      w.dispatchEvent(new CustomEvent("mylasa:navigate", { detail: { to: "map", source: "profile_routes_fab" } }));
+      return true;
+    } catch {}
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function CreateRouteSheet({ open, onClose, onPickSoon, onPickMap }) {
+  // body scroll lock
+  useEffect(() => {
+    if (!open) return;
+    const prev = document?.body?.style?.overflow || "";
+    try {
+      document.body.style.overflow = "hidden";
+    } catch {}
+    return () => {
+      try {
+        document.body.style.overflow = prev;
+      } catch {}
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="prm-createSheetBackdrop" onClick={onClose} aria-hidden="true" />
+      <div className="prm-createSheet" role="dialog" aria-modal="true" aria-label="Rota oluştur">
+        <div className="prm-createSheetHandle" aria-hidden="true" />
+        <div className="prm-createSheetTitleRow">
+          <div className="prm-createSheetTitle">Rota oluştur</div>
+          <button type="button" className="prm-createSheetClose" onClick={onClose} aria-label="Kapat">
+            ✕
+          </button>
+        </div>
+
+        <div className="prm-createSheetList">
+          <button type="button" className="prm-createSheetItem" onClick={onPickSoon}>
+            <div className="prm-createSheetItemIcon" aria-hidden="true">
+              <span className="prm-dot prm-dot--cyan" />
+            </div>
+            <div className="prm-createSheetItemText">
+              <div className="prm-createSheetItemLabel">Rota oluştur (yakında)</div>
+              <div className="prm-createSheetItemSub">Yeni sihirbaz bir sonraki sprint.</div>
+            </div>
+          </button>
+
+          <button type="button" className="prm-createSheetItem prm-createSheetItem--primary" onClick={onPickMap}>
+            <div className="prm-createSheetItemIcon" aria-hidden="true">
+              <span className="prm-dot prm-dot--violet" />
+            </div>
+            <div className="prm-createSheetItemText">
+              <div className="prm-createSheetItemLabel">Haritada oluştur (gelişmiş)</div>
+              <div className="prm-createSheetItemSub">Mevcut map builder’ı kullan.</div>
+            </div>
+          </button>
+        </div>
+
+        <div className="prm-createSheetSafe" aria-hidden="true" />
+      </div>
+    </>
+  );
+}
+
 export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId = null, isFollowing = false }) {
   const { routes, loading, loadingMore, hasMore, error, loadMore, isEmpty, accessStatus } = useUserRoutes(userId, {
     pageSize: 20,
@@ -1216,6 +1308,37 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
   const proofRouteIdRef = useRef("");
   const [proofImgLoadEvent, setProofImgLoadEvent] = useState(""); // load | error_all
   const [proofImgSrc, setProofImgSrc] = useState("");
+
+  // ✅ EMİR PAKETİ 3/3 — FAB + sheet
+  const [createSheetOpen, setCreateSheetOpen] = useState(false);
+  const [createToast, setCreateToast] = useState("");
+  const toastRef = useRef({ tmr: 0 });
+
+  const showToast = useCallback((msg, ms = 2200) => {
+    try {
+      setCreateToast(String(msg || ""));
+    } catch {}
+    try {
+      if (toastRef.current.tmr) clearTimeout(toastRef.current.tmr);
+    } catch {}
+    toastRef.current.tmr = window.setTimeout(() => {
+      try {
+        setCreateToast("");
+      } catch {}
+      toastRef.current.tmr = 0;
+    }, ms);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      try {
+        if (toastRef.current.tmr) clearTimeout(toastRef.current.tmr);
+      } catch {}
+      try {
+        toastRef.current.tmr = 0;
+      } catch {}
+    };
+  }, []);
 
   const handleClick = useCallback((route) => {
     if (!route || !route.id) return;
@@ -1272,11 +1395,94 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
     __devProofLoggedRouteIds.add(rid);
   }, [proofTarget, proofImgSrc, proofImgLoadEvent]);
 
+  const canShowFab = useMemo(() => {
+    // yalnızca profil sahibi
+    if (!isSelf) return false;
+
+    // kilit ekranlarında görünmesin
+    if (accessStatus === "login_required" || accessStatus === "forbidden") return false;
+
+    return true;
+  }, [isSelf, accessStatus]);
+
+  const handleFabClick = useCallback(() => {
+    // 1) varsa direkt entrypoint’i çağır (mantık değişmeden)
+    const fn = getRouteCreateEntrypoint();
+    if (typeof fn === "function") {
+      try {
+        fn({ source: "profile_routes_fab" });
+      } catch {
+        try {
+          fn();
+        } catch {}
+      }
+      return;
+    }
+
+    // 2) yoksa minimal sheet
+    setCreateSheetOpen(true);
+  }, []);
+
+  const handlePickSoon = useCallback(() => {
+    setCreateSheetOpen(false);
+    showToast("Rota oluşturma sihirbazı yakında.", 2200);
+  }, [showToast]);
+
+  const handlePickMap = useCallback(() => {
+    setCreateSheetOpen(false);
+
+    // Map’e gitmeyi dene (listener varsa)
+    const navOk = tryNavigateToMap();
+
+    // Map tarafında start/create entrypoint varsa (örn. __MYLASA_START_ROUTE__), kısa gecikmeyle dene
+    window.setTimeout(() => {
+      const fn = getRouteCreateEntrypoint();
+      if (typeof fn === "function") {
+        try {
+          fn({ source: "profile_routes_fab_map" });
+          return;
+        } catch {
+          try {
+            fn();
+            return;
+          } catch {}
+        }
+      }
+
+      // hiç entrypoint yoksa sadece bilgilendir (spam yok)
+      if (!navOk) {
+        showToast("Harita girişi bulunamadı. (Entrypoint gerekli)", 2400);
+      }
+    }, 280);
+  }, [showToast]);
+
+  const fabNode = canShowFab ? (
+    <>
+      <button type="button" className="prm-createFab" onClick={handleFabClick} aria-label="Rota oluştur">
+        <span className="prm-createFabPlus" aria-hidden="true">
+          +
+        </span>
+      </button>
+
+      <CreateRouteSheet
+        open={createSheetOpen}
+        onClose={() => setCreateSheetOpen(false)}
+        onPickSoon={handlePickSoon}
+        onPickMap={handlePickMap}
+      />
+
+      {!!createToast && <div className="prm-createToast">{createToast}</div>}
+    </>
+  ) : null;
+
   if (!userId) {
     return (
-      <div className="profile-routes-empty">
-        <span>Profil yükleniyor…</span>
-      </div>
+      <>
+        <div className="profile-routes-empty">
+          <span>Profil yükleniyor…</span>
+        </div>
+        {fabNode}
+      </>
     );
   }
 
@@ -1290,63 +1496,76 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
 
   if (error) {
     return (
-      <div className="profile-routes-empty">
-        <span>Rotalar yüklenirken bir sorun oluştu.</span>
-      </div>
+      <>
+        <div className="profile-routes-empty">
+          <span>Rotalar yüklenirken bir sorun oluştu.</span>
+        </div>
+        {fabNode}
+      </>
     );
   }
 
   if (loading && !routes.length) {
     return (
-      <div className="profile-routes-list" data-route-skin="manus">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="profile-routes-skel" />
-        ))}
-      </div>
+      <>
+        <div className="profile-routes-list" data-route-skin="manus">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="profile-routes-skel" />
+          ))}
+        </div>
+        {fabNode}
+      </>
     );
   }
 
   if (isEmpty) {
     return (
-      <div className="profile-routes-empty">
-        <span>
-          {isSelf
-            ? "Henüz kaydettiğin bir rotan yok. Haritada bir rota oluşturduğunda burada görünecek."
-            : "Bu kullanıcının henüz paylaştığı bir rota yok."}
-        </span>
-      </div>
+      <>
+        <div className="profile-routes-empty">
+          <span>
+            {isSelf
+              ? "Henüz kaydettiğin bir rotan yok. Haritada bir rota oluşturduğunda burada görünecek."
+              : "Bu kullanıcının henüz paylaştığı bir rota yok."}
+          </span>
+        </div>
+        {fabNode}
+      </>
     );
   }
 
   return (
-    <div className="profile-routes-list" data-route-skin="manus">
-      {routes.map((route) => {
-        const rid = route?.id ? String(route.id) : "";
-        const isProofTarget = !!(proofRouteIdRef.current && rid === proofRouteIdRef.current);
+    <>
+      <div className="profile-routes-list" data-route-skin="manus">
+        {routes.map((route) => {
+          const rid = route?.id ? String(route.id) : "";
+          const isProofTarget = !!(proofRouteIdRef.current && rid === proofRouteIdRef.current);
 
-        return (
-          <div key={rid || route.id} className="profile-route-cardWrap">
-            <ManusRouteCardTile
-              route={route}
-              onClick={() => handleClick(route)}
-              isProofTarget={isProofTarget}
-              onProofLoadEvent={(evt, src) => {
-                if (!isProofTarget) return;
-                setProofImgLoadEvent(evt || "");
-                setProofImgSrc(src || "");
-              }}
-            />
+          return (
+            <div key={rid || route.id} className="profile-route-cardWrap">
+              <ManusRouteCardTile
+                route={route}
+                onClick={() => handleClick(route)}
+                isProofTarget={isProofTarget}
+                onProofLoadEvent={(evt, src) => {
+                  if (!isProofTarget) return;
+                  setProofImgLoadEvent(evt || "");
+                  setProofImgSrc(src || "");
+                }}
+              />
+            </div>
+          );
+        })}
+
+        {hasMore && (
+          <div className="profile-routes-more">
+            <button type="button" onClick={loadMore} disabled={loadingMore} className="profile-routes-more-btn">
+              {loadingMore ? "Yükleniyor…" : "Daha fazla göster"}
+            </button>
           </div>
-        );
-      })}
+        )}
+      </div>
 
-      {hasMore && (
-        <div className="profile-routes-more">
-          <button type="button" onClick={loadMore} disabled={loadingMore} className="profile-routes-more-btn">
-            {loadingMore ? "Yükleniyor…" : "Daha fazla göster"}
-          </button>
-        </div>
-      )}
-    </div>
+      {fabNode}
+    </>
   );
 }

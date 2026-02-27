@@ -160,6 +160,7 @@
   border-radius: 12px;
   padding: 10px 12px;
   font-weight: 900;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22);
 }
 
 /* =========================================================
@@ -170,45 +171,92 @@
 }
 
 /* =========================================================
-   SearchBar / Results meta (dark assist)
+   ✅ EMİR PAKETİ 2/3 — SearchBar glass card wrapper (internal CSS'e dokunmadan)
    ========================================================= */
-.RoutesExploreMobile[data-route-skin="manus"] .routes-results-meta,
-.RoutesExploreMobile[data-route-skin="manus"] .routes-info-row {
-  color: rgba(255, 255, 255, 0.68) !important;
+.RoutesExploreMobile[data-route-skin="manus"] .manus-searchWrap {
+  padding: 8px var(--manus-gutter) 8px;
 }
 
-.RoutesExploreMobile[data-route-skin="manus"] .routes-results-title,
-.RoutesExploreMobile[data-route-skin="manus"] .routes-results-count {
-  color: rgba(255, 255, 255, 0.74) !important;
-}
-
-.RoutesExploreMobile[data-route-skin="manus"] .routes-badge {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.10) !important;
-  color: rgba(255, 255, 255, 0.80) !important;
-  border-radius: 999px;
+.RoutesExploreMobile[data-route-skin="manus"] .manus-searchCard {
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(10, 10, 12, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.26);
 }
 
 /* =========================================================
-   Chip row (dark override)
+   ✅ EMİR PAKETİ 2/3 — Filter bar glass container (chips + group badge)
    ========================================================= */
+.RoutesExploreMobile[data-route-skin="manus"] .manus-filterBar {
+  padding: 0 var(--manus-gutter);
+  margin-top: 2px;
+}
+
 .RoutesExploreMobile[data-route-skin="manus"] .routes-chiprow {
-  padding-inline: var(--manus-gutter);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 10px 10px;
+  border-radius: 18px;
+
+  background: rgba(10, 10, 12, 0.44);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .routes-chiprow::-webkit-scrollbar {
+  display: none;
 }
 
 .RoutesExploreMobile[data-route-skin="manus"] .chip {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  font-weight: 950;
+  letter-spacing: 0.2px;
+
   border: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.80);
+  color: rgba(255, 255, 255, 0.82);
+
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .chip:active {
+  transform: translateY(1px);
 }
 
 .RoutesExploreMobile[data-route-skin="manus"] .chip--active {
   border-color: rgba(34, 211, 238, 0.38);
   box-shadow:
-    0 0 0 2px rgba(34, 211, 238, 0.22) inset,
+    0 0 0 2px rgba(34, 211, 238, 0.20) inset,
     0 16px 34px rgba(0, 0, 0, 0.22);
   background: rgba(34, 211, 238, 0.14);
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 255, 255, 0.94);
+}
+
+/* group badge (chip row içindeki) */
+.RoutesExploreMobile[data-route-skin="manus"] .routes-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  color: rgba(255, 255, 255, 0.80) !important;
+  font-weight: 950;
 }
 
 /* filter chips (near filters row) */
@@ -216,6 +264,34 @@
   border: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.78);
+}
+
+/* =========================================================
+   ✅ EMİR PAKETİ 2/3 — Results meta (mono + soft)
+   ========================================================= */
+.RoutesExploreMobile[data-route-skin="manus"] .routes-results-meta.manus-results-meta {
+  margin: 10px var(--manus-gutter) 0;
+  padding: 10px 12px;
+  border-radius: 16px;
+
+  background: rgba(10, 10, 12, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.RoutesExploreMobile[data-route-skin="manus"] .routes-results-title,
+.RoutesExploreMobile[data-route-skin="manus"] .routes-results-count {
+  color: rgba(255, 255, 255, 0.74) !important;
+  font-weight: 800;
 }
 
 /* =========================================================

@@ -14,6 +14,9 @@
 //
 // ✅ EMİR 34 / PARÇA 2: Global sözleşme kilidi
 // - RouteCardManusMobile çağrılarında data-route-id aktarımı (rest props)
+//
+// ✅ EMİR PAKETİ 2/3: Discover Filter Bar Premium (UI only)
+// - SearchBar + chips + results meta: Manus pill/glass görünüm (mantık değişmez)
 
 /* eslint-disable no-unused-vars */
 import React, { useCallback, useEffect, useRef, useState, useMemo, Suspense, lazy } from "react";
@@ -641,75 +644,81 @@ function RoutesExploreMobile() {
         </div>
       </header>
 
-      {/* ✅ EMİR 32: Manus Hero */}
+      {/* ✅ EMİR 32: Manus Hero (Aktif rota = totalCount) */}
       <div className="manus-hero-wrap">
         <RoutesDiscoverHeroManusMobile
-          routesCount={Array.isArray(items) ? items.length : 0}
+          routesCount={Number.isFinite(totalCount) ? totalCount : undefined}
           onScrollToGrid={scrollToGrid}
           onStartRoute={canStartRoute ? startRoute : null}
           startDisabledHint={!canStartRoute ? "Şimdilik devre dışı." : ""}
         />
       </div>
 
-      {/* Katman 1.5 — Arama kutusu + son aramalar */}
-      <SearchBarMobile
-        searchText={searchText}
-        onChange={setSearchText}
-        loadingSearch={loadingSearch}
-        showRecentList={showRecentList}
-        recentQueries={recentQueries}
-        onFocus={handleSearchFocus}
-        onBlur={handleSearchBlur}
-        onKeyDown={handleSearchKeyDown}
-        onClear={clearSearch}
-        onRecentClick={handleRecentClick}
-        onRecentClear={handleRecentClearClick}
-      />
+      {/* ✅ EMİR PAKETİ 2/3 — SearchBar glass wrapper (internal mantığa dokunmadan) */}
+      <div className="manus-searchWrap">
+        <div className="manus-searchCard">
+          <SearchBarMobile
+            searchText={searchText}
+            onChange={setSearchText}
+            loadingSearch={loadingSearch}
+            showRecentList={showRecentList}
+            recentQueries={recentQueries}
+            onFocus={handleSearchFocus}
+            onBlur={handleSearchBlur}
+            onKeyDown={handleSearchKeyDown}
+            onClear={clearSearch}
+            onRecentClick={handleRecentClick}
+            onRecentClear={handleRecentClearClick}
+          />
+        </div>
+      </div>
 
-      {/* Katman 2 — Tek satır chip şeridi */}
-      <div className="routes-chiprow" aria-label="Rota sıralama seçenekleri">
-        <button
-          type="button"
-          className={"chip" + (sort === "near" ? " chip--active" : "")}
-          onClick={() => setSort("near")}
-          aria-pressed={sort === "near"}
-          aria-current={sort === "near" ? "true" : undefined}
-        >
-          Yakınımda
-        </button>
-        <button
-          type="button"
-          className={"chip" + (sort === "new" ? " chip--active" : "")}
-          onClick={() => setSort("new")}
-          aria-pressed={sort === "new"}
-          aria-current={sort === "new" ? "true" : undefined}
-        >
-          En yeni
-        </button>
-        <button
-          type="button"
-          className={"chip" + (sort === "likes" ? " chip--active" : "")}
-          onClick={() => setSort("likes")}
-          aria-pressed={sort === "likes"}
-          aria-current={sort === "likes" ? "true" : undefined}
-        >
-          En çok oy
-        </button>
-        <button
-          type="button"
-          className={"chip" + (sort === "rating" ? " chip--active" : "")}
-          onClick={() => setSort("rating")}
-          aria-pressed={sort === "rating"}
-          aria-current={sort === "rating" ? "true" : undefined}
-        >
-          En yüksek puan
-        </button>
-
-        {groupLabel && (
-          <button type="button" className="routes-badge" onClick={() => setFilterSheetOpen(true)}>
-            Grup: {groupLabel}
+      {/* ✅ EMİR PAKETİ 2/3 — Chips glass wrapper (sadece UI) */}
+      <div className="manus-filterBar" aria-label="Filtre çubuğu">
+        <div className="routes-chiprow" aria-label="Rota sıralama seçenekleri">
+          <button
+            type="button"
+            className={"chip" + (sort === "near" ? " chip--active" : "")}
+            onClick={() => setSort("near")}
+            aria-pressed={sort === "near"}
+            aria-current={sort === "near" ? "true" : undefined}
+          >
+            Yakınımda
           </button>
-        )}
+          <button
+            type="button"
+            className={"chip" + (sort === "new" ? " chip--active" : "")}
+            onClick={() => setSort("new")}
+            aria-pressed={sort === "new"}
+            aria-current={sort === "new" ? "true" : undefined}
+          >
+            En yeni
+          </button>
+          <button
+            type="button"
+            className={"chip" + (sort === "likes" ? " chip--active" : "")}
+            onClick={() => setSort("likes")}
+            aria-pressed={sort === "likes"}
+            aria-current={sort === "likes" ? "true" : undefined}
+          >
+            En çok oy
+          </button>
+          <button
+            type="button"
+            className={"chip" + (sort === "rating" ? " chip--active" : "")}
+            onClick={() => setSort("rating")}
+            aria-pressed={sort === "rating"}
+            aria-current={sort === "rating" ? "true" : undefined}
+          >
+            En yüksek puan
+          </button>
+
+          {groupLabel && (
+            <button type="button" className="routes-badge" onClick={() => setFilterSheetOpen(true)}>
+              Grup: {groupLabel}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Takip + Yakınımda + 0 sonuç bilgisi */}
@@ -827,9 +836,9 @@ function RoutesExploreMobile() {
         </>
       )}
 
-      {/* Arama modu için sonuç meta bilgisi */}
+      {/* ✅ EMİR PAKETİ 2/3 — ResultsMeta mono+soft (sadece class) */}
       {hasSearch && initialized && (
-        <div className="routes-results-meta">
+        <div className="routes-results-meta manus-results-meta">
           <span className="routes-results-title">Sonuçlar</span>
           <span className="routes-results-count">{totalCount} sonuç</span>
         </div>
