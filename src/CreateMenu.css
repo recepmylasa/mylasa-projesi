@@ -1,70 +1,71 @@
+/* FILE: src/CreateMenu.css */
 .create-menu-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 3000;
-    animation: fadeInOverlay 0.2s ease-out;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  animation: fadeInOverlay 0.2s ease-out;
 }
 
 .create-menu-content {
-    background-color: white;
-    border-radius: 16px;
-    width: 90vw;
-    max-width: 400px;
-    animation: popInModal 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  background-color: white;
+  border-radius: 16px;
+  width: 90vw;
+  max-width: 400px;
+  animation: popInModal 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
 .create-menu-header {
-    text-align: center;
-    padding: 12px;
-    border-bottom: 1px solid #dbdbdb;
+  text-align: center;
+  padding: 12px;
+  border-bottom: 1px solid #dbdbdb;
 }
 
 .create-menu-header h2 {
-    font-size: 16px;
-    font-weight: 600;
-    margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
 }
 
 .create-menu-options {
-    display: flex;
-    flex-direction: column;
+  display: flex;
+  flex-direction: column;
 }
 
 .create-menu-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-    padding: 16px;
-    background: none;
-    border: none;
-    border-bottom: 1px solid #dbdbdb;
-    cursor: pointer;
-    text-align: left;
-    font-size: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 16px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #dbdbdb;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
 }
 
 .create-menu-item:last-child {
-    border-bottom: none;
+  border-bottom: none;
 }
 
 .create-menu-item:hover {
-    background-color: #fafafa;
+  background-color: #fafafa;
 }
 
 .create-menu-label {
-    flex-grow: 1;
+  flex-grow: 1;
 }
 
 /* İkonlar için genel stil */
 .create-menu-item svg {
-    color: #262626;
+  color: #262626;
 }

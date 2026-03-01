@@ -1,3 +1,4 @@
+/* FILE: src/ProfileHighlightsMobile.css */
 @import "./styles/ig-mobile.css";
 /* (hl-row, hl-col, hl-bubble, hl-label) ig-mobile.css’te tanımlı. */
 .hl-col:active .hl-bubble{ background:#f7f7f7; }

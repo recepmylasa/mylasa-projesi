@@ -1,5 +1,5 @@
-// FILE: src/CreateSheet.jsx
-import React, { useEffect, useRef, useState, useCallback } from "react";
+// FILE: src/CreateSheet.js
+import React, { useEffect, useRef, useState } from "react";
 import "./CreateSheet.css";
 import {
   PlusIcon,
@@ -11,7 +11,6 @@ import {
   AdsIcon,
   ChannelIcon,
 } from "./icons";
-import QuickCreateSheetMobile from "./QuickCreateSheetMobile";
 
 /**
  * Alt sayfa (bottom sheet) — "Oluştur"
@@ -21,24 +20,14 @@ import QuickCreateSheetMobile from "./QuickCreateSheetMobile";
  * - onClose: () => void
  * - onSelect: (type: 'reel'|'post'|'story'|'highlight'|'live'|'ad'|'channel') => void
  *
- * ✅ Quick Create V0 (opsiyonel):
- * - enableQuickRouteCreate: boolean (default false)
- * - onRouteAdvanced: () => void  (mevcut map builder akışı)
+ * Not:
+ * - ARGE7 kararı gereği rota oluşturma burada sunulmaz (ProfileRoutesMobile FAB tek giriş).
  */
-export default function CreateSheet({
-  open = false,
-  onClose = () => {},
-  onSelect = () => {},
-
-  enableQuickRouteCreate = false,
-  onRouteAdvanced = null,
-}) {
+export default function CreateSheet({ open = false, onClose = () => {}, onSelect = () => {} }) {
   const backdropRef = useRef(null);
   const sheetRef = useRef(null);
   const startY = useRef(0);
   const [dy, setDy] = useState(0);
-
-  const [quickOpen, setQuickOpen] = useState(false);
 
   // Body scroll kilidi
   useEffect(() => {
@@ -48,11 +37,6 @@ export default function CreateSheet({
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [open]);
-
-  // Parent kapatırsa quick de kapansın
-  useEffect(() => {
-    if (!open) setQuickOpen(false);
   }, [open]);
 
   // Basit sürükle-aşağı kapatma
@@ -84,22 +68,6 @@ export default function CreateSheet({
     };
   }, [open, dy, onClose]);
 
-  const tryRouteAdvanced = useCallback(() => {
-    if (typeof onRouteAdvanced === "function") {
-      try {
-        onRouteAdvanced();
-        return;
-      } catch {}
-    }
-    // fallback: listener varsa yakalar
-    try {
-      window.dispatchEvent(new CustomEvent("mylasa:openMap", { detail: { source: "create_sheet" } }));
-    } catch {}
-    try {
-      window.dispatchEvent(new CustomEvent("mylasa:navigate", { detail: { to: "map", source: "create_sheet" } }));
-    } catch {}
-  }, [onRouteAdvanced]);
-
   return (
     <>
       {open && <div className="cs-backdrop" ref={backdropRef} onClick={onClose} aria-hidden="true" />}
@@ -117,26 +85,6 @@ export default function CreateSheet({
         </h3>
 
         <div className="cs-list">
-          {enableQuickRouteCreate && (
-            <>
-              <SheetItem
-                icon={<GridIcon />}
-                label="Rota oluştur (yakında)"
-                onClick={() => setQuickOpen(true)}
-              />
-              <SheetItem
-                icon={<StoryIcon />}
-                label="Haritada oluştur (gelişmiş)"
-                onClick={() => {
-                  onClose();
-                  window.setTimeout(() => {
-                    tryRouteAdvanced();
-                  }, 0);
-                }}
-              />
-            </>
-          )}
-
           <SheetItem icon={<ClipsIcon />} label="Reels videosu" onClick={() => onSelect("reel")} />
           <SheetItem icon={<GridIcon />} label="Gönderi" onClick={() => onSelect("post")} />
           <SheetItem icon={<StoryIcon />} label="Hikâye" onClick={() => onSelect("story")} />
@@ -148,22 +96,6 @@ export default function CreateSheet({
 
         <div className="cs-safe" />
       </div>
-
-      {/* ✅ Quick Create V0 */}
-      <QuickCreateSheetMobile
-        open={quickOpen}
-        onClose={() => setQuickOpen(false)}
-        onContinueMap={() => {
-          setQuickOpen(false);
-          onClose();
-          window.setTimeout(() => {
-            tryRouteAdvanced();
-          }, 0);
-        }}
-        onDraftCreated={() => {
-          // V0: burada bir şey yapmıyoruz (local + toast QuickCreate içinde)
-        }}
-      />
     </>
   );
 }

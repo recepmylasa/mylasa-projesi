@@ -1,3 +1,4 @@
+/* FILE: src/BottomNav.js */
 import React from "react";
 import "./BottomNav.css";
 
@@ -10,7 +11,12 @@ function BottomNav({ activeTab, onTabChange, profilePic }) {
   return (
     <nav className="bottom-nav-container">
       {/* Ana Sayfa */}
-      <button onClick={() => onTabChange("home")} className="bottom-nav-btn" title="Ana Sayfa" type="button">
+      <button
+        onClick={() => onTabChange("home")}
+        className="bottom-nav-btn"
+        title="Ana Sayfa"
+        type="button"
+      >
         <HomeIcon
           className="nav-icon"
           size={size}
@@ -19,7 +25,12 @@ function BottomNav({ activeTab, onTabChange, profilePic }) {
       </button>
 
       {/* Keşfet */}
-      <button onClick={() => onTabChange("explore")} className="bottom-nav-btn" title="Keşfet" type="button">
+      <button
+        onClick={() => onTabChange("explore")}
+        className="bottom-nav-btn"
+        title="Keşfet"
+        type="button"
+      >
         <SearchIcon
           className="nav-icon"
           size={size}
@@ -28,12 +39,22 @@ function BottomNav({ activeTab, onTabChange, profilePic }) {
       </button>
 
       {/* Oluştur */}
-      <button onClick={() => onTabChange("createMenu")} className="bottom-nav-btn" title="Oluştur" type="button">
+      <button
+        onClick={() => onTabChange("createMenu")}
+        className="bottom-nav-btn"
+        title="Oluştur"
+        type="button"
+      >
         <PlusIcon className="nav-icon" size={size} weight="regular" />
       </button>
 
       {/* Klipler — FourK */}
-      <button onClick={() => onTabChange("clips")} className="bottom-nav-btn" title="Clips" type="button">
+      <button
+        onClick={() => onTabChange("clips")}
+        className="bottom-nav-btn"
+        title="Clips"
+        type="button"
+      >
         <ClipsIcon
           className="nav-icon"
           size={size}
@@ -42,16 +63,25 @@ function BottomNav({ activeTab, onTabChange, profilePic }) {
       </button>
 
       {/* Profil */}
-      <button onClick={() => onTabChange("profile")} className="bottom-nav-btn" title="Profil" type="button">
+      <button
+        onClick={() => onTabChange("profile")}
+        className="bottom-nav-btn"
+        title="Profil"
+        type="button"
+      >
         {profilePic ? (
           <img
             src={profilePic}
             alt="Profil"
-            className={`bottom-nav-profile-pic ${activeTab === "profile" ? "active" : ""}`}
+            className={`bottom-nav-profile-pic ${
+              activeTab === "profile" ? "active" : ""
+            }`}
           />
         ) : (
           <div
-            className={`bottom-nav-profile-pic ${activeTab === "profile" ? "active" : ""}`}
+            className={`bottom-nav-profile-pic ${
+              activeTab === "profile" ? "active" : ""
+            }`}
             style={{ background: "#e0e0e0" }}
           />
         )}

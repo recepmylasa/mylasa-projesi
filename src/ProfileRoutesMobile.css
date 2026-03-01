@@ -150,7 +150,7 @@
 }
 
 /* =========================================================
-   ✅ EMİR PAKETİ 3/3 — “Rota oluştur” FAB + minimal sheet
+   ✅ ARGE7 — TEK FAB → Direkt Builder (CreateSheet yok)
    ========================================================= */
 
 :root {
@@ -192,169 +192,18 @@
   transform: scale(0.985);
 }
 
+.prm-createFab:disabled {
+  opacity: 0.62;
+  cursor: default;
+  transform: none;
+}
+
 .prm-createFabPlus {
   font-size: 30px;
   line-height: 30px;
   font-weight: 900;
   transform: translateY(-1px);
   text-shadow: 0 10px 22px rgba(0, 0, 0, 0.42);
-}
-
-/* Backdrop */
-.prm-createSheetBackdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 5001;
-  background: rgba(0, 0, 0, 0.44);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-}
-
-/* Sheet */
-.prm-createSheet {
-  position: fixed;
-  left: 10px;
-  right: 10px;
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-  z-index: 5002;
-
-  border-radius: 22px;
-  overflow: hidden;
-
-  background: rgba(10, 10, 12, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-
-  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.44);
-}
-
-.prm-createSheetHandle {
-  width: 44px;
-  height: 4px;
-  border-radius: 999px;
-  margin: 10px auto 8px;
-  background: rgba(255, 255, 255, 0.22);
-}
-
-.prm-createSheetTitleRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 4px 14px 10px;
-}
-
-.prm-createSheetTitle {
-  font-size: 14px;
-  font-weight: 950;
-  color: rgba(255, 255, 255, 0.92);
-  letter-spacing: 0.2px;
-}
-
-.prm-createSheetClose {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.88);
-  border-radius: 999px;
-  width: 34px;
-  height: 34px;
-  cursor: pointer;
-}
-
-.prm-createSheetList {
-  padding: 0 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.prm-createSheetItem {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-
-  border-radius: 16px;
-  padding: 12px 12px;
-
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.92);
-
-  cursor: pointer;
-  text-align: left;
-}
-
-.prm-createSheetItem--primary {
-  border-color: rgba(34, 211, 238, 0.24);
-  box-shadow:
-    0 0 0 2px rgba(34, 211, 238, 0.12) inset,
-    0 18px 44px rgba(0, 0, 0, 0.20);
-}
-
-.prm-createSheetItem:active {
-  transform: scale(0.995);
-}
-
-.prm-createSheetItemIcon {
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-}
-
-.prm-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.10) inset;
-}
-
-.prm-dot--cyan {
-  background: rgba(34, 211, 238, 0.92);
-  box-shadow:
-    0 0 0 2px rgba(255,255,255,0.10) inset,
-    0 0 18px rgba(34, 211, 238, 0.38);
-}
-
-.prm-dot--violet {
-  background: rgba(99, 102, 241, 0.92);
-  box-shadow:
-    0 0 0 2px rgba(255,255,255,0.10) inset,
-    0 0 18px rgba(99, 102, 241, 0.34);
-}
-
-.prm-createSheetItemText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.prm-createSheetItemLabel {
-  font-size: 13px;
-  font-weight: 950;
-  letter-spacing: 0.1px;
-  color: rgba(255, 255, 255, 0.94);
-}
-
-.prm-createSheetItemSub {
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.64);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.prm-createSheetSafe {
-  height: calc(env(safe-area-inset-bottom, 0px) + 8px);
 }
 
 /* Toast */

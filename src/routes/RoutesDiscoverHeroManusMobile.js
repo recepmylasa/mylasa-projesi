@@ -1,5 +1,5 @@
 // FILE: src/routes/RoutesDiscoverHeroManusMobile.js
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 
 function clamp01(n) {
   return Math.max(0, Math.min(1, n));
@@ -24,6 +24,25 @@ function getReducedMotion() {
   }
 }
 
+function getWinFlag(key) {
+  try {
+    if (typeof window === "undefined") return false;
+    return !!window[key];
+  } catch {
+    return false;
+  }
+}
+
+function setWinFlag(key, val) {
+  try {
+    if (typeof window === "undefined") return;
+    window[key] = !!val;
+  } catch {}
+}
+
+const WIN_REVEAL_FLAG = "__MYLASA_DISCOVER_HERO_REVEALED__";
+const WIN_COUNT_FLAG = "__MYLASA_DISCOVER_HERO_COUNTED__";
+
 export default function RoutesDiscoverHeroManusMobile({
   routesCount,
   onScrollToGrid,
@@ -31,11 +50,19 @@ export default function RoutesDiscoverHeroManusMobile({
   startDisabledHint = "",
 }) {
   const rootRef = useRef(null);
-  const playedRef = useRef(false);
+  const statsRef = useRef(null);
+
+  const revealDoneRef = useRef(false);
+  const countDoneRef = useRef(false);
   const rafRef = useRef(0);
 
   const [reducedMotion, setReducedMotion] = useState(() => getReducedMotion());
-  const [revealed, setRevealed] = useState(() => (getReducedMotion() ? true : false));
+
+  const [revealed, setRevealed] = useState(() => {
+    if (getReducedMotion()) return true;
+    if (getWinFlag(WIN_REVEAL_FLAG)) return true;
+    return false;
+  });
 
   const canStart = typeof onStartRoute === "function";
 
@@ -63,15 +90,17 @@ export default function RoutesDiscoverHeroManusMobile({
     };
   }, [routesCount]);
 
+  const finalCounts = useMemo(() => {
+    return {
+      active: `${formatDotThousands(targets.active.n)}${targets.active.plus ? "+" : ""}`,
+      traveler: `${formatDotThousands(targets.traveler.n)}${targets.traveler.plus ? "+" : ""}`,
+      city: `${formatDotThousands(targets.city.n)}${targets.city.plus ? "+" : ""}`,
+    };
+  }, [targets]);
+
   const [counts, setCounts] = useState(() => {
-    // İlk render’da reduce-motion ise final değerleri bas
-    if (getReducedMotion()) {
-      return {
-        active: `${formatDotThousands(targets.active.n)}${targets.active.plus ? "+" : ""}`,
-        traveler: `${formatDotThousands(targets.traveler.n)}${targets.traveler.plus ? "+" : ""}`,
-        city: `${formatDotThousands(targets.city.n)}${targets.city.plus ? "+" : ""}`,
-      };
-    }
+    // reduce-motion veya "daha önce sayıldı" ise direkt final
+    if (getReducedMotion() || getWinFlag(WIN_COUNT_FLAG)) return finalCounts;
     return { active: "—", traveler: "—", city: "—" };
   });
 
@@ -83,14 +112,15 @@ export default function RoutesDiscoverHeroManusMobile({
     const onChange = () => {
       const rm = !!m.matches;
       setReducedMotion(rm);
+
       if (rm) {
+        setWinFlag(WIN_REVEAL_FLAG, true);
+        setWinFlag(WIN_COUNT_FLAG, true);
+        revealDoneRef.current = true;
+        countDoneRef.current = true;
+
         setRevealed(true);
-        playedRef.current = true;
-        setCounts({
-          active: `${formatDotThousands(targets.active.n)}${targets.active.plus ? "+" : ""}`,
-          traveler: `${formatDotThousands(targets.traveler.n)}${targets.traveler.plus ? "+" : ""}`,
-          city: `${formatDotThousands(targets.city.n)}${targets.city.plus ? "+" : ""}`,
-        });
+        setCounts(finalCounts);
       }
     };
 
@@ -105,12 +135,33 @@ export default function RoutesDiscoverHeroManusMobile({
         else if (typeof m.removeListener === "function") m.removeListener(onChange);
       } catch {}
     };
-  }, [targets]);
+  }, [finalCounts]);
 
-  // Count-up starter (1 kez)
-  const startCountUp = () => {
-    if (playedRef.current) return;
-    playedRef.current = true;
+  // targets değişirse: reduce-motion veya countDone ise final’e güncelle
+  useEffect(() => {
+    if (reducedMotion || getWinFlag(WIN_COUNT_FLAG) || countDoneRef.current) {
+      setCounts(finalCounts);
+    }
+  }, [finalCounts, reducedMotion]);
+
+  const applyRevealClasses = useCallback(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    try {
+      const nodes = root.querySelectorAll("[data-reveal]");
+      nodes.forEach((n) => {
+        try {
+          n.classList.add("is-visible");
+        } catch {}
+      });
+    } catch {}
+  }, []);
+
+  const startCountUp = useCallback(() => {
+    if (countDoneRef.current || getWinFlag(WIN_COUNT_FLAG)) return;
+    countDoneRef.current = true;
+    setWinFlag(WIN_COUNT_FLAG, true);
 
     const durA = 980;
     const durB = 920;
@@ -143,31 +194,83 @@ export default function RoutesDiscoverHeroManusMobile({
       }
 
       // final snap
-      setCounts({
-        active: `${formatDotThousands(targets.active.n)}${targets.active.plus ? "+" : ""}`,
-        traveler: `${formatDotThousands(targets.traveler.n)}${targets.traveler.plus ? "+" : ""}`,
-        city: `${formatDotThousands(targets.city.n)}${targets.city.plus ? "+" : ""}`,
-      });
+      setCounts(finalCounts);
       rafRef.current = 0;
     };
 
     rafRef.current = requestAnimationFrame(tick);
-  };
+  }, [finalCounts, targets]);
 
-  // IntersectionObserver reveal + count-up
+  // Reveal (IntersectionObserver) — 1 kere, spam yok
   useEffect(() => {
+    // reduce-motion ise direkt visible
     if (reducedMotion) {
+      setWinFlag(WIN_REVEAL_FLAG, true);
+      revealDoneRef.current = true;
+
       setRevealed(true);
-      playedRef.current = true;
-      setCounts({
-        active: `${formatDotThousands(targets.active.n)}${targets.active.plus ? "+" : ""}`,
-        traveler: `${formatDotThousands(targets.traveler.n)}${targets.traveler.plus ? "+" : ""}`,
-        city: `${formatDotThousands(targets.city.n)}${targets.city.plus ? "+" : ""}`,
-      });
+      applyRevealClasses();
       return;
     }
 
-    const el = rootRef.current;
+    // daha önce reveal olduysa direkt görünür
+    if (getWinFlag(WIN_REVEAL_FLAG)) {
+      revealDoneRef.current = true;
+      setRevealed(true);
+      applyRevealClasses();
+      return;
+    }
+
+    const root = rootRef.current;
+    if (!root) return;
+
+    let io = null;
+    try {
+      io = new IntersectionObserver(
+        (entries) => {
+          const e = entries && entries[0];
+          if (!e) return;
+
+          if (e.isIntersecting && e.intersectionRatio >= 0.25) {
+            if (revealDoneRef.current) return;
+            revealDoneRef.current = true;
+            setWinFlag(WIN_REVEAL_FLAG, true);
+
+            setRevealed(true);
+            applyRevealClasses();
+
+            try {
+              io?.disconnect?.();
+            } catch {}
+          }
+        },
+        {
+          threshold: 0.25,
+          rootMargin: "0px 0px -10% 0px",
+        }
+      );
+      io.observe(root);
+    } catch {
+      // fallback: hemen göster
+      revealDoneRef.current = true;
+      setWinFlag(WIN_REVEAL_FLAG, true);
+      setRevealed(true);
+      applyRevealClasses();
+    }
+
+    return () => {
+      try {
+        io?.disconnect?.();
+      } catch {}
+    };
+  }, [applyRevealClasses, reducedMotion]);
+
+  // Count-up observer — stat satırı görünür olunca başla, 1 kere
+  useEffect(() => {
+    if (reducedMotion) return;
+    if (getWinFlag(WIN_COUNT_FLAG) || countDoneRef.current) return;
+
+    const el = statsRef.current;
     if (!el) return;
 
     let io = null;
@@ -177,19 +280,19 @@ export default function RoutesDiscoverHeroManusMobile({
           const e = entries && entries[0];
           if (!e) return;
           if (e.isIntersecting && e.intersectionRatio >= 0.35) {
-            setRevealed(true);
             startCountUp();
             try {
               io?.disconnect?.();
             } catch {}
           }
         },
-        { threshold: [0, 0.15, 0.35, 0.6, 0.9] }
+        {
+          threshold: 0.35,
+          rootMargin: "0px 0px -10% 0px",
+        }
       );
       io.observe(el);
     } catch {
-      // fallback: hemen göster
-      setRevealed(true);
       startCountUp();
     }
 
@@ -198,8 +301,7 @@ export default function RoutesDiscoverHeroManusMobile({
         io?.disconnect?.();
       } catch {}
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reducedMotion, targets.active.n, targets.active.plus]);
+  }, [reducedMotion, startCountUp]);
 
   useEffect(() => {
     return () => {
@@ -222,48 +324,92 @@ export default function RoutesDiscoverHeroManusMobile({
     <section
       ref={rootRef}
       className={`manus-discover-hero${revealed ? " is-revealed" : ""}`}
-      data-revealed={revealed ? "1" : "0"}
       aria-label="Keşfet kahraman alanı"
     >
       <div className="manus-discover-hero__bg" aria-hidden="true" />
+
       <div className="manus-discover-hero__inner">
-        <div className="manus-discover-hero__pill manus-shimmerText">YENİ NESİL ROTA SİSTEMİ</div>
-
-        <h1 className="manus-discover-hero__title">
-          Şehri keşfet, <span className="manus-discover-hero__titleGrad manus-shimmerText">hikayesini dinle</span>
-        </h1>
-
-        <p className="manus-discover-hero__desc">
-          Rotaları keşfet, duraklarda hikâyeyi takip et. Ghost Mode ile rotayı tamamla, ödülü al.
-        </p>
-
-        <div className="manus-discover-hero__ctas">
-          <button
-            type="button"
-            className="manus-discover-hero__btn manus-discover-hero__btn--primary"
-            onClick={canStart ? onStartRoute : undefined}
-            disabled={!canStart}
-            title={!canStart ? startDisabledHint || "Şimdilik devre dışı." : ""}
-          >
-            Rotayı başlat
-          </button>
-
-          <button
-            type="button"
-            className="manus-discover-hero__btn manus-discover-hero__btn--ghost"
-            onClick={typeof onScrollToGrid === "function" ? onScrollToGrid : undefined}
-          >
-            Rotaları keşfet
-          </button>
-        </div>
-
-        <div className="manus-discover-hero__stats" aria-label="Keşfet istatistikleri">
-          {stats.map((s) => (
-            <div key={s.label} className="manus-discover-hero__stat">
-              <div className="manus-discover-hero__statVal">{s.value}</div>
-              <div className="manus-discover-hero__statLbl">{s.label}</div>
+        <div className="manus-discover-hero__layout">
+          {/* LEFT */}
+          <div className="manus-discover-hero__left">
+            <div className="manus-discover-hero__pill manus-shimmerText mylasa-reveal" data-reveal="pill">
+              YENİ NESİL ROTA SİSTEMİ
             </div>
-          ))}
+
+            <h1 className="manus-discover-hero__title mylasa-reveal" data-reveal="title">
+              Şehri keşfet,{" "}
+              <span className="manus-discover-hero__titleGrad manus-shimmerText">hikayesini dinle</span>
+            </h1>
+
+            <p className="manus-discover-hero__desc mylasa-reveal" data-reveal="desc">
+              Rotaları keşfet, duraklarda hikâyeyi takip et. Ghost Mode ile rotayı tamamla, ödülü al.
+            </p>
+
+            <div className="manus-discover-hero__ctas mylasa-reveal" data-reveal="cta">
+              <button
+                type="button"
+                className="manus-discover-hero__btn manus-discover-hero__btn--primary"
+                onClick={canStart ? onStartRoute : undefined}
+                disabled={!canStart}
+                title={!canStart ? startDisabledHint || "Şimdilik devre dışı." : ""}
+              >
+                Rotayı başlat
+              </button>
+
+              <button
+                type="button"
+                className="manus-discover-hero__btn manus-discover-hero__btn--ghost"
+                onClick={typeof onScrollToGrid === "function" ? onScrollToGrid : undefined}
+              >
+                Rotaları keşfet
+              </button>
+            </div>
+
+            <div
+              ref={statsRef}
+              className="manus-discover-hero__stats mylasa-reveal"
+              data-reveal="stats"
+              aria-label="Keşfet istatistikleri"
+            >
+              {stats.map((s) => (
+                <div key={s.label} className="manus-discover-hero__stat">
+                  <div className="manus-discover-hero__statVal">{s.value}</div>
+                  <div className="manus-discover-hero__statLbl">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* RIGHT — floating phone mockup (asset yok, CSS/HTML) */}
+          <div className="manus-phone mylasa-reveal" data-reveal="phone" aria-hidden="true">
+            <div className="manus-phone__float">
+              <div className="manus-phone__frame">
+                <div className="manus-phone__notch" />
+                <div className="manus-phone__screen">
+                  <div className="manus-phone__miniTop">
+                    <div className="manus-phone__dot manus-phone__dot--cyan" />
+                    <div className="manus-phone__miniTitle" />
+                  </div>
+
+                  <div className="manus-phone__card">
+                    <div className="manus-phone__cardCover" />
+                    <div className="manus-phone__cardMeta">
+                      <div className="manus-phone__line manus-phone__line--lg" />
+                      <div className="manus-phone__line manus-phone__line--sm" />
+                    </div>
+                    <div className="manus-phone__cardStats">
+                      <div className="manus-phone__pill" />
+                      <div className="manus-phone__pill" />
+                    </div>
+                  </div>
+
+                  <div className="manus-phone__bottomFade" />
+                </div>
+              </div>
+
+              <div className="manus-phone__glow" />
+            </div>
+          </div>
         </div>
       </div>
     </section>

@@ -1,4 +1,4 @@
-// FILE: src/ProfileRoutesMobile.js
+/* FILE: src/ProfileRoutesMobile.js */
 // Profil "Rotalarım" sekmesi – profil sahibine ait rotaları premium grid olarak listeler (read-only).
 // Kapak (EMİR-1 + EMİR-2 uyumlu):
 // A) route.cover.url (tek doğru kaynak)
@@ -16,12 +16,11 @@
 //
 // ✅ EMİR 05: Inline SVG yerine merkezi Phosphor ikon sistemi (src/icons.js) kullanılır.
 //
-// ✅ EMİR PAKETİ 3/3: ProfileRoutesMobile “Rota oluştur” FAB (entrypoint)
-// - Mobile only
-// - Map builder bozulmaz (sadece entrypoint)
-// - Eğer global entrypoint varsa onu çağır
-// - Yoksa minimal bottom sheet: “Rota oluştur (yakında)” + “Haritada oluştur (gelişmiş)”
-// - safe-area uyumlu + glass + cyan glow
+// ✅ ARGE7 — EMİR PAKETİ 1/3 (GENİŞLETİLMİŞ)
+// Profile “Rotalarım” = TEK + (FAB) + Direkt builder (CreateSheet yok)
+// - FAB tık: token set → map’e git → builder (Durak Ekle/Bitir)
+// - Ara menüler yok
+// - 700ms spam guard
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./ProfileRoutesMobile.css";
@@ -32,7 +31,8 @@ import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage"
 import RouteCardManusMobile from "./routes/RouteCardManusMobile";
 
 const __DEV__ = process.env.NODE_ENV !== "production";
-const DEFAULT_ROUTE_COVER_URL = (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
+const DEFAULT_ROUTE_COVER_URL =
+  (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
 
 // StrictMode / remount spamını kesmek için (DEV only) modül seviyesinde tek sefer log
 const __devProofLoggedRouteIds = new Set();
@@ -90,7 +90,12 @@ function urlContainsSvgMarker(v) {
   const s0 = (v || "").toString().trim();
   if (!s0) return false;
   const s = safeDecodeURIComponent(s0).toLowerCase();
-  return s.includes(".svg") || s.includes(".svgz") || s.includes("image/svg+xml") || s.includes("format=svg");
+  return (
+    s.includes(".svg") ||
+    s.includes(".svgz") ||
+    s.includes("image/svg+xml") ||
+    s.includes("format=svg")
+  );
 }
 
 // ✅ EMİR: placeholder cover say (mylasa-logo.* + route-default-cover.jpg)
@@ -98,7 +103,11 @@ function isKnownAppLogoUrl(v) {
   const base = stripQueryAndHash(v).toLowerCase();
   if (!base) return false;
   const file = base.split("/").pop();
-  return file === "mylasa-logo.png" || file === "mylasa-logo.svg" || file === "route-default-cover.jpg";
+  return (
+    file === "mylasa-logo.png" ||
+    file === "mylasa-logo.svg" ||
+    file === "route-default-cover.jpg"
+  );
 }
 
 // ✅ SVG tespit (console "<path d>" hatası için HOTFIX)
@@ -112,7 +121,12 @@ function isSvgHttpUrl(v) {
   const base = base0.toLowerCase();
   if (!base) return false;
 
-  if (base.endsWith(".svg") || base.endsWith(".svgz") || base.includes("image/svg+xml") || base.includes("format=svg"))
+  if (
+    base.endsWith(".svg") ||
+    base.endsWith(".svgz") ||
+    base.includes("image/svg+xml") ||
+    base.includes("format=svg")
+  )
     return true;
 
   if (urlContainsSvgMarker(base0)) return true;
@@ -222,7 +236,11 @@ function toSameOriginAbsoluteUrl(v) {
 
   if (s.startsWith("/")) {
     try {
-      if (typeof window !== "undefined" && window.location && window.location.origin) {
+      if (
+        typeof window !== "undefined" &&
+        window.location &&
+        window.location.origin
+      ) {
         return `${window.location.origin}${s}`;
       }
     } catch {}
@@ -273,8 +291,15 @@ async function resolveToHttpsUrl(input) {
       const r = storageRef(storage, gsFromHttp);
       const https = await getDownloadURL(r);
 
-      if (isSvgAny(https) || urlContainsSvgMarker(https) || storagePathLooksSvg(gsFromHttp)) return "";
-      return typeof https === "string" && /^https?:\/\//i.test(https) ? https : raw0;
+      if (
+        isSvgAny(https) ||
+        urlContainsSvgMarker(https) ||
+        storagePathLooksSvg(gsFromHttp)
+      )
+        return "";
+      return typeof https === "string" && /^https?:\/\//i.test(https)
+        ? https
+        : raw0;
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
 
@@ -284,7 +309,10 @@ async function resolveToHttpsUrl(input) {
         code === "storage/unauthenticated" ||
         code === "storage/unknown"
       ) {
-        warnOnce(`dlwarn_http_${code}`, `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — fallback’a düşülecek.`);
+        warnOnce(
+          `dlwarn_http_${code}`,
+          `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — fallback’a düşülecek.`
+        );
         return raw0;
       }
 
@@ -305,13 +333,21 @@ async function resolveToHttpsUrl(input) {
       const r = storageRef(storage, path);
       const https = await getDownloadURL(r);
 
-      if (isSvgAny(https) || urlContainsSvgMarker(https) || storagePathLooksSvg(path)) return "";
+      if (isSvgAny(https) || urlContainsSvgMarker(https) || storagePathLooksSvg(path))
+        return "";
       return typeof https === "string" && /^https?:\/\//i.test(https) ? https : "";
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
 
-      if (code === "permission-denied" || code === "storage/unauthorized" || code === "storage/unauthenticated") {
-        warnOnce(`dlwarn_gs_${code}`, `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — placeholder kullanılacak.`);
+      if (
+        code === "permission-denied" ||
+        code === "storage/unauthorized" ||
+        code === "storage/unauthenticated"
+      ) {
+        warnOnce(
+          `dlwarn_gs_${code}`,
+          `[ProfileRoutesMobile] getDownloadURL blocked (${code}) — placeholder kullanılacak.`
+        );
         return "";
       }
 
@@ -328,8 +364,15 @@ function useResolvedMediaUrl(input) {
   const key = (input || "").toString().trim();
   const [state, setState] = useState(() => {
     const cached = __resolvedUrlCache.get(key);
-    if (cached) return { ...cached, input: key, status: cached.ok ? "ok" : "fail" };
-    return { input: key, status: key ? "idle" : "empty", url: "", ok: false, errorCode: "" };
+    if (cached)
+      return { ...cached, input: key, status: cached.ok ? "ok" : "fail" };
+    return {
+      input: key,
+      status: key ? "idle" : "empty",
+      url: "",
+      ok: false,
+      errorCode: "",
+    };
   });
 
   useEffect(() => {
@@ -406,11 +449,20 @@ function formatDistanceKmFromRoute(route) {
   const s = route.stats || {};
   const kmFromStats = toFiniteNumber(s.distanceKm);
   if (kmFromStats != null && kmFromStats > 0) {
-    const fixed = kmFromStats >= 10 ? Math.round(kmFromStats) : Math.round(kmFromStats * 10) / 10;
+    const fixed =
+      kmFromStats >= 10
+        ? Math.round(kmFromStats)
+        : Math.round(kmFromStats * 10) / 10;
     return `${fixed} km`;
   }
 
-  const m = s.distanceM ?? s.distanceMeters ?? route.totalDistanceM ?? route.distanceMeters ?? route.distance ?? null;
+  const m =
+    s.distanceM ??
+    s.distanceMeters ??
+    route.totalDistanceM ??
+    route.distanceMeters ??
+    route.distance ??
+    null;
 
   const mm = toFiniteNumber(m);
   if (mm == null || mm <= 0) return "";
@@ -424,8 +476,12 @@ function formatDurationFromRoute(route) {
   const ms =
     toFiniteNumber(route?.stats?.durationMs) ??
     toFiniteNumber(route?.durationMs) ??
-    (toFiniteNumber(route?.durationSeconds) != null ? toFiniteNumber(route?.durationSeconds) * 1000 : null) ??
-    (toFiniteNumber(route?.stats?.durationSeconds) != null ? toFiniteNumber(route?.stats?.durationSeconds) * 1000 : null) ??
+    (toFiniteNumber(route?.durationSeconds) != null
+      ? toFiniteNumber(route?.durationSeconds) * 1000
+      : null) ??
+    (toFiniteNumber(route?.stats?.durationSeconds) != null
+      ? toFiniteNumber(route?.stats?.durationSeconds) * 1000
+      : null) ??
     null;
 
   if (ms == null || ms <= 0) return "";
@@ -878,12 +934,7 @@ function pickCoverCandidate(route) {
   }
 
   const legacy = resolveLegacyCoverUrl(route);
-  if (
-    legacy &&
-    !isKnownAppLogoUrl(legacy) &&
-    !isVideoUrl(legacy) &&
-    !(isSvgAny(legacy) || urlContainsSvgMarker(legacy))
-  ) {
+  if (legacy && !isKnownAppLogoUrl(legacy) && !isVideoUrl(legacy) && !(isSvgAny(legacy) || urlContainsSvgMarker(legacy))) {
     return { kind: "image", url: legacy, hasVideo: false, sourceField: "legacy" };
   }
 
@@ -1164,7 +1215,6 @@ function ManusRouteCardTile({ route, onClick, isProofTarget, onProofLoadEvent })
       durationText={durationText}
       viewsText={viewsText}
       savesText={savesText}
-      // ✅ PARÇA 3/3: Profilde tek otorite onClick
       onClick={onClick}
       onCoverLoadEvent={(evt, src) => {
         if (!isProofTarget) return;
@@ -1178,28 +1228,8 @@ function ManusRouteCardTile({ route, onClick, isProofTarget, onProofLoadEvent })
 }
 
 /* ===========================
-   ✅ EMİR PAKETİ 3/3 helpers
+   ✅ ARGE7 — FAB → Direkt Builder helpers
    =========================== */
-
-function getRouteCreateEntrypoint() {
-  try {
-    if (typeof window === "undefined") return null;
-    const w = window;
-
-    // (Varsa) proje içi otorite fonksiyon isimleri (bozmadan “varsa çağır”)
-    const candidates = [
-      w.__MYLASA_CREATE_ROUTE__,
-      w.__MYLASA_OPEN_ROUTE_CREATE__,
-      w.__MYLASA_ROUTE_CREATE__,
-      w.__MYLASA_START_ROUTE__, // Explore’da zaten kontrol ediliyor
-    ].filter(Boolean);
-
-    const fn = candidates.find((f) => typeof f === "function");
-    return typeof fn === "function" ? fn : null;
-  } catch {
-    return null;
-  }
-}
 
 function tryNavigateToMap() {
   try {
@@ -1207,11 +1237,7 @@ function tryNavigateToMap() {
     const w = window;
 
     // (Varsa) doğrudan “map aç” fonksiyonu
-    const navFns = [
-      w.__MYLASA_OPEN_MAP__,
-      w.__MYLASA_NAVIGATE_MAP__,
-      w.__MYLASA_GO_MAP__,
-    ].filter(Boolean);
+    const navFns = [w.__MYLASA_OPEN_MAP__, w.__MYLASA_NAVIGATE_MAP__, w.__MYLASA_GO_MAP__].filter(Boolean);
 
     const fn = navFns.find((f) => typeof f === "function");
     if (fn) {
@@ -1240,63 +1266,6 @@ function tryNavigateToMap() {
   }
 }
 
-function CreateRouteSheet({ open, onClose, onPickSoon, onPickMap }) {
-  // body scroll lock
-  useEffect(() => {
-    if (!open) return;
-    const prev = document?.body?.style?.overflow || "";
-    try {
-      document.body.style.overflow = "hidden";
-    } catch {}
-    return () => {
-      try {
-        document.body.style.overflow = prev;
-      } catch {}
-    };
-  }, [open]);
-
-  if (!open) return null;
-
-  return (
-    <>
-      <div className="prm-createSheetBackdrop" onClick={onClose} aria-hidden="true" />
-      <div className="prm-createSheet" role="dialog" aria-modal="true" aria-label="Rota oluştur">
-        <div className="prm-createSheetHandle" aria-hidden="true" />
-        <div className="prm-createSheetTitleRow">
-          <div className="prm-createSheetTitle">Rota oluştur</div>
-          <button type="button" className="prm-createSheetClose" onClick={onClose} aria-label="Kapat">
-            ✕
-          </button>
-        </div>
-
-        <div className="prm-createSheetList">
-          <button type="button" className="prm-createSheetItem" onClick={onPickSoon}>
-            <div className="prm-createSheetItemIcon" aria-hidden="true">
-              <span className="prm-dot prm-dot--cyan" />
-            </div>
-            <div className="prm-createSheetItemText">
-              <div className="prm-createSheetItemLabel">Rota oluştur (yakında)</div>
-              <div className="prm-createSheetItemSub">Yeni sihirbaz bir sonraki sprint.</div>
-            </div>
-          </button>
-
-          <button type="button" className="prm-createSheetItem prm-createSheetItem--primary" onClick={onPickMap}>
-            <div className="prm-createSheetItemIcon" aria-hidden="true">
-              <span className="prm-dot prm-dot--violet" />
-            </div>
-            <div className="prm-createSheetItemText">
-              <div className="prm-createSheetItemLabel">Haritada oluştur (gelişmiş)</div>
-              <div className="prm-createSheetItemSub">Mevcut map builder’ı kullan.</div>
-            </div>
-          </button>
-        </div>
-
-        <div className="prm-createSheetSafe" aria-hidden="true" />
-      </div>
-    </>
-  );
-}
-
 export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId = null, isFollowing = false }) {
   const { routes, loading, loadingMore, hasMore, error, loadMore, isEmpty, accessStatus } = useUserRoutes(userId, {
     pageSize: 20,
@@ -1309,8 +1278,10 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
   const [proofImgLoadEvent, setProofImgLoadEvent] = useState(""); // load | error_all
   const [proofImgSrc, setProofImgSrc] = useState("");
 
-  // ✅ EMİR PAKETİ 3/3 — FAB + sheet
-  const [createSheetOpen, setCreateSheetOpen] = useState(false);
+  // ✅ ARGE7 — FAB spam guard + toast
+  const [fabDisabled, setFabDisabled] = useState(false);
+  const fabDisableTimerRef = useRef(0);
+
   const [createToast, setCreateToast] = useState("");
   const toastRef = useRef({ tmr: 0 });
 
@@ -1337,6 +1308,10 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
       try {
         toastRef.current.tmr = 0;
       } catch {}
+      try {
+        if (fabDisableTimerRef.current) clearTimeout(fabDisableTimerRef.current);
+      } catch {}
+      fabDisableTimerRef.current = 0;
     };
   }, []);
 
@@ -1406,70 +1381,45 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
   }, [isSelf, accessStatus]);
 
   const handleFabClick = useCallback(() => {
-    // 1) varsa direkt entrypoint’i çağır (mantık değişmeden)
-    const fn = getRouteCreateEntrypoint();
-    if (typeof fn === "function") {
-      try {
-        fn({ source: "profile_routes_fab" });
-      } catch {
-        try {
-          fn();
-        } catch {}
-      }
-      return;
-    }
+    if (fabDisabled) return;
 
-    // 2) yoksa minimal sheet
-    setCreateSheetOpen(true);
-  }, []);
+    // ✅ 700ms spam guard
+    setFabDisabled(true);
+    try {
+      if (fabDisableTimerRef.current) clearTimeout(fabDisableTimerRef.current);
+    } catch {}
+    fabDisableTimerRef.current = window.setTimeout(() => {
+      setFabDisabled(false);
+      fabDisableTimerRef.current = 0;
+    }, 700);
 
-  const handlePickSoon = useCallback(() => {
-    setCreateSheetOpen(false);
-    showToast("Rota oluşturma sihirbazı yakında.", 2200);
-  }, [showToast]);
+    // (A) Launch token set (MapMobile consume ediyor)
+    try {
+      window.__MYLASA_ROUTE_BUILDER_LAUNCH__ = { ts: Date.now(), source: "profileFab" };
+    } catch {}
 
-  const handlePickMap = useCallback(() => {
-    setCreateSheetOpen(false);
-
-    // Map’e gitmeyi dene (listener varsa)
+    // (B) Map ekranına/tab’ına geç (mevcut mekanizma)
     const navOk = tryNavigateToMap();
 
-    // Map tarafında start/create entrypoint varsa (örn. __MYLASA_START_ROUTE__), kısa gecikmeyle dene
-    window.setTimeout(() => {
-      const fn = getRouteCreateEntrypoint();
-      if (typeof fn === "function") {
-        try {
-          fn({ source: "profile_routes_fab_map" });
-          return;
-        } catch {
-          try {
-            fn();
-            return;
-          } catch {}
-        }
-      }
-
-      // hiç entrypoint yoksa sadece bilgilendir (spam yok)
-      if (!navOk) {
-        showToast("Harita girişi bulunamadı. (Entrypoint gerekli)", 2400);
-      }
-    }, 280);
-  }, [showToast]);
+    // (C) soft feedback (spam değil)
+    if (!navOk) {
+      showToast("Harita girişi bulunamadı.", 2400);
+    }
+  }, [fabDisabled, showToast]);
 
   const fabNode = canShowFab ? (
     <>
-      <button type="button" className="prm-createFab" onClick={handleFabClick} aria-label="Rota oluştur">
+      <button
+        type="button"
+        className="prm-createFab"
+        onClick={handleFabClick}
+        aria-label="Rota oluştur"
+        disabled={fabDisabled}
+      >
         <span className="prm-createFabPlus" aria-hidden="true">
           +
         </span>
       </button>
-
-      <CreateRouteSheet
-        open={createSheetOpen}
-        onClose={() => setCreateSheetOpen(false)}
-        onPickSoon={handlePickSoon}
-        onPickMap={handlePickMap}
-      />
 
       {!!createToast && <div className="prm-createToast">{createToast}</div>}
     </>
