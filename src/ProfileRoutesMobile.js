@@ -16,19 +16,25 @@
 //
 // ✅ EMİR 05: Inline SVG yerine merkezi Phosphor ikon sistemi (src/icons.js) kullanılır.
 //
-// ✅ ARGE7 — EMİR PAKETİ 1/3 (GENİŞLETİLMİŞ)
-// Profile “Rotalarım” = TEK + (FAB) + Direkt builder (CreateSheet yok)
-// - FAB tık: token set → map’e git → builder (Durak Ekle/Bitir)
-// - Ara menüler yok
+// ✅ ARGE7 — EMİR PAKETİ 1/3 (YENİ)
+// Profile “Rotalarım” = TEK FAB + Direkt “Rota oluştur” sheet
+// - FAB tık: Map/token YOK → direkt create sheet
+// - “yakında / gelişmiş / haritada oluştur” menüsü yok
 // - 700ms spam guard
+// - FAB yalnızca routes panel aktifken DOM’da var
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "./ProfileRoutesMobile.css";
 import useUserRoutes from "./hooks/useUserRoutes";
 import { Icon } from "./icons";
 
+import { auth } from "./firebase";
 import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage";
 import RouteCardManusMobile from "./routes/RouteCardManusMobile";
+
+// ✅ Route create: Map builder yolunu taklit etmiyoruz, projedeki mevcut routeStore createRoute kullanılır
+import * as routeStore from "./services/routeStore";
 
 const __DEV__ = process.env.NODE_ENV !== "production";
 const DEFAULT_ROUTE_COVER_URL =
@@ -333,9 +339,15 @@ async function resolveToHttpsUrl(input) {
       const r = storageRef(storage, path);
       const https = await getDownloadURL(r);
 
-      if (isSvgAny(https) || urlContainsSvgMarker(https) || storagePathLooksSvg(path))
+      if (
+        isSvgAny(https) ||
+        urlContainsSvgMarker(https) ||
+        storagePathLooksSvg(path)
+      )
         return "";
-      return typeof https === "string" && /^https?:\/\//i.test(https) ? https : "";
+      return typeof https === "string" && /^https?:\/\//i.test(https)
+        ? https
+        : "";
     } catch (e) {
       const code = e?.code ? String(e.code) : "unknown";
 
@@ -378,7 +390,13 @@ function useResolvedMediaUrl(input) {
   useEffect(() => {
     const k = key;
     if (!k) {
-      setState({ input: "", status: "empty", url: "", ok: false, errorCode: "" });
+      setState({
+        input: "",
+        status: "empty",
+        url: "",
+        ok: false,
+        errorCode: "",
+      });
       return;
     }
 
@@ -396,7 +414,11 @@ function useResolvedMediaUrl(input) {
           const url = await __inflight.get(k);
           if (cancelled) return;
           const ok = isHttpHttpsOrDataUrl(url);
-          const rec = { ok, url: ok ? url : "", errorCode: ok ? "" : "resolve_failed" };
+          const rec = {
+            ok,
+            url: ok ? url : "",
+            errorCode: ok ? "" : "resolve_failed",
+          };
           __resolvedUrlCache.set(k, rec);
           setState({ input: k, status: ok ? "ok" : "fail", ...rec });
         } catch {
@@ -419,7 +441,11 @@ function useResolvedMediaUrl(input) {
         if (cancelled) return;
 
         const ok = isHttpHttpsOrDataUrl(url);
-        const rec = { ok, url: ok ? url : "", errorCode: ok ? "" : "resolve_failed" };
+        const rec = {
+          ok,
+          url: ok ? url : "",
+          errorCode: ok ? "" : "resolve_failed",
+        };
         __resolvedUrlCache.set(k, rec);
 
         setState({ input: k, status: ok ? "ok" : "fail", ...rec });
@@ -511,7 +537,9 @@ function extractMetric(route, keys) {
   const metrics = r.metrics || raw.metrics || raw.agg || {};
   for (const k of keys) {
     const v =
-      (k.startsWith("metrics.") ? metrics?.[k.slice("metrics.".length)] : r?.[k]) ??
+      (k.startsWith("metrics.")
+        ? metrics?.[k.slice("metrics.".length)]
+        : r?.[k]) ??
       raw?.[k] ??
       (k.startsWith("raw.") ? raw?.[k.slice("raw.".length)] : undefined);
     const n = toFiniteNumber(v);
@@ -533,7 +561,11 @@ function inferCityOrTag(route) {
     "";
   if (isNonEmptyString(city)) return String(city).trim();
 
-  const tags = Array.isArray(r.tags) ? r.tags : Array.isArray(raw.tags) ? raw.tags : [];
+  const tags = Array.isArray(r.tags)
+    ? r.tags
+    : Array.isArray(raw.tags)
+    ? raw.tags
+    : [];
   const firstTag = tags.find((t) => typeof t === "string" && t.trim());
   return firstTag ? String(firstTag).trim() : "";
 }
@@ -558,7 +590,9 @@ function isDefaultRouteTitle(titleRaw) {
   if (!t) return true;
   if (!/^rota\b/i.test(t)) return false;
 
-  return /(\d{1,2}:\d{2})|(\d{1,2}[./-]\d{1,2})|(\d{4}[./-]\d{1,2}[./-]\d{1,2})|\d{2,}/.test(t);
+  return /(\d{1,2}:\d{2})|(\d{1,2}[./-]\d{1,2})|(\d{4}[./-]\d{1,2}[./-]\d{1,2})|\d{2,}/.test(
+    t
+  );
 }
 
 // ✅ GERÇEK VERİ YOLLARI + order/idx sort
@@ -568,7 +602,9 @@ function getStopsArray(route) {
   const take = (arr) => {
     if (!Array.isArray(arr) || arr.length === 0) return [];
     const copy = arr.slice();
-    const hasOrder = copy.some((x) => x && (x.order !== undefined || x.idx !== undefined));
+    const hasOrder = copy.some(
+      (x) => x && (x.order !== undefined || x.idx !== undefined)
+    );
     if (!hasOrder) return copy;
     copy.sort((a, b) => {
       const ao = toFiniteNumber(a?.order ?? a?.idx) ?? 0;
@@ -578,14 +614,19 @@ function getStopsArray(route) {
     return copy;
   };
 
-  if (Array.isArray(route.stopsPreview) && route.stopsPreview.length > 0) return take(route.stopsPreview);
-  if (Array.isArray(route.stops) && route.stops.length > 0) return take(route.stops);
+  if (Array.isArray(route.stopsPreview) && route.stopsPreview.length > 0)
+    return take(route.stopsPreview);
+  if (Array.isArray(route.stops) && route.stops.length > 0)
+    return take(route.stops);
 
   const raw = route.raw || route.data || route.doc || null;
   if (raw) {
-    if (Array.isArray(raw.stopsPreview) && raw.stopsPreview.length > 0) return take(raw.stopsPreview);
-    if (Array.isArray(raw.stops) && raw.stops.length > 0) return take(raw.stops);
-    if (raw.data && Array.isArray(raw.data.stopsPreview)) return take(raw.data.stopsPreview);
+    if (Array.isArray(raw.stopsPreview) && raw.stopsPreview.length > 0)
+      return take(raw.stopsPreview);
+    if (Array.isArray(raw.stops) && raw.stops.length > 0)
+      return take(raw.stops);
+    if (raw.data && Array.isArray(raw.data.stopsPreview))
+      return take(raw.data.stopsPreview);
   }
 
   return [];
@@ -607,8 +648,14 @@ function getStopNameWithSource(stop) {
 
     ["place.mainText", s.place?.mainText],
     ["place.secondaryText", s.place?.secondaryText],
-    ["place.structured_formatting.main_text", s.place?.structured_formatting?.main_text],
-    ["place.structured_formatting.secondary_text", s.place?.structured_formatting?.secondary_text],
+    [
+      "place.structured_formatting.main_text",
+      s.place?.structured_formatting?.main_text,
+    ],
+    [
+      "place.structured_formatting.secondary_text",
+      s.place?.structured_formatting?.secondary_text,
+    ],
 
     ["place.name", s.place?.name],
     ["place.title", s.place?.title],
@@ -645,8 +692,10 @@ function getStopNameWithSource(stop) {
     if (typeof v === "string" && v.trim()) return { name: v.trim(), source: src };
   }
 
-  if (typeof s.place === "string" && s.place.trim()) return { name: s.place.trim(), source: "place(string)" };
-  if (typeof raw?.place === "string" && raw.place.trim()) return { name: raw.place.trim(), source: "raw.place(string)" };
+  if (typeof s.place === "string" && s.place.trim())
+    return { name: s.place.trim(), source: "place(string)" };
+  if (typeof raw?.place === "string" && raw.place.trim())
+    return { name: raw.place.trim(), source: "raw.place(string)" };
 
   return { name: "", source: "" };
 }
@@ -654,7 +703,13 @@ function getStopNameWithSource(stop) {
 function buildSmartTitleProof(route, fallbackTitle) {
   const title = (fallbackTitle || "").toString().trim() || "Adsız rota";
   if (!isDefaultRouteTitle(title)) {
-    return { smartTitle: title, startName: "", endName: "", startSource: "route.title", endSource: "" };
+    return {
+      smartTitle: title,
+      startName: "",
+      endName: "",
+      startSource: "route.title",
+      endSource: "",
+    };
   }
 
   const stops = getStopsArray(route);
@@ -702,19 +757,47 @@ function buildSmartTitleProof(route, fallbackTitle) {
       route?.data?.finishedAt ||
       route?.data?.createdAt
   );
-  if (!d) return { smartTitle: "Yeni sürüş", startName: "", endName: "", startSource: "dateFallback", endSource: "" };
+  if (!d)
+    return {
+      smartTitle: "Yeni sürüş",
+      startName: "",
+      endName: "",
+      startSource: "dateFallback",
+      endSource: "",
+    };
 
   try {
-    const dayMonth = d.toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
-    return { smartTitle: `${dayMonth} Sürüşü`, startName: "", endName: "", startSource: "dateFallback", endSource: "" };
+    const dayMonth = d.toLocaleDateString("tr-TR", {
+      day: "numeric",
+      month: "long",
+    });
+    return {
+      smartTitle: `${dayMonth} Sürüşü`,
+      startName: "",
+      endName: "",
+      startSource: "dateFallback",
+      endSource: "",
+    };
   } catch {
-    return { smartTitle: "Yeni sürüş", startName: "", endName: "", startSource: "dateFallback", endSource: "" };
+    return {
+      smartTitle: "Yeni sürüş",
+      startName: "",
+      endName: "",
+      startSource: "dateFallback",
+      endSource: "",
+    };
   }
 }
 
 function isVideoUrl(url) {
   const u = (url || "").toString().toLowerCase();
-  return u.includes(".mp4") || u.includes(".webm") || u.includes(".mov") || u.includes(".m4v") || u.includes("video/");
+  return (
+    u.includes(".mp4") ||
+    u.includes(".webm") ||
+    u.includes(".mov") ||
+    u.includes(".m4v") ||
+    u.includes("video/")
+  );
 }
 
 // legacy alanlar (read-only)
@@ -822,7 +905,9 @@ function pickFirstStopImageCandidate(stop) {
       }
 
       if (typeof it === "object") {
-        const typeRaw = (it.type || it.mediaType || it.kind || it.mime || "").toString().toLowerCase();
+        const typeRaw = (it.type || it.mediaType || it.kind || it.mime || "")
+          .toString()
+          .toLowerCase();
 
         const url =
           (isNonEmptyString(it.url) ? it.url : "") ||
@@ -864,7 +949,12 @@ function pickFirstStopImageCandidate(stop) {
         }
 
         const cand = urlStr || posterStr;
-        if (cand && !isVideoUrl(cand) && !isKnownAppLogoUrl(cand) && !(isSvgAny(cand) || urlContainsSvgMarker(cand))) {
+        if (
+          cand &&
+          !isVideoUrl(cand) &&
+          !isKnownAppLogoUrl(cand) &&
+          !(isSvgAny(cand) || urlContainsSvgMarker(cand))
+        ) {
           return { url: cand, fromVideoPoster: false };
         }
       }
@@ -903,9 +993,14 @@ function pickCoverCandidate(route) {
       sourceField: "default",
     };
 
-  const coverObj = route?.cover && typeof route.cover === "object" ? route.cover : null;
-  const coverMetaUrl = isNonEmptyString(coverObj?.url) ? String(coverObj.url).trim() : "";
-  const coverMetaField = isNonEmptyString(coverObj?.sourceField) ? String(coverObj.sourceField).trim() : "";
+  const coverObj =
+    route?.cover && typeof route.cover === "object" ? route.cover : null;
+  const coverMetaUrl = isNonEmptyString(coverObj?.url)
+    ? String(coverObj.url).trim()
+    : "";
+  const coverMetaField = isNonEmptyString(coverObj?.sourceField)
+    ? String(coverObj.sourceField).trim()
+    : "";
   const coverMetaHasVideo = !!coverObj?.fromVideoPoster || !!coverObj?.hasVideoPoster;
 
   if (
@@ -923,19 +1018,36 @@ function pickCoverCandidate(route) {
     };
   }
 
-  const coverUrl = isNonEmptyString(route?.cover?.url) ? String(route.cover.url).trim() : "";
+  const coverUrl = isNonEmptyString(route?.cover?.url)
+    ? String(route.cover.url).trim()
+    : "";
   if (
     coverUrl &&
     !isKnownAppLogoUrl(coverUrl) &&
     !isVideoUrl(coverUrl) &&
     !(isSvgAny(coverUrl) || urlContainsSvgMarker(coverUrl))
   ) {
-    return { kind: "image", url: coverUrl, hasVideo: false, sourceField: "cover.url" };
+    return {
+      kind: "image",
+      url: coverUrl,
+      hasVideo: false,
+      sourceField: "cover.url",
+    };
   }
 
   const legacy = resolveLegacyCoverUrl(route);
-  if (legacy && !isKnownAppLogoUrl(legacy) && !isVideoUrl(legacy) && !(isSvgAny(legacy) || urlContainsSvgMarker(legacy))) {
-    return { kind: "image", url: legacy, hasVideo: false, sourceField: "legacy" };
+  if (
+    legacy &&
+    !isKnownAppLogoUrl(legacy) &&
+    !isVideoUrl(legacy) &&
+    !(isSvgAny(legacy) || urlContainsSvgMarker(legacy))
+  ) {
+    return {
+      kind: "image",
+      url: legacy,
+      hasVideo: false,
+      sourceField: "legacy",
+    };
   }
 
   const stopPick = pickStopCoverCandidate(route);
@@ -954,7 +1066,12 @@ function pickCoverCandidate(route) {
     };
   }
 
-  return { kind: "default", url: "", hasVideo: false, sourceField: "default" };
+  return {
+    kind: "default",
+    url: "",
+    hasVideo: false,
+    sourceField: "default",
+  };
 }
 
 function buildRoutePrefill(route) {
@@ -968,26 +1085,34 @@ function buildRoutePrefill(route) {
     "Rota";
 
   const distanceMeters =
-    typeof route?.stats?.distanceMeters === "number" && Number.isFinite(route.stats.distanceMeters)
+    typeof route?.stats?.distanceMeters === "number" &&
+    Number.isFinite(route.stats.distanceMeters)
       ? route.stats.distanceMeters
-      : typeof route?.stats?.distanceM === "number" && Number.isFinite(route.stats.distanceM)
+      : typeof route?.stats?.distanceM === "number" &&
+        Number.isFinite(route.stats.distanceM)
       ? route.stats.distanceM
-      : typeof route?.totalDistanceM === "number" && Number.isFinite(route.totalDistanceM)
+      : typeof route?.totalDistanceM === "number" &&
+        Number.isFinite(route.totalDistanceM)
       ? route.totalDistanceM
-      : typeof route?.distanceMeters === "number" && Number.isFinite(route.distanceMeters)
+      : typeof route?.distanceMeters === "number" &&
+        Number.isFinite(route.distanceMeters)
       ? route.distanceMeters
       : typeof route?.distance === "number" && Number.isFinite(route.distance)
       ? route.distance
       : null;
 
   const durationSeconds =
-    typeof route?.stats?.durationSeconds === "number" && Number.isFinite(route.stats.durationSeconds)
+    typeof route?.stats?.durationSeconds === "number" &&
+    Number.isFinite(route.stats.durationSeconds)
       ? route.stats.durationSeconds
-      : typeof route?.stats?.durationMs === "number" && Number.isFinite(route.stats.durationMs)
+      : typeof route?.stats?.durationMs === "number" &&
+        Number.isFinite(route.stats.durationMs)
       ? Math.round(route.stats.durationMs / 1000)
-      : typeof route?.durationSeconds === "number" && Number.isFinite(route.durationSeconds)
+      : typeof route?.durationSeconds === "number" &&
+        Number.isFinite(route.durationSeconds)
       ? route.durationSeconds
-      : typeof route?.durationMs === "number" && Number.isFinite(route.durationMs)
+      : typeof route?.durationMs === "number" &&
+        Number.isFinite(route.durationMs)
       ? Math.round(route.durationMs / 1000)
       : typeof route?.duration === "number" && Number.isFinite(route.duration)
       ? route.duration
@@ -998,14 +1123,16 @@ function buildRoutePrefill(route) {
       ? route.ratingAvg
       : typeof route?.avgRating === "number" && Number.isFinite(route.avgRating)
       ? route.avgRating
-      : typeof route?.raw?.ratingAvg === "number" && Number.isFinite(route.raw.ratingAvg)
+      : typeof route?.raw?.ratingAvg === "number" &&
+        Number.isFinite(route.raw.ratingAvg)
       ? route.raw.ratingAvg
       : null;
 
   const ratingCount =
     typeof route?.ratingCount === "number" && Number.isFinite(route.ratingCount)
       ? route.ratingCount
-      : typeof route?.raw?.ratingCount === "number" && Number.isFinite(route.raw.ratingCount)
+      : typeof route?.raw?.ratingCount === "number" &&
+        Number.isFinite(route.raw.ratingCount)
       ? route.raw.ratingCount
       : null;
 
@@ -1016,7 +1143,8 @@ function buildRoutePrefill(route) {
     id,
     title,
     totalDistanceM: typeof distanceMeters === "number" ? distanceMeters : null,
-    durationMs: typeof durationSeconds === "number" ? durationSeconds * 1000 : null,
+    durationMs:
+      typeof durationSeconds === "number" ? durationSeconds * 1000 : null,
     ratingAvg: typeof ratingAvg === "number" ? ratingAvg : null,
     ratingCount: typeof ratingCount === "number" ? ratingCount : null,
     areas,
@@ -1036,7 +1164,11 @@ function buildRoutePrefill(route) {
 }
 
 function isPlainObject(x) {
-  return !!x && typeof x === "object" && (x.constructor === Object || Object.getPrototypeOf(x) === Object.prototype);
+  return (
+    !!x &&
+    typeof x === "object" &&
+    (x.constructor === Object || Object.getPrototypeOf(x) === Object.prototype)
+  );
 }
 
 function buildCoverFieldsSnapshot(route) {
@@ -1065,7 +1197,14 @@ function buildCoverFieldsSnapshot(route) {
   };
 }
 
-function printRouteTileProof({ route, rawTitle, smartTitleProof, coverCandidate, imgSrc, imgLoadEvent }) {
+function printRouteTileProof({
+  route,
+  rawTitle,
+  smartTitleProof,
+  coverCandidate,
+  imgSrc,
+  imgLoadEvent,
+}) {
   if (!__DEV__) return;
   if (!route) return;
 
@@ -1109,7 +1248,10 @@ function printRouteTileProof({ route, rawTitle, smartTitleProof, coverCandidate,
 
 function LockedRoutesCard({ variant = "login_required" }) {
   const title = "Rotalar gizli";
-  const subtitle = variant === "login_required" ? "Görmek için giriş yap." : "Bu rotaları görüntülemek için yetkin yok.";
+  const subtitle =
+    variant === "login_required"
+      ? "Görmek için giriş yap."
+      : "Bu rotaları görüntülemek için yetkin yok.";
 
   const mediaWrapStyle = {
     position: "relative",
@@ -1129,16 +1271,35 @@ function LockedRoutesCard({ variant = "login_required" }) {
   };
 
   return (
-    <div className="profile-routes-list" aria-label="Rotalar kilitli" data-route-skin="manus">
-      <div className="profile-route-tile" role="note" aria-label={`${title}. ${subtitle}`}>
-        <div className="profile-route-tile-media" aria-hidden="true" style={mediaWrapStyle}>
-          <div className="profile-route-tile-placeholder" style={placeholderStyle} />
+    <div
+      className="profile-routes-list"
+      aria-label="Rotalar kilitli"
+      data-route-skin="manus"
+    >
+      <div
+        className="profile-route-tile"
+        role="note"
+        aria-label={`${title}. ${subtitle}`}
+      >
+        <div
+          className="profile-route-tile-media"
+          aria-hidden="true"
+          style={mediaWrapStyle}
+        >
+          <div
+            className="profile-route-tile-placeholder"
+            style={placeholderStyle}
+          />
         </div>
 
         <div className="profile-route-tile-badges" aria-hidden="true">
           <div
             className="profile-route-tile-badge profile-route-tile-badge--left"
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <Icon name="lock" size={18} weight="fill" />
           </div>
@@ -1227,78 +1388,300 @@ function ManusRouteCardTile({ route, onClick, isProofTarget, onProofLoadEvent })
   );
 }
 
-/* ===========================
-   ✅ ARGE7 — FAB → Direkt Builder helpers
-   =========================== */
+function RouteCreateSheetMobile({
+  open,
+  titleValue,
+  descValue,
+  onChangeTitle,
+  onChangeDesc,
+  onClose,
+  onCreate,
+  creating,
+}) {
+  const titleRef = useRef(null);
 
-function tryNavigateToMap() {
-  try {
-    if (typeof window === "undefined") return false;
-    const w = window;
+  useEffect(() => {
+    if (!open) return;
 
-    // (Varsa) doğrudan “map aç” fonksiyonu
-    const navFns = [w.__MYLASA_OPEN_MAP__, w.__MYLASA_NAVIGATE_MAP__, w.__MYLASA_GO_MAP__].filter(Boolean);
+    const prevOverflow = document?.body?.style?.overflow;
+    try {
+      document.body.style.overflow = "hidden";
+    } catch {}
 
-    const fn = navFns.find((f) => typeof f === "function");
-    if (fn) {
+    const t = window.setTimeout(() => {
       try {
-        fn({ source: "profile_routes_fab" });
-      } catch {
-        fn();
+        titleRef.current?.focus?.();
+        titleRef.current?.select?.();
+      } catch {}
+    }, 60);
+
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose?.();
       }
-      return true;
-    }
+    };
+    window.addEventListener("keydown", onKey);
 
-    // Event tabanlı entegrasyon (listener varsa çalışır, yoksa no-op)
-    try {
-      w.dispatchEvent(new CustomEvent("mylasa:openMap", { detail: { source: "profile_routes_fab" } }));
-      return true;
-    } catch {}
+    return () => {
+      try {
+        window.removeEventListener("keydown", onKey);
+      } catch {}
+      try {
+        clearTimeout(t);
+      } catch {}
+      try {
+        if (typeof prevOverflow === "string") document.body.style.overflow = prevOverflow;
+        else document.body.style.overflow = "";
+      } catch {}
+    };
+  }, [open, onClose]);
 
-    try {
-      w.dispatchEvent(new CustomEvent("mylasa:navigate", { detail: { to: "map", source: "profile_routes_fab" } }));
-      return true;
-    } catch {}
+  if (!open) return null;
 
-    return false;
+  const t = (titleValue || "").trim();
+  const canCreate = t.length > 0 && !creating;
+
+  const overlayStyle = {
+    position: "fixed",
+    inset: 0,
+    zIndex: 9999,
+    background: "rgba(0,0,0,0.52)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    padding: "16px 12px calc(14px + env(safe-area-inset-bottom, 0px))",
+  };
+
+  const sheetStyle = {
+    width: "100%",
+    maxWidth: 520,
+    borderRadius: 22,
+    background:
+      "linear-gradient(180deg, rgba(20,20,24,0.98) 0%, rgba(12,14,18,0.98) 100%)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    boxShadow: "0 22px 70px rgba(0,0,0,0.55)",
+    overflow: "hidden",
+  };
+
+  const topRowStyle = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "14px 16px 10px",
+  };
+
+  const titleStyle = {
+    color: "#fff",
+    fontWeight: 900,
+    fontSize: 16,
+    letterSpacing: "-0.01em",
+  };
+
+  const closeBtnStyle = {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#fff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  };
+
+  const bodyStyle = {
+    padding: "6px 16px 14px",
+  };
+
+  const labelStyle = {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 12,
+    fontWeight: 700,
+    margin: "10px 2px 6px",
+  };
+
+  const inputStyle = {
+    width: "100%",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#fff",
+    padding: "12px 12px",
+    outline: "none",
+    fontSize: 14,
+    fontWeight: 700,
+  };
+
+  const textareaStyle = {
+    ...inputStyle,
+    fontWeight: 600,
+    resize: "none",
+    minHeight: 84,
+    lineHeight: 1.35,
+  };
+
+  const footerStyle = {
+    display: "flex",
+    gap: 10,
+    padding: "12px 16px 16px",
+    borderTop: "1px solid rgba(255,255,255,0.08)",
+  };
+
+  const btnBase = {
+    height: 46,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.14)",
+    fontWeight: 900,
+    fontSize: 14,
+    cursor: "pointer",
+    flex: 1,
+  };
+
+  const cancelStyle = {
+    ...btnBase,
+    background: "rgba(255,255,255,0.06)",
+    color: "#fff",
+  };
+
+  const createStyle = {
+    ...btnBase,
+    background: canCreate ? "linear-gradient(135deg, #ff385c 0%, #ff6a3d 100%)" : "rgba(255,255,255,0.10)",
+    color: canCreate ? "#fff" : "rgba(255,255,255,0.55)",
+    border: canCreate ? "1px solid rgba(255,56,92,0.55)" : "1px solid rgba(255,255,255,0.12)",
+  };
+
+  const hintStyle = {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
+    padding: "0 16px 14px",
+    marginTop: -4,
+  };
+
+  const node = (
+    <div
+      style={overlayStyle}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Rota oluştur"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+      onTouchStart={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+    >
+      <div style={sheetStyle}>
+        <div style={topRowStyle}>
+          <div style={titleStyle}>Rota oluştur</div>
+          <button type="button" style={closeBtnStyle} onClick={onClose} aria-label="Kapat">
+            <Icon name="x" size={18} weight="bold" />
+          </button>
+        </div>
+
+        <div style={bodyStyle}>
+          <div style={labelStyle}>Başlık</div>
+          <input
+            ref={titleRef}
+            type="text"
+            value={titleValue}
+            onChange={(e) => onChangeTitle?.(e.target.value)}
+            placeholder="Örn: Milas sahil turu"
+            style={inputStyle}
+            maxLength={80}
+            autoComplete="off"
+            inputMode="text"
+          />
+
+          <div style={labelStyle}>Açıklama (opsiyonel)</div>
+          <textarea
+            value={descValue}
+            onChange={(e) => onChangeDesc?.(e.target.value)}
+            placeholder="Kısa not…"
+            style={textareaStyle}
+            maxLength={280}
+          />
+        </div>
+
+        <div style={hintStyle}>
+          Başlık zorunlu. Oluştur’dan sonra rota detay ekranı açılır.
+        </div>
+
+        <div style={footerStyle}>
+          <button type="button" style={cancelStyle} onClick={onClose}>
+            İptal
+          </button>
+          <button
+            type="button"
+            style={createStyle}
+            onClick={onCreate}
+            disabled={!canCreate}
+          >
+            {creating ? "Oluşturuluyor…" : "Oluştur"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  try {
+    return createPortal(node, document.body);
   } catch {
-    return false;
+    return node;
   }
 }
 
-export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId = null, isFollowing = false }) {
-  const { routes, loading, loadingMore, hasMore, error, loadMore, isEmpty, accessStatus } = useUserRoutes(userId, {
-    pageSize: 20,
-    isSelf,
-    isFollowing,
-    viewerId,
-  });
+export default function ProfileRoutesMobile({
+  userId,
+  isSelf = false,
+  viewerId = null,
+  isFollowing = false,
+}) {
+  const { routes, loading, loadingMore, hasMore, error, loadMore, isEmpty, accessStatus } =
+    useUserRoutes(userId, {
+      pageSize: 20,
+      isSelf,
+      isFollowing,
+      viewerId,
+    });
 
   const proofRouteIdRef = useRef("");
   const [proofImgLoadEvent, setProofImgLoadEvent] = useState(""); // load | error_all
   const [proofImgSrc, setProofImgSrc] = useState("");
 
-  // ✅ ARGE7 — FAB spam guard + toast
+  // ✅ FAB spam guard + toast
   const [fabDisabled, setFabDisabled] = useState(false);
   const fabDisableTimerRef = useRef(0);
 
-  const [createToast, setCreateToast] = useState("");
+  const [toastMsg, setToastMsg] = useState("");
   const toastRef = useRef({ tmr: 0 });
 
   const showToast = useCallback((msg, ms = 2200) => {
     try {
-      setCreateToast(String(msg || ""));
+      setToastMsg(String(msg || ""));
     } catch {}
     try {
       if (toastRef.current.tmr) clearTimeout(toastRef.current.tmr);
     } catch {}
     toastRef.current.tmr = window.setTimeout(() => {
       try {
-        setCreateToast("");
+        setToastMsg("");
       } catch {}
       toastRef.current.tmr = 0;
     }, ms);
   }, []);
+
+  // ✅ Create sheet state (Map yok)
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState("");
+  const [createDesc, setCreateDesc] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  // ✅ Routes panel aktif mi? (FAB başka tablerde DOM’da olmasın)
+  const [isRoutesPanelActive, setIsRoutesPanelActive] = useState(true);
 
   useEffect(() => {
     return () => {
@@ -1312,6 +1695,67 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
         if (fabDisableTimerRef.current) clearTimeout(fabDisableTimerRef.current);
       } catch {}
       fabDisableTimerRef.current = 0;
+    };
+  }, []);
+
+  // ✅ Panel görünürlük observer (ProfileMobile hidden toggles)
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    const getPanelEl = () => {
+      try {
+        return document.getElementById("tab-panel-routes");
+      } catch {
+        return null;
+      }
+    };
+
+    const sync = () => {
+      const el = getPanelEl();
+      if (!el) {
+        setIsRoutesPanelActive(true);
+        return;
+      }
+      const hidden = !!el.hidden || el.getAttribute("hidden") !== null;
+      setIsRoutesPanelActive(!hidden);
+    };
+
+    sync();
+
+    const el = getPanelEl();
+    if (!el || typeof MutationObserver === "undefined") {
+      const t = window.setInterval(sync, 500);
+      return () => {
+        try {
+          clearInterval(t);
+        } catch {}
+      };
+    }
+
+    const mo = new MutationObserver(() => {
+      try {
+        sync();
+      } catch {}
+    });
+
+    try {
+      mo.observe(el, { attributes: true, attributeFilter: ["hidden", "style", "class"] });
+    } catch {}
+
+    const onVis = () => sync();
+    window.addEventListener("focus", onVis);
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      try {
+        mo.disconnect();
+      } catch {}
+      try {
+        window.removeEventListener("focus", onVis);
+      } catch {}
+      try {
+        document.removeEventListener("visibilitychange", onVis);
+      } catch {}
     };
   }, []);
 
@@ -1375,10 +1819,23 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
     if (!isSelf) return false;
 
     // kilit ekranlarında görünmesin
-    if (accessStatus === "login_required" || accessStatus === "forbidden") return false;
+    if (accessStatus === "login_required" || accessStatus === "forbidden")
+      return false;
+
+    // ✅ sadece routes panel aktifken
+    if (!isRoutesPanelActive) return false;
 
     return true;
-  }, [isSelf, accessStatus]);
+  }, [isSelf, accessStatus, isRoutesPanelActive]);
+
+  const openCreateSheet = useCallback(() => {
+    setIsCreateOpen(true);
+  }, []);
+
+  const closeCreateSheet = useCallback(() => {
+    if (creating) return;
+    setIsCreateOpen(false);
+  }, [creating]);
 
   const handleFabClick = useCallback(() => {
     if (fabDisabled) return;
@@ -1393,19 +1850,72 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
       fabDisableTimerRef.current = 0;
     }, 700);
 
-    // (A) Launch token set (MapMobile consume ediyor)
+    // ✅ EMİR: token/map yok → direkt sheet
+    openCreateSheet();
+  }, [fabDisabled, openCreateSheet]);
+
+  const handleCreateRoute = useCallback(async () => {
+    if (creating) return;
+
+    const title = String(createTitle || "").trim();
+    const desc = String(createDesc || "").trim();
+
+    if (!title) return;
+
+    setCreating(true);
     try {
-      window.__MYLASA_ROUTE_BUILDER_LAUNCH__ = { ts: Date.now(), source: "profileFab" };
-    } catch {}
+      const ownerId =
+        (viewerId && String(viewerId)) ||
+        auth?.currentUser?.uid ||
+        (userId && String(userId)) ||
+        "";
 
-    // (B) Map ekranına/tab’ına geç (mevcut mekanizma)
-    const navOk = tryNavigateToMap();
+      // ✅ düşük risk: MapMobile ile aynı çağrı imzası
+      const routeId = await routeStore.createRoute({
+        ownerId,
+        title,
+        visibility: "public",
+      });
 
-    // (C) soft feedback (spam değil)
-    if (!navOk) {
-      showToast("Harita girişi bulunamadı.", 2400);
+      const rid = routeId ? String(routeId) : "";
+      if (!rid) throw new Error("createRoute returned empty id");
+
+      // UI prefill (RouteDetail modal hemen açılır; firestore daha sonra yükleyebilir)
+      const prefill = {
+        id: rid,
+        title,
+        description: desc || "",
+        ownerId,
+        visibility: "public",
+        totalDistanceM: null,
+        durationMs: null,
+        ratingAvg: null,
+        ratingCount: null,
+        areas: null,
+        tags: null,
+        cover: { kind: "default", url: "", sourceField: "default" },
+        createdAt: new Date(),
+      };
+
+      try {
+        window.dispatchEvent(
+          new CustomEvent("open-route-modal", {
+            detail: { routeId: rid, route: prefill, source: "profile_create" },
+          })
+        );
+      } catch {}
+
+      setIsCreateOpen(false);
+      setCreateTitle("");
+      setCreateDesc("");
+    } catch (e) {
+      showToast("Rota oluşturulamadı.", 2400);
+      // eslint-disable-next-line no-console
+      if (__DEV__) console.warn("[ProfileRoutesMobile] create route failed:", e);
+    } finally {
+      setCreating(false);
     }
-  }, [fabDisabled, showToast]);
+  }, [creating, createTitle, createDesc, viewerId, userId, showToast]);
 
   const fabNode = canShowFab ? (
     <>
@@ -1421,7 +1931,18 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
         </span>
       </button>
 
-      {!!createToast && <div className="prm-createToast">{createToast}</div>}
+      {!!toastMsg && <div className="prm-createToast">{toastMsg}</div>}
+
+      <RouteCreateSheetMobile
+        open={isCreateOpen}
+        titleValue={createTitle}
+        descValue={createDesc}
+        onChangeTitle={setCreateTitle}
+        onChangeDesc={setCreateDesc}
+        onClose={closeCreateSheet}
+        onCreate={handleCreateRoute}
+        creating={creating}
+      />
     </>
   ) : null;
 
@@ -1474,7 +1995,7 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
         <div className="profile-routes-empty">
           <span>
             {isSelf
-              ? "Henüz kaydettiğin bir rotan yok. Haritada bir rota oluşturduğunda burada görünecek."
+              ? "Henüz kaydettiğin bir rotan yok. Yeni bir rota oluşturduğunda burada görünecek."
               : "Bu kullanıcının henüz paylaştığı bir rota yok."}
           </span>
         </div>
@@ -1488,7 +2009,9 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
       <div className="profile-routes-list" data-route-skin="manus">
         {routes.map((route) => {
           const rid = route?.id ? String(route.id) : "";
-          const isProofTarget = !!(proofRouteIdRef.current && rid === proofRouteIdRef.current);
+          const isProofTarget = !!(
+            proofRouteIdRef.current && rid === proofRouteIdRef.current
+          );
 
           return (
             <div key={rid || route.id} className="profile-route-cardWrap">
@@ -1508,7 +2031,12 @@ export default function ProfileRoutesMobile({ userId, isSelf = false, viewerId =
 
         {hasMore && (
           <div className="profile-routes-more">
-            <button type="button" onClick={loadMore} disabled={loadingMore} className="profile-routes-more-btn">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="profile-routes-more-btn"
+            >
               {loadingMore ? "Yükleniyor…" : "Daha fazla göster"}
             </button>
           </div>

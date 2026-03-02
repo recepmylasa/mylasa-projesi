@@ -1,5 +1,5 @@
 /* FILE: src/MapMobile.js */
-// src/MapMobile.js — Cluster + Reverse Geocoding + Rota Kaydı + ErrorBoundary + PlaceDetail entegrasyonu
+// src/MapMobile.js — Cluster + Reverse Geocoding + Check-in + ErrorBoundary + PlaceDetail entegrasyonu
 import React, {
   useCallback,
   useEffect,
@@ -49,13 +49,6 @@ import { subscribeFriendLocations } from "./services/locationStream";
 import { createClusterer } from "./services/clusterer";
 import { reverseGeocodeShort } from "./services/reverseGeocode"; // ✅ string döndürür
 
-// === ROTA: yeni servisler ===
-import { routeRecorder } from "./services/routeRecorder";
-import * as routeStore from "./services/routeStore";
-
-// ✅ ADIM 1: Stop composer sheet (prompt yerine)
-import StopComposerSheetMobile from "./components/StopComposerSheetMobile";
-
 // ---- Sabitler
 const API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 const MAP_ID = (process.env.REACT_APP_GMAPS_MAP_ID || "").trim();
@@ -70,9 +63,6 @@ const SELF_ADDR_DISTANCE_THRESHOLD_M = 120; // 120 m hareket etmeden reverse geo
 // Toast ayarları
 const TOAST_LIFETIME_MS = 2600;
 const TOAST_COOLDOWN_MS = 15000;
-
-// ✅ Route Builder Launch Token (kalıcı tetik)
-const ROUTE_BUILDER_LAUNCH_TTL_MS = 60 * 1000;
 
 // DEV log temizliği
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
@@ -110,10 +100,6 @@ export default function MapMobile({
   const [firstFixDone, setFirstFixDone] = useState(false);
   const [userMovedMap, setUserMovedMap] = useState(false);
   const [fabBottom, setFabBottom] = useState(MIN_FAB_BOTTOM);
-
-  // ✅ ADIM 1: Stop composer sheet state
-  const [isStopComposerOpen, setIsStopComposerOpen] = useState(false);
-  const stopDraftLocRef = useRef(null);
 
   // Kısa adres durumları
   const [selfShortAddr, setSelfShortAddr] = useState(""); // Ben
@@ -213,21 +199,8 @@ export default function MapMobile({
   const friendMarkersRef = useRef(new Map());
   const stopFriendsRef = useRef(null);
 
-  // ✅ ADIM 3: Stop marker havuzu (cluster'a dahil DEĞİL)
-  /** @type {React.MutableRefObject<Map<string, any>>} */
-  const stopMarkersRef = useRef(new Map());
-
   // --- Cluster controller
   const clusterCtrlRef = useRef(null);
-
-  // === ROTA: durumlar
-  const [routeStatus, setRouteStatus] = useState("idle"); // idle | recording | finishing
-  const activeRouteIdRef = useRef(null);
-  const lastSyncedIndexRef = useRef(0);
-  const polylineRef = useRef(null);
-
-  // ✅ Token consume → start guard
-  const routeStartInFlightRef = useRef(false);
 
   // Arkadaş marker HTML içeriği (AdvancedMarker) — sadece avatar
   const createFriendEl = useCallback((avatarUrl, title) => {
@@ -248,36 +221,6 @@ export default function MapMobile({
     img.style.height = "100%";
     img.style.objectFit = "cover";
     wrap.appendChild(img);
-    return wrap;
-  }, []);
-
-  // ✅ ADIM 3: Stop marker HTML içeriği (AdvancedMarker) — numaralı badge
-  const createStopEl = useCallback((order, title) => {
-    const wrap = document.createElement("div");
-    wrap.style.width = "32px";
-    wrap.style.height = "32px";
-    wrap.style.borderRadius = "999px";
-    wrap.style.background = "#fff";
-    wrap.style.border = "1.5px solid #111";
-    wrap.style.boxShadow = "0 6px 14px rgba(0,0,0,.22)";
-    wrap.style.display = "flex";
-    wrap.style.alignItems = "center";
-    wrap.style.justifyContent = "center";
-    wrap.style.transform = "translateY(-2px)";
-    wrap.style.userSelect = "none";
-    wrap.style.pointerEvents = "auto";
-    wrap.title = title || "";
-
-    const label = document.createElement("div");
-    label.textContent = String(order || "");
-    label.style.color = "#111";
-    label.style.fontWeight = "800";
-    label.style.fontSize = "13px";
-    label.style.lineHeight = "1";
-    label.style.fontFamily =
-      "system-ui, -apple-system, Segoe UI, Roboto, Arial";
-    wrap.appendChild(label);
-
     return wrap;
   }, []);
 
@@ -368,128 +311,6 @@ export default function MapMobile({
     });
     friendMarkersRef.current.clear();
   }, []);
-
-  // ✅ ADIM 3: Stop marker oluştur/güncelle
-  const upsertStopMarker = useCallback(
-    (stopId, pos, { order, title } = {}) => {
-      if (!stopId) return null;
-      if (!mapRef.current || !window.google?.maps) return null;
-
-      const map = mapRef.current;
-      const ord = Number.isFinite(Number(order)) ? Number(order) : 0;
-      const safeTitle =
-        typeof title === "string" && title.trim()
-          ? title.trim()
-          : ord
-          ? `Durak ${ord}`
-          : "Durak";
-
-      const existing = stopMarkersRef.current.get(stopId);
-      const canAdvanced =
-        !!advancedAllowedRef.current &&
-        !!window.google?.maps?.marker?.AdvancedMarkerElement;
-
-      if (existing) {
-        // konum
-        try {
-          existing.setPosition?.(pos);
-        } catch {
-          try {
-            existing.position = pos;
-          } catch {}
-        }
-        // title
-        try {
-          existing.setTitle?.(safeTitle);
-        } catch {
-          try {
-            existing.title = safeTitle;
-          } catch {}
-        }
-        // content (advanced)
-        if (canAdvanced) {
-          try {
-            existing.content = createStopEl(ord, safeTitle);
-          } catch {}
-        } else {
-          // klasik marker label güncelle
-          try {
-            existing.setLabel?.(String(ord || ""));
-          } catch {}
-        }
-        return existing;
-      }
-
-      let marker = null;
-      try {
-        if (canAdvanced) {
-          const el = createStopEl(ord, safeTitle);
-          marker = new window.google.maps.marker.AdvancedMarkerElement({
-            position: pos,
-            map,
-            content: el,
-            title: safeTitle,
-            zIndex: 12,
-          });
-        } else {
-          marker = new window.google.maps.Marker({
-            position: pos,
-            map,
-            title: safeTitle,
-            label: String(ord || ""),
-            zIndex: 12,
-          });
-        }
-      } catch {
-        // Son çare: default marker
-        try {
-          marker = new window.google.maps.Marker({
-            position: pos,
-            map,
-            title: safeTitle,
-            label: String(ord || ""),
-            zIndex: 12,
-          });
-        } catch {}
-      }
-
-      if (marker) stopMarkersRef.current.set(stopId, marker);
-      return marker;
-    },
-    [mapRef, advancedAllowedRef, createStopEl]
-  );
-
-  // ✅ ADIM 3: Stop marker temizliği
-  const clearAllStopMarkers = useCallback(() => {
-    stopMarkersRef.current.forEach((m) => {
-      try {
-        m.setMap?.(null);
-      } catch {
-        try {
-          m.map = null;
-        } catch {}
-      }
-    });
-    stopMarkersRef.current.clear();
-  }, []);
-
-  // ✅ ADIM 3: route idle olunca stop pinleri kalmasın
-  useEffect(() => {
-    if (routeStatus === "idle") {
-      try {
-        clearAllStopMarkers();
-      } catch {}
-    }
-  }, [routeStatus, clearAllStopMarkers]);
-
-  // ✅ ADIM 3: unmount temizliği
-  useEffect(() => {
-    return () => {
-      try {
-        clearAllStopMarkers();
-      } catch {}
-    };
-  }, [clearAllStopMarkers]);
 
   // Cluster kur / yok et (map hazır olduğunda)
   useEffect(() => {
@@ -944,43 +765,6 @@ export default function MapMobile({
     };
   }, []);
 
-  // === ROTA: polyline oluştur/temizle
-  const createPolyline = useCallback(() => {
-    if (!mapRef.current || !window.google?.maps || polylineRef.current) return;
-    try {
-      polylineRef.current = new window.google.maps.Polyline({
-        map: mapRef.current,
-        clickable: false,
-        strokeColor: "#1a73e8",
-        strokeOpacity: 0.95,
-        strokeWeight: 4,
-        geodesic: true,
-      });
-    } catch {}
-  }, [mapRef]);
-
-  const clearPolyline = useCallback(() => {
-    try {
-      if (polylineRef.current) {
-        polylineRef.current.setMap(null);
-        polylineRef.current = null;
-      }
-    } catch {}
-  }, []);
-
-  // Harita yeniden hazır olduğunda polyline'ı map'e bağla (kayıt sürüyorsa)
-  useEffect(() => {
-    if (
-      gmapsStatus === "ready" &&
-      routeStatus === "recording" &&
-      polylineRef.current
-    ) {
-      try {
-        polylineRef.current.setMap(mapRef.current);
-      } catch {}
-    }
-  }, [gmapsStatus, routeStatus, mapRef]);
-
   // Konum (watch)
   useEffect(() => {
     if (gmapsStatus !== "ready") return;
@@ -1023,42 +807,16 @@ export default function MapMobile({
         });
       }
 
-      // === ROTA: kayıt aktifse noktayı ekle ve artımlı yaz
-      if (routeStatus === "recording" && activeRouteIdRef.current) {
-        try {
-          routeRecorder.onPoint(loc.lat, loc.lng, Date.now());
-
-          // Polyline'a sadece yeni noktaları ekle
-          const path = routeRecorder.getPath();
-          const start = lastSyncedIndexRef.current || 0;
-          const newChunk = path.slice(start);
-          if (newChunk.length) {
-            // harita çizgisi
-            try {
-              createPolyline();
-              const arr = polylineRef.current?.getPath?.();
-              if (arr && window.google?.maps) {
-                newChunk.forEach((p) =>
-                  arr.push(new window.google.maps.LatLng(p.lat, p.lng))
-                );
-              }
-            } catch {}
-
-            // Firestore'a artımlı yazım (async, beklemeden)
-            routeStore
-              .appendPath(activeRouteIdRef.current, newChunk)
-              .catch(() => {});
-            lastSyncedIndexRef.current = path.length;
-          }
-        } catch {}
-      }
-
       // *** ÖNEMLİ: Burada toast YOK (tekrarlamayı engelledik) ***
     };
     const onErr = () => setUserLocation(null);
 
     navigator.geolocation.getCurrentPosition(onPos, onErr, geoOptions);
-    const watchId = navigator.geolocation.watchPosition(onPos, onErr, geoOptions);
+    const watchId = navigator.geolocation.watchPosition(
+      onPos,
+      onErr,
+      geoOptions
+    );
     return () => {
       try {
         navigator.geolocation.clearWatch(watchId);
@@ -1070,8 +828,6 @@ export default function MapMobile({
     firstFixDone,
     userMovedMap,
     mapRef,
-    routeStatus,
-    createPolyline,
   ]);
 
   // İlk GPS fix alındığında bir kez tost göster
@@ -1130,7 +886,9 @@ export default function MapMobile({
     }
     if (pct) {
       pct.textContent =
-        batteryLevel == null ? "—" : `${Math.round((batteryLevel || 0) * 100)}%`;
+        batteryLevel == null
+          ? "—"
+          : `${Math.round((batteryLevel || 0) * 100)}%`;
     }
     if (cone) {
       cone.style.display = headingDeg == null ? "none" : "block";
@@ -1310,239 +1068,6 @@ export default function MapMobile({
     }
   }, [selectedPlace]);
 
-  // === ROTA: UI Aksiyonları
-  const handleStartRoute = useCallback(async () => {
-    if (routeStatus !== "idle") return;
-    if (routeStartInFlightRef.current) return;
-    routeStartInFlightRef.current = true;
-
-    try {
-      const ownerId = auth.currentUser?.uid || "";
-      const title = `Rota ${new Date().toLocaleTimeString("tr-TR")}`;
-      routeRecorder.start({ title, visibility: "public" });
-      setRouteStatus("recording");
-
-      const routeId = await routeStore.createRoute({
-        ownerId,
-        title,
-        visibility: "public",
-      });
-
-      activeRouteIdRef.current = routeId;
-      lastSyncedIndexRef.current = 0;
-      createPolyline();
-
-      // İlk nokta mevcutsa hemen kaydet
-      if (userLocation) {
-        routeRecorder.onPoint(userLocation.lat, userLocation.lng, Date.now());
-        const p = routeRecorder.getPath();
-        if (p.length) {
-          try {
-            const arr = polylineRef.current?.getPath?.();
-            if (arr && window.google?.maps) {
-              arr.push(
-                new window.google.maps.LatLng(
-                  userLocation.lat,
-                  userLocation.lng
-                )
-              );
-            }
-          } catch {}
-          routeStore.appendPath(routeId, p).catch(() => {});
-          lastSyncedIndexRef.current = p.length;
-        }
-      }
-    } catch {
-      setRouteStatus("idle");
-      activeRouteIdRef.current = null;
-      clearPolyline();
-      try {
-        clearAllStopMarkers();
-      } catch {}
-    } finally {
-      routeStartInFlightRef.current = false;
-    }
-  }, [
-    routeStatus,
-    userLocation,
-    createPolyline,
-    clearPolyline,
-    clearAllStopMarkers,
-  ]);
-
-  // ✅ ADIM 1: "Durak Ekle" artık prompt değil → sheet aç
-  const handleAddStop = useCallback(() => {
-    if (
-      routeStatus !== "recording" ||
-      !activeRouteIdRef.current ||
-      !userLocation ||
-      routeStatus === "finishing"
-    )
-      return;
-
-    // Lokasyonu "açıldığı an" sabitle (UX daha deterministik)
-    stopDraftLocRef.current = { ...userLocation };
-    setIsStopComposerOpen(true);
-  }, [routeStatus, userLocation]);
-
-  // ✅ ADIM 1 + ✅ ADIM 3: Sheet submit → stop objesi oluştur, UI'da marker bas, sonra yazmayı dene
-  const handleSubmitStop = useCallback(
-    async ({ title, note }) => {
-      if (routeStatus !== "recording" || !activeRouteIdRef.current) return;
-
-      const loc = stopDraftLocRef.current || userLocation;
-      if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng))
-        return;
-
-      const safeTitle = String(title || "").trim();
-      const safeNote = String(note || "");
-
-      try {
-        const stop = routeRecorder.addStop({
-          title: safeTitle,
-          note: safeNote,
-          lat: loc.lat,
-          lng: loc.lng,
-          t: Date.now(),
-        });
-
-        if (stop) {
-          // ✅ ADIM 3: Firestore başarılı/başarısız olsa bile kullanıcı hemen görsün
-          const stopIdGuess = `stop_${stop.order}_${stop.t}`;
-          try {
-            upsertStopMarker(
-              stopIdGuess,
-              { lat: stop.lat, lng: stop.lng },
-              { order: stop.order, title: stop.title }
-            );
-          } catch {}
-
-          // Kalıcı yazım (ADIM 2)
-          try {
-            await routeStore.addStop(activeRouteIdRef.current, stop);
-          } catch {}
-        }
-      } catch {} finally {
-        // Sheet kapanınca draft temizle
-        stopDraftLocRef.current = null;
-      }
-    },
-    [routeStatus, userLocation, upsertStopMarker]
-  );
-
-  const handleFinishRoute = useCallback(async () => {
-    if (routeStatus !== "recording" || !activeRouteIdRef.current) return;
-    setRouteStatus("finishing");
-    try {
-      // Gönderilmemiş path varsa yaz
-      const full = routeRecorder.getPath();
-      const start = lastSyncedIndexRef.current || 0;
-      const remain = full.slice(start);
-      if (remain.length)
-        await routeStore.appendPath(activeRouteIdRef.current, remain);
-
-      const stats = routeRecorder.finish(); // recorder sıfırlanır
-      if (stats) await routeStore.finishRoute(activeRouteIdRef.current, stats);
-    } catch {} finally {
-      activeRouteIdRef.current = null;
-      lastSyncedIndexRef.current = 0;
-      clearPolyline();
-      try {
-        clearAllStopMarkers(); // ✅ ADIM 3: bitince stop pinleri de temizle
-      } catch {}
-      setRouteStatus("idle");
-    }
-  }, [routeStatus, clearPolyline, clearAllStopMarkers]);
-
-  // ✅ Token consume: sadece token varsa builder (recording) başlat
-  const consumeRouteBuilderLaunchToken = useCallback(() => {
-    try {
-      if (typeof window === "undefined") return;
-
-      const token = window.__MYLASA_ROUTE_BUILDER_LAUNCH__;
-      if (!token || typeof token !== "object") return;
-
-      const ts = Number(token.ts);
-      const now = Date.now();
-      const age = Number.isFinite(ts) ? now - ts : Number.POSITIVE_INFINITY;
-
-      // token’ı consume et (stale olsa bile sil)
-      try {
-        delete window.__MYLASA_ROUTE_BUILDER_LAUNCH__;
-      } catch {
-        try {
-          window.__MYLASA_ROUTE_BUILDER_LAUNCH__ = undefined;
-        } catch {}
-      }
-
-      // TTL kontrol (stale ise açma)
-      if (!Number.isFinite(age) || age < 0 || age > ROUTE_BUILDER_LAUNCH_TTL_MS)
-        return;
-
-      // zaten builder moddaysak tekrar başlatma
-      if (routeStatus !== "idle") return;
-
-      // builder mode = route recording başlat
-      (async () => {
-        try {
-          await handleStartRoute();
-        } catch {}
-      })();
-    } catch {}
-  }, [routeStatus, handleStartRoute]);
-
-  // mount
-  useEffect(() => {
-    consumeRouteBuilderLaunchToken();
-  }, [consumeRouteBuilderLaunchToken]);
-
-  // focus (tab switch / geri dönüş)
-  useEffect(() => {
-    const onFocus = () => {
-      try {
-        consumeRouteBuilderLaunchToken();
-      } catch {}
-    };
-    window.addEventListener("focus", onFocus);
-    return () => {
-      try {
-        window.removeEventListener("focus", onFocus);
-      } catch {}
-    };
-  }, [consumeRouteBuilderLaunchToken]);
-
-  // visibilitychange (mobilde focus kaçabiliyor)
-  useEffect(() => {
-    const onVis = () => {
-      try {
-        if (document.visibilityState === "visible") consumeRouteBuilderLaunchToken();
-      } catch {}
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      try {
-        document.removeEventListener("visibilitychange", onVis);
-      } catch {}
-    };
-  }, [consumeRouteBuilderLaunchToken]);
-
-  // navigasyon event’leri (Map zaten mounted ise bile token’ı kaçırma)
-  useEffect(() => {
-    const onNav = () => {
-      try {
-        consumeRouteBuilderLaunchToken();
-      } catch {}
-    };
-    window.addEventListener("mylasa:openMap", onNav);
-    window.addEventListener("mylasa:navigate", onNav);
-    return () => {
-      try {
-        window.removeEventListener("mylasa:openMap", onNav);
-        window.removeEventListener("mylasa:navigate", onNav);
-      } catch {}
-    };
-  }, [consumeRouteBuilderLaunchToken]);
-
   return (
     <div style={{ ...containerStyle, position: "relative", overflow: "hidden" }}>
       <style>{`
@@ -1564,7 +1089,9 @@ export default function MapMobile({
       </div>
 
       {/* üst bar */}
-      <div style={{ position: "absolute", left: 0, right: 0, top: 0, zIndex: 24 }}>
+      <div
+        style={{ position: "absolute", left: 0, right: 0, top: 0, zIndex: 24 }}
+      >
         <MapTopControls
           selfAvatarUrl={selfAvatarUrl}
           onOpenAvatar={() => setIsAvatarModalOpen(true)}
@@ -1658,23 +1185,11 @@ export default function MapMobile({
               {selectedPlace.name}
             </div>
             {(placeShortAddr || selectedPlace.address) && (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#666",
-                  marginTop: 2,
-                }}
-              >
+              <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
                 {placeShortAddr || selectedPlace.address}
               </div>
             )}
-            <div
-              style={{
-                fontSize: 12,
-                color: "#444",
-                marginTop: 6,
-              }}
-            >
+            <div style={{ fontSize: 12, color: "#444", marginTop: 6 }}>
               Uzaklık:{" "}
               {selectedDist != null ? `${selectedDist} m` : "—"} — Menzil:{" "}
               {CHECKIN_RADIUS_M / 1000 >= 1
@@ -1854,76 +1369,12 @@ export default function MapMobile({
         <LocateIcon size={28} color="#fff" weight="bold" />
       </button>
 
-      {/* === ROTA Mini Panel (Locate'in SOLU) === */}
-      {/* ✅ “Rota Başlat” UI YOK. Builder yalnız token ile açılır. */}
-      {routeStatus !== "idle" && (
-        <div
-          style={{
-            position: "absolute",
-            right: 82,
-            bottom: `calc(${fabBottom + FAB_EXTRA_LIFT}px + env(safe-area-inset-bottom, 0px))`,
-            zIndex: 23,
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-          }}
-        >
-          <button
-            onClick={handleAddStop}
-            disabled={!userLocation || routeStatus === "finishing"}
-            style={{
-              height: 40,
-              padding: "0 12px",
-              borderRadius: 20,
-              background: "rgba(0,0,0,0.68)",
-              color: "#fff",
-              border: "none",
-              fontWeight: 700,
-              cursor: routeStatus === "finishing" ? "not-allowed" : "pointer",
-              opacity: routeStatus === "finishing" ? 0.65 : 1,
-            }}
-            title="Durak Ekle"
-          >
-            Durak Ekle
-          </button>
-          <button
-            onClick={handleFinishRoute}
-            disabled={routeStatus === "finishing"}
-            style={{
-              height: 40,
-              padding: "0 12px",
-              borderRadius: 20,
-              background: routeStatus === "finishing" ? "#ef4444AA" : "#ef4444",
-              color: "#fff",
-              border: "none",
-              fontWeight: 800,
-              cursor: routeStatus === "finishing" ? "not-allowed" : "pointer",
-            }}
-            title="Bitir"
-          >
-            {routeStatus === "finishing" ? "Bitiriliyor…" : "Bitir"}
-          </button>
-        </div>
-      )}
-
-      {/* ✅ ADIM 1: Stop Composer Sheet */}
-      <StopComposerSheetMobile
-        open={isStopComposerOpen}
-        onClose={() => {
-          setIsStopComposerOpen(false);
-          stopDraftLocRef.current = null;
-        }}
-        onSubmit={handleSubmitStop}
-      />
-
       {/* Modallar */}
       {isAvatarModalOpen && (
         <AvatarModal onClose={() => setIsAvatarModalOpen(false)} />
       )}
       {overlay === PANEL_SETTINGS && (
-        <MapSettingsModal
-          onClose={() => dispatchPanels({ type: "CLOSE_ALL" })}
-        />
+        <MapSettingsModal onClose={() => dispatchPanels({ type: "CLOSE_ALL" })} />
       )}
 
       {/* Check-in modalı */}

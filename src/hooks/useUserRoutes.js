@@ -573,6 +573,18 @@ function logFirestoreQueryError(tag, err) {
   }
 }
 
+// ✅ EMİR 1/3 — DEV teşhis log helper (spam-guard)
+function safeShortId(v) {
+  try {
+    const s = v == null ? "" : String(v);
+    if (!s) return "";
+    if (s.length <= 10) return s;
+    return `${s.slice(0, 6)}…${s.slice(-4)}`;
+  } catch {
+    return "";
+  }
+}
+
 export default function useUserRoutes(ownerId, options = {}) {
   const {
     pageSize = DEFAULT_PAGE_SIZE,
@@ -601,6 +613,9 @@ export default function useUserRoutes(ownerId, options = {}) {
 
   // ✅ query mode: optimized(ownerId+status) vs legacy
   const queryModeRef = useRef("unknown"); // "unknown" | "optimized" | "legacy"
+
+  // ✅ EMİR 1/3: DEV teşhis spam-guard
+  const devDiagRef = useRef({ key: "", logged: false, phase: "" });
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -632,6 +647,9 @@ export default function useUserRoutes(ownerId, options = {}) {
     lockRef.current = { key: "", reason: "" };
     setAccessStatus("idle");
     setError(null);
+
+    // ✅ EMİR 1/3: owner değişince teşhis log reset
+    devDiagRef.current = { key: "", logged: false, phase: "" };
   }, [ownerId]);
 
   const runQueryPage = useCallback(
@@ -701,6 +719,48 @@ export default function useUserRoutes(ownerId, options = {}) {
       const ownerKey = String(ownerId);
       const lockKey = `${ownerKey}|${viewerId ? String(viewerId) : "anon"}`;
 
+      // ✅ EMİR 1/3 — Teşhis: liste kaynağı + filtreleri DEV-only log (spam guard)
+      if (__DEV__ && mode === "reset") {
+        const diagKey = `${ownerKey}|${viewerId ? String(viewerId) : "anon"}|self:${
+          isSelf ? "1" : "0"
+        }|follow:${isFollowing ? "1" : "0"}|ps:${pageSize}`;
+
+        if (devDiagRef.current.key !== diagKey) {
+          devDiagRef.current.key = diagKey;
+          devDiagRef.current.logged = false;
+          devDiagRef.current.phase = "";
+        }
+
+        if (!devDiagRef.current.logged) {
+          devDiagRef.current.logged = true;
+          try {
+            // eslint-disable-next-line no-console
+            console.groupCollapsed("[RoutesDiag] useUserRoutes — source: collection('routes') query");
+            // eslint-disable-next-line no-console
+            console.log("ownerId:", safeShortId(ownerKey), "viewerId:", safeShortId(viewerId || "anon"), {
+              isSelf,
+              isFollowing,
+              pageSize,
+            });
+            // eslint-disable-next-line no-console
+            console.log("Query[optimized]: where(ownerId=='...') + where(status=='finished') + orderBy(createdAt desc) + limit(pageSize+1) + startAfter(cursor?)");
+            // eslint-disable-next-line no-console
+            console.log("Query[legacy fallback]: orderBy(createdAt desc) + limit(pageSize+1) + startAfter(cursor?)");
+            // eslint-disable-next-line no-console
+            console.log("Client-side filters:", {
+              ownerIdMatch: "getOwnerIdFromRaw(raw, ownerKey) must equal ownerKey",
+              deleted: "raw.deleted || raw.deletedAt || raw.isDeleted || raw.archivedAt -> filtered out",
+              status: "if raw.status exists -> must be 'finished' (empty status passes client filter but NOT optimized query)",
+              visibility: isSelf
+                ? "self: no visibility gating"
+                : "non-self: private filtered; followers filtered if !isFollowing; unknown filtered",
+            });
+            // eslint-disable-next-line no-console
+            console.groupEnd();
+          } catch {}
+        }
+      }
+
       // ✅ EMİR 5: login yoksa hiç sorgu başlatma → UI "giriş gerekli"
       if (!viewerId) {
         if (lockRef.current.key === lockKey && lockRef.current.reason === "login_required") return;
@@ -768,6 +828,23 @@ export default function useUserRoutes(ownerId, options = {}) {
 
           const docs = snap.docs || [];
           const pageDocs = docs.slice(0, pageSize);
+
+          // ✅ EMİR 1/3 — DEV: hangi query kullanıldı + kaç doc döndü (tek sefer)
+          if (__DEV__ && mode === "reset") {
+            const phaseKey = `${devDiagRef.current.key}|used:${used}|loop:${loops}`;
+            if (devDiagRef.current.phase !== phaseKey) {
+              devDiagRef.current.phase = phaseKey;
+              try {
+                // eslint-disable-next-line no-console
+                console.log("[RoutesDiag] query used:", used, {
+                  totalDocs: docs.length,
+                  pageDocs: pageDocs.length,
+                  hasCursor: !!localCursor,
+                  queryModeRef: queryModeRef.current,
+                });
+              } catch {}
+            }
+          }
 
           if (
             mode === "reset" &&
