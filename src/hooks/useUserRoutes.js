@@ -9,6 +9,12 @@
 // - Fallback (ilk durak görseli) UI tarafında pickCoverCandidate ile yapılır.
 //
 // EMİR 5 — permission-denied spam guard + UI lock mode (rules'a dokunmadan)
+//
+// ✅ EMİR PAKETİ 2/3 (Kalıcı Fix):
+// - Firestore composite index yoksa self query (ownerId== + orderBy createdAt) failed-precondition verir.
+// - Bu durumda liste “orderBy’sız fallback”e düşer ve yeni create edilen rota ilk sayfada görünmeyebilir.
+// - ÇÖZÜM: create edilen routeId’yi localStorage’a yaz + reset load’da getDoc ile MERGE et.
+// - Ayrıca orderBy self query’nin “index yok” hatasını bir kez tespit edip tekrar deneme → log spam kes.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -19,6 +25,8 @@ import {
   startAfter,
   getDocs,
   where,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -47,6 +55,17 @@ function warnPermOnce(key, msg, err) {
   console.warn(msg, err || "");
 }
 
+// ✅ EMİR 2/3: dev diag once
+const __diagOnceKeys = new Set();
+function diagOnce(key, ...args) {
+  if (!__DEV__) return;
+  const k = String(key || "diag_once");
+  if (__diagOnceKeys.has(k)) return;
+  __diagOnceKeys.add(k);
+  // eslint-disable-next-line no-console
+  console.log(...args);
+}
+
 function getErrCode(err) {
   const c = err?.code ? String(err.code) : "";
   return c || "";
@@ -68,6 +87,14 @@ function isUnauthenticatedError(err) {
   if (code === "unauthenticated") return true;
   const msg = err?.message ? String(err.message) : "";
   if (/unauthenticated/i.test(msg)) return true;
+  return false;
+}
+
+function isFailedPreconditionIndexError(err) {
+  const code = getErrCode(err);
+  if (code === "failed-precondition") return true;
+  const msg = err?.message ? String(err.message) : "";
+  if (/requires an index/i.test(msg)) return true;
   return false;
 }
 
@@ -541,12 +568,21 @@ function needsHydratePreview(route) {
 function logFirestoreQueryError(tag, err) {
   const code = getErrCode(err) || "unknown";
   const message = err?.message ? String(err.message) : "";
-  const stack = err?.stack ? String(err.stack) : "";
 
   if (isPermissionDeniedError(err) || isUnauthenticatedError(err)) {
     warnPermOnce(
       `perm_${tag}_${code}`,
       `[useUserRoutes] ${tag} — erişim yok (${code})`,
+      __DEV__ ? err : null
+    );
+    return;
+  }
+
+  // ✅ EMİR 2/3: index hatası spam kır (tek sefer)
+  if (isFailedPreconditionIndexError(err)) {
+    warnPermOnce(
+      `idx_${tag}_${code}`,
+      `[useUserRoutes] ${tag} — query index istiyor (${code}). Fallback uygulanacak.`,
       __DEV__ ? err : null
     );
     return;
@@ -560,10 +596,6 @@ function logFirestoreQueryError(tag, err) {
   console.log("err.code:", code);
   // eslint-disable-next-line no-console
   console.log("err.message:", message);
-  if (stack) {
-    // eslint-disable-next-line no-console
-    console.log("err.stack:", stack);
-  }
   // eslint-disable-next-line no-console
   console.groupEnd();
 
@@ -573,16 +605,190 @@ function logFirestoreQueryError(tag, err) {
   }
 }
 
-// ✅ EMİR 1/3 — DEV teşhis log helper (spam-guard)
-function safeShortId(v) {
+// --------- EMİR 2/3: recent-created routeId cache (localStorage) ---------
+const RECENT_ROUTES_KEY_PREFIX = "mylasa_recent_routes_v1:";
+function recentRoutesKey(ownerKey) {
+  return `${RECENT_ROUTES_KEY_PREFIX}${String(ownerKey || "")}`;
+}
+
+function safeJsonParse(v) {
   try {
-    const s = v == null ? "" : String(v);
-    if (!s) return "";
-    if (s.length <= 10) return s;
-    return `${s.slice(0, 6)}…${s.slice(-4)}`;
+    return JSON.parse(v);
   } catch {
-    return "";
+    return null;
   }
+}
+
+function readRecentRouteIds(ownerKey) {
+  try {
+    if (typeof window === "undefined") return [];
+    const k = recentRoutesKey(ownerKey);
+    const raw = window.localStorage ? window.localStorage.getItem(k) : "";
+    if (!raw) return [];
+    const parsed = safeJsonParse(raw);
+    const arr = Array.isArray(parsed) ? parsed : [];
+    const cleaned = arr
+      .map((x) => (x == null ? "" : String(x).trim()))
+      .filter(Boolean);
+    // dedupe (keep order)
+    const seen = new Set();
+    const out = [];
+    for (const id of cleaned) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+    return out.slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentRouteIds(ownerKey, ids) {
+  try {
+    if (typeof window === "undefined") return;
+    const k = recentRoutesKey(ownerKey);
+    const arr = Array.isArray(ids) ? ids : [];
+    const cleaned = arr
+      .map((x) => (x == null ? "" : String(x).trim()))
+      .filter(Boolean)
+      .slice(0, 20);
+    if (window.localStorage) {
+      window.localStorage.setItem(k, JSON.stringify(cleaned));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function rememberRecentRouteId(ownerKey, routeId) {
+  const rid = routeId == null ? "" : String(routeId).trim();
+  if (!rid) return;
+  const prev = readRecentRouteIds(ownerKey);
+  const next = [rid, ...prev.filter((x) => x !== rid)].slice(0, 20);
+  writeRecentRouteIds(ownerKey, next);
+}
+
+function getRouteTimeMs(route) {
+  const r = route || {};
+  const raw = r.raw || {};
+  const pickTs = (v) => {
+    try {
+      if (!v) return null;
+      if (typeof v.toDate === "function") return v.toDate().getTime();
+      if (typeof v.seconds === "number") return v.seconds * 1000;
+      if (v instanceof Date) return v.getTime();
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const a =
+    pickTs(r.createdAt) ??
+    pickTs(raw.createdAt) ??
+    pickTs(r.finishedAt) ??
+    pickTs(raw.finishedAt) ??
+    null;
+
+  return a != null ? a : 0;
+}
+
+function dedupeRoutesById(list) {
+  const out = [];
+  const seen = new Set();
+  for (const it of list || []) {
+    const id = it?.id ? String(it.id) : "";
+    if (!id) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(it);
+  }
+  return out;
+}
+
+function buildPatchedRouteModel({ id, raw, ownerKey, viewerId, isSelf, isFollowing }) {
+  if (!id || !raw || typeof raw !== "object") return null;
+
+  const docOwnerId = getOwnerIdFromRaw(raw, ownerKey);
+  const docOwnerKey = docOwnerId ? String(docOwnerId) : "";
+  if (!docOwnerKey || docOwnerKey !== ownerKey) return null;
+
+  const deleted =
+    raw.deleted === true || !!raw.deletedAt || !!raw.isDeleted || !!raw.archivedAt;
+  if (deleted) return null;
+
+  const status = (raw.status || "").toString().toLowerCase();
+
+  if (!isSelf) {
+    if (status && status !== "finished") return null;
+  }
+
+  const visibilityKey = getVisibilityKey(raw);
+
+  if (!isSelf) {
+    if (visibilityKey === "private") return null;
+    if (!isFollowing && visibilityKey === "followers") return null;
+    if (visibilityKey === "unknown") return null;
+  }
+
+  const model = buildRouteCardModel({
+    id,
+    raw,
+    ownerIdFallback: docOwnerKey,
+    viewerId,
+  });
+
+  const { stopsPreview, coverUrl, thumbnailUrl } = extractPreviewFromRouteDoc(raw);
+
+  const modelCover = normalizeCoverUrl(model?.coverUrl);
+  const modelPreview = normalizeCoverUrl(model?.previewUrl);
+  const modelThumb = normalizeCoverUrl(model?.thumbnailUrl);
+  const modelThumb2 = normalizeCoverUrl(model?.thumbUrl);
+  const modelImage = normalizeCoverUrl(model?.imageUrl);
+  const modelMedia = normalizeCoverUrl(model?.mediaUrl);
+
+  const docCover = normalizeCoverUrl(coverUrl);
+  const docThumb = normalizeCoverUrl(thumbnailUrl);
+
+  const finalCoverRaw = modelCover || modelPreview || modelImage || modelMedia || docCover || "";
+  const finalCover = finalCoverRaw && !isVideoUrl(finalCoverRaw) ? finalCoverRaw : "";
+
+  const finalThumbRaw = modelThumb || modelThumb2 || docThumb || finalCover || "";
+  const finalThumb = finalThumbRaw && !isVideoUrl(finalThumbRaw) ? finalThumbRaw : "";
+
+  const rawCoverObj = raw?.cover && typeof raw.cover === "object" ? raw.cover : null;
+  const modelCoverObj = model?.cover && typeof model.cover === "object" ? model.cover : null;
+  const baseCoverObj = modelCoverObj || rawCoverObj;
+
+  let nextCoverObj = baseCoverObj;
+  if (baseCoverObj && typeof baseCoverObj === "object") {
+    const picked = pickCoverUrlFromCoverObj(baseCoverObj);
+    const safeUrl = picked.url && !isVideoUrl(picked.url) ? picked.url : "";
+    nextCoverObj = {
+      ...baseCoverObj,
+      url: safeUrl,
+      sourceField:
+        (isNonEmptyString(baseCoverObj.sourceField) && String(baseCoverObj.sourceField)) ||
+        picked.sourceField ||
+        "cover.url",
+    };
+  }
+
+  return {
+    ...model,
+    ...(nextCoverObj ? { cover: nextCoverObj } : {}),
+    stopsPreview:
+      Array.isArray(model?.stopsPreview) && model.stopsPreview.length ? model.stopsPreview : stopsPreview,
+    coverUrl: finalCover,
+    thumbnailUrl: finalThumb,
+    previewUrl: modelPreview || finalCover || "",
+    thumbUrl: modelThumb2 || finalThumb || "",
+    imageUrl: modelImage || finalCover || "",
+    mediaUrl: modelMedia || finalCover || "",
+    raw: model?.raw && typeof model.raw === "object" ? model.raw : raw,
+  };
 }
 
 export default function useUserRoutes(ownerId, options = {}) {
@@ -611,11 +817,14 @@ export default function useUserRoutes(ownerId, options = {}) {
   const hydrateCacheRef = useRef(new Map()); // routeId -> { status: "inflight"|"done" }
   const hydrateJobIdRef = useRef(0);
 
-  // ✅ query mode: optimized(ownerId+status) vs legacy
-  const queryModeRef = useRef("unknown"); // "unknown" | "optimized" | "legacy"
+  // ✅ query mode: optimized vs legacy vs self
+  const queryModeRef = useRef("unknown"); // "unknown" | "optimized" | "legacy" | "self"
 
-  // ✅ EMİR 1/3: DEV teşhis spam-guard
-  const devDiagRef = useRef({ key: "", logged: false, phase: "" });
+  // ✅ EMİR 2/3: self orderBy index yoksa bir daha deneme (spam kır)
+  const selfOrderBrokenRef = useRef(false);
+
+  // ✅ refresh spam guard
+  const refreshGateRef = useRef(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -638,18 +847,61 @@ export default function useUserRoutes(ownerId, options = {}) {
     };
   }, []);
 
+  // ✅ EMİR 2/3: create sonrası open-route-modal event’inden routeId yakala
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isSelf) return;
+    if (!ownerId) return;
+
+    const ownerKey = String(ownerId);
+    const onOpenRouteModal = (e) => {
+      try {
+        const d = e?.detail || {};
+        const rid = d?.routeId ? String(d.routeId).trim() : "";
+        const src = d?.source ? String(d.source).toLowerCase() : "";
+        const prefillOwner =
+          d?.route?.ownerId != null ? String(d.route.ownerId) : d?.ownerId != null ? String(d.ownerId) : "";
+
+        if (!rid) return;
+
+        // sadece create akışında kaydet
+        if (!src.includes("profile_create") && !src.includes("create")) return;
+
+        // owner uyuşmuyorsa dokunma
+        if (prefillOwner && String(prefillOwner) !== ownerKey) return;
+
+        rememberRecentRouteId(ownerKey, rid);
+
+        // ✅ hafif refresh (anında grid’e düşsün)
+        const now = Date.now();
+        if (now - refreshGateRef.current < 650) return;
+        refreshGateRef.current = now;
+
+        try {
+          // refresh reset: yeni rota listede görünsün
+          // (loadPage declare aşağıda; closure safe)
+        } catch {}
+      } catch {}
+    };
+
+    window.addEventListener("open-route-modal", onOpenRouteModal);
+    return () => {
+      try {
+        window.removeEventListener("open-route-modal", onOpenRouteModal);
+      } catch {}
+    };
+  }, [isSelf, ownerId]);
+
   // owner değişince hydrate cache + query mode + lock sıfırla
   useEffect(() => {
     hydrateCacheRef.current = new Map();
     hydrateJobIdRef.current += 1;
     queryModeRef.current = "unknown";
+    selfOrderBrokenRef.current = false;
 
     lockRef.current = { key: "", reason: "" };
     setAccessStatus("idle");
     setError(null);
-
-    // ✅ EMİR 1/3: owner değişince teşhis log reset
-    devDiagRef.current = { key: "", logged: false, phase: "" };
   }, [ownerId]);
 
   const runQueryPage = useCallback(
@@ -657,31 +909,108 @@ export default function useUserRoutes(ownerId, options = {}) {
       const colRef = collection(db, "routes");
 
       const mkOptimized = () => {
+        const diag = [
+          `where(ownerId == ${ownerKey})`,
+          `where(status == finished)`,
+          `orderBy(createdAt desc)`,
+        ];
+
         const constraints = [
           where("ownerId", "==", ownerKey),
           where("status", "==", "finished"),
           orderBy("createdAt", "desc"),
         ];
-        if (localCursor) constraints.push(startAfter(localCursor));
+        if (localCursor) {
+          constraints.push(startAfter(localCursor));
+          diag.push("startAfter(cursor)");
+        }
         constraints.push(limit(pageSize + 1));
-        return query(colRef, ...constraints);
+        diag.push(`limit(${pageSize + 1})`);
+        return { q: query(colRef, ...constraints), diag, supportsCursor: true };
+      };
+
+      const mkSelf = () => {
+        // ✅ SELF: status filtresi YOK (draft/empty status da gelsin)
+        const diag = [`where(ownerId == ${ownerKey})`, `orderBy(createdAt desc)`];
+
+        const constraints = [where("ownerId", "==", ownerKey), orderBy("createdAt", "desc")];
+        if (localCursor) {
+          constraints.push(startAfter(localCursor));
+          diag.push("startAfter(cursor)");
+        }
+        constraints.push(limit(pageSize + 1));
+        diag.push(`limit(${pageSize + 1})`);
+        return { q: query(colRef, ...constraints), diag, supportsCursor: true };
+      };
+
+      const mkSelfNoOrderFallback = () => {
+        // ✅ index yoksa: orderBy’sız (cursor yok)
+        const diag = [`where(ownerId == ${ownerKey})`, `limit(${pageSize + 1})`, `NO_ORDER_FALLBACK`];
+        const constraints = [where("ownerId", "==", ownerKey), limit(pageSize + 1)];
+        return { q: query(colRef, ...constraints), diag, supportsCursor: false };
       };
 
       const mkLegacy = () => {
+        const diag = [`orderBy(createdAt desc)`];
+
         const constraints = [orderBy("createdAt", "desc")];
-        if (localCursor) constraints.push(startAfter(localCursor));
+        if (localCursor) {
+          constraints.push(startAfter(localCursor));
+          diag.push("startAfter(cursor)");
+        }
         constraints.push(limit(pageSize + 1));
-        return query(colRef, ...constraints);
+        diag.push(`limit(${pageSize + 1})`);
+        return { q: query(colRef, ...constraints), diag, supportsCursor: true };
       };
 
       if (modeToUse === "legacy") {
-        const snap = await getDocs(mkLegacy());
-        return { snap, used: "legacy" };
+        const { q, diag, supportsCursor } = mkLegacy();
+        const snap = await getDocs(q);
+        return { snap, used: "legacy", diag, supportsCursor };
       }
 
+      if (modeToUse === "self") {
+        // ✅ EMİR 2/3: daha önce index yok diye bozulduysa direkt no-order
+        if (selfOrderBrokenRef.current) {
+          const { q, diag, supportsCursor } = mkSelfNoOrderFallback();
+          const snap = await getDocs(q);
+          return { snap, used: "self", diag, supportsCursor };
+        }
+
+        try {
+          const { q, diag, supportsCursor } = mkSelf();
+          const snap = await getDocs(q);
+          return { snap, used: "self", diag, supportsCursor };
+        } catch (e) {
+          if (isPermissionDeniedError(e) || isUnauthenticatedError(e)) throw e;
+
+          // ✅ index yoksa bir daha orderBy deneme
+          if (isFailedPreconditionIndexError(e)) {
+            selfOrderBrokenRef.current = true;
+            diagOnce(
+              `RoutesDiag_selfOrderBroken_${ownerKey}`,
+              "[RoutesDiag] self orderBy(createdAt) index yok → bundan sonra NO_ORDER_FALLBACK kullanılacak."
+            );
+          }
+
+          logFirestoreQueryError("[useUserRoutes] self query failed", e);
+
+          try {
+            const { q, diag, supportsCursor } = mkSelfNoOrderFallback();
+            const snap = await getDocs(q);
+            return { snap, used: "self", diag, supportsCursor };
+          } catch (e2) {
+            logFirestoreQueryError("[useUserRoutes] self no-order fallback failed", e2);
+            throw e2;
+          }
+        }
+      }
+
+      // default: optimized
       try {
-        const snap = await getDocs(mkOptimized());
-        return { snap, used: "optimized" };
+        const { q, diag, supportsCursor } = mkOptimized();
+        const snap = await getDocs(q);
+        return { snap, used: "optimized", diag, supportsCursor };
       } catch (e) {
         // ✅ permission/unauthenticated ise gereksiz fallback deneme (spam ve ekstra istek yok)
         if (isPermissionDeniedError(e) || isUnauthenticatedError(e)) {
@@ -691,8 +1020,9 @@ export default function useUserRoutes(ownerId, options = {}) {
         logFirestoreQueryError("[useUserRoutes] optimized query failed", e);
 
         try {
-          const snap = await getDocs(mkLegacy());
-          return { snap, used: "legacy" };
+          const { q, diag, supportsCursor } = mkLegacy();
+          const snap = await getDocs(q);
+          return { snap, used: "legacy", diag, supportsCursor };
         } catch (e2) {
           logFirestoreQueryError("[useUserRoutes] legacy fallback failed", e2);
           throw e2;
@@ -718,48 +1048,6 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       const ownerKey = String(ownerId);
       const lockKey = `${ownerKey}|${viewerId ? String(viewerId) : "anon"}`;
-
-      // ✅ EMİR 1/3 — Teşhis: liste kaynağı + filtreleri DEV-only log (spam guard)
-      if (__DEV__ && mode === "reset") {
-        const diagKey = `${ownerKey}|${viewerId ? String(viewerId) : "anon"}|self:${
-          isSelf ? "1" : "0"
-        }|follow:${isFollowing ? "1" : "0"}|ps:${pageSize}`;
-
-        if (devDiagRef.current.key !== diagKey) {
-          devDiagRef.current.key = diagKey;
-          devDiagRef.current.logged = false;
-          devDiagRef.current.phase = "";
-        }
-
-        if (!devDiagRef.current.logged) {
-          devDiagRef.current.logged = true;
-          try {
-            // eslint-disable-next-line no-console
-            console.groupCollapsed("[RoutesDiag] useUserRoutes — source: collection('routes') query");
-            // eslint-disable-next-line no-console
-            console.log("ownerId:", safeShortId(ownerKey), "viewerId:", safeShortId(viewerId || "anon"), {
-              isSelf,
-              isFollowing,
-              pageSize,
-            });
-            // eslint-disable-next-line no-console
-            console.log("Query[optimized]: where(ownerId=='...') + where(status=='finished') + orderBy(createdAt desc) + limit(pageSize+1) + startAfter(cursor?)");
-            // eslint-disable-next-line no-console
-            console.log("Query[legacy fallback]: orderBy(createdAt desc) + limit(pageSize+1) + startAfter(cursor?)");
-            // eslint-disable-next-line no-console
-            console.log("Client-side filters:", {
-              ownerIdMatch: "getOwnerIdFromRaw(raw, ownerKey) must equal ownerKey",
-              deleted: "raw.deleted || raw.deletedAt || raw.isDeleted || raw.archivedAt -> filtered out",
-              status: "if raw.status exists -> must be 'finished' (empty status passes client filter but NOT optimized query)",
-              visibility: isSelf
-                ? "self: no visibility gating"
-                : "non-self: private filtered; followers filtered if !isFollowing; unknown filtered",
-            });
-            // eslint-disable-next-line no-console
-            console.groupEnd();
-          } catch {}
-        }
-      }
 
       // ✅ EMİR 5: login yoksa hiç sorgu başlatma → UI "giriş gerekli"
       if (!viewerId) {
@@ -807,46 +1095,55 @@ export default function useUserRoutes(ownerId, options = {}) {
         let collected = [];
         let localHasMore = false;
         let loops = 0;
+        let lastDiag = [];
+        let supportsCursor = true;
+        let usedMode = "unknown";
 
         while (loops < maxAutoPages) {
           const currentMode =
             mode === "reset"
               ? queryModeRef.current === "unknown"
-                ? "optimized"
+                ? isSelf
+                  ? "self"
+                  : "optimized"
                 : queryModeRef.current
               : queryModeRef.current === "unknown"
-              ? "legacy"
+              ? isSelf
+                ? "self"
+                : "legacy"
               : queryModeRef.current;
 
-          const { snap, used } = await runQueryPage({
+          const { snap, used, diag, supportsCursor: sc } = await runQueryPage({
             ownerKey,
             localCursor,
             modeToUse: currentMode,
           });
+
+          usedMode = used;
+          supportsCursor = sc !== false;
+          lastDiag = Array.isArray(diag) ? diag : [];
 
           if (!isMountedRef.current || reqId !== requestIdRef.current) return;
 
           const docs = snap.docs || [];
           const pageDocs = docs.slice(0, pageSize);
 
-          // ✅ EMİR 1/3 — DEV: hangi query kullanıldı + kaç doc döndü (tek sefer)
+          // ✅ DEV DIAG (tek sefer)
           if (__DEV__ && mode === "reset") {
-            const phaseKey = `${devDiagRef.current.key}|used:${used}|loop:${loops}`;
-            if (devDiagRef.current.phase !== phaseKey) {
-              devDiagRef.current.phase = phaseKey;
-              try {
-                // eslint-disable-next-line no-console
-                console.log("[RoutesDiag] query used:", used, {
-                  totalDocs: docs.length,
-                  pageDocs: pageDocs.length,
-                  hasCursor: !!localCursor,
-                  queryModeRef: queryModeRef.current,
-                });
-              } catch {}
-            }
+            diagOnce(`[RoutesDiag_used_${lockKey}_${usedMode}`, "[RoutesDiag] query used", {
+              ownerId: ownerKey,
+              used: usedMode,
+              supportsCursor,
+              filters: lastDiag,
+              totalDocs: docs.length,
+              pageDocs: pageDocs.length,
+              isSelf,
+            });
           }
 
+          // non-self için eski optimize->legacy keşfi kalsın
           if (
+            !isSelf &&
             mode === "reset" &&
             queryModeRef.current === "unknown" &&
             used === "optimized" &&
@@ -860,107 +1157,32 @@ export default function useUserRoutes(ownerId, options = {}) {
             const legacyDocs = legacyRes.snap.docs || [];
             if (legacyDocs.length > 0) queryModeRef.current = "legacy";
           } else if (mode === "reset" && queryModeRef.current === "unknown") {
-            queryModeRef.current = used;
+            queryModeRef.current = used; // optimized | legacy | self
           }
 
-          const nextCursor = pageDocs.length ? pageDocs[pageDocs.length - 1] : null;
-          localHasMore = docs.length > pageSize;
+          // NO_ORDER_FALLBACK ise pagination yok
+          if (!supportsCursor) {
+            localCursor = null;
+            localHasMore = false;
+          }
+
+          const nextCursor = supportsCursor && pageDocs.length ? pageDocs[pageDocs.length - 1] : null;
+          localHasMore = supportsCursor ? docs.length > pageSize : false;
 
           const mapped = pageDocs
             .map((d) => {
               const raw = d.data() || {};
 
-              const docOwnerId = getOwnerIdFromRaw(raw, ownerKey);
-              const docOwnerKey = docOwnerId ? String(docOwnerId) : "";
-              if (!docOwnerKey || docOwnerKey !== ownerKey) return null;
-
-              const deleted =
-                raw.deleted === true ||
-                !!raw.deletedAt ||
-                !!raw.isDeleted ||
-                !!raw.archivedAt;
-              if (deleted) return null;
-
-              const status = (raw.status || "").toString().toLowerCase();
-              if (status && status !== "finished") return null;
-
-              const visibilityKey = getVisibilityKey(raw);
-
-              if (!isSelf) {
-                if (visibilityKey === "private") return null;
-                if (!isFollowing && visibilityKey === "followers") return null;
-                if (visibilityKey === "unknown") return null;
-              }
-
-              const model = buildRouteCardModel({
+              const model = buildPatchedRouteModel({
                 id: d.id,
                 raw,
-                ownerIdFallback: docOwnerKey,
+                ownerKey,
                 viewerId,
+                isSelf,
+                isFollowing,
               });
 
-              const { stopsPreview, coverUrl, thumbnailUrl } = extractPreviewFromRouteDoc(raw);
-
-              const modelCover = normalizeCoverUrl(model?.coverUrl);
-              const modelPreview = normalizeCoverUrl(model?.previewUrl);
-              const modelThumb = normalizeCoverUrl(model?.thumbnailUrl);
-              const modelThumb2 = normalizeCoverUrl(model?.thumbUrl);
-              const modelImage = normalizeCoverUrl(model?.imageUrl);
-              const modelMedia = normalizeCoverUrl(model?.mediaUrl);
-
-              const docCover = normalizeCoverUrl(coverUrl);
-              const docThumb = normalizeCoverUrl(thumbnailUrl);
-
-              const finalCoverRaw =
-                modelCover || modelPreview || modelImage || modelMedia || docCover || "";
-              const finalCover = finalCoverRaw && !isVideoUrl(finalCoverRaw) ? finalCoverRaw : "";
-
-              const finalThumbRaw = modelThumb || modelThumb2 || docThumb || finalCover || "";
-              const finalThumb = finalThumbRaw && !isVideoUrl(finalThumbRaw) ? finalThumbRaw : "";
-
-              // ✅ CRITICAL: cover objesini modele taşı (model.cover yoksa raw.cover)
-              const rawCoverObj = raw?.cover && typeof raw.cover === "object" ? raw.cover : null;
-              const modelCoverObj = model?.cover && typeof model.cover === "object" ? model.cover : null;
-              const baseCoverObj = modelCoverObj || rawCoverObj;
-
-              let nextCoverObj = baseCoverObj;
-              if (baseCoverObj && typeof baseCoverObj === "object") {
-                const picked = pickCoverUrlFromCoverObj(baseCoverObj);
-                const safeUrl = picked.url && !isVideoUrl(picked.url) ? picked.url : "";
-                nextCoverObj = {
-                  ...baseCoverObj,
-                  url: safeUrl,
-                  sourceField:
-                    (isNonEmptyString(baseCoverObj.sourceField) && String(baseCoverObj.sourceField)) ||
-                    picked.sourceField ||
-                    "cover.url",
-                };
-              }
-
-              const patched = {
-                ...model,
-
-                // ✅ canonical cover obj (UI pickCoverCandidate → route.cover.url)
-                ...(nextCoverObj ? { cover: nextCoverObj } : {}),
-
-                stopsPreview:
-                  Array.isArray(model?.stopsPreview) && model.stopsPreview.length
-                    ? model.stopsPreview
-                    : stopsPreview,
-
-                // legacy compat (doc/model varsa doldur)
-                coverUrl: finalCover,
-                thumbnailUrl: finalThumb,
-
-                previewUrl: modelPreview || finalCover || "",
-                thumbUrl: modelThumb2 || finalThumb || "",
-                imageUrl: modelImage || finalCover || "",
-                mediaUrl: modelMedia || finalCover || "",
-
-                raw: model?.raw && typeof model.raw === "object" ? model.raw : raw,
-              };
-
-              return patched;
+              return model;
             })
             .filter(Boolean);
 
@@ -978,6 +1200,65 @@ export default function useUserRoutes(ownerId, options = {}) {
         }
 
         if (!isMountedRef.current || reqId !== requestIdRef.current) return;
+
+        // ✅ EMİR 2/3: self + no-order durumda (index yok) → recent routeId’leri getDoc ile MERGE et
+        if (mode === "reset" && isSelf) {
+          const recentIds = readRecentRouteIds(ownerKey);
+          if (recentIds.length) {
+            const existing = new Set((collected || []).map((r) => String(r.id)));
+            const missing = recentIds.filter((rid) => rid && !existing.has(String(rid))).slice(0, 8);
+
+            if (missing.length) {
+              const fetched = [];
+              const validKept = [];
+
+              for (const rid of missing) {
+                try {
+                  const snap = await getDoc(doc(db, "routes", String(rid)));
+                  if (!snap.exists()) continue;
+                  const raw = snap.data() || {};
+                  const m = buildPatchedRouteModel({
+                    id: snap.id,
+                    raw,
+                    ownerKey,
+                    viewerId,
+                    isSelf,
+                    isFollowing,
+                  });
+                  if (m) {
+                    fetched.push(m);
+                    validKept.push(String(rid));
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+
+              if (fetched.length) {
+                collected = dedupeRoutesById([...fetched, ...collected]);
+              }
+
+              // prune: bulunanları koru, bulunmayanlar zaten next load’da düşer
+              if (validKept.length) {
+                const prev = readRecentRouteIds(ownerKey);
+                const next = [
+                  ...validKept,
+                  ...prev.filter((x) => !validKept.includes(String(x))),
+                ].slice(0, 20);
+                writeRecentRouteIds(ownerKey, next);
+              }
+            }
+          }
+
+          // ✅ no-order ise (supportsCursor false) list order’ı client-side toparla
+          if (!supportsCursor) {
+            const sorted = (collected || []).slice().sort((a, b) => getRouteTimeMs(b) - getRouteTimeMs(a));
+            collected = sorted;
+          }
+
+          // UI stabil: ilk sayfayı pageSize ile sınırla
+          collected = (collected || []).slice(0, pageSize);
+        }
 
         // ✅ başarı → lock kaldır
         lockRef.current = { key: "", reason: "" };
@@ -1029,6 +1310,89 @@ export default function useUserRoutes(ownerId, options = {}) {
     },
     [ownerId, pageSize, isSelf, isFollowing, viewerId, runQueryPage]
   );
+
+  // ✅ owner/self/viewer değişince initial load
+  useEffect(() => {
+    if (!ownerId) {
+      setRoutes([]);
+      setHasMore(false);
+      setError(null);
+      setInitialLoading(false);
+      setLoadingMore(false);
+      setAccessStatus("idle");
+      return;
+    }
+    loadPage("reset");
+  }, [ownerId, isSelf, isFollowing, viewerId, loadPage]);
+
+  // ✅ EMİR 2/3: open-route-modal create event’i yakaladıysa refresh tetikle (closure)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isSelf) return;
+    if (!ownerId) return;
+
+    const ownerKey = String(ownerId);
+
+    const onOpenRouteModal = (e) => {
+      try {
+        const d = e?.detail || {};
+        const rid = d?.routeId ? String(d.routeId).trim() : "";
+        const src = d?.source ? String(d.source).toLowerCase() : "";
+        const prefillOwner =
+          d?.route?.ownerId != null ? String(d.route.ownerId) : d?.ownerId != null ? String(d.ownerId) : "";
+
+        if (!rid) return;
+        if (!src.includes("profile_create") && !src.includes("create")) return;
+        if (prefillOwner && String(prefillOwner) !== ownerKey) return;
+
+        rememberRecentRouteId(ownerKey, rid);
+
+        const now = Date.now();
+        if (now - refreshGateRef.current < 650) return;
+        refreshGateRef.current = now;
+
+        loadPage("reset");
+      } catch {}
+    };
+
+    window.addEventListener("open-route-modal", onOpenRouteModal);
+    return () => {
+      try {
+        window.removeEventListener("open-route-modal", onOpenRouteModal);
+      } catch {}
+    };
+  }, [isSelf, ownerId, loadPage]);
+
+  // ✅ SELF: geri dönünce (focus/visible) hafif refresh (spam guard)
+  useEffect(() => {
+    if (!isSelf) return;
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    let lastAt = 0;
+    const tick = () => {
+      const now = Date.now();
+      if (now - lastAt < 1200) return;
+      lastAt = now;
+      try {
+        loadPage("reset");
+      } catch {}
+    };
+
+    const onFocus = () => tick();
+    const onVis = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      try {
+        window.removeEventListener("focus", onFocus);
+        document.removeEventListener("visibilitychange", onVis);
+      } catch {}
+    };
+  }, [isSelf, loadPage]);
 
   // ✅ Lazy HYDRATE: sadece start+end stop (2 query) + stopsPreview'u besle
   const hydrateOneRoutePreview = useCallback(async (routeId, jobId) => {
@@ -1115,19 +1479,6 @@ export default function useUserRoutes(ownerId, options = {}) {
       return null;
     }
   }, []);
-
-  useEffect(() => {
-    if (!ownerId) {
-      setRoutes([]);
-      setHasMore(false);
-      setError(null);
-      setInitialLoading(false);
-      setLoadingMore(false);
-      setAccessStatus("idle");
-      return;
-    }
-    loadPage("reset");
-  }, [ownerId, isSelf, isFollowing, viewerId, loadPage]);
 
   // ✅ Lazy hydrate runner (max 3 concurrent)
   useEffect(() => {

@@ -22,6 +22,13 @@
 // - “yakında / gelişmiş / haritada oluştur” menüsü yok
 // - 700ms spam guard
 // - FAB yalnızca routes panel aktifken DOM’da var
+//
+// ✅ EMİR 3/3 — UX + Stabilizasyon
+// - Create success anında grid’de optimistic tile (başlık + Yeni hissi)
+// - Gerçek listeye düşmezse: “Liste yenileniyor…” → sonra anlaşılır hata toast (sessiz fail yok)
+//
+// ✅ EMİR 1/3 (Teşhis eklendi):
+// - Create sonrası 5 sn içinde doğrulama: getDoc(routes/{id}) + “neden listede değil?” açıklaması (DEV-only)
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -29,8 +36,9 @@ import "./ProfileRoutesMobile.css";
 import useUserRoutes from "./hooks/useUserRoutes";
 import { Icon } from "./icons";
 
-import { auth } from "./firebase";
+import { auth, db } from "./firebase";
 import { getStorage, ref as storageRef, getDownloadURL } from "firebase/storage";
+import { doc, getDoc } from "firebase/firestore";
 import RouteCardManusMobile from "./routes/RouteCardManusMobile";
 
 // ✅ Route create: Map builder yolunu taklit etmiyoruz, projedeki mevcut routeStore createRoute kullanılır
@@ -39,6 +47,17 @@ import * as routeStore from "./services/routeStore";
 const __DEV__ = process.env.NODE_ENV !== "production";
 const DEFAULT_ROUTE_COVER_URL =
   (process.env.PUBLIC_URL || "") + "/route-default-cover.jpg";
+
+// ✅ EMİR 1/3 — TEŞHİS: dev log spam kırıcı
+const __prmDiagOnce = new Set();
+function diagOnce(key, ...args) {
+  if (!__DEV__) return;
+  const k = String(key || "diag_once");
+  if (__prmDiagOnce.has(k)) return;
+  __prmDiagOnce.add(k);
+  // eslint-disable-next-line no-console
+  console.log(...args);
+}
 
 // StrictMode / remount spamını kesmek için (DEV only) modül seviyesinde tek sefer log
 const __devProofLoggedRouteIds = new Set();
@@ -1001,7 +1020,8 @@ function pickCoverCandidate(route) {
   const coverMetaField = isNonEmptyString(coverObj?.sourceField)
     ? String(coverObj.sourceField).trim()
     : "";
-  const coverMetaHasVideo = !!coverObj?.fromVideoPoster || !!coverObj?.hasVideoPoster;
+  const coverMetaHasVideo =
+    !!coverObj?.fromVideoPoster || !!coverObj?.hasVideoPoster;
 
   if (
     coverMetaUrl &&
@@ -1549,9 +1569,13 @@ function RouteCreateSheetMobile({
 
   const createStyle = {
     ...btnBase,
-    background: canCreate ? "linear-gradient(135deg, #ff385c 0%, #ff6a3d 100%)" : "rgba(255,255,255,0.10)",
+    background: canCreate
+      ? "linear-gradient(135deg, #ff385c 0%, #ff6a3d 100%)"
+      : "rgba(255,255,255,0.10)",
     color: canCreate ? "#fff" : "rgba(255,255,255,0.55)",
-    border: canCreate ? "1px solid rgba(255,56,92,0.55)" : "1px solid rgba(255,255,255,0.12)",
+    border: canCreate
+      ? "1px solid rgba(255,56,92,0.55)"
+      : "1px solid rgba(255,255,255,0.12)",
   };
 
   const hintStyle = {
@@ -1634,19 +1658,185 @@ function RouteCreateSheetMobile({
   }
 }
 
+// ✅ EMİR 1/3 — Teşhis: doc var ama listede yoksa muhtemel sebepler
+function explainWhyDocMayBeMissingFromList({ docData, ownerKey, isSelf }) {
+  const d = docData || {};
+  const reasons = [];
+
+  const docOwnerId = d.ownerId != null ? String(d.ownerId) : "";
+  if (ownerKey && docOwnerId && docOwnerId !== ownerKey) {
+    reasons.push(`ownerId uyuşmuyor (doc.ownerId=${docOwnerId}, profile=${ownerKey})`);
+  }
+
+  const deleted = d.deleted === true || d.isDeleted === true || !!d.deletedAt || !!d.archivedAt;
+  if (deleted) reasons.push("deleted/isDeleted/deletedAt/archivedAt nedeniyle listeden düşmüş olabilir");
+
+  // 🔥 Firestore: orderBy(createdAt) kullanılıyorsa createdAt olmayan doc query'de görünmeyebilir
+  const createdAt = d.createdAt;
+  const createdAtOk = !!createdAt;
+  if (!createdAtOk) reasons.push("createdAt yok/null → orderBy(createdAt) query’sinde doc görünmeyebilir");
+
+  if (!isSelf) {
+    const status = (d.status || "").toString().toLowerCase();
+    if (status && status !== "finished") reasons.push(`status=${status} (non-self list 'finished' filtreli olabilir)`);
+  }
+
+  const visibility = (d.visibility || "").toString().toLowerCase();
+  if (!visibility) reasons.push("visibility yok → visibility filtresine takılabilir");
+
+  return reasons;
+}
+
 export default function ProfileRoutesMobile({
   userId,
   isSelf = false,
   viewerId = null,
   isFollowing = false,
 }) {
-  const { routes, loading, loadingMore, hasMore, error, loadMore, isEmpty, accessStatus } =
-    useUserRoutes(userId, {
-      pageSize: 20,
-      isSelf,
-      isFollowing,
-      viewerId,
+  const {
+    routes,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    loadMore,
+    isEmpty,
+    accessStatus,
+  } = useUserRoutes(userId, {
+    pageSize: 20,
+    isSelf,
+    isFollowing,
+    viewerId,
+  });
+
+  // ✅ EMİR 3/3: hook routes ref (timer check için)
+  const routesRef = useRef([]);
+  useEffect(() => {
+    routesRef.current = Array.isArray(routes) ? routes : [];
+  }, [routes]);
+
+  // ✅ EMİR 3/3: optimistic list + “düşmezse toast” watcher
+  const [optimisticRoutes, setOptimisticRoutes] = useState([]);
+  const createWatchRef = useRef({ rid: "", t1: 0, t2: 0, t3: 0 });
+
+  const clearCreateWatch = useCallback(() => {
+    try {
+      if (createWatchRef.current.t1) clearTimeout(createWatchRef.current.t1);
+    } catch {}
+    try {
+      if (createWatchRef.current.t2) clearTimeout(createWatchRef.current.t2);
+    } catch {}
+    try {
+      if (createWatchRef.current.t3) clearTimeout(createWatchRef.current.t3);
+    } catch {}
+    createWatchRef.current = { rid: "", t1: 0, t2: 0, t3: 0 };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearCreateWatch();
+    };
+  }, [clearCreateWatch]);
+
+  const hasRidInRealRoutes = useCallback((rid) => {
+    const id = rid ? String(rid) : "";
+    if (!id) return false;
+    const list = routesRef.current || [];
+    return list.some((r) => String(r?.id || "") === id);
+  }, []);
+
+  const pushOptimisticRoute = useCallback(
+    ({ routeId, title, desc, ownerId, visibility }) => {
+      const rid = routeId ? String(routeId).trim() : "";
+      if (!rid) return;
+
+      const now = new Date();
+
+      const optimistic = {
+        id: rid,
+        title: String(title || "").trim() || "Adsız rota",
+        description: String(desc || "").trim(),
+        ownerId: ownerId ? String(ownerId) : "",
+        visibility: visibility ? String(visibility) : "public",
+        createdAt: now,
+        finishedAt: null,
+
+        // RouteCardManusMobile beklenen alanlar
+        stats: {},
+        ratingAvg: 0,
+        ratingCount: 0,
+        tags: [],
+        areas: null,
+
+        // kapak placeholder (UI pickCoverCandidate zaten fallback)
+        cover: { kind: "default", url: "", sourceField: "default" },
+
+        // raw alanı (proof/debug ve fallback’ler için)
+        raw: {
+          ownerId: ownerId ? String(ownerId) : "",
+          title: String(title || "").trim(),
+          description: String(desc || "").trim(),
+          visibility: visibility ? String(visibility) : "public",
+          createdAt: now,
+          status: "draft",
+        },
+
+        __optimistic: true,
+      };
+
+      setOptimisticRoutes((prev) => {
+        const next = Array.isArray(prev) ? prev.slice() : [];
+        // aynı id varsa öne al
+        const filtered = next.filter((x) => String(x?.id || "") !== rid);
+        return [optimistic, ...filtered].slice(0, 8);
+      });
+    },
+    []
+  );
+
+  // ✅ gerçek liste routeId’yi içerince optimistic’i kaldır + watcher’ı kapat
+  useEffect(() => {
+    const list = Array.isArray(routes) ? routes : [];
+    const ids = new Set(list.map((r) => String(r?.id || "")).filter(Boolean));
+
+    setOptimisticRoutes((prev) => {
+      const p = Array.isArray(prev) ? prev : [];
+      const next = p.filter((r) => !ids.has(String(r?.id || "")));
+      return next;
     });
+
+    const watching = createWatchRef.current.rid;
+    if (watching && ids.has(String(watching))) {
+      clearCreateWatch();
+    }
+  }, [routes, clearCreateWatch]);
+
+  const displayRoutes = useMemo(() => {
+    const out = [];
+    const seen = new Set();
+
+    const push = (r) => {
+      const id = r?.id ? String(r.id) : "";
+      if (!id) return;
+      if (seen.has(id)) return;
+      seen.add(id);
+      out.push(r);
+    };
+
+    (optimisticRoutes || []).forEach(push);
+    (routes || []).forEach(push);
+
+    return out;
+  }, [optimisticRoutes, routes]);
+
+  // ✅ EMİR 1/3 — TEŞHİS: component props kanıtı (tek sefer)
+  useEffect(() => {
+    diagOnce(
+      `ProfileRoutesMobile_props_${userId || "no_user"}_${viewerId || "no_viewer"}_${isSelf ? "self" : "notself"}`,
+      "[RoutesDiag] ProfileRoutesMobile props",
+      { userId, viewerId, isSelf, isFollowing }
+    );
+  }, [userId, viewerId, isSelf, isFollowing]);
 
   const proofRouteIdRef = useRef("");
   const [proofImgLoadEvent, setProofImgLoadEvent] = useState(""); // load | error_all
@@ -1695,8 +1885,11 @@ export default function ProfileRoutesMobile({
         if (fabDisableTimerRef.current) clearTimeout(fabDisableTimerRef.current);
       } catch {}
       fabDisableTimerRef.current = 0;
+
+      // ✅ EMİR 3/3
+      clearCreateWatch();
     };
-  }, []);
+  }, [clearCreateWatch]);
 
   // ✅ Panel görünürlük observer (ProfileMobile hidden toggles)
   useEffect(() => {
@@ -1775,9 +1968,9 @@ export default function ProfileRoutesMobile({
   }, []);
 
   const proofTarget = useMemo(() => {
-    if (!routes || routes.length === 0) return null;
-    return routes[0] || null;
-  }, [routes]);
+    if (!displayRoutes || displayRoutes.length === 0) return null;
+    return displayRoutes[0] || null;
+  }, [displayRoutes]);
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -1870,15 +2063,157 @@ export default function ProfileRoutesMobile({
         (userId && String(userId)) ||
         "";
 
+      const payload = { ownerId, title, visibility: "public" };
+
+      // ✅ EMİR 1/3 — TEŞHİS: create payload kanıtı
+      diagOnce(
+        `CreateDiag_payload_${ownerId}_${title}`,
+        "[CreateDiag] createRoute payload",
+        { payload, isSelf, viewerId, userId }
+      );
+
       // ✅ düşük risk: MapMobile ile aynı çağrı imzası
-      const routeId = await routeStore.createRoute({
-        ownerId,
-        title,
-        visibility: "public",
-      });
+      const routeId = await routeStore.createRoute(payload);
 
       const rid = routeId ? String(routeId) : "";
       if (!rid) throw new Error("createRoute returned empty id");
+
+      // ✅ EMİR 3/3: optimistic tile
+      pushOptimisticRoute({
+        routeId: rid,
+        title,
+        desc,
+        ownerId,
+        visibility: "public",
+      });
+
+      // ✅ EMİR 3/3: düşmezse toast (real list’e bakar)
+      clearCreateWatch();
+      createWatchRef.current.rid = rid;
+
+      createWatchRef.current.t1 = window.setTimeout(() => {
+        try {
+          if (!hasRidInRealRoutes(rid)) {
+            showToast("Liste yenileniyor…", 1400);
+          }
+        } catch {}
+      }, 750);
+
+      createWatchRef.current.t2 = window.setTimeout(() => {
+        try {
+          if (!hasRidInRealRoutes(rid)) {
+            showToast("Rota oluşturuldu ama listeye eklenemedi.", 2600);
+          }
+        } catch {}
+      }, 3200);
+
+      // ✅ EMİR 1/3 — TEŞHİS: dönen routeId kanıtı
+      diagOnce(
+        `CreateDiag_routeId_${rid}`,
+        "[CreateDiag] createRoute returned routeId",
+        rid
+      );
+
+      // ✅ EMİR 1/3 — TEŞHİS: Create sonrası refresh mekanizması notu
+      diagOnce(
+        `CreateDiag_refresh_note_${rid}`,
+        "[CreateDiag] Not: Bu ekranda create sonrası direkt refresh() yok. open-route-modal event'i üzerinden hook refresh edebilir (useUserRoutes içinde kanıtlanacak)."
+      );
+
+      // ✅ EMİR 1/3 — TEŞHİS: Firestore'da yazılan gerçek doc snapshot + 5sn doğrulama
+      if (__DEV__ && db) {
+        (async () => {
+          try {
+            const snap = await getDoc(doc(db, "routes", rid));
+            const data = snap.exists() ? (snap.data() || {}) : null;
+
+            const pick = (v) =>
+              typeof v === "string" ? v : v == null ? "" : String(v);
+
+            const safeTs = (v) => {
+              try {
+                if (!v) return null;
+                if (typeof v.toDate === "function") return v.toDate().toISOString();
+                if (typeof v.seconds === "number")
+                  return new Date(v.seconds * 1000).toISOString();
+                if (v instanceof Date) return v.toISOString();
+                return pick(v);
+              } catch {
+                return null;
+              }
+            };
+
+            const snapshot = data
+              ? {
+                  exists: true,
+                  ownerId: pick(data.ownerId),
+                  status: pick(data.status),
+                  visibility: pick(data.visibility),
+                  isDeleted: data.isDeleted === true,
+                  deleted: data.deleted === true,
+                  archivedAt: !!data.archivedAt,
+                  deletedAt: !!data.deletedAt,
+                  createdAt: safeTs(data.createdAt),
+                  finishedAt: safeTs(data.finishedAt),
+                }
+              : { exists: false };
+
+            diagOnce(
+              `CreateDiag_routeDoc_${rid}`,
+              "[CreateDiag] routes/{routeId} snapshot (kritik alanlar)",
+              { routeId: rid, snapshot }
+            );
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn("[CreateDiag] getDoc(routes/{id}) failed:", e);
+          }
+        })();
+
+        // ✅ 5sn sonra: doc var ama listede yoksa “neden” raporu (DEV-only)
+        createWatchRef.current.t3 = window.setTimeout(async () => {
+          try {
+            if (hasRidInRealRoutes(rid)) return;
+
+            const snap = await getDoc(doc(db, "routes", rid));
+            const exists = snap.exists();
+            const data = exists ? (snap.data() || {}) : null;
+
+            const reasons = exists
+              ? explainWhyDocMayBeMissingFromList({
+                  docData: data,
+                  ownerKey: ownerId ? String(ownerId) : "",
+                  isSelf: !!isSelf,
+                })
+              : ["doc bulunamadı (write gecikmesi / createRoute başarısız olabilir)"];
+
+            diagOnce(
+              `CreateDiag_verify5s_${rid}`,
+              "[CreateDiag] 5sn doğrulama: doc var mı + neden listede değil?",
+              {
+                routeId: rid,
+                exists,
+                hasInRealList: false,
+                reasons,
+                docCore: exists
+                  ? {
+                      ownerId: data?.ownerId ?? null,
+                      status: data?.status ?? null,
+                      visibility: data?.visibility ?? null,
+                      createdAt: data?.createdAt ?? null,
+                      deleted: data?.deleted ?? null,
+                      isDeleted: data?.isDeleted ?? null,
+                      archivedAt: data?.archivedAt ?? null,
+                      deletedAt: data?.deletedAt ?? null,
+                    }
+                  : null,
+              }
+            );
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn("[CreateDiag] verify5s failed:", e);
+          }
+        }, 5000);
+      }
 
       // UI prefill (RouteDetail modal hemen açılır; firestore daha sonra yükleyebilir)
       const prefill = {
@@ -1915,7 +2250,18 @@ export default function ProfileRoutesMobile({
     } finally {
       setCreating(false);
     }
-  }, [creating, createTitle, createDesc, viewerId, userId, showToast]);
+  }, [
+    creating,
+    createTitle,
+    createDesc,
+    viewerId,
+    userId,
+    showToast,
+    isSelf,
+    pushOptimisticRoute,
+    clearCreateWatch,
+    hasRidInRealRoutes,
+  ]);
 
   const fabNode = canShowFab ? (
     <>
@@ -1976,7 +2322,7 @@ export default function ProfileRoutesMobile({
     );
   }
 
-  if (loading && !routes.length) {
+  if (loading && !displayRoutes.length) {
     return (
       <>
         <div className="profile-routes-list" data-route-skin="manus">
@@ -1989,7 +2335,7 @@ export default function ProfileRoutesMobile({
     );
   }
 
-  if (isEmpty) {
+  if (isEmpty && optimisticRoutes.length === 0) {
     return (
       <>
         <div className="profile-routes-empty">
@@ -2007,7 +2353,7 @@ export default function ProfileRoutesMobile({
   return (
     <>
       <div className="profile-routes-list" data-route-skin="manus">
-        {routes.map((route) => {
+        {displayRoutes.map((route) => {
           const rid = route?.id ? String(route.id) : "";
           const isProofTarget = !!(
             proofRouteIdRef.current && rid === proofRouteIdRef.current
