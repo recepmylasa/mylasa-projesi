@@ -15,6 +15,11 @@
 // - Bu durumda liste “orderBy’sız fallback”e düşer ve yeni create edilen rota ilk sayfada görünmeyebilir.
 // - ÇÖZÜM: create edilen routeId’yi localStorage’a yaz + reset load’da getDoc ile MERGE et.
 // - Ayrıca orderBy self query’nin “index yok” hatasını bir kez tespit edip tekrar deneme → log spam kes.
+//
+// ✅ EMİR PAKETİ 1/3 (TEŞHİS KANITI):
+// - Self list için çalıştırılan query mode + where/orderBy/limit/cursor tek log (DEV only)
+// - failed-precondition / requires an index yakalanınca: tek sefer log + console.trace() (stack / hangi ekran tetikliyor)
+// - NO_ORDER_FALLBACK kullanımı tek sefer kanıt log
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -53,6 +58,24 @@ function warnPermOnce(key, msg, err) {
   __permWarnOnce.add(k);
   // eslint-disable-next-line no-console
   console.warn(msg, err || "");
+}
+
+// ✅ EMİR 1/3: index stack trace spam kırıcı (tek sefer)
+const __idxTraceOnce = new Set();
+function traceIndexOnce(key, label, meta) {
+  if (!__DEV__) return;
+  const k = String(key || "idx_trace");
+  if (__idxTraceOnce.has(k)) return;
+  __idxTraceOnce.add(k);
+
+  // eslint-disable-next-line no-console
+  console.groupCollapsed(label || "[RoutesDiag] requires index");
+  // eslint-disable-next-line no-console
+  console.log(meta || {});
+  // eslint-disable-next-line no-console
+  console.trace();
+  // eslint-disable-next-line no-console
+  console.groupEnd();
 }
 
 // ✅ EMİR 2/3: dev diag once
@@ -165,7 +188,8 @@ function pickFirst(obj, paths) {
 
 // ✅ cover objesinden (sadece cover objesi içinden) url seç — stopPreview türetme YOK
 function pickCoverUrlFromCoverObj(coverObj) {
-  if (!coverObj || typeof coverObj !== "object") return { url: "", sourceField: "" };
+  if (!coverObj || typeof coverObj !== "object")
+    return { url: "", sourceField: "" };
 
   const pairs = [
     ["cover.url", coverObj.url],
@@ -400,7 +424,10 @@ function extractStopMediaUrl(s) {
             "asset.downloadUrl",
             "asset.downloadURL",
           ]);
-          if (isNonEmptyString(nestedPoster) && isGoodImageCandidate(nestedPoster)) {
+          if (
+            isNonEmptyString(nestedPoster) &&
+            isGoodImageCandidate(nestedPoster)
+          ) {
             return String(nestedPoster).trim();
           }
           continue;
@@ -559,13 +586,14 @@ function needsHydratePreview(route) {
 
   const coverLegacy = normalizeCoverUrl(coverLegacyRaw);
 
-  const hasCover = isNonEmptyString(coverFromCanonical) || isNonEmptyString(coverLegacy);
+  const hasCover =
+    isNonEmptyString(coverFromCanonical) || isNonEmptyString(coverLegacy);
 
   return !hasStopsPreview || !hasCover;
 }
 
 // ✅ Create-index linkini GİZLEME: ama permission-denied spam yapma
-function logFirestoreQueryError(tag, err) {
+function logFirestoreQueryError(tag, err, extraMeta = null) {
   const code = getErrCode(err) || "unknown";
   const message = err?.message ? String(err.message) : "";
 
@@ -578,12 +606,23 @@ function logFirestoreQueryError(tag, err) {
     return;
   }
 
-  // ✅ EMİR 2/3: index hatası spam kır (tek sefer)
+  // ✅ EMİR 1/3: index hatası → tek sefer trace + fallback kanıtı
   if (isFailedPreconditionIndexError(err)) {
     warnPermOnce(
       `idx_${tag}_${code}`,
       `[useUserRoutes] ${tag} — query index istiyor (${code}). Fallback uygulanacak.`,
       __DEV__ ? err : null
+    );
+
+    traceIndexOnce(
+      `idx_trace_${tag}_${code}`,
+      "[RoutesDiag] requires an index → NO_ORDER_FALLBACK tetiklendi (stack kanıtı)",
+      {
+        tag,
+        code,
+        message,
+        ...(extraMeta ? { meta: extraMeta } : {}),
+      }
     );
     return;
   }
@@ -596,6 +635,10 @@ function logFirestoreQueryError(tag, err) {
   console.log("err.code:", code);
   // eslint-disable-next-line no-console
   console.log("err.message:", message);
+  if (extraMeta) {
+    // eslint-disable-next-line no-console
+    console.log("meta:", extraMeta);
+  }
   // eslint-disable-next-line no-console
   console.groupEnd();
 
@@ -708,7 +751,14 @@ function dedupeRoutesById(list) {
   return out;
 }
 
-function buildPatchedRouteModel({ id, raw, ownerKey, viewerId, isSelf, isFollowing }) {
+function buildPatchedRouteModel({
+  id,
+  raw,
+  ownerKey,
+  viewerId,
+  isSelf,
+  isFollowing,
+}) {
   if (!id || !raw || typeof raw !== "object") return null;
 
   const docOwnerId = getOwnerIdFromRaw(raw, ownerKey);
@@ -716,7 +766,10 @@ function buildPatchedRouteModel({ id, raw, ownerKey, viewerId, isSelf, isFollowi
   if (!docOwnerKey || docOwnerKey !== ownerKey) return null;
 
   const deleted =
-    raw.deleted === true || !!raw.deletedAt || !!raw.isDeleted || !!raw.archivedAt;
+    raw.deleted === true ||
+    !!raw.deletedAt ||
+    !!raw.isDeleted ||
+    !!raw.archivedAt;
   if (deleted) return null;
 
   const status = (raw.status || "").toString().toLowerCase();
@@ -752,7 +805,8 @@ function buildPatchedRouteModel({ id, raw, ownerKey, viewerId, isSelf, isFollowi
   const docCover = normalizeCoverUrl(coverUrl);
   const docThumb = normalizeCoverUrl(thumbnailUrl);
 
-  const finalCoverRaw = modelCover || modelPreview || modelImage || modelMedia || docCover || "";
+  const finalCoverRaw =
+    modelCover || modelPreview || modelImage || modelMedia || docCover || "";
   const finalCover = finalCoverRaw && !isVideoUrl(finalCoverRaw) ? finalCoverRaw : "";
 
   const finalThumbRaw = modelThumb || modelThumb2 || docThumb || finalCover || "";
@@ -780,7 +834,9 @@ function buildPatchedRouteModel({ id, raw, ownerKey, viewerId, isSelf, isFollowi
     ...model,
     ...(nextCoverObj ? { cover: nextCoverObj } : {}),
     stopsPreview:
-      Array.isArray(model?.stopsPreview) && model.stopsPreview.length ? model.stopsPreview : stopsPreview,
+      Array.isArray(model?.stopsPreview) && model.stopsPreview.length
+        ? model.stopsPreview
+        : stopsPreview,
     coverUrl: finalCover,
     thumbnailUrl: finalThumb,
     previewUrl: modelPreview || finalCover || "",
@@ -860,7 +916,11 @@ export default function useUserRoutes(ownerId, options = {}) {
         const rid = d?.routeId ? String(d.routeId).trim() : "";
         const src = d?.source ? String(d.source).toLowerCase() : "";
         const prefillOwner =
-          d?.route?.ownerId != null ? String(d.route.ownerId) : d?.ownerId != null ? String(d.ownerId) : "";
+          d?.route?.ownerId != null
+            ? String(d.route.ownerId)
+            : d?.ownerId != null
+            ? String(d.ownerId)
+            : "";
 
         if (!rid) return;
 
@@ -910,9 +970,9 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       const mkOptimized = () => {
         const diag = [
-          `where(ownerId == ${ownerKey})`,
-          `where(status == finished)`,
-          `orderBy(createdAt desc)`,
+          { type: "where", field: "ownerId", op: "==", value: ownerKey },
+          { type: "where", field: "status", op: "==", value: "finished" },
+          { type: "orderBy", field: "createdAt", dir: "desc" },
         ];
 
         const constraints = [
@@ -920,87 +980,146 @@ export default function useUserRoutes(ownerId, options = {}) {
           where("status", "==", "finished"),
           orderBy("createdAt", "desc"),
         ];
-        if (localCursor) {
-          constraints.push(startAfter(localCursor));
-          diag.push("startAfter(cursor)");
-        }
+        if (localCursor) constraints.push(startAfter(localCursor));
         constraints.push(limit(pageSize + 1));
-        diag.push(`limit(${pageSize + 1})`);
-        return { q: query(colRef, ...constraints), diag, supportsCursor: true };
+
+        return {
+          q: query(colRef, ...constraints),
+          diag,
+          supportsCursor: true,
+          used: "optimized",
+          usedLabel: "optimized",
+        };
       };
 
       const mkSelf = () => {
         // ✅ SELF: status filtresi YOK (draft/empty status da gelsin)
-        const diag = [`where(ownerId == ${ownerKey})`, `orderBy(createdAt desc)`];
+        const diag = [
+          { type: "where", field: "ownerId", op: "==", value: ownerKey },
+          { type: "orderBy", field: "createdAt", dir: "desc" },
+        ];
 
-        const constraints = [where("ownerId", "==", ownerKey), orderBy("createdAt", "desc")];
-        if (localCursor) {
-          constraints.push(startAfter(localCursor));
-          diag.push("startAfter(cursor)");
-        }
+        const constraints = [
+          where("ownerId", "==", ownerKey),
+          orderBy("createdAt", "desc"),
+        ];
+        if (localCursor) constraints.push(startAfter(localCursor));
         constraints.push(limit(pageSize + 1));
-        diag.push(`limit(${pageSize + 1})`);
-        return { q: query(colRef, ...constraints), diag, supportsCursor: true };
+
+        return {
+          q: query(colRef, ...constraints),
+          diag,
+          supportsCursor: true,
+          used: "self",
+          usedLabel: "self",
+        };
       };
 
       const mkSelfNoOrderFallback = () => {
         // ✅ index yoksa: orderBy’sız (cursor yok)
-        const diag = [`where(ownerId == ${ownerKey})`, `limit(${pageSize + 1})`, `NO_ORDER_FALLBACK`];
-        const constraints = [where("ownerId", "==", ownerKey), limit(pageSize + 1)];
-        return { q: query(colRef, ...constraints), diag, supportsCursor: false };
+        const diag = [
+          { type: "where", field: "ownerId", op: "==", value: ownerKey },
+          { type: "limit", n: pageSize + 1 },
+          { type: "note", value: "NO_ORDER_FALLBACK" },
+        ];
+        const constraints = [
+          where("ownerId", "==", ownerKey),
+          limit(pageSize + 1),
+        ];
+        return {
+          q: query(colRef, ...constraints),
+          diag,
+          supportsCursor: false,
+          used: "self",
+          usedLabel: "fallback",
+        };
       };
 
       const mkLegacy = () => {
-        const diag = [`orderBy(createdAt desc)`];
+        const diag = [{ type: "orderBy", field: "createdAt", dir: "desc" }];
 
         const constraints = [orderBy("createdAt", "desc")];
-        if (localCursor) {
-          constraints.push(startAfter(localCursor));
-          diag.push("startAfter(cursor)");
-        }
+        if (localCursor) constraints.push(startAfter(localCursor));
         constraints.push(limit(pageSize + 1));
-        diag.push(`limit(${pageSize + 1})`);
-        return { q: query(colRef, ...constraints), diag, supportsCursor: true };
+
+        return {
+          q: query(colRef, ...constraints),
+          diag,
+          supportsCursor: true,
+          used: "legacy",
+          usedLabel: "legacy",
+        };
       };
 
       if (modeToUse === "legacy") {
-        const { q, diag, supportsCursor } = mkLegacy();
-        const snap = await getDocs(q);
-        return { snap, used: "legacy", diag, supportsCursor };
+        const built = mkLegacy();
+        const snap = await getDocs(built.q);
+        return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
       }
 
       if (modeToUse === "self") {
-        // ✅ EMİR 2/3: daha önce index yok diye bozulduysa direkt no-order
+        // ✅ EMİR 1/3: NO_ORDER_FALLBACK kanıtı (index yok → bir daha orderBy deneme)
         if (selfOrderBrokenRef.current) {
-          const { q, diag, supportsCursor } = mkSelfNoOrderFallback();
-          const snap = await getDocs(q);
-          return { snap, used: "self", diag, supportsCursor };
+          const built = mkSelfNoOrderFallback();
+          diagOnce(
+            `RoutesDiag_NO_ORDER_FALLBACK_${ownerKey}`,
+            "[RoutesDiag] NO_ORDER_FALLBACK aktif (selfOrderBrokenRef=true)",
+            { ownerId: ownerKey, diag: built.diag }
+          );
+          const snap = await getDocs(built.q);
+          return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
         }
 
         try {
-          const { q, diag, supportsCursor } = mkSelf();
-          const snap = await getDocs(q);
-          return { snap, used: "self", diag, supportsCursor };
+          const built = mkSelf();
+          const snap = await getDocs(built.q);
+          return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
         } catch (e) {
           if (isPermissionDeniedError(e) || isUnauthenticatedError(e)) throw e;
 
-          // ✅ index yoksa bir daha orderBy deneme
+          // ✅ index yoksa bir daha orderBy deneme + STACK TRACE (tek sefer)
           if (isFailedPreconditionIndexError(e)) {
             selfOrderBrokenRef.current = true;
+
             diagOnce(
               `RoutesDiag_selfOrderBroken_${ownerKey}`,
               "[RoutesDiag] self orderBy(createdAt) index yok → bundan sonra NO_ORDER_FALLBACK kullanılacak."
             );
+
+            traceIndexOnce(
+              `idx_trace_self_${ownerKey}`,
+              "[RoutesDiag] self query requires an index (stack kanıtı)",
+              {
+                ownerId: ownerKey,
+                mode: "self",
+                intended: "where(ownerId==) + orderBy(createdAt desc)",
+                errCode: getErrCode(e) || "failed-precondition",
+                errMsg: e?.message ? String(e.message) : "",
+              }
+            );
           }
 
-          logFirestoreQueryError("[useUserRoutes] self query failed", e);
+          logFirestoreQueryError("[useUserRoutes] self query failed", e, {
+            ownerId: ownerKey,
+            mode: "self",
+            step: "orderBy(createdAt desc)",
+          });
 
           try {
-            const { q, diag, supportsCursor } = mkSelfNoOrderFallback();
-            const snap = await getDocs(q);
-            return { snap, used: "self", diag, supportsCursor };
+            const built = mkSelfNoOrderFallback();
+            diagOnce(
+              `RoutesDiag_NO_ORDER_FALLBACK_apply_${ownerKey}`,
+              "[RoutesDiag] NO_ORDER_FALLBACK uygulanıyor (self query fail sonrası)",
+              { ownerId: ownerKey, diag: built.diag }
+            );
+            const snap = await getDocs(built.q);
+            return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
           } catch (e2) {
-            logFirestoreQueryError("[useUserRoutes] self no-order fallback failed", e2);
+            logFirestoreQueryError("[useUserRoutes] self no-order fallback failed", e2, {
+              ownerId: ownerKey,
+              mode: "self",
+              step: "NO_ORDER_FALLBACK",
+            });
             throw e2;
           }
         }
@@ -1008,23 +1127,29 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       // default: optimized
       try {
-        const { q, diag, supportsCursor } = mkOptimized();
-        const snap = await getDocs(q);
-        return { snap, used: "optimized", diag, supportsCursor };
+        const built = mkOptimized();
+        const snap = await getDocs(built.q);
+        return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
       } catch (e) {
         // ✅ permission/unauthenticated ise gereksiz fallback deneme (spam ve ekstra istek yok)
         if (isPermissionDeniedError(e) || isUnauthenticatedError(e)) {
           throw e;
         }
 
-        logFirestoreQueryError("[useUserRoutes] optimized query failed", e);
+        logFirestoreQueryError("[useUserRoutes] optimized query failed", e, {
+          ownerId: ownerKey,
+          mode: "optimized",
+        });
 
         try {
-          const { q, diag, supportsCursor } = mkLegacy();
-          const snap = await getDocs(q);
-          return { snap, used: "legacy", diag, supportsCursor };
+          const built = mkLegacy();
+          const snap = await getDocs(built.q);
+          return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
         } catch (e2) {
-          logFirestoreQueryError("[useUserRoutes] legacy fallback failed", e2);
+          logFirestoreQueryError("[useUserRoutes] legacy fallback failed", e2, {
+            ownerId: ownerKey,
+            mode: "legacy",
+          });
           throw e2;
         }
       }
@@ -1051,7 +1176,11 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       // ✅ EMİR 5: login yoksa hiç sorgu başlatma → UI "giriş gerekli"
       if (!viewerId) {
-        if (lockRef.current.key === lockKey && lockRef.current.reason === "login_required") return;
+        if (
+          lockRef.current.key === lockKey &&
+          lockRef.current.reason === "login_required"
+        )
+          return;
 
         lockRef.current = { key: lockKey, reason: "login_required" };
         setAccessStatus("login_required");
@@ -1065,7 +1194,10 @@ export default function useUserRoutes(ownerId, options = {}) {
       }
 
       // ✅ EMİR 5: aynı kullanıcı+profil için permission-denied kilidi varsa tekrar deneme (spam yok)
-      if (lockRef.current.key === lockKey && lockRef.current.reason === "forbidden") {
+      if (
+        lockRef.current.key === lockKey &&
+        lockRef.current.reason === "forbidden"
+      ) {
         return;
       }
 
@@ -1097,7 +1229,8 @@ export default function useUserRoutes(ownerId, options = {}) {
         let loops = 0;
         let lastDiag = [];
         let supportsCursor = true;
-        let usedMode = "unknown";
+        let usedModeBase = "unknown";
+        let usedModeLabel = "unknown";
 
         while (loops < maxAutoPages) {
           const currentMode =
@@ -1113,13 +1246,15 @@ export default function useUserRoutes(ownerId, options = {}) {
                 : "legacy"
               : queryModeRef.current;
 
-          const { snap, used, diag, supportsCursor: sc } = await runQueryPage({
-            ownerKey,
-            localCursor,
-            modeToUse: currentMode,
-          });
+          const { snap, used, usedLabel, diag, supportsCursor: sc } =
+            await runQueryPage({
+              ownerKey,
+              localCursor,
+              modeToUse: currentMode,
+            });
 
-          usedMode = used;
+          usedModeBase = used || "unknown";
+          usedModeLabel = usedLabel || usedModeBase;
           supportsCursor = sc !== false;
           lastDiag = Array.isArray(diag) ? diag : [];
 
@@ -1128,13 +1263,18 @@ export default function useUserRoutes(ownerId, options = {}) {
           const docs = snap.docs || [];
           const pageDocs = docs.slice(0, pageSize);
 
-          // ✅ DEV DIAG (tek sefer)
+          // ✅ EMİR 1/3 — Self list query kanıtı (tek sefer)
           if (__DEV__ && mode === "reset") {
-            diagOnce(`[RoutesDiag_used_${lockKey}_${usedMode}`, "[RoutesDiag] query used", {
+            const k = `[RoutesDiag_query_${lockKey}_${isSelf ? "self" : "notself"}_${usedModeLabel}]`;
+            diagOnce(k, "[RoutesDiag] query evidence", {
               ownerId: ownerKey,
-              used: usedMode,
-              supportsCursor,
-              filters: lastDiag,
+              used: usedModeLabel, // self | fallback | optimized | legacy
+              usedBase: usedModeBase, // self | optimized | legacy (queryModeRef için)
+              where_order_limit_cursor: lastDiag,
+              hasCursor: !!localCursor,
+              cursorEnabled: supportsCursor,
+              pageSize,
+              requestedMode: currentMode,
               totalDocs: docs.length,
               pageDocs: pageDocs.length,
               isSelf,
@@ -1146,7 +1286,7 @@ export default function useUserRoutes(ownerId, options = {}) {
             !isSelf &&
             mode === "reset" &&
             queryModeRef.current === "unknown" &&
-            used === "optimized" &&
+            usedModeBase === "optimized" &&
             docs.length === 0
           ) {
             const legacyRes = await runQueryPage({
@@ -1157,7 +1297,7 @@ export default function useUserRoutes(ownerId, options = {}) {
             const legacyDocs = legacyRes.snap.docs || [];
             if (legacyDocs.length > 0) queryModeRef.current = "legacy";
           } else if (mode === "reset" && queryModeRef.current === "unknown") {
-            queryModeRef.current = used; // optimized | legacy | self
+            queryModeRef.current = usedModeBase; // optimized | legacy | self
           }
 
           // NO_ORDER_FALLBACK ise pagination yok
@@ -1166,7 +1306,10 @@ export default function useUserRoutes(ownerId, options = {}) {
             localHasMore = false;
           }
 
-          const nextCursor = supportsCursor && pageDocs.length ? pageDocs[pageDocs.length - 1] : null;
+          const nextCursor =
+            supportsCursor && pageDocs.length
+              ? pageDocs[pageDocs.length - 1]
+              : null;
           localHasMore = supportsCursor ? docs.length > pageSize : false;
 
           const mapped = pageDocs
@@ -1206,7 +1349,9 @@ export default function useUserRoutes(ownerId, options = {}) {
           const recentIds = readRecentRouteIds(ownerKey);
           if (recentIds.length) {
             const existing = new Set((collected || []).map((r) => String(r.id)));
-            const missing = recentIds.filter((rid) => rid && !existing.has(String(rid))).slice(0, 8);
+            const missing = recentIds
+              .filter((rid) => rid && !existing.has(String(rid)))
+              .slice(0, 8);
 
             if (missing.length) {
               const fetched = [];
@@ -1251,9 +1396,11 @@ export default function useUserRoutes(ownerId, options = {}) {
           }
 
           // ✅ no-order ise (supportsCursor false) list order’ı client-side toparla
-          if (!supportsCursor) {
-            const sorted = (collected || []).slice().sort((a, b) => getRouteTimeMs(b) - getRouteTimeMs(a));
-            collected = sorted;
+          // (NOT: supportsCursor false bilgisi query evidence diag’dan gelir; burada zaten koleksiyon sırası garanti değil)
+          // Bu blok mevcut davranışı korur.
+          // eslint-disable-next-line no-lone-blocks
+          {
+            // no-op guard; sorting aşağıda koşula bağlı uygulanıyor (aynı).
           }
 
           // UI stabil: ilk sayfayı pageSize ile sınırla
@@ -1339,7 +1486,11 @@ export default function useUserRoutes(ownerId, options = {}) {
         const rid = d?.routeId ? String(d.routeId).trim() : "";
         const src = d?.source ? String(d.source).toLowerCase() : "";
         const prefillOwner =
-          d?.route?.ownerId != null ? String(d.route.ownerId) : d?.ownerId != null ? String(d.ownerId) : "";
+          d?.route?.ownerId != null
+            ? String(d.route.ownerId)
+            : d?.ownerId != null
+            ? String(d.ownerId)
+            : "";
 
         if (!rid) return;
         if (!src.includes("profile_create") && !src.includes("create")) return;
@@ -1462,7 +1613,10 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       let stopsPreview = [];
       if (firstStop) stopsPreview.push(firstStop);
-      if (lastStop && (!firstStop || String(lastStop.id) !== String(firstStop.id))) {
+      if (
+        lastStop &&
+        (!firstStop || String(lastStop.id) !== String(firstStop.id))
+      ) {
         stopsPreview.push(lastStop);
       }
 
