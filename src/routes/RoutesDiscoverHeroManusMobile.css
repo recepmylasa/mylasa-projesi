@@ -1,14 +1,17 @@
 /* FILE: src/routes/RoutesDiscoverHeroManusMobile.css */
+/* ✅ EMİR 3/3 — Tokenize (fallback’li, global yok)
+   - Renkler token’dan okunur; token yoksa eski görünüm korunur.
+   - Mikro animasyon class altyapısı eklendi (JS’e dokunmadan, yalnız class tanımı). */
 
 .manus-discover-hero {
   position: relative;
   border-radius: 22px;
   overflow: hidden;
-  background: rgba(10, 10, 12, 0.58);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: var(--glass-white, rgba(10, 10, 12, 0.58));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.30);
+  box-shadow: var(--shadow-strong, 0 18px 44px rgba(0, 0, 0, 0.30));
 }
 
 .manus-discover-hero__bg {
@@ -20,6 +23,29 @@
     radial-gradient(520px 260px at 50% 100%, rgba(255, 56, 92, 0.12), transparent 65%),
     linear-gradient(180deg, rgba(11, 16, 32, 0.88), rgba(7, 10, 16, 0.92));
   filter: saturate(1.04);
+}
+
+/* Token accent ile gradient’i daha uyumlu yap (destek varsa). Destek yoksa üstteki RGBA’lar devrede kalır. */
+@supports (color: color-mix(in srgb, white, transparent)) {
+  .manus-discover-hero__bg {
+    background:
+      radial-gradient(
+        520px 260px at 20% 10%,
+        color-mix(in srgb, var(--accent-violet, rgba(99, 102, 241, 0.95)) 24%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        520px 260px at 80% 30%,
+        color-mix(in srgb, var(--accent-cyan, rgba(34, 211, 238, 0.95)) 14%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        520px 260px at 50% 100%,
+        color-mix(in srgb, var(--accent-rose, rgba(255, 56, 92, 0.95)) 14%, transparent),
+        transparent 65%
+      ),
+      linear-gradient(180deg, rgba(11, 16, 32, 0.88), rgba(7, 10, 16, 0.92));
+  }
 }
 
 .manus-discover-hero__inner {
@@ -86,9 +112,9 @@
   font-size: 11px;
   font-weight: 950;
   letter-spacing: 0.6px;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--text-dim, rgba(255, 255, 255, 0.78));
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -99,12 +125,17 @@
   line-height: 1.1;
   font-weight: 950;
   letter-spacing: -0.4px;
-  color: rgba(255, 255, 255, 0.94);
+  color: var(--text-main, rgba(255, 255, 255, 0.94));
   text-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
 }
 
 .manus-discover-hero__titleGrad {
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.98), rgba(34, 211, 238, 0.95), rgba(255, 56, 92, 0.95));
+  background: linear-gradient(
+    90deg,
+    var(--accent-violet, rgba(99, 102, 241, 0.98)),
+    var(--accent-cyan, rgba(34, 211, 238, 0.95)),
+    var(--accent-rose, rgba(255, 56, 92, 0.95))
+  );
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -115,7 +146,7 @@
   font-size: 13px;
   line-height: 1.35;
   font-weight: 650;
-  color: rgba(255, 255, 255, 0.70);
+  color: var(--text-dim, rgba(255, 255, 255, 0.70));
   max-width: 46ch;
 }
 
@@ -156,8 +187,8 @@
 
 .manus-discover-hero__btn--ghost {
   background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-main, rgba(255, 255, 255, 0.86));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -176,7 +207,7 @@
   border-radius: 16px;
   padding: 10px 10px 9px;
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
@@ -185,7 +216,7 @@
 .manus-discover-hero__statVal {
   font-size: 16px;
   font-weight: 950;
-  color: rgba(255, 255, 255, 0.94);
+  color: var(--text-main, rgba(255, 255, 255, 0.94));
   letter-spacing: -0.2px;
 }
 
@@ -193,7 +224,7 @@
   margin-top: 2px;
   font-size: 11px;
   font-weight: 850;
-  color: rgba(255, 255, 255, 0.64);
+  color: var(--text-dimmer, rgba(255, 255, 255, 0.64));
 }
 
 /* ===========================
@@ -227,8 +258,8 @@
   width: 100%;
   height: 100%;
   border-radius: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(10, 10, 12, 0.38);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.14));
+  background: var(--glass-weak, rgba(10, 10, 12, 0.38));
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
   box-shadow:
@@ -245,8 +276,25 @@
     radial-gradient(420px 220px at 30% 10%, rgba(99, 102, 241, 0.18), transparent 60%),
     radial-gradient(420px 240px at 70% 30%, rgba(34, 211, 238, 0.10), transparent 62%),
     linear-gradient(180deg, rgba(8, 10, 14, 0.92), rgba(6, 8, 12, 0.96));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-border-soft, rgba(255, 255, 255, 0.08));
   overflow: hidden;
+}
+
+@supports (color: color-mix(in srgb, white, transparent)) {
+  .manus-phone__screen {
+    background:
+      radial-gradient(
+        420px 220px at 30% 10%,
+        color-mix(in srgb, var(--accent-violet, rgba(99, 102, 241, 0.95)) 18%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        420px 240px at 70% 30%,
+        color-mix(in srgb, var(--accent-cyan, rgba(34, 211, 238, 0.95)) 12%, transparent),
+        transparent 62%
+      ),
+      linear-gradient(180deg, rgba(8, 10, 14, 0.92), rgba(6, 8, 12, 0.96));
+  }
 }
 
 .manus-phone__notch {
@@ -258,7 +306,7 @@
   height: 14px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
   z-index: 2;
 }
 
@@ -281,6 +329,14 @@
     0 0 0 2px rgba(255,255,255,0.10) inset,
     0 0 14px rgba(34, 211, 238, 0.30);
 }
+@supports (color: color-mix(in srgb, white, transparent)) {
+  .manus-phone__dot--cyan {
+    background: var(--accent-cyan, rgba(34, 211, 238, 0.92));
+    box-shadow:
+      0 0 0 2px rgba(255,255,255,0.10) inset,
+      0 0 14px color-mix(in srgb, var(--accent-cyan, rgba(34, 211, 238, 0.95)) 32%, transparent);
+  }
+}
 
 .manus-phone__miniTitle {
   height: 10px;
@@ -292,7 +348,7 @@
 .manus-phone__card {
   margin: 10px 12px 0;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
   background: rgba(255, 255, 255, 0.06);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.26);
   overflow: hidden;
@@ -303,6 +359,17 @@
   background:
     radial-gradient(140px 90px at 20% 20%, rgba(255,255,255,0.12), transparent 60%),
     linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(34, 211, 238, 0.12));
+}
+@supports (color: color-mix(in srgb, white, transparent)) {
+  .manus-phone__cardCover {
+    background:
+      radial-gradient(140px 90px at 20% 20%, rgba(255,255,255,0.12), transparent 60%),
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--accent-violet, rgba(99, 102, 241, 0.95)) 24%, transparent),
+        color-mix(in srgb, var(--accent-cyan, rgba(34, 211, 238, 0.95)) 14%, transparent)
+      );
+  }
 }
 
 .manus-phone__cardMeta {
@@ -331,7 +398,7 @@
   width: 46%;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
 }
 
 .manus-phone__bottomFade {
@@ -354,6 +421,21 @@
     radial-gradient(260px 180px at 60% 70%, rgba(99, 102, 241, 0.12), transparent 66%);
   filter: blur(10px);
   opacity: 0.65;
+}
+@supports (color: color-mix(in srgb, white, transparent)) {
+  .manus-phone__glow {
+    background:
+      radial-gradient(
+        240px 160px at 45% 10%,
+        color-mix(in srgb, var(--accent-cyan, rgba(34, 211, 238, 0.95)) 14%, transparent),
+        transparent 62%
+      ),
+      radial-gradient(
+        260px 180px at 60% 70%,
+        color-mix(in srgb, var(--accent-violet, rgba(99, 102, 241, 0.95)) 12%, transparent),
+        transparent 66%
+      );
+  }
 }
 
 /* Float anim (subtle) — inner float only */
@@ -396,6 +478,74 @@
   100% { transform: translateX(120%); opacity: 0.0; }
 }
 
+/* =========================================================
+   ✅ EMİR 3/3 — Premium mikro animasyon class altyapısı
+   - Mevcut elementlere uygulanmıyor.
+   - Sadece class tanımı (JS'e dokunmadan "varsa çalışır").
+   ========================================================= */
+
+/* Text shimmer (metin üzerinde premium parıltı) */
+.stat-shimmer {
+  position: relative;
+  background: linear-gradient(
+    110deg,
+    var(--text-dim, rgba(255,255,255,0.68)) 0%,
+    var(--text-main, rgba(255,255,255,0.92)) 22%,
+    var(--text-dim, rgba(255,255,255,0.68)) 48%,
+    var(--text-main, rgba(255,255,255,0.92)) 70%,
+    var(--text-dim, rgba(255,255,255,0.68)) 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: stat-shimmer-move 2.6s ease-in-out infinite;
+}
+
+@keyframes stat-shimmer-move {
+  0% { background-position: 0% 0; }
+  50% { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+
+/* Glow pulse (buton/kart dış glow) */
+.glow-pulse {
+  animation: glow-pulse-anim 2.8s ease-in-out infinite;
+  will-change: filter, box-shadow;
+}
+
+@keyframes glow-pulse-anim {
+  0% {
+    filter: drop-shadow(0 0 0 rgba(0,0,0,0));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 16px rgba(34,211,238,0.14))
+      drop-shadow(0 0 26px rgba(34,211,238,0.10));
+  }
+  100% {
+    filter: drop-shadow(0 0 0 rgba(0,0,0,0));
+  }
+}
+
+@supports (color: color-mix(in srgb, white, transparent)) {
+  @keyframes glow-pulse-anim {
+    0% { filter: drop-shadow(0 0 0 rgba(0,0,0,0)); }
+    50% {
+      filter:
+        drop-shadow(0 0 16px color-mix(in srgb, var(--accent-cyan, rgba(34,211,238,0.95)) 18%, transparent))
+        drop-shadow(0 0 26px color-mix(in srgb, var(--accent-cyan, rgba(34,211,238,0.95)) 12%, transparent));
+    }
+    100% { filter: drop-shadow(0 0 0 rgba(0,0,0,0)); }
+  }
+}
+
+/* Float (hero mockup / dekor elemanları) */
+.animate-float {
+  animation: manus-floatY 3.8s ease-in-out infinite;
+  will-change: transform;
+}
+
 /* Reduce motion: disable animations/transitions */
 @media (prefers-reduced-motion: reduce) {
   .mylasa-reveal {
@@ -416,6 +566,12 @@
   }
 
   .manus-phone__float {
+    animation: none !important;
+  }
+
+  .stat-shimmer,
+  .glow-pulse,
+  .animate-float {
     animation: none !important;
   }
 }
