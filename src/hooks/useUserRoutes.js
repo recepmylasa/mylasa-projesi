@@ -11,15 +11,19 @@
 // EMİR 5 — permission-denied spam guard + UI lock mode (rules'a dokunmadan)
 //
 // ✅ EMİR PAKETİ 2/3 (Kalıcı Fix):
-// - Firestore composite index yoksa self query (ownerId== + orderBy createdAt) failed-precondition verir.
-// - Bu durumda liste “orderBy’sız fallback”e düşer ve yeni create edilen rota ilk sayfada görünmeyebilir.
-// - ÇÖZÜM: create edilen routeId’yi localStorage’a yaz + reset load’da getDoc ile MERGE et.
-// - Ayrıca orderBy self query’nin “index yok” hatasını bir kez tespit edip tekrar deneme → log spam kes.
+// - Self list: userdan index istemesin → self query’de orderBy KULLANMA.
+// - Client-side: isDeleted false filtre + createdAt desc sort (null-safe).
+// - Pagination: self için cursor yok, limit büyütme var.
+// - Create sonrası: recent route ids (localStorage) + refresh + getDoc merge.
 //
 // ✅ EMİR PAKETİ 1/3 (TEŞHİS KANITI):
 // - Self list için çalıştırılan query mode + where/orderBy/limit/cursor tek log (DEV only)
 // - failed-precondition / requires an index yakalanınca: tek sefer log + console.trace() (stack / hangi ekran tetikliyor)
 // - NO_ORDER_FALLBACK kullanımı tek sefer kanıt log
+//
+// ✅ EMİR 2B/3 (HOTFIX):
+// - Maximum update depth loop fix: event listener effect’leri loadPage’a bağlanmaz.
+// - loadPageRef.current ile çağrılır. Focus/visibility ve create refresh “reset” değil “refresh” kullanır.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -593,7 +597,7 @@ function needsHydratePreview(route) {
 }
 
 // ✅ Create-index linkini GİZLEME: ama permission-denied spam yapma
-function logFirestoreQueryError(tag, err, extraMeta = null) {
+function logFirestoreQueryError(tag, err) {
   const code = getErrCode(err) || "unknown";
   const message = err?.message ? String(err.message) : "";
 
@@ -606,26 +610,23 @@ function logFirestoreQueryError(tag, err, extraMeta = null) {
     return;
   }
 
-  // ✅ EMİR 1/3: index hatası → tek sefer trace + fallback kanıtı
+  // ✅ EMİR 1/3: index hatası spam kır + trace
   if (isFailedPreconditionIndexError(err)) {
     warnPermOnce(
       `idx_${tag}_${code}`,
-      `[useUserRoutes] ${tag} — query index istiyor (${code}). Fallback uygulanacak.`,
+      `[useUserRoutes] ${tag} — query index istiyor (${code}).`,
       __DEV__ ? err : null
     );
-
     traceIndexOnce(
       `idx_trace_${tag}_${code}`,
-      "[RoutesDiag] requires an index → NO_ORDER_FALLBACK tetiklendi (stack kanıtı)",
-      {
-        tag,
-        code,
-        message,
-        ...(extraMeta ? { meta: extraMeta } : {}),
-      }
+      "[RoutesDiag] requires an index (stack kanıtı)",
+      { tag, code, message }
     );
     return;
   }
+
+  // ✅ PROD: konsol temiz (0 log)
+  if (!__DEV__) return;
 
   // eslint-disable-next-line no-console
   console.groupCollapsed(`${tag} (${code})`);
@@ -635,10 +636,6 @@ function logFirestoreQueryError(tag, err, extraMeta = null) {
   console.log("err.code:", code);
   // eslint-disable-next-line no-console
   console.log("err.message:", message);
-  if (extraMeta) {
-    // eslint-disable-next-line no-console
-    console.log("meta:", extraMeta);
-  }
   // eslint-disable-next-line no-console
   console.groupEnd();
 
@@ -673,7 +670,6 @@ function readRecentRouteIds(ownerKey) {
     const cleaned = arr
       .map((x) => (x == null ? "" : String(x).trim()))
       .filter(Boolean);
-    // dedupe (keep order)
     const seen = new Set();
     const out = [];
     for (const id of cleaned) {
@@ -751,14 +747,7 @@ function dedupeRoutesById(list) {
   return out;
 }
 
-function buildPatchedRouteModel({
-  id,
-  raw,
-  ownerKey,
-  viewerId,
-  isSelf,
-  isFollowing,
-}) {
+function buildPatchedRouteModel({ id, raw, ownerKey, viewerId, isSelf, isFollowing }) {
   if (!id || !raw || typeof raw !== "object") return null;
 
   const docOwnerId = getOwnerIdFromRaw(raw, ownerKey);
@@ -766,10 +755,7 @@ function buildPatchedRouteModel({
   if (!docOwnerKey || docOwnerKey !== ownerKey) return null;
 
   const deleted =
-    raw.deleted === true ||
-    !!raw.deletedAt ||
-    !!raw.isDeleted ||
-    !!raw.archivedAt;
+    raw.deleted === true || !!raw.deletedAt || !!raw.isDeleted || !!raw.archivedAt;
   if (deleted) return null;
 
   const status = (raw.status || "").toString().toLowerCase();
@@ -805,8 +791,7 @@ function buildPatchedRouteModel({
   const docCover = normalizeCoverUrl(coverUrl);
   const docThumb = normalizeCoverUrl(thumbnailUrl);
 
-  const finalCoverRaw =
-    modelCover || modelPreview || modelImage || modelMedia || docCover || "";
+  const finalCoverRaw = modelCover || modelPreview || modelImage || modelMedia || docCover || "";
   const finalCover = finalCoverRaw && !isVideoUrl(finalCoverRaw) ? finalCoverRaw : "";
 
   const finalThumbRaw = modelThumb || modelThumb2 || docThumb || finalCover || "";
@@ -834,9 +819,7 @@ function buildPatchedRouteModel({
     ...model,
     ...(nextCoverObj ? { cover: nextCoverObj } : {}),
     stopsPreview:
-      Array.isArray(model?.stopsPreview) && model.stopsPreview.length
-        ? model.stopsPreview
-        : stopsPreview,
+      Array.isArray(model?.stopsPreview) && model.stopsPreview.length ? model.stopsPreview : stopsPreview,
     coverUrl: finalCover,
     thumbnailUrl: finalThumb,
     previewUrl: modelPreview || finalCover || "",
@@ -876,11 +859,14 @@ export default function useUserRoutes(ownerId, options = {}) {
   // ✅ query mode: optimized vs legacy vs self
   const queryModeRef = useRef("unknown"); // "unknown" | "optimized" | "legacy" | "self"
 
-  // ✅ EMİR 2/3: self orderBy index yoksa bir daha deneme (spam kır)
-  const selfOrderBrokenRef = useRef(false);
-
   // ✅ refresh spam guard
   const refreshGateRef = useRef(0);
+
+  // ✅ EMİR 2/3: self pagination = limit büyütme
+  const selfLimitRef = useRef(pageSize);
+
+  // ✅ EMİR 2B: loadPage ref (listener effect loop fix)
+  const loadPageRef = useRef(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -889,7 +875,7 @@ export default function useUserRoutes(ownerId, options = {}) {
     };
   }, []);
 
-  // ✅ EMİR-6: event listener (mount/unmount) — UI hızlandırma (snapshot/refresh gerçek doğruluk)
+  // ✅ EMİR-6: event listener (mount/unmount) — UI hızlandırma
   useEffect(() => {
     const unsub = onRouteCoverUpdated((payload) => {
       if (!payload?.routeId || !payload?.cover) return;
@@ -903,66 +889,19 @@ export default function useUserRoutes(ownerId, options = {}) {
     };
   }, []);
 
-  // ✅ EMİR 2/3: create sonrası open-route-modal event’inden routeId yakala
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!isSelf) return;
-    if (!ownerId) return;
-
-    const ownerKey = String(ownerId);
-    const onOpenRouteModal = (e) => {
-      try {
-        const d = e?.detail || {};
-        const rid = d?.routeId ? String(d.routeId).trim() : "";
-        const src = d?.source ? String(d.source).toLowerCase() : "";
-        const prefillOwner =
-          d?.route?.ownerId != null
-            ? String(d.route.ownerId)
-            : d?.ownerId != null
-            ? String(d.ownerId)
-            : "";
-
-        if (!rid) return;
-
-        // sadece create akışında kaydet
-        if (!src.includes("profile_create") && !src.includes("create")) return;
-
-        // owner uyuşmuyorsa dokunma
-        if (prefillOwner && String(prefillOwner) !== ownerKey) return;
-
-        rememberRecentRouteId(ownerKey, rid);
-
-        // ✅ hafif refresh (anında grid’e düşsün)
-        const now = Date.now();
-        if (now - refreshGateRef.current < 650) return;
-        refreshGateRef.current = now;
-
-        try {
-          // refresh reset: yeni rota listede görünsün
-          // (loadPage declare aşağıda; closure safe)
-        } catch {}
-      } catch {}
-    };
-
-    window.addEventListener("open-route-modal", onOpenRouteModal);
-    return () => {
-      try {
-        window.removeEventListener("open-route-modal", onOpenRouteModal);
-      } catch {}
-    };
-  }, [isSelf, ownerId]);
-
-  // owner değişince hydrate cache + query mode + lock sıfırla
+  // owner değişince hydrate cache + query mode + lock + selfLimit sıfırla
   useEffect(() => {
     hydrateCacheRef.current = new Map();
     hydrateJobIdRef.current += 1;
     queryModeRef.current = "unknown";
-    selfOrderBrokenRef.current = false;
 
     lockRef.current = { key: "", reason: "" };
     setAccessStatus("idle");
     setError(null);
-  }, [ownerId]);
+
+    selfLimitRef.current = pageSize;
+    cursorRef.current = null;
+  }, [ownerId, pageSize]);
 
   const runQueryPage = useCallback(
     async ({ ownerKey, localCursor, modeToUse }) => {
@@ -970,9 +909,9 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       const mkOptimized = () => {
         const diag = [
-          { type: "where", field: "ownerId", op: "==", value: ownerKey },
-          { type: "where", field: "status", op: "==", value: "finished" },
-          { type: "orderBy", field: "createdAt", dir: "desc" },
+          `where(ownerId == ${ownerKey})`,
+          `where(status == finished)`,
+          `orderBy(createdAt desc)`,
         ];
 
         const constraints = [
@@ -980,176 +919,50 @@ export default function useUserRoutes(ownerId, options = {}) {
           where("status", "==", "finished"),
           orderBy("createdAt", "desc"),
         ];
-        if (localCursor) constraints.push(startAfter(localCursor));
+        if (localCursor) {
+          constraints.push(startAfter(localCursor));
+          diag.push("startAfter(cursor)");
+        }
         constraints.push(limit(pageSize + 1));
-
-        return {
-          q: query(colRef, ...constraints),
-          diag,
-          supportsCursor: true,
-          used: "optimized",
-          usedLabel: "optimized",
-        };
-      };
-
-      const mkSelf = () => {
-        // ✅ SELF: status filtresi YOK (draft/empty status da gelsin)
-        const diag = [
-          { type: "where", field: "ownerId", op: "==", value: ownerKey },
-          { type: "orderBy", field: "createdAt", dir: "desc" },
-        ];
-
-        const constraints = [
-          where("ownerId", "==", ownerKey),
-          orderBy("createdAt", "desc"),
-        ];
-        if (localCursor) constraints.push(startAfter(localCursor));
-        constraints.push(limit(pageSize + 1));
-
-        return {
-          q: query(colRef, ...constraints),
-          diag,
-          supportsCursor: true,
-          used: "self",
-          usedLabel: "self",
-        };
-      };
-
-      const mkSelfNoOrderFallback = () => {
-        // ✅ index yoksa: orderBy’sız (cursor yok)
-        const diag = [
-          { type: "where", field: "ownerId", op: "==", value: ownerKey },
-          { type: "limit", n: pageSize + 1 },
-          { type: "note", value: "NO_ORDER_FALLBACK" },
-        ];
-        const constraints = [
-          where("ownerId", "==", ownerKey),
-          limit(pageSize + 1),
-        ];
-        return {
-          q: query(colRef, ...constraints),
-          diag,
-          supportsCursor: false,
-          used: "self",
-          usedLabel: "fallback",
-        };
+        diag.push(`limit(${pageSize + 1})`);
+        return { q: query(colRef, ...constraints), diag, supportsCursor: true };
       };
 
       const mkLegacy = () => {
-        const diag = [{ type: "orderBy", field: "createdAt", dir: "desc" }];
+        const diag = [`orderBy(createdAt desc)`];
 
         const constraints = [orderBy("createdAt", "desc")];
-        if (localCursor) constraints.push(startAfter(localCursor));
+        if (localCursor) {
+          constraints.push(startAfter(localCursor));
+          diag.push("startAfter(cursor)");
+        }
         constraints.push(limit(pageSize + 1));
-
-        return {
-          q: query(colRef, ...constraints),
-          diag,
-          supportsCursor: true,
-          used: "legacy",
-          usedLabel: "legacy",
-        };
+        diag.push(`limit(${pageSize + 1})`);
+        return { q: query(colRef, ...constraints), diag, supportsCursor: true };
       };
 
       if (modeToUse === "legacy") {
-        const built = mkLegacy();
-        const snap = await getDocs(built.q);
-        return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
-      }
-
-      if (modeToUse === "self") {
-        // ✅ EMİR 1/3: NO_ORDER_FALLBACK kanıtı (index yok → bir daha orderBy deneme)
-        if (selfOrderBrokenRef.current) {
-          const built = mkSelfNoOrderFallback();
-          diagOnce(
-            `RoutesDiag_NO_ORDER_FALLBACK_${ownerKey}`,
-            "[RoutesDiag] NO_ORDER_FALLBACK aktif (selfOrderBrokenRef=true)",
-            { ownerId: ownerKey, diag: built.diag }
-          );
-          const snap = await getDocs(built.q);
-          return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
-        }
-
-        try {
-          const built = mkSelf();
-          const snap = await getDocs(built.q);
-          return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
-        } catch (e) {
-          if (isPermissionDeniedError(e) || isUnauthenticatedError(e)) throw e;
-
-          // ✅ index yoksa bir daha orderBy deneme + STACK TRACE (tek sefer)
-          if (isFailedPreconditionIndexError(e)) {
-            selfOrderBrokenRef.current = true;
-
-            diagOnce(
-              `RoutesDiag_selfOrderBroken_${ownerKey}`,
-              "[RoutesDiag] self orderBy(createdAt) index yok → bundan sonra NO_ORDER_FALLBACK kullanılacak."
-            );
-
-            traceIndexOnce(
-              `idx_trace_self_${ownerKey}`,
-              "[RoutesDiag] self query requires an index (stack kanıtı)",
-              {
-                ownerId: ownerKey,
-                mode: "self",
-                intended: "where(ownerId==) + orderBy(createdAt desc)",
-                errCode: getErrCode(e) || "failed-precondition",
-                errMsg: e?.message ? String(e.message) : "",
-              }
-            );
-          }
-
-          logFirestoreQueryError("[useUserRoutes] self query failed", e, {
-            ownerId: ownerKey,
-            mode: "self",
-            step: "orderBy(createdAt desc)",
-          });
-
-          try {
-            const built = mkSelfNoOrderFallback();
-            diagOnce(
-              `RoutesDiag_NO_ORDER_FALLBACK_apply_${ownerKey}`,
-              "[RoutesDiag] NO_ORDER_FALLBACK uygulanıyor (self query fail sonrası)",
-              { ownerId: ownerKey, diag: built.diag }
-            );
-            const snap = await getDocs(built.q);
-            return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
-          } catch (e2) {
-            logFirestoreQueryError("[useUserRoutes] self no-order fallback failed", e2, {
-              ownerId: ownerKey,
-              mode: "self",
-              step: "NO_ORDER_FALLBACK",
-            });
-            throw e2;
-          }
-        }
+        const { q, diag, supportsCursor } = mkLegacy();
+        const snap = await getDocs(q);
+        return { snap, used: "legacy", diag, supportsCursor };
       }
 
       // default: optimized
       try {
-        const built = mkOptimized();
-        const snap = await getDocs(built.q);
-        return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
+        const { q, diag, supportsCursor } = mkOptimized();
+        const snap = await getDocs(q);
+        return { snap, used: "optimized", diag, supportsCursor };
       } catch (e) {
-        // ✅ permission/unauthenticated ise gereksiz fallback deneme (spam ve ekstra istek yok)
-        if (isPermissionDeniedError(e) || isUnauthenticatedError(e)) {
-          throw e;
-        }
+        if (isPermissionDeniedError(e) || isUnauthenticatedError(e)) throw e;
 
-        logFirestoreQueryError("[useUserRoutes] optimized query failed", e, {
-          ownerId: ownerKey,
-          mode: "optimized",
-        });
+        logFirestoreQueryError("[useUserRoutes] optimized query failed", e);
 
         try {
-          const built = mkLegacy();
-          const snap = await getDocs(built.q);
-          return { snap, used: built.used, usedLabel: built.usedLabel, diag: built.diag, supportsCursor: built.supportsCursor };
+          const { q, diag, supportsCursor } = mkLegacy();
+          const snap = await getDocs(q);
+          return { snap, used: "legacy", diag, supportsCursor };
         } catch (e2) {
-          logFirestoreQueryError("[useUserRoutes] legacy fallback failed", e2, {
-            ownerId: ownerKey,
-            mode: "legacy",
-          });
+          logFirestoreQueryError("[useUserRoutes] legacy fallback failed", e2);
           throw e2;
         }
       }
@@ -1176,11 +989,7 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       // ✅ EMİR 5: login yoksa hiç sorgu başlatma → UI "giriş gerekli"
       if (!viewerId) {
-        if (
-          lockRef.current.key === lockKey &&
-          lockRef.current.reason === "login_required"
-        )
-          return;
+        if (lockRef.current.key === lockKey && lockRef.current.reason === "login_required") return;
 
         lockRef.current = { key: lockKey, reason: "login_required" };
         setAccessStatus("login_required");
@@ -1193,17 +1002,17 @@ export default function useUserRoutes(ownerId, options = {}) {
         return;
       }
 
-      // ✅ EMİR 5: aynı kullanıcı+profil için permission-denied kilidi varsa tekrar deneme (spam yok)
-      if (
-        lockRef.current.key === lockKey &&
-        lockRef.current.reason === "forbidden"
-      ) {
-        return;
-      }
+      // ✅ EMİR 5: permission-denied kilidi varsa tekrar deneme (spam yok)
+      if (lockRef.current.key === lockKey && lockRef.current.reason === "forbidden") return;
 
       const reqId = ++requestIdRef.current;
 
-      if (mode === "reset") {
+      const isReset = mode === "reset";
+      const isMore = mode === "more";
+      const isRefresh = mode === "refresh";
+
+      // ✅ reset: listeyi boşalt (skeleton OK)
+      if (isReset) {
         setAccessStatus("loading");
         setInitialLoading(true);
         setLoadingMore(false);
@@ -1216,158 +1025,110 @@ export default function useUserRoutes(ownerId, options = {}) {
         hydrateJobIdRef.current += 1;
 
         queryModeRef.current = "unknown";
-      } else {
+
+        // self limit reset
+        if (isSelf) selfLimitRef.current = pageSize;
+      } else if (isMore) {
         setLoadingMore(true);
+      } else if (isRefresh) {
+        // ✅ refresh: listeyi BOŞALTMA (flicker yok)
+        setError(null);
       }
 
-      const maxAutoPages = mode === "reset" ? 3 : 1;
-
       try {
-        let localCursor = mode === "more" ? cursorRef.current : null;
-        let collected = [];
-        let localHasMore = false;
-        let loops = 0;
-        let lastDiag = [];
-        let supportsCursor = true;
-        let usedModeBase = "unknown";
-        let usedModeLabel = "unknown";
+        // -------------------------
+        // ✅ SELF PATH (index istemesin)
+        // -------------------------
+        if (isSelf) {
+          // self pagination: limit büyütme
+          if (isMore) {
+            const next = Math.max(pageSize, Number(selfLimitRef.current) || pageSize) + pageSize;
+            selfLimitRef.current = Math.min(next, 400); // hard cap (güvenli)
+          } else if (isReset) {
+            selfLimitRef.current = pageSize;
+          }
+          const take = Math.max(pageSize, Number(selfLimitRef.current) || pageSize);
 
-        while (loops < maxAutoPages) {
-          const currentMode =
-            mode === "reset"
-              ? queryModeRef.current === "unknown"
-                ? isSelf
-                  ? "self"
-                  : "optimized"
-                : queryModeRef.current
-              : queryModeRef.current === "unknown"
-              ? isSelf
-                ? "self"
-                : "legacy"
-              : queryModeRef.current;
+          const diag = [
+            `where(ownerId == ${ownerKey})`,
+            `limit(${take + 1})`,
+            `CLIENT_SORT(createdAt desc)`,
+          ];
 
-          const { snap, used, usedLabel, diag, supportsCursor: sc } =
-            await runQueryPage({
-              ownerKey,
-              localCursor,
-              modeToUse: currentMode,
-            });
+          // ✅ EMİR 1/3 — self query kanıtı (tek sefer)
+          if (__DEV__ && isReset) {
+            diagOnce(
+              `[RoutesDiag_self_query_${lockKey}]`,
+              "[RoutesDiag] self query evidence",
+              {
+                ownerId: ownerKey,
+                used: "self_indexless",
+                where_order_limit_cursor: diag,
+                cursorEnabled: false,
+                pageSize,
+                take,
+              }
+            );
+          }
 
-          usedModeBase = used || "unknown";
-          usedModeLabel = usedLabel || usedModeBase;
-          supportsCursor = sc !== false;
-          lastDiag = Array.isArray(diag) ? diag : [];
+          const colRef = collection(db, "routes");
+          const q = query(colRef, where("ownerId", "==", ownerKey), limit(take + 1));
+
+          let snap;
+          try {
+            snap = await getDocs(q);
+          } catch (e) {
+            // self indexless’de index hatası beklenmez; olursa trace
+            if (isFailedPreconditionIndexError(e)) {
+              traceIndexOnce(
+                `idx_trace_self_unexpected_${ownerKey}`,
+                "[RoutesDiag] self indexless query yine de index istedi (beklenmeyen)",
+                { ownerId: ownerKey, err: e?.message || "" }
+              );
+            }
+            throw e;
+          }
 
           if (!isMountedRef.current || reqId !== requestIdRef.current) return;
 
           const docs = snap.docs || [];
-          const pageDocs = docs.slice(0, pageSize);
+          const pageDocs = docs.slice(0, take);
+          const localHasMore = docs.length > take;
 
-          // ✅ EMİR 1/3 — Self list query kanıtı (tek sefer)
-          if (__DEV__ && mode === "reset") {
-            const k = `[RoutesDiag_query_${lockKey}_${isSelf ? "self" : "notself"}_${usedModeLabel}]`;
-            diagOnce(k, "[RoutesDiag] query evidence", {
-              ownerId: ownerKey,
-              used: usedModeLabel, // self | fallback | optimized | legacy
-              usedBase: usedModeBase, // self | optimized | legacy (queryModeRef için)
-              where_order_limit_cursor: lastDiag,
-              hasCursor: !!localCursor,
-              cursorEnabled: supportsCursor,
-              pageSize,
-              requestedMode: currentMode,
-              totalDocs: docs.length,
-              pageDocs: pageDocs.length,
-              isSelf,
-            });
-          }
-
-          // non-self için eski optimize->legacy keşfi kalsın
-          if (
-            !isSelf &&
-            mode === "reset" &&
-            queryModeRef.current === "unknown" &&
-            usedModeBase === "optimized" &&
-            docs.length === 0
-          ) {
-            const legacyRes = await runQueryPage({
-              ownerKey,
-              localCursor: null,
-              modeToUse: "legacy",
-            });
-            const legacyDocs = legacyRes.snap.docs || [];
-            if (legacyDocs.length > 0) queryModeRef.current = "legacy";
-          } else if (mode === "reset" && queryModeRef.current === "unknown") {
-            queryModeRef.current = usedModeBase; // optimized | legacy | self
-          }
-
-          // NO_ORDER_FALLBACK ise pagination yok
-          if (!supportsCursor) {
-            localCursor = null;
-            localHasMore = false;
-          }
-
-          const nextCursor =
-            supportsCursor && pageDocs.length
-              ? pageDocs[pageDocs.length - 1]
-              : null;
-          localHasMore = supportsCursor ? docs.length > pageSize : false;
-
-          const mapped = pageDocs
+          let collected = pageDocs
             .map((d) => {
               const raw = d.data() || {};
-
-              const model = buildPatchedRouteModel({
+              return buildPatchedRouteModel({
                 id: d.id,
                 raw,
                 ownerKey,
                 viewerId,
-                isSelf,
+                isSelf: true,
                 isFollowing,
               });
-
-              return model;
             })
             .filter(Boolean);
 
-          collected = mode === "reset" ? collected.concat(mapped) : mapped;
-          localCursor = nextCursor;
-
-          if (mode === "reset") {
-            if (collected.length > 0) break;
-            if (!localHasMore || !localCursor) break;
-            loops += 1;
-            continue;
-          }
-
-          break;
-        }
-
-        if (!isMountedRef.current || reqId !== requestIdRef.current) return;
-
-        // ✅ EMİR 2/3: self + no-order durumda (index yok) → recent routeId’leri getDoc ile MERGE et
-        if (mode === "reset" && isSelf) {
+          // ✅ recent merge (her modda çalışsın)
           const recentIds = readRecentRouteIds(ownerKey);
           if (recentIds.length) {
-            const existing = new Set((collected || []).map((r) => String(r.id)));
-            const missing = recentIds
-              .filter((rid) => rid && !existing.has(String(rid)))
-              .slice(0, 8);
+            const existing = new Set(collected.map((r) => String(r.id)));
+            const missing = recentIds.filter((rid) => rid && !existing.has(String(rid))).slice(0, 8);
 
             if (missing.length) {
               const fetched = [];
               const validKept = [];
-
               for (const rid of missing) {
                 try {
-                  const snap = await getDoc(doc(db, "routes", String(rid)));
-                  if (!snap.exists()) continue;
-                  const raw = snap.data() || {};
+                  const rs = await getDoc(doc(db, "routes", String(rid)));
+                  if (!rs.exists()) continue;
+                  const raw = rs.data() || {};
                   const m = buildPatchedRouteModel({
-                    id: snap.id,
+                    id: rs.id,
                     raw,
                     ownerKey,
                     viewerId,
-                    isSelf,
+                    isSelf: true,
                     isFollowing,
                   });
                   if (m) {
@@ -1383,7 +1144,6 @@ export default function useUserRoutes(ownerId, options = {}) {
                 collected = dedupeRoutesById([...fetched, ...collected]);
               }
 
-              // prune: bulunanları koru, bulunmayanlar zaten next load’da düşer
               if (validKept.length) {
                 const prev = readRecentRouteIds(ownerKey);
                 const next = [
@@ -1395,33 +1155,137 @@ export default function useUserRoutes(ownerId, options = {}) {
             }
           }
 
-          // ✅ no-order ise (supportsCursor false) list order’ı client-side toparla
-          // (NOT: supportsCursor false bilgisi query evidence diag’dan gelir; burada zaten koleksiyon sırası garanti değil)
-          // Bu blok mevcut davranışı korur.
-          // eslint-disable-next-line no-lone-blocks
-          {
-            // no-op guard; sorting aşağıda koşula bağlı uygulanıyor (aynı).
-          }
+          // ✅ client-side sort (createdAt desc null-safe)
+          collected = (collected || [])
+            .slice()
+            .sort((a, b) => getRouteTimeMs(b) - getRouteTimeMs(a))
+            .slice(0, take);
 
-          // UI stabil: ilk sayfayı pageSize ile sınırla
-          collected = (collected || []).slice(0, pageSize);
+          // ✅ başarı → lock kaldır
+          lockRef.current = { key: "", reason: "" };
+          setAccessStatus("ready");
+
+          // self list: "more" bile olsa replace (limit büyütme zaten full snapshot)
+          setRoutes(collected);
+
+          cursorRef.current = null;
+          setHasMore(!!localHasMore);
+
+          return;
         }
 
-        // ✅ başarı → lock kaldır
+        // -------------------------
+        // NON-SELF PATH (mevcut davranış)
+        // -------------------------
+        let localCursor = isMore ? cursorRef.current : null;
+        let collected = [];
+        let localHasMore = false;
+        let loops = 0;
+        let lastDiag = [];
+        let supportsCursor = true;
+        let usedMode = "unknown";
+
+        const maxAutoPages = isReset ? 3 : 1;
+
+        while (loops < maxAutoPages) {
+          const currentMode =
+            isReset
+              ? queryModeRef.current === "unknown"
+                ? "optimized"
+                : queryModeRef.current
+              : queryModeRef.current === "unknown"
+              ? "legacy"
+              : queryModeRef.current;
+
+          const { snap: qsnap, used, diag, supportsCursor: sc } = await runQueryPage({
+            ownerKey,
+            localCursor,
+            modeToUse: currentMode,
+          });
+
+          usedMode = used;
+          supportsCursor = sc !== false;
+          lastDiag = Array.isArray(diag) ? diag : [];
+
+          if (!isMountedRef.current || reqId !== requestIdRef.current) return;
+
+          const docs = qsnap.docs || [];
+          const pageDocs = docs.slice(0, pageSize);
+
+          if (__DEV__ && isReset) {
+            diagOnce(`[RoutesDiag_used_${lockKey}_${usedMode}]`, "[RoutesDiag] query used", {
+              ownerId: ownerKey,
+              used: usedMode,
+              supportsCursor,
+              filters: lastDiag,
+              totalDocs: docs.length,
+              pageDocs: pageDocs.length,
+              isSelf: false,
+            });
+          }
+
+          if (isReset && queryModeRef.current === "unknown") {
+            queryModeRef.current = used; // optimized | legacy
+          }
+
+          if (!supportsCursor) {
+            localCursor = null;
+            localHasMore = false;
+          }
+
+          const nextCursor =
+            supportsCursor && pageDocs.length ? pageDocs[pageDocs.length - 1] : null;
+          localHasMore = supportsCursor ? docs.length > pageSize : false;
+
+          const mapped = pageDocs
+            .map((d) => {
+              const raw = d.data() || {};
+              return buildPatchedRouteModel({
+                id: d.id,
+                raw,
+                ownerKey,
+                viewerId,
+                isSelf: false,
+                isFollowing,
+              });
+            })
+            .filter(Boolean);
+
+          collected = isReset ? collected.concat(mapped) : mapped;
+          localCursor = nextCursor;
+
+          if (isReset) {
+            if (collected.length > 0) break;
+            if (!localHasMore || !localCursor) break;
+            loops += 1;
+            continue;
+          }
+
+          break;
+        }
+
+        if (!isMountedRef.current || reqId !== requestIdRef.current) return;
+
         lockRef.current = { key: "", reason: "" };
         setAccessStatus("ready");
-        setRoutes((prev) => (mode === "reset" ? collected : prev.concat(collected)));
+
+        setRoutes((prev) => {
+          if (isReset) return collected;
+          if (isMore) return prev.concat(collected);
+          if (isRefresh) return collected; // refresh non-self: replace
+          return collected;
+        });
+
         cursorRef.current = localCursor;
         setHasMore(!!(localHasMore && localCursor));
       } catch (err) {
         if (!isMountedRef.current || reqId !== requestIdRef.current) return;
 
-        // ✅ EMİR 5: permission-denied / unauthenticated → UI lock, log spam yok
         if (isPermissionDeniedError(err)) {
           lockRef.current = { key: lockKey, reason: "forbidden" };
           setAccessStatus("forbidden");
           setError(null);
-          setRoutes([]);
+          if (isReset) setRoutes([]);
           setHasMore(false);
           cursorRef.current = null;
 
@@ -1437,15 +1301,18 @@ export default function useUserRoutes(ownerId, options = {}) {
           lockRef.current = { key: lockKey, reason: "login_required" };
           setAccessStatus("login_required");
           setError(null);
-          setRoutes([]);
+          if (isReset) setRoutes([]);
           setHasMore(false);
           cursorRef.current = null;
           return;
         }
 
-        // eslint-disable-next-line no-console
-        console.warn("[useUserRoutes] load error", err);
-        if (mode === "reset") setRoutes([]);
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn("[useUserRoutes] load error", err);
+        }
+
+        if (isReset) setRoutes([]);
         setHasMore(false);
         setError(err || new Error("Rotalar yüklenirken bir hata oluştu."));
         setAccessStatus("error");
@@ -1458,7 +1325,10 @@ export default function useUserRoutes(ownerId, options = {}) {
     [ownerId, pageSize, isSelf, isFollowing, viewerId, runQueryPage]
   );
 
-  // ✅ owner/self/viewer değişince initial load
+  // ✅ EMİR 2B: ref güncelle (render loop yaratmaz)
+  loadPageRef.current = loadPage;
+
+  // ✅ owner/self/viewer değişince initial load (reset)
   useEffect(() => {
     if (!ownerId) {
       setRoutes([]);
@@ -1469,10 +1339,13 @@ export default function useUserRoutes(ownerId, options = {}) {
       setAccessStatus("idle");
       return;
     }
-    loadPage("reset");
-  }, [ownerId, isSelf, isFollowing, viewerId, loadPage]);
+    try {
+      loadPageRef.current && loadPageRef.current("reset");
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownerId, isSelf, isFollowing, viewerId]);
 
-  // ✅ EMİR 2/3: open-route-modal create event’i yakaladıysa refresh tetikle (closure)
+  // ✅ EMİR 2B: create event → recent yaz + REFRESH (listeyi boşaltma)
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!isSelf) return;
@@ -1502,7 +1375,8 @@ export default function useUserRoutes(ownerId, options = {}) {
         if (now - refreshGateRef.current < 650) return;
         refreshGateRef.current = now;
 
-        loadPage("reset");
+        // ✅ refresh: liste boşalmaz
+        loadPageRef.current && loadPageRef.current("refresh");
       } catch {}
     };
 
@@ -1512,9 +1386,9 @@ export default function useUserRoutes(ownerId, options = {}) {
         window.removeEventListener("open-route-modal", onOpenRouteModal);
       } catch {}
     };
-  }, [isSelf, ownerId, loadPage]);
+  }, [isSelf, ownerId]);
 
-  // ✅ SELF: geri dönünce (focus/visible) hafif refresh (spam guard)
+  // ✅ SELF: geri dönünce (focus/visible) silent refresh (reset yok!)
   useEffect(() => {
     if (!isSelf) return;
     if (typeof window === "undefined" || typeof document === "undefined") return;
@@ -1525,7 +1399,7 @@ export default function useUserRoutes(ownerId, options = {}) {
       if (now - lastAt < 1200) return;
       lastAt = now;
       try {
-        loadPage("reset");
+        loadPageRef.current && loadPageRef.current("refresh");
       } catch {}
     };
 
@@ -1543,7 +1417,7 @@ export default function useUserRoutes(ownerId, options = {}) {
         document.removeEventListener("visibilitychange", onVis);
       } catch {}
     };
-  }, [isSelf, loadPage]);
+  }, [isSelf]);
 
   // ✅ Lazy HYDRATE: sadece start+end stop (2 query) + stopsPreview'u besle
   const hydrateOneRoutePreview = useCallback(async (routeId, jobId) => {
@@ -1613,10 +1487,7 @@ export default function useUserRoutes(ownerId, options = {}) {
 
       let stopsPreview = [];
       if (firstStop) stopsPreview.push(firstStop);
-      if (
-        lastStop &&
-        (!firstStop || String(lastStop.id) !== String(firstStop.id))
-      ) {
+      if (lastStop && (!firstStop || String(lastStop.id) !== String(firstStop.id))) {
         stopsPreview.push(lastStop);
       }
 
@@ -1723,11 +1594,10 @@ export default function useUserRoutes(ownerId, options = {}) {
   }, [routes, hydrateOneRoutePreview]);
 
   const loadMore = useCallback(() => {
-    // ✅ kilit modunda loadMore yok
     if (accessStatus === "forbidden" || accessStatus === "login_required") return;
     if (loadingMore || !hasMore || initialLoading) return;
-    loadPage("more");
-  }, [hasMore, loadingMore, initialLoading, loadPage, accessStatus]);
+    loadPageRef.current && loadPageRef.current("more");
+  }, [hasMore, loadingMore, initialLoading, accessStatus]);
 
   const isEmpty =
     accessStatus === "ready" && !initialLoading && routes.length === 0 && !hasMore;
@@ -1740,8 +1610,6 @@ export default function useUserRoutes(ownerId, options = {}) {
     error,
     loadMore,
     isEmpty,
-
-    // ✅ EMİR 5
     accessStatus,
   };
 }

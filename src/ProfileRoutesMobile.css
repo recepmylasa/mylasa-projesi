@@ -1,7 +1,50 @@
 /* FILE: src/ProfileRoutesMobile.css */
 @import "./routes/RouteCardManusMobile.css";
 
-/* Profil "Rotalarım" sekmesi – 2 sütun premium grid (Manus skin) */
+/* =========================================================
+   ✅ EMİR 2/3 — Profil “Rotalarım” premium surface token’ları (SCOPED)
+   - Asla :root yok
+   - Sadece ProfileRoutesMobile yüzeylerinde (grid + bar + fab + toast)
+   ========================================================= */
+
+/* Token’lar grid root’una scope edilir.
+   Not: FAB/Toast fixed olduğu için aynı tokenları elementin kendisine de veriyoruz (global etkisi yok).
+   Bu class’lar ProfileRoutesMobile dışında kullanılmamalı. */
+.profile-routes-list[data-route-skin="manus"],
+.prm-createFab,
+.prm-createToast {
+  --bg-base: #05070c;
+  --bg-elev: #070b14;
+
+  --glass-white: rgba(10, 10, 12, 0.62);
+  --glass-thick: rgba(10, 10, 12, 0.74);
+  --glass-weak: rgba(10, 10, 12, 0.44);
+
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-border-soft: rgba(255, 255, 255, 0.08);
+
+  --accent-cyan: rgba(34, 211, 238, 0.95);
+  --accent-violet: rgba(99, 102, 241, 0.95);
+  --accent-rose: rgba(255, 56, 92, 0.95);
+
+  --text-main: rgba(255, 255, 255, 0.92);
+  --text-dim: rgba(255, 255, 255, 0.68);
+  --text-dimmer: rgba(255, 255, 255, 0.54);
+
+  --shadow-glass: 0 16px 34px rgba(0, 0, 0, 0.30);
+  --shadow-strong: 0 18px 44px rgba(0, 0, 0, 0.26);
+  --shadow-soft: 0 12px 26px rgba(0, 0, 0, 0.22);
+
+  --glow-accent: 0 0 0 2px rgba(34, 211, 238, 0.20) inset;
+  --glow-accent-soft: 0 0 26px rgba(34, 211, 238, 0.18);
+
+  /* ✅ FAB offset artık :root değil */
+  --prm-fab-bottom: 88px;
+}
+
+/* =========================================================
+   Profil "Rotalarım" sekmesi – 2 sütun premium grid
+   ========================================================= */
 
 .profile-routes-list {
   display: grid;
@@ -14,12 +57,14 @@
   width: 100%;
 }
 
+/* Empty text (mevcut davranış bozulmasın) */
 .profile-routes-empty {
   padding: 16px 12px 20px;
   font-size: 13px;
   color: #6b7280;
 }
 
+/* Load more */
 .profile-routes-more {
   grid-column: 1 / -1;
   display: flex;
@@ -27,6 +72,7 @@
   padding: 6px 0 2px;
 }
 
+/* ✅ Base stil (fallback) — attribute olmasa bile bozulmasın */
 .profile-routes-more-btn {
   border-radius: 999px;
   border: 1px solid #e5e7eb;
@@ -43,13 +89,38 @@
   cursor: default;
 }
 
-/* Skeleton tile */
+/* ✅ Manus override (SCOPED) */
+.profile-routes-list[data-route-skin="manus"] .profile-routes-more-btn {
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.90);
+  font-weight: 900;
+
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: var(--shadow-soft);
+}
+
+/* =========================================================
+   Skeleton tile
+   ========================================================= */
 .profile-routes-skel {
   aspect-ratio: 4/5;
   border-radius: 18px;
   background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 40%, #f3f4f6 80%);
   background-size: 200% 100%;
   animation: profile-routes-skel-pulse 1.2s ease-in-out infinite;
+}
+
+/* ✅ Manus dark skeleton (SCOPED) */
+.profile-routes-list[data-route-skin="manus"] .profile-routes-skel {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.10) 40%,
+    rgba(255, 255, 255, 0.06) 80%
+  );
+  border: 1px solid var(--glass-border);
 }
 
 @keyframes profile-routes-skel-pulse {
@@ -61,7 +132,9 @@
   }
 }
 
-/* Legacy sınıflar (kilit kartı için) — mevcut davranış bozulmasın */
+/* =========================================================
+   Legacy tile (kilit kartı vs.) — mevcut davranış bozulmasın
+   ========================================================= */
 .profile-route-tile {
   border: 0;
   background: transparent;
@@ -82,6 +155,13 @@
   position: absolute;
   inset: 0;
   background: #0b1220;
+}
+
+/* ✅ Dark glass surface (SCOPED) */
+.profile-routes-list[data-route-skin="manus"] .profile-route-tile-media {
+  background: var(--glass-white);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-soft);
 }
 
 .profile-route-tile-placeholder {
@@ -117,6 +197,15 @@
   -webkit-backdrop-filter: blur(6px);
 }
 
+/* ✅ token uyumlu badge (SCOPED) */
+.profile-routes-list[data-route-skin="manus"] .profile-route-tile-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
+  color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+}
+
 .profile-route-tile-overlay {
   position: absolute;
   left: 0;
@@ -129,6 +218,11 @@
   gap: 4px;
   justify-content: flex-end;
   pointer-events: none;
+}
+
+/* ✅ overlay palette (SCOPED) */
+.profile-routes-list[data-route-skin="manus"] .profile-route-tile-overlay {
+  background: linear-gradient(to top, rgba(10, 10, 12, 0.86), rgba(10, 10, 12, 0.08));
 }
 
 .profile-route-tile-meta {
@@ -150,13 +244,77 @@
 }
 
 /* =========================================================
-   ✅ ARGE7 — TEK FAB → Direkt Builder (CreateSheet yok)
+   ✅ EMİR 2/3 — “Rota keşfet” premium bar (eğer JSX’te varsa)
+   - Eleman yoksa hiçbir etki etmez (bozmaz)
    ========================================================= */
+.profile-routes-list[data-route-skin="manus"] .prm-routesSystemBar {
+  width: 100%;
+  border-radius: 20px;
+  padding: 12px 12px;
+  margin: 0 0 12px;
 
-:root {
-  /* bottom-nav varsa bile ezmeden, gerektiğinde tek yerden ayarlanabilir */
-  --prm-fab-bottom: 88px;
+  background: var(--glass-weak) !important;
+  border: 1px solid var(--glass-border) !important;
+
+  backdrop-filter: blur(16px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(150%) !important;
+
+  box-shadow: var(--shadow-strong) !important;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
+
+.profile-routes-list[data-route-skin="manus"] .prm-routesSystemBarTitle {
+  font-size: 13px;
+  font-weight: 950;
+  color: var(--text-main) !important;
+  letter-spacing: 0.1px;
+}
+
+.profile-routes-list[data-route-skin="manus"] .prm-routesSystemBarSub {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--text-dim) !important;
+  margin-top: 2px;
+}
+
+.profile-routes-list[data-route-skin="manus"] .prm-routesSystemBarRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-routes-list[data-route-skin="manus"] .prm-routesSystemPill {
+  border-radius: 999px;
+  padding: 9px 12px;
+
+  border: 1px solid var(--glass-border) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: rgba(255, 255, 255, 0.86) !important;
+
+  font-size: 12.5px;
+  font-weight: 950;
+  cursor: pointer;
+
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.profile-routes-list[data-route-skin="manus"] .prm-routesSystemPill:active {
+  transform: translateY(1px);
+}
+
+.profile-routes-list[data-route-skin="manus"] .prm-routesSystemPill--primary {
+  box-shadow: var(--glow-accent), var(--shadow-soft);
+  border-color: rgba(34, 211, 238, 0.38) !important;
+}
+
+/* =========================================================
+   ✅ FAB + Toast (token uyumlu)
+   ========================================================= */
 
 .prm-createFab {
   position: fixed;
@@ -168,17 +326,15 @@
   height: 58px;
   border-radius: 999px;
 
-  border: 1px solid rgba(34, 211, 238, 0.32);
-  background: rgba(10, 10, 12, 0.56);
+  background: var(--glass-white);
   color: rgba(255, 255, 255, 0.92);
+
+  border: 1px solid rgba(34, 211, 238, 0.32);
 
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
 
-  box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.34),
-    0 0 0 2px rgba(34, 211, 238, 0.18) inset,
-    0 0 26px rgba(34, 211, 238, 0.18);
+  box-shadow: var(--shadow-strong), var(--glow-accent), var(--glow-accent-soft);
 
   display: grid;
   place-items: center;
@@ -206,7 +362,6 @@
   text-shadow: 0 10px 22px rgba(0, 0, 0, 0.42);
 }
 
-/* Toast */
 .prm-createToast {
   position: fixed;
   left: 50%;
@@ -217,13 +372,14 @@
   padding: 10px 12px;
   border-radius: 999px;
 
-  background: rgba(10, 10, 12, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--glass-thick);
+  border: 1px solid var(--glass-border);
   color: rgba(255, 255, 255, 0.92);
 
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+
+  box-shadow: var(--shadow-strong);
 
   font-size: 12.5px;
   font-weight: 850;

@@ -1,5 +1,5 @@
 /* FILE: src/BottomNav.js */
-import React from "react";
+import React, { useCallback } from "react";
 import "./BottomNav.css";
 
 // Tüm ikonlar merkezi dosyadan
@@ -7,6 +7,34 @@ import { HomeIcon, SearchIcon, PlusIcon, ClipsIcon } from "./icons";
 
 function BottomNav({ activeTab, onTabChange, profilePic }) {
   const size = 28;
+
+  // ✅ EMİR 2/3: büyüteç artık rota sistemi değil, gerçek keşfet/arama (/explore)
+  // App.js mobilde explore tab'ını /explore/routes'a set ediyor olabilir.
+  // Burada history override + popstate tetikleyerek kesin şekilde /explore'a döndürüyoruz.
+  const handleExploreClick = useCallback(() => {
+    try {
+      onTabChange("explore");
+    } catch {}
+
+    try {
+      const target = "/explore";
+      if (typeof window !== "undefined") {
+        if (window.location.pathname !== target) {
+          window.history.pushState({}, "", target);
+        } else {
+          // aynı path olsa bile renderPageContent path bazlıdır; popstate ile sync yapalım
+          window.history.replaceState({}, "", target);
+        }
+
+        try {
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        } catch {
+          // çok eski browser fallback
+          window.dispatchEvent(new Event("popstate"));
+        }
+      }
+    } catch {}
+  }, [onTabChange]);
 
   return (
     <nav className="bottom-nav-container">
@@ -26,7 +54,7 @@ function BottomNav({ activeTab, onTabChange, profilePic }) {
 
       {/* Keşfet */}
       <button
-        onClick={() => onTabChange("explore")}
+        onClick={handleExploreClick}
         className="bottom-nav-btn"
         title="Keşfet"
         type="button"

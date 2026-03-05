@@ -29,6 +29,11 @@
 //
 // ✅ EMİR 1/3 (Teşhis eklendi):
 // - Create sonrası 5 sn içinde doğrulama: getDoc(routes/{id}) + “neden listede değil?” açıklaması (DEV-only)
+//
+// ✅ EMİR PAKETİ (Rota sistemi keşfetten kalkacak, Rotalarım’a taşınacak) — Mobile-only
+// - Profil → Rotalarım içinde premium bar: rota sistemi girişinin TEK noktası.
+// - Bar tık: /explore/routes + popstate tetiklenir (App.js zaten popstate’te explore’a geçiyor).
+// - Map/builder yok. Desktop yok.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1709,6 +1714,180 @@ export default function ProfileRoutesMobile({
     viewerId,
   });
 
+  // ✅ EMİR PAKETİ — rota sistemi giriş barı: /explore/routes aç
+  const openRoutesSystem = useCallback(() => {
+    try {
+      if (typeof window === "undefined") return;
+
+      const target = "/explore/routes";
+      if (window.location.pathname !== target) {
+        window.history.pushState({}, "", target);
+      } else {
+        // aynı path ise yine de popstate ile App sync
+        window.history.replaceState({}, "", target);
+      }
+
+      try {
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      } catch {
+        window.dispatchEvent(new Event("popstate"));
+      }
+    } catch {}
+  }, []);
+
+  // ✅ EMİR 3A: bar sadece routes panel aktifken görünsün
+  const [isRoutesPanelActive, setIsRoutesPanelActive] = useState(true);
+
+  // ✅ Panel görünürlük observer (ProfileMobile hidden toggles)
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    const getPanelEl = () => {
+      try {
+        return document.getElementById("tab-panel-routes");
+      } catch {
+        return null;
+      }
+    };
+
+    const sync = () => {
+      const el = getPanelEl();
+      if (!el) {
+        setIsRoutesPanelActive(true);
+        return;
+      }
+      const hidden = !!el.hidden || el.getAttribute("hidden") !== null;
+      setIsRoutesPanelActive(!hidden);
+    };
+
+    sync();
+
+    const el = getPanelEl();
+    if (!el || typeof MutationObserver === "undefined") {
+      const t = window.setInterval(sync, 500);
+      return () => {
+        try {
+          clearInterval(t);
+        } catch {}
+      };
+    }
+
+    const mo = new MutationObserver(() => {
+      try {
+        sync();
+      } catch {}
+    });
+
+    try {
+      mo.observe(el, { attributes: true, attributeFilter: ["hidden", "style", "class"] });
+    } catch {}
+
+    const onVis = () => sync();
+    window.addEventListener("focus", onVis);
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      try {
+        mo.disconnect();
+      } catch {}
+      try {
+        window.removeEventListener("focus", onVis);
+      } catch {}
+      try {
+        document.removeEventListener("visibilitychange", onVis);
+      } catch {}
+    };
+  }, []);
+
+  // ✅ EMİR 3A: premium bar node (grid başlamadan önce)
+  const routesSystemBarNode = useMemo(() => {
+    if (!isRoutesPanelActive) return null;
+
+    // kilit ekranlarında zaten early return var ama ekstra guard:
+    if (accessStatus === "login_required" || accessStatus === "forbidden") return null;
+
+    const btnStyle = {
+      width: "100%",
+      margin: "10px 0 12px",
+      borderRadius: 20,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background:
+        "radial-gradient(420px 220px at 12% 20%, rgba(99,102,241,0.16), transparent 60%), radial-gradient(520px 260px at 82% 10%, rgba(34,211,238,0.10), transparent 60%), radial-gradient(520px 260px at 60% 120%, rgba(255,56,92,0.10), transparent 70%), rgba(10,10,12,0.62)",
+      backdropFilter: "blur(16px) saturate(150%)",
+      WebkitBackdropFilter: "blur(16px) saturate(150%)",
+      boxShadow: "0 18px 44px rgba(0,0,0,0.26)",
+      padding: "12px 14px",
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      cursor: "pointer",
+      userSelect: "none",
+      WebkitTapHighlightColor: "transparent",
+      textAlign: "left",
+    };
+
+    const leftStyle = { flex: "1 1 auto", minWidth: 0 };
+    const titleStyle = {
+      fontWeight: 950,
+      fontSize: 14,
+      letterSpacing: "-0.2px",
+      color: "rgba(255,255,255,0.92)",
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    };
+    const subStyle = {
+      marginTop: 3,
+      fontSize: 12,
+      fontWeight: 650,
+      color: "rgba(255,255,255,0.68)",
+      lineHeight: 1.25,
+      maxWidth: "52ch",
+    };
+
+    const pillStyle = {
+      flex: "0 0 auto",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      padding: "9px 10px",
+      borderRadius: 999,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.06)",
+      color: "rgba(255,255,255,0.88)",
+      fontWeight: 900,
+      fontSize: 12,
+      boxShadow: "0 14px 30px rgba(0,0,0,0.18)",
+    };
+
+    return (
+      <button
+        type="button"
+        style={btnStyle}
+        onClick={openRoutesSystem}
+        aria-label="Rota keşfet"
+      >
+        <div style={leftStyle}>
+          <div style={titleStyle}>
+            <Icon name="search" size={18} weight="fill" />
+            <span>Rota keşfet</span>
+          </div>
+          <div style={subStyle}>
+            Yakınımda, en yeni, en çok oy… Rotaları keşfetmeye başla.
+          </div>
+        </div>
+
+        <div style={pillStyle} aria-hidden="true">
+          <span>Keşfet</span>
+          <span style={{ opacity: 0.85 }}>›</span>
+        </div>
+      </button>
+    );
+  }, [isRoutesPanelActive, accessStatus, openRoutesSystem]);
+
   // ✅ EMİR 3/3: hook routes ref (timer check için)
   const routesRef = useRef([]);
   useEffect(() => {
@@ -1870,9 +2049,6 @@ export default function ProfileRoutesMobile({
   const [createDesc, setCreateDesc] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // ✅ Routes panel aktif mi? (FAB başka tablerde DOM’da olmasın)
-  const [isRoutesPanelActive, setIsRoutesPanelActive] = useState(true);
-
   useEffect(() => {
     return () => {
       try {
@@ -1890,67 +2066,6 @@ export default function ProfileRoutesMobile({
       clearCreateWatch();
     };
   }, [clearCreateWatch]);
-
-  // ✅ Panel görünürlük observer (ProfileMobile hidden toggles)
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof document === "undefined") return;
-
-    const getPanelEl = () => {
-      try {
-        return document.getElementById("tab-panel-routes");
-      } catch {
-        return null;
-      }
-    };
-
-    const sync = () => {
-      const el = getPanelEl();
-      if (!el) {
-        setIsRoutesPanelActive(true);
-        return;
-      }
-      const hidden = !!el.hidden || el.getAttribute("hidden") !== null;
-      setIsRoutesPanelActive(!hidden);
-    };
-
-    sync();
-
-    const el = getPanelEl();
-    if (!el || typeof MutationObserver === "undefined") {
-      const t = window.setInterval(sync, 500);
-      return () => {
-        try {
-          clearInterval(t);
-        } catch {}
-      };
-    }
-
-    const mo = new MutationObserver(() => {
-      try {
-        sync();
-      } catch {}
-    });
-
-    try {
-      mo.observe(el, { attributes: true, attributeFilter: ["hidden", "style", "class"] });
-    } catch {}
-
-    const onVis = () => sync();
-    window.addEventListener("focus", onVis);
-    document.addEventListener("visibilitychange", onVis);
-
-    return () => {
-      try {
-        mo.disconnect();
-      } catch {}
-      try {
-        window.removeEventListener("focus", onVis);
-      } catch {}
-      try {
-        document.removeEventListener("visibilitychange", onVis);
-      } catch {}
-    };
-  }, []);
 
   const handleClick = useCallback((route) => {
     if (!route || !route.id) return;
@@ -2088,7 +2203,6 @@ export default function ProfileRoutesMobile({
       });
 
       // ✅ EMİR 3/3: düşmezse toast (real list’e bakar)
-      clearCreateWatch();
       createWatchRef.current.rid = rid;
 
       createWatchRef.current.t1 = window.setTimeout(() => {
@@ -2113,107 +2227,6 @@ export default function ProfileRoutesMobile({
         "[CreateDiag] createRoute returned routeId",
         rid
       );
-
-      // ✅ EMİR 1/3 — TEŞHİS: Create sonrası refresh mekanizması notu
-      diagOnce(
-        `CreateDiag_refresh_note_${rid}`,
-        "[CreateDiag] Not: Bu ekranda create sonrası direkt refresh() yok. open-route-modal event'i üzerinden hook refresh edebilir (useUserRoutes içinde kanıtlanacak)."
-      );
-
-      // ✅ EMİR 1/3 — TEŞHİS: Firestore'da yazılan gerçek doc snapshot + 5sn doğrulama
-      if (__DEV__ && db) {
-        (async () => {
-          try {
-            const snap = await getDoc(doc(db, "routes", rid));
-            const data = snap.exists() ? (snap.data() || {}) : null;
-
-            const pick = (v) =>
-              typeof v === "string" ? v : v == null ? "" : String(v);
-
-            const safeTs = (v) => {
-              try {
-                if (!v) return null;
-                if (typeof v.toDate === "function") return v.toDate().toISOString();
-                if (typeof v.seconds === "number")
-                  return new Date(v.seconds * 1000).toISOString();
-                if (v instanceof Date) return v.toISOString();
-                return pick(v);
-              } catch {
-                return null;
-              }
-            };
-
-            const snapshot = data
-              ? {
-                  exists: true,
-                  ownerId: pick(data.ownerId),
-                  status: pick(data.status),
-                  visibility: pick(data.visibility),
-                  isDeleted: data.isDeleted === true,
-                  deleted: data.deleted === true,
-                  archivedAt: !!data.archivedAt,
-                  deletedAt: !!data.deletedAt,
-                  createdAt: safeTs(data.createdAt),
-                  finishedAt: safeTs(data.finishedAt),
-                }
-              : { exists: false };
-
-            diagOnce(
-              `CreateDiag_routeDoc_${rid}`,
-              "[CreateDiag] routes/{routeId} snapshot (kritik alanlar)",
-              { routeId: rid, snapshot }
-            );
-          } catch (e) {
-            // eslint-disable-next-line no-console
-            console.warn("[CreateDiag] getDoc(routes/{id}) failed:", e);
-          }
-        })();
-
-        // ✅ 5sn sonra: doc var ama listede yoksa “neden” raporu (DEV-only)
-        createWatchRef.current.t3 = window.setTimeout(async () => {
-          try {
-            if (hasRidInRealRoutes(rid)) return;
-
-            const snap = await getDoc(doc(db, "routes", rid));
-            const exists = snap.exists();
-            const data = exists ? (snap.data() || {}) : null;
-
-            const reasons = exists
-              ? explainWhyDocMayBeMissingFromList({
-                  docData: data,
-                  ownerKey: ownerId ? String(ownerId) : "",
-                  isSelf: !!isSelf,
-                })
-              : ["doc bulunamadı (write gecikmesi / createRoute başarısız olabilir)"];
-
-            diagOnce(
-              `CreateDiag_verify5s_${rid}`,
-              "[CreateDiag] 5sn doğrulama: doc var mı + neden listede değil?",
-              {
-                routeId: rid,
-                exists,
-                hasInRealList: false,
-                reasons,
-                docCore: exists
-                  ? {
-                      ownerId: data?.ownerId ?? null,
-                      status: data?.status ?? null,
-                      visibility: data?.visibility ?? null,
-                      createdAt: data?.createdAt ?? null,
-                      deleted: data?.deleted ?? null,
-                      isDeleted: data?.isDeleted ?? null,
-                      archivedAt: data?.archivedAt ?? null,
-                      deletedAt: data?.deletedAt ?? null,
-                    }
-                  : null,
-              }
-            );
-          } catch (e) {
-            // eslint-disable-next-line no-console
-            console.warn("[CreateDiag] verify5s failed:", e);
-          }
-        }, 5000);
-      }
 
       // UI prefill (RouteDetail modal hemen açılır; firestore daha sonra yükleyebilir)
       const prefill = {
@@ -2259,7 +2272,6 @@ export default function ProfileRoutesMobile({
     showToast,
     isSelf,
     pushOptimisticRoute,
-    clearCreateWatch,
     hasRidInRealRoutes,
   ]);
 
@@ -2295,6 +2307,7 @@ export default function ProfileRoutesMobile({
   if (!userId) {
     return (
       <>
+        {routesSystemBarNode}
         <div className="profile-routes-empty">
           <span>Profil yükleniyor…</span>
         </div>
@@ -2314,6 +2327,7 @@ export default function ProfileRoutesMobile({
   if (error) {
     return (
       <>
+        {routesSystemBarNode}
         <div className="profile-routes-empty">
           <span>Rotalar yüklenirken bir sorun oluştu.</span>
         </div>
@@ -2325,6 +2339,7 @@ export default function ProfileRoutesMobile({
   if (loading && !displayRoutes.length) {
     return (
       <>
+        {routesSystemBarNode}
         <div className="profile-routes-list" data-route-skin="manus">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="profile-routes-skel" />
@@ -2338,6 +2353,7 @@ export default function ProfileRoutesMobile({
   if (isEmpty && optimisticRoutes.length === 0) {
     return (
       <>
+        {routesSystemBarNode}
         <div className="profile-routes-empty">
           <span>
             {isSelf
@@ -2352,6 +2368,8 @@ export default function ProfileRoutesMobile({
 
   return (
     <>
+      {routesSystemBarNode}
+
       <div className="profile-routes-list" data-route-skin="manus">
         {displayRoutes.map((route) => {
           const rid = route?.id ? String(route.id) : "";
