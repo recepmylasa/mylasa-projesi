@@ -4,24 +4,8 @@ import "./BottomNav.css";
 import "./styles/myLive.css";
 
 // Tüm ikonlar merkezi dosyadan
-import { HomeIcon, SearchIcon, PlusIcon, ClipsIcon } from "./icons";
-
-// MyLive ikonu
-const MyLiveNavIcon = ({ active }) => (
-  <div className={`bottom-nav-mylive-icon`} style={{
-    width: 28, height: 28, borderRadius: 8,
-    background: active
-      ? "linear-gradient(135deg, #00F2FF, #FF1493)"
-      : "linear-gradient(135deg, rgba(0,242,255,0.3), rgba(255,20,147,0.3))",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    fontSize: 16, transition: "all 0.2s",
-    boxShadow: active ? "0 0 12px rgba(0,242,255,0.5)" : "none",
-  }}>
-    📡
-  </div>
-);
-
-function BottomNav({ activeTab, onTabChange, profilePic }) {
+import { HomeIcon, SearchIcon, PlusIcon, Cl
+tion BottomNav({ activeTab, onTabChange, profilePic }) {
   const size = 28;
 
   // ✅ EMİR 2/3: büyüteç artık rota sistemi değil, gerçek keşfet/arama (/explore)
@@ -104,22 +88,6 @@ function BottomNav({ activeTab, onTabChange, profilePic }) {
           size={size}
           weight={activeTab === "clips" ? "fill" : "regular"}
         />
-      </button>
-
-      {/* MyLive */}
-      <button
-        onClick={() => onTabChange("mylive")}
-        className="bottom-nav-btn"
-        title="MyLive"
-        type="button"
-        style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}
-      >
-        <MyLiveNavIcon active={activeTab === "mylive"} />
-        <span style={{
-          fontSize: 9, fontWeight: 700,
-          color: activeTab === "mylive" ? "#00F2FF" : "rgba(255,255,255,0.4)",
-          letterSpacing: 0.3,
-        }}>MyLive</span>
       </button>
 
       {/* Profil */}
