@@ -230,72 +230,12 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
         {/* Header */}
         <div style={S.header}>
           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-            {/* MyLive Premium SVG Logo */}
-            <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                {/* Icon background gradient - purple to pink */}
-                <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#5b2dff" />
-                  <stop offset="45%" stopColor="#9b1aff" />
-                  <stop offset="100%" stopColor="#ff1493" />
-                </linearGradient>
-                {/* Inner arc highlight */}
-                <linearGradient id="arcGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#ff1493" stopOpacity="0.6" />
-                  <stop offset="100%" stopColor="#c832ff" stopOpacity="0" />
-                </linearGradient>
-                {/* 3D play - light face */}
-                <linearGradient id="playLight" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
-                  <stop offset="100%" stopColor="#d0c0ff" stopOpacity="0.9" />
-                </linearGradient>
-                {/* 3D play - shadow face */}
-                <linearGradient id="playShadow" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#b090ff" stopOpacity="0.7" />
-                  <stop offset="100%" stopColor="#8060cc" stopOpacity="0.9" />
-                </linearGradient>
-                {/* Red dot glow */}
-                <radialGradient id="dotGrad" cx="50%" cy="35%" r="50%">
-                  <stop offset="0%" stopColor="#ff6060" />
-                  <stop offset="100%" stopColor="#cc0000" />
-                </radialGradient>
-                <filter id="iconGlow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="1" result="blur" />
-                  <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                </filter>
-                <filter id="dotGlow" x="-80%" y="-80%" width="260%" height="260%">
-                  <feGaussianBlur stdDeviation="1.5" result="blur" />
-                  <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                </filter>
-                {/* My text gradient */}
-                <linearGradient id="myGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#ffffff" />
-                  <stop offset="100%" stopColor="#e0d8ff" />
-                </linearGradient>
-                {/* Live text gradient */}
-                <linearGradient id="liveGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#ff1493" />
-                  <stop offset="100%" stopColor="#ff4444" />
-                </linearGradient>
-              </defs>
-
-              {/* Rounded square background */}
-              <rect x="1" y="1" width="42" height="42" rx="11" ry="11" fill="url(#bgGrad)" />
-
-              {/* Inner arc highlight (bottom-left pink glow) */}
-              <ellipse cx="10" cy="36" rx="22" ry="18" fill="none" stroke="url(#arcGrad)" strokeWidth="6" opacity="0.5" />
-
-              {/* 3D Play triangle - main face */}
-              <path d="M15 11 L15 33 L35 22 Z" fill="url(#playLight)" filter="url(#iconGlow)" />
-              {/* 3D Play triangle - bottom shadow edge */}
-              <path d="M15 33 L35 22 L32 24 L15 35 Z" fill="url(#playShadow)" opacity="0.6" />
-
-              {/* Red live dot */}
-              <circle cx="34" cy="10" r="5.5" fill="url(#dotGrad)" filter="url(#dotGlow)" />
-              <circle cx="33" cy="9" r="2" fill="rgba(255,255,255,0.5)" />
-
-
-            </svg>
+            {/* MyLive Logo */}
+            <img
+              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663382450486/SUiFT6JyBffzHXp5RrhB3r/mylive-logo_c94911d4.png"
+              alt="MyLive"
+              style={{ height: "40px", width: "auto", objectFit: "contain" }}
+            />
             <p style={S.subtitle}>Merhaba, {displayName} 👋</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
