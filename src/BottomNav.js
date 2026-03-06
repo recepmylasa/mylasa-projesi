@@ -4,8 +4,9 @@ import "./BottomNav.css";
 import "./styles/myLive.css";
 
 // Tüm ikonlar merkezi dosyadan
-import { HomeIcon, SearchIcon, PlusIcon, Cl
-tion BottomNav({ activeTab, onTabChange, profilePic }) {
+import { HomeIcon, SearchIcon, PlusIcon, ClipsIcon } from "./icons";
+
+function BottomNav({ activeTab, onTabChange, profilePic }) {
   const size = 28;
 
   // ✅ EMİR 2/3: büyüteç artık rota sistemi değil, gerçek keşfet/arama (/explore)
