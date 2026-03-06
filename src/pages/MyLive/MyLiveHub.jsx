@@ -140,9 +140,12 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
       justifyContent: "space-around",
       padding: "16px",
       borderRadius: "16px",
-      background: "linear-gradient(135deg, rgba(0,242,255,0.08), rgba(255,20,147,0.08))",
-      border: "1px solid rgba(0,242,255,0.15)",
+      background: isDark
+        ? "linear-gradient(135deg, rgba(0,242,255,0.08), rgba(255,20,147,0.08))"
+        : "linear-gradient(135deg, rgba(0,200,255,0.12), rgba(200,20,147,0.08))",
+      border: isDark ? "1px solid rgba(0,242,255,0.15)" : "1px solid rgba(0,180,220,0.25)",
       marginBottom: "16px",
+      boxShadow: isDark ? "none" : "0 2px 12px rgba(0,180,220,0.1)",
     },
     statDivider: {
       width: "1px",
@@ -310,14 +313,14 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
             <div style={{ fontSize: "22px", fontWeight: 800, color: "#00f2ff", lineHeight: 1 }}>
               {activeCount}
             </div>
-            <div style={{ fontSize: "11px", color: "rgba(180,190,220,0.6)", marginTop: "4px" }}>
+            <div style={{ fontSize: "11px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)", marginTop: "4px" }}>
               Aktif Kullanıcı
             </div>
           </div>
           <div style={S.statDivider} />
           <div style={{ textAlign: "center", flex: 1 }}>
             <div style={{ fontSize: "22px", fontWeight: 800, color: "#ff1493", lineHeight: 1 }}>P2P</div>
-            <div style={{ fontSize: "11px", color: "rgba(180,190,220,0.6)", marginTop: "4px" }}>
+            <div style={{ fontSize: "11px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)", marginTop: "4px" }}>
               Şifreli Bağlantı
             </div>
           </div>
@@ -326,7 +329,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
             <div style={{ fontSize: "22px", fontWeight: 800, color: "#ffd740", lineHeight: 1 }}>
               {avgRating}★
             </div>
-            <div style={{ fontSize: "11px", color: "rgba(180,190,220,0.6)", marginTop: "4px" }}>
+            <div style={{ fontSize: "11px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)", marginTop: "4px" }}>
               Puanlama
             </div>
           </div>
@@ -415,7 +418,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
                 <div style={{ fontSize: "14px", fontWeight: 700, color: isDark ? "#f0f4ff" : "#1a1a2e", marginBottom: "3px" }}>
                   {f.title}
                 </div>
-                <div style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)" }}>{f.desc}</div>
+                <div style={{ fontSize: "12px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.6)" }}>{f.desc}</div>
               </div>
               <span style={{ color: "rgba(180,190,220,0.4)", fontSize: "16px" }}>›</span>
             </div>
@@ -479,7 +482,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
               <div style={{ fontSize: "15px", fontWeight: 700, color: isDark ? "#f0f4ff" : "#1a1a2e", marginBottom: "4px" }}>
                 Premium'a Yükselt
               </div>
-              <div style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)" }}>
+              <div style={{ fontSize: "12px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.6)" }}>
                 Gelişmiş filtreler, öncelikli eşleştirme ve daha fazlası
               </div>
             </div>

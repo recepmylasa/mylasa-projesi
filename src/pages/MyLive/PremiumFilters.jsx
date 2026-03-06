@@ -12,7 +12,7 @@ const COUNTRIES = [
   "İtalya", "İspanya", "Japonya", "Güney Kore", "Brezilya",
 ];
 
-export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) {
+export default function PremiumFilters({ initialFilters = {}, onSave, onBack, isDark = true }) {
   const [isPremium] = useState(false);
   const [filters, setFilters] = useState({
     ageMin: initialFilters.ageMin ?? 18,
@@ -60,11 +60,23 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
     );
   };
 
+  const cardStyle = {
+    background: isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.85)",
+    border: isDark ? "1px solid rgba(0,242,255,0.08)" : "1px solid rgba(0,180,220,0.18)",
+    borderRadius: "16px",
+    padding: "16px",
+    marginBottom: "12px",
+    boxShadow: isDark ? "none" : "0 2px 10px rgba(0,0,0,0.07)",
+  };
+
+  const labelColor = isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)";
+  const titleColor = isDark ? "#f0f4ff" : "#1a1a2e";
+
   return (
     <div style={{
       minHeight: "100dvh",
-      background: "#0a0b0f",
-      color: "#f0f4ff",
+      background: isDark ? "#0a0b0f" : "#f0f4ff",
+      color: isDark ? "#f0f4ff" : "#1a1a2e",
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
       paddingBottom: "calc(5rem + env(safe-area-inset-bottom, 0px))",
       overflowY: "auto",
@@ -84,16 +96,17 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
             onClick={onBack}
             style={{
               width: "36px", height: "36px", borderRadius: "12px",
-              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+              border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.12)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", fontSize: "18px", color: "#f0f4ff",
+              cursor: "pointer", fontSize: "18px", color: titleColor,
             }}
           >
             ‹
           </button>
           <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#f0f4ff", margin: 0 }}>Filtreler</h1>
-            <p style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)", margin: "2px 0 0" }}>Eşleşme tercihlerini ayarla</p>
+            <h1 style={{ fontSize: "20px", fontWeight: 800, color: titleColor, margin: 0 }}>Filtreler</h1>
+            <p style={{ fontSize: "12px", color: labelColor, margin: "2px 0 0" }}>Eşleşme tercihlerini ayarla</p>
           </div>
           <div style={{
             display: "flex", alignItems: "center", gap: "6px",
@@ -116,10 +129,10 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
           }}>
             <div style={{ fontSize: "32px" }}>👑</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff", marginBottom: "4px" }}>
+              <div style={{ fontSize: "14px", fontWeight: 700, color: titleColor, marginBottom: "4px" }}>
                 Premium'a Yükselt
               </div>
-              <div style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)" }}>
+              <div style={{ fontSize: "12px", color: labelColor }}>
                 Gelişmiş filtreler ile ideal eşleşmeleri bul
               </div>
             </div>
@@ -138,26 +151,23 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
         )}
 
         {/* Age Range */}
-        <div style={{
-          background: "rgba(18,20,30,0.7)", border: "1px solid rgba(0,242,255,0.08)",
-          borderRadius: "16px", padding: "16px", marginBottom: "12px",
-        }}>
+        <div style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ fontSize: "16px" }}>⚙️</span>
-              <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff" }}>Yaş Aralığı</span>
+              <span style={{ fontSize: "14px", fontWeight: 700, color: titleColor }}>Yaş Aralığı</span>
             </div>
             <FilterLock locked={!isPremium} />
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
             <span style={{ fontSize: "18px", fontWeight: 800, color: "#00f2ff" }}>{filters.ageMin}</span>
-            <div style={{ flex: 1, textAlign: "center", fontSize: "12px", color: "rgba(180,190,220,0.5)" }}>—</div>
+            <div style={{ flex: 1, textAlign: "center", fontSize: "12px", color: labelColor }}>—</div>
             <span style={{ fontSize: "18px", fontWeight: 800, color: "#00f2ff" }}>{filters.ageMax}</span>
           </div>
 
           <div style={{ marginBottom: "8px" }}>
-            <label style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)", display: "block", marginBottom: "4px" }}>
+            <label style={{ fontSize: "12px", color: labelColor, display: "block", marginBottom: "4px" }}>
               Minimum yaş: {filters.ageMin}
             </label>
             <input
@@ -168,7 +178,7 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
             />
           </div>
           <div>
-            <label style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)", display: "block", marginBottom: "4px" }}>
+            <label style={{ fontSize: "12px", color: labelColor, display: "block", marginBottom: "4px" }}>
               Maksimum yaş: {filters.ageMax}
             </label>
             <input
@@ -181,12 +191,9 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
         </div>
 
         {/* Gender */}
-        <div style={{
-          background: "rgba(18,20,30,0.7)", border: "1px solid rgba(0,242,255,0.08)",
-          borderRadius: "16px", padding: "16px", marginBottom: "12px",
-        }}>
+        <div style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff" }}>Cinsiyet</span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: titleColor }}>Cinsiyet</span>
             <FilterLock locked={!isPremium} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
@@ -209,8 +216,10 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
                   cursor: "pointer", border: "none",
                   background: filters.gender === option.value
                     ? "linear-gradient(135deg, rgba(0,242,255,0.2), rgba(255,20,147,0.2))"
-                    : "rgba(255,255,255,0.04)",
-                  outline: filters.gender === option.value ? "1px solid rgba(0,242,255,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                    : (isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"),
+                  outline: filters.gender === option.value
+                    ? "1px solid rgba(0,242,255,0.4)"
+                    : (isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.1)"),
                   opacity: !isPremium && option.value !== "all" ? 0.5 : 1,
                   transition: "all 0.2s",
                 }}
@@ -218,7 +227,7 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
                 <div style={{ fontSize: "20px", marginBottom: "4px" }}>{option.emoji}</div>
                 <div style={{
                   fontSize: "12px", fontWeight: 600,
-                  color: filters.gender === option.value ? "#00f2ff" : "rgba(180,190,220,0.6)",
+                  color: filters.gender === option.value ? "#00f2ff" : labelColor,
                 }}>
                   {option.label}
                 </div>
@@ -228,12 +237,9 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
         </div>
 
         {/* Interests */}
-        <div style={{
-          background: "rgba(18,20,30,0.7)", border: "1px solid rgba(0,242,255,0.08)",
-          borderRadius: "16px", padding: "16px", marginBottom: "12px",
-        }}>
+        <div style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff" }}>İlgi Alanları</span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: titleColor }}>İlgi Alanları</span>
             <FilterLock locked={!isPremium} />
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -249,9 +255,11 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
                     fontSize: "12px", fontWeight: 600, cursor: "pointer",
                     background: isSelected
                       ? "linear-gradient(135deg, rgba(0,242,255,0.2), rgba(255,20,147,0.2))"
-                      : "rgba(255,255,255,0.04)",
-                    border: isSelected ? "1px solid rgba(0,242,255,0.4)" : "1px solid rgba(255,255,255,0.08)",
-                    color: isSelected ? "#00f2ff" : "rgba(180,190,220,0.6)",
+                      : (isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"),
+                    border: isSelected
+                      ? "1px solid rgba(0,242,255,0.4)"
+                      : (isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.1)"),
+                    color: isSelected ? "#00f2ff" : labelColor,
                     opacity: !isPremium ? 0.6 : 1,
                     transition: "all 0.2s",
                   }}
@@ -265,12 +273,9 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
         </div>
 
         {/* Country */}
-        <div style={{
-          background: "rgba(18,20,30,0.7)", border: "1px solid rgba(0,242,255,0.08)",
-          borderRadius: "16px", padding: "16px", marginBottom: "24px",
-        }}>
+        <div style={{ ...cardStyle, marginBottom: "24px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff" }}>Konum</span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: titleColor }}>Konum</span>
             <FilterLock locked={!isPremium} />
           </div>
           <select
@@ -278,14 +283,17 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
             disabled={!isPremium}
             onChange={(e) => setFilters(prev => ({ ...prev, country: e.target.value }))}
             style={{
-              width: "100%", background: "rgba(255,255,255,0.04)", color: "#f0f4ff",
-              border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px",
+              width: "100%",
+              background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+              color: isDark ? "#f0f4ff" : "#1a1a2e",
+              border: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.12)",
+              borderRadius: "12px",
               padding: "10px 12px", fontSize: "14px", opacity: isPremium ? 1 : 0.4,
             }}
           >
-            <option value="" style={{ background: "#0a0b0f" }}>Tüm ülkeler</option>
+            <option value="" style={{ background: isDark ? "#0a0b0f" : "#ffffff" }}>Tüm ülkeler</option>
             {COUNTRIES.map((c) => (
-              <option key={c} value={c} style={{ background: "#0a0b0f" }}>{c}</option>
+              <option key={c} value={c} style={{ background: isDark ? "#0a0b0f" : "#ffffff" }}>{c}</option>
             ))}
           </select>
         </div>
@@ -298,25 +306,23 @@ export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) 
             cursor: "pointer", fontSize: "16px", fontWeight: 700,
             background: isPremium
               ? "linear-gradient(135deg, #00f2ff, #ff1493)"
-              : "rgba(255,255,255,0.08)",
-            color: isPremium ? "#0a0b0f" : "rgba(180,190,220,0.5)",
+              : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"),
+            color: isPremium ? "#0a0b0f" : labelColor,
             boxShadow: isPremium ? "0 4px 20px rgba(0,242,255,0.3)" : "none",
             transition: "all 0.2s",
           }}
         >
           {isPremium ? "Filtreleri Kaydet" : "Premium'a Yükselt"}
         </button>
-
         <button
           onClick={() => setFilters({ ageMin: 18, ageMax: 50, gender: "all", interests: [], country: "" })}
           style={{
             display: "block", margin: "12px auto 0", background: "none", border: "none",
-            color: "rgba(180,190,220,0.4)", fontSize: "13px", cursor: "pointer",
+            color: labelColor, fontSize: "13px", cursor: "pointer",
           }}
         >
           Filtreleri Sıfırla
         </button>
-
       </div>
     </div>
   );
