@@ -112,7 +112,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
     },
     subtitle: {
       fontSize: "13px",
-      color: "rgba(180,190,220,0.6)",
+      color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)",
       margin: "2px 0 0",
     },
     liveBadge: {
@@ -195,7 +195,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
     sectionTitle: {
       fontSize: "12px",
       fontWeight: 700,
-      color: "rgba(180,190,220,0.5)",
+      color: isDark ? "rgba(180,190,220,0.5)" : "rgba(60,80,120,0.6)",
       textTransform: "uppercase",
       letterSpacing: "0.8px",
       marginBottom: "12px",
@@ -206,11 +206,12 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
       gap: "14px",
       padding: "14px",
       borderRadius: "14px",
-      background: "rgba(18,20,30,0.7)",
-      border: "1px solid rgba(0,242,255,0.08)",
+      background: isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.8)",
+      border: isDark ? "1px solid rgba(0,242,255,0.08)" : "1px solid rgba(0,180,200,0.15)",
       marginBottom: "10px",
       cursor: "pointer",
       transition: "background 0.2s, border-color 0.2s",
+      boxShadow: isDark ? "none" : "0 2px 8px rgba(0,0,0,0.06)",
     },
     premiumBanner: {
       padding: "20px",
@@ -266,7 +267,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
                 }}>MyLive</div>
                 <div style={{
                   fontSize: "10px",
-                  color: "rgba(180,190,220,0.6)",
+                  color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.6)",
                   marginTop: "2px",
                   lineHeight: 1,
                 }}>Canlı Video Sohbet</div>
@@ -390,7 +391,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
                 e.currentTarget.style.borderColor = "rgba(0,242,255,0.2)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "rgba(18,20,30,0.7)";
+                e.currentTarget.style.background = isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.8)";
                 e.currentTarget.style.borderColor = "rgba(0,242,255,0.08)";
               }}
             >
@@ -411,7 +412,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
                 {f.icon}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff", marginBottom: "3px" }}>
+                <div style={{ fontSize: "14px", fontWeight: 700, color: isDark ? "#f0f4ff" : "#1a1a2e", marginBottom: "3px" }}>
                   {f.title}
                 </div>
                 <div style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)" }}>{f.desc}</div>
@@ -475,7 +476,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
           <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
             <div style={{ fontSize: "32px" }}>👑</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "15px", fontWeight: 700, color: "#f0f4ff", marginBottom: "4px" }}>
+              <div style={{ fontSize: "15px", fontWeight: 700, color: isDark ? "#f0f4ff" : "#1a1a2e", marginBottom: "4px" }}>
                 Premium'a Yükselt
               </div>
               <div style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)" }}>
