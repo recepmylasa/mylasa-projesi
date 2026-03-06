@@ -25,13 +25,15 @@ export default function MyLiveApp({ user, onBack }) {
   // Aktif MyLive sekmesi: "home" | "explore" | "mylive" | "notifications" | "profile"
   const [activeTab, setActiveTab] = useState("mylive");
 
-  // Canlı yayın akış ekranı: null | "filters" | "loading" | "stream" | "rating"
-  const [streamScreen, setStreamScreen] = useState(null);
-
+  // Tema - MyLiveHub'dan senkronize edilir
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem("myLiveTheme");
     return saved !== null ? saved === "dark" : true;
   });
+
+  // Canlı yayın akış ekranı: null | "filters" | "loading" | "stream" | "rating"
+  const [streamScreen, setStreamScreen] = useState(null);
+
   const [filters, setFilters] = useState({});
   const [partner, setPartner] = useState(null);
   const [roomId, setRoomId] = useState(null);
@@ -110,6 +112,11 @@ export default function MyLiveApp({ user, onBack }) {
     startSearch(f);
   }, [startSearch]);
 
+  // Tema değişikliğini MyLiveHub'dan al
+  const handleThemeChange = useCallback((dark) => {
+    setIsDark(dark);
+  }, []);
+
   // Nav tab değişimi - MyLive içinde gezin
   const handleNavTab = useCallback((tab) => {
     if (STREAM_SCREENS.includes(streamScreen)) {
@@ -177,14 +184,15 @@ export default function MyLiveApp({ user, onBack }) {
             user={user}
             onStart={() => startSearch(filters)}
             onFilters={handleFiltersOpen}
+            isDark={isDark}
           />
         );
       case "explore":
-        return <MyLiveExploreScreen />;
+        return <MyLiveExploreScreen isDark={isDark} />;
       case "notifications":
-        return <MyLiveNotificationsScreen user={user} />;
+        return <MyLiveNotificationsScreen user={user} isDark={isDark} />;
       case "profile":
-        return <MyLiveProfileScreen user={user} />;
+        return <MyLiveProfileScreen user={user} isDark={isDark} />;
       case "mylive":
       default:
         return (
@@ -192,7 +200,7 @@ export default function MyLiveApp({ user, onBack }) {
             user={user}
             onStart={() => startSearch(filters)}
             onFilters={handleFiltersOpen}
-            onThemeChange={setIsDark}
+            onThemeChange={handleThemeChange}
           />
         );
     }

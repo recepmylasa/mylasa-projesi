@@ -1,13 +1,18 @@
 // FILE: src/pages/MyLive/MyLiveHomeScreen.jsx
-// MyLive Ana Sayfa - Manus Home.tsx ile birebir aynı içerik
 import React from "react";
 
 const CYAN = "#00C8E0";
 const MAGENTA = "#D946A8";
 
-export default function MyLiveHomeScreen({ user, onStart, onFilters }) {
+export default function MyLiveHomeScreen({ user, onStart, onFilters, isDark = true }) {
+  const bg = isDark ? "#0a0b0f" : "#f0f4ff";
+  const textPrimary = isDark ? "#f0f4ff" : "#1a1a2e";
+  const textSecondary = isDark ? "rgba(176,184,212,0.8)" : "rgba(60,80,120,0.75)";
+  const cardBg = isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.9)";
+  const cardBorder = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.1)";
+
   return (
-    <div style={{ minHeight: "100dvh", paddingBottom: "80px", overflowY: "auto", background: "transparent" }}>
+    <div style={{ minHeight: "100dvh", paddingBottom: "80px", overflowY: "auto", background: bg, color: textPrimary, transition: "background 0.3s, color 0.3s" }}>
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px 0" }}>
 
         {/* Header */}
@@ -22,20 +27,27 @@ export default function MyLiveHomeScreen({ user, onStart, onFilters }) {
             </div>
             <div>
               <div style={{ fontSize: 22, fontWeight: 800, color: CYAN, lineHeight: 1.1 }}>MyLive</div>
-              <div style={{ fontSize: 12, color: "rgba(140,150,180,0.8)" }}>Canlı Video Sohbet</div>
+              <div style={{ fontSize: 12, color: textSecondary }}>Canlı Video Sohbet</div>
             </div>
           </div>
         </div>
 
+        {/* Selamlama */}
+        {user?.displayName && (
+          <p style={{ fontSize: 14, color: textSecondary, marginBottom: 16 }}>
+            Merhaba, {user.displayName} 👋
+          </p>
+        )}
+
         {/* Hero */}
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 8, lineHeight: 1.2 }}>
+          <h1 style={{ fontSize: 32, fontWeight: 900, color: textPrimary, marginBottom: 8, lineHeight: 1.2 }}>
             Dünyayla<br />
-            <span style={{ background: `linear-gradient(135deg, ${CYAN}, ${MAGENTA})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            <span style={{ background: `linear-gradient(135deg, ${CYAN}, ${MAGENTA})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
               Bağlan.
             </span>
           </h1>
-          <p style={{ fontSize: 14, color: "rgba(140,150,180,0.8)", lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14, color: textSecondary, lineHeight: 1.6 }}>
             Rastgele insanlarla gerçek zamanlı video sohbet yap. Yeni arkadaşlar edin, farklı kültürler keşfet.
           </p>
         </div>
@@ -59,8 +71,8 @@ export default function MyLiveHomeScreen({ user, onStart, onFilters }) {
             onClick={onStart}
             style={{
               width: "100%", padding: "16px",
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: cardBg,
+              border: `1px solid ${cardBorder}`,
               borderRadius: 16, cursor: "pointer",
               fontSize: 15, fontWeight: 600,
               color: CYAN,
@@ -73,9 +85,7 @@ export default function MyLiveHomeScreen({ user, onStart, onFilters }) {
 
         {/* Özellikler */}
         <div style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>MyLive Özellikleri</span>
-          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: textPrimary, marginBottom: 12 }}>MyLive Özellikleri</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               { icon: "⚡", title: "Anında Bağlan", desc: "Rastgele biri ile 2-5 saniyede video sohbet başlat", color: CYAN },
@@ -85,12 +95,12 @@ export default function MyLiveHomeScreen({ user, onStart, onFilters }) {
             ].map((f) => (
               <button
                 key={f.title}
-                onClick={f.title === "Anında Bağlan" || f.title === "Rastgele Eşleştirme" ? onStart : undefined}
+                onClick={onStart}
                 style={{
                   width: "100%", display: "flex", alignItems: "center", gap: 12,
                   padding: "14px 16px",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: cardBg,
+                  border: `1px solid ${cardBorder}`,
                   borderRadius: 16, cursor: "pointer", textAlign: "left",
                 }}
               >
@@ -104,10 +114,10 @@ export default function MyLiveHomeScreen({ user, onStart, onFilters }) {
                   {f.icon}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2 }}>{f.title}</div>
-                  <div style={{ fontSize: 11, color: "rgba(140,150,180,0.8)", lineHeight: 1.4 }}>{f.desc}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: textPrimary, marginBottom: 2 }}>{f.title}</div>
+                  <div style={{ fontSize: 11, color: textSecondary, lineHeight: 1.4 }}>{f.desc}</div>
                 </div>
-                <span style={{ color: "rgba(140,150,180,0.5)", fontSize: 16 }}>›</span>
+                <span style={{ color: textSecondary, fontSize: 16 }}>›</span>
               </button>
             ))}
           </div>
@@ -117,25 +127,21 @@ export default function MyLiveHomeScreen({ user, onStart, onFilters }) {
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <span style={{ color: CYAN, fontSize: 16 }}>📈</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>Trend</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: textPrimary }}>Trend</span>
           </div>
-          <div style={{
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 16, padding: "12px 16px",
-          }}>
+          <div style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 16, padding: "12px 16px" }}>
             {["#MyLive", "#CanlıSohbet", "#YeniArkadaşlar", "#Keşfet"].map((tag, i) => (
               <div key={tag} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "8px 0",
-                borderBottom: i < 3 ? "1px solid rgba(255,255,255,0.05)" : "none",
+                borderBottom: i < 3 ? `1px solid ${cardBorder}` : "none",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: "rgba(140,150,180,0.5)", width: 16 }}>{i + 1}</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{tag}</span>
+                  <span style={{ fontSize: 11, color: textSecondary, width: 16 }}>{i + 1}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: textPrimary }}>{tag}</span>
                 </div>
-                <span style={{ fontSize: 11, color: "rgba(140,150,180,0.5)" }}>
-                  {Math.floor(Math.random() * 900 + 100)} gönderi
+                <span style={{ fontSize: 11, color: textSecondary }}>
+                  {[342, 218, 187, 156][i]} gönderi
                 </span>
               </div>
             ))}
