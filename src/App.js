@@ -187,8 +187,16 @@ function App() {
 
   const pushedByAppRef = useRef(false);
 
-  // Profil modalını, route modalından açınca geri dönüş için küçük “return stack”
+  // Profil modalını, route modalından açınca geri dönüş için küçük "return stack"
   const modalReturnRef = useRef(null);
+
+  // handleNavChange içinde her zaman güncel değerlere erişmek için ref'ler
+  const activePageRef = useRef(activePage);
+  const isMobileRef = useRef(isMobile);
+  const currentUserProfileRef = useRef(currentUserProfile);
+  useEffect(() => { activePageRef.current = activePage; }, [activePage]);
+  useEffect(() => { isMobileRef.current = isMobile; }, [isMobile]);
+  useEffect(() => { currentUserProfileRef.current = currentUserProfile; }, [currentUserProfile]);
 
   // Event handler’larda güncel modal state’e erişmek için ref
   const modalStateRef = useRef({ content: null, data: null });
@@ -692,6 +700,11 @@ function App() {
   const handleNavChange = useCallback((tab) => {
     modalReturnRef.current = null;
 
+    // Ref'lerden güncel değerleri al - stale closure sorunu olmaz
+    const curActivePage = activePageRef.current;
+    const curIsMobile = isMobileRef.current;
+    const curProfile = currentUserProfileRef.current;
+
     const path = window.location.pathname;
     const isPermalink = isAnyPermalinkPath(path);
     if (isPermalink) {
@@ -702,21 +715,19 @@ function App() {
 
     if (["createMenu", "messages", "notifications", "checkin"].includes(tab)) {
       // Modal açılırken MyLive'dan çıkılsın
-      if (activePage === "mylive") setActivePage("home");
+      if (curActivePage === "mylive") setActivePage("home");
       setModalContent(tab);
       return;
     }
 
     if (tab === "explore") {
       // ✅ EMİR 32 (FINAL): Mobilde Explore tab'ı direkt RoutesExploreMobile'e gitsin
-      const target = isMobile ? "/explore/routes" : "/explore";
+      const target = curIsMobile ? "/explore/routes" : "/explore";
       if (window.location.pathname !== target) {
         window.history.pushState({}, "", target);
       }
-    } else if (tab === "profile" && currentUserProfile?.kullaniciAdi) {
-      const target = `/u/${encodeURIComponent(
-        currentUserProfile.kullaniciAdi
-      )}`;
+    } else if (tab === "profile" && curProfile?.kullaniciAdi) {
+      const target = `/u/${encodeURIComponent(curProfile.kullaniciAdi)}`;
       if (window.location.pathname !== target)
         window.history.pushState({}, "", target);
     } else if (
@@ -730,7 +741,7 @@ function App() {
     setModalContent(null);
     setModalData(null);
     setActivePage(tab);
-  }, [isMobile, currentUserProfile, activePage]);
+  }, []); // Dependency yok - ref'ler kullanılıyor, stale closure imkansız
 
   const handleViewProfile = (userId) => {
     setModalData(userId);

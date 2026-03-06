@@ -36,6 +36,14 @@ export default function MyLiveApp({ user, onBack, onNavChange }) {
   const matchTimerRef = useRef(null);
   const searchingRef = useRef(false);
 
+  // Her zaman güncel onNavChange ve onBack referanslarını tut
+  const onNavChangeRef = useRef(onNavChange);
+  const onBackRef = useRef(onBack);
+  useEffect(() => {
+    onNavChangeRef.current = onNavChange;
+    onBackRef.current = onBack;
+  }, [onNavChange, onBack]);
+
   const stopSearch = useCallback(async () => {
     searchingRef.current = false;
     clearInterval(matchTimerRef.current);
@@ -105,18 +113,17 @@ export default function MyLiveApp({ user, onBack, onNavChange }) {
     startSearch(f);
   }, [startSearch]);
 
-  // Nav tab değişimi - doğrudan App.js'in handleNavChange'ini çağır
+  // Nav tab değişimi - ref üzerinden her zaman güncel fonksiyonu çağır
   const handleNavTab = useCallback((tab) => {
     if (tab === "mylive") return; // Zaten buradayız
-    // Önce aramayı durdur
     stopSearch();
-    // App.js'in handleNavChange'ini çağır
-    if (onNavChange) {
-      onNavChange(tab);
-    } else if (onBack) {
-      onBack();
+    // Ref üzerinden çağır - stale closure sorunu olmaz
+    if (onNavChangeRef.current) {
+      onNavChangeRef.current(tab);
+    } else if (onBackRef.current) {
+      onBackRef.current();
     }
-  }, [onNavChange, onBack, stopSearch]);
+  }, [stopSearch]); // onNavChange/onBack dependency'ye gerek yok, ref kullanıyoruz
 
   useEffect(() => () => { stopSearch(); }, [stopSearch]);
 
