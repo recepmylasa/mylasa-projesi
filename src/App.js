@@ -1,6 +1,6 @@
 // FILE: src/App.js
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { auth, db } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
@@ -689,19 +689,7 @@ function App() {
     return () => window.removeEventListener("open-profile-modal", handler);
   }, []);
 
-  // MyLive içindeki nav'dan tab değişimi
-  useEffect(() => {
-    const handler = (e) => {
-      const tab = e?.detail?.tab;
-      if (!tab) return;
-      handleNavChange(tab);
-    };
-    window.addEventListener("mylive-nav", handler);
-    return () => window.removeEventListener("mylive-nav", handler);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMobile, currentUserProfile]);
-
-  const handleNavChange = (tab) => {
+  const handleNavChange = useCallback((tab) => {
     modalReturnRef.current = null;
 
     const path = window.location.pathname;
@@ -713,6 +701,8 @@ function App() {
     }
 
     if (["createMenu", "messages", "notifications", "checkin"].includes(tab)) {
+      // Modal açılırken MyLive'dan çıkılsın
+      if (activePage === "mylive") setActivePage("home");
       setModalContent(tab);
       return;
     }
@@ -740,7 +730,7 @@ function App() {
     setModalContent(null);
     setModalData(null);
     setActivePage(tab);
-  };
+  }, [isMobile, currentUserProfile, activePage]);
 
   const handleViewProfile = (userId) => {
     setModalData(userId);
