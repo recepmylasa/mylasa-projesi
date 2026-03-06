@@ -231,7 +231,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
         <div style={S.header}>
           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
             {/* MyLive Premium SVG Logo */}
-            <svg width="180" height="44" viewBox="0 0 180 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 {/* Icon background gradient - purple to pink */}
                 <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -294,11 +294,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
               <circle cx="34" cy="10" r="5.5" fill="url(#dotGrad)" filter="url(#dotGlow)" />
               <circle cx="33" cy="9" r="2" fill="rgba(255,255,255,0.5)" />
 
-              {/* "My" text */}
-              <text x="52" y="30" fontFamily="'Inter', -apple-system, Arial, sans-serif" fontWeight="800" fontSize="21" fill="url(#myGrad)">My</text>
 
-              {/* "Live" text - italic red */}
-              <text x="84" y="30" fontFamily="'Inter', -apple-system, Arial, sans-serif" fontWeight="800" fontSize="21" fill="url(#liveGrad2)" fontStyle="italic">Live</text>
             </svg>
             <p style={S.subtitle}>Merhaba, {displayName} 👋</p>
           </div>
