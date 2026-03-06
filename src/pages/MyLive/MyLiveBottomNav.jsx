@@ -55,7 +55,11 @@ const NAV_ITEMS = [
   { key: "profile", label: "Profil", Icon: UserIcon },
 ];
 
-export default function MyLiveBottomNav({ activeTab = "mylive", onTabChange }) {
+export default function MyLiveBottomNav({ activeTab = "mylive", onTabChange, isDark = true }) {
+  const navBg = isDark ? "rgba(10,11,15,0.92)" : "rgba(255,255,255,0.95)";
+  const navBorder = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)";
+  const labelColor = isDark ? "rgba(140,150,180,0.7)" : "rgba(100,110,140,0.8)";
+  const activeItemBg = isDark ? "rgba(0,200,224,0.1)" : "rgba(0,200,224,0.12)";
   return (
     <nav style={{
       position: "fixed",
@@ -68,10 +72,10 @@ export default function MyLiveBottomNav({ activeTab = "mylive", onTabChange }) {
       {/* Blur backdrop */}
       <div style={{
         position: "absolute", inset: 0,
-        background: "rgba(10,11,15,0.85)",
+        background: navBg,
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
-        borderTop: "1px solid rgba(255,255,255,0.06)",
+        borderTop: `1px solid ${navBorder}`,
       }} />
 
       {/* Top border glow */}
@@ -105,9 +109,7 @@ export default function MyLiveBottomNav({ activeTab = "mylive", onTabChange }) {
                 borderRadius: "12px",
                 border: "none",
                 cursor: "pointer",
-                background: isActive && !isLive
-                  ? "rgba(0,200,224,0.1)"
-                  : "transparent",
+                background: isActive && !isLive ? activeItemBg : "transparent",
                 transform: isActive ? "scale(1.05)" : "scale(1)",
                 transition: "all 0.25s ease",
                 minWidth: "52px",
@@ -136,7 +138,7 @@ export default function MyLiveBottomNav({ activeTab = "mylive", onTabChange }) {
                       width: "10px", height: "10px",
                       borderRadius: "50%",
                       background: MAGENTA,
-                      border: "2px solid #0a0b0f",
+                      border: `2px solid ${isDark ? "#0a0b0f" : "#fff"}`,
                       animation: "ml-live-pulse 1.5s ease-in-out infinite",
                     }} />
                   )}
@@ -159,9 +161,7 @@ export default function MyLiveBottomNav({ activeTab = "mylive", onTabChange }) {
                 fontSize: "10px",
                 fontWeight: 500,
                 lineHeight: 1,
-                color: isLive
-                  ? (isActive ? CYAN : "rgba(140,150,180,0.7)")
-                  : (isActive ? CYAN : "rgba(140,150,180,0.7)"),
+                color: isActive ? CYAN : labelColor,
                 transition: "color 0.25s ease",
               }}>
                 {label}

@@ -1,5 +1,4 @@
 // FILE: src/pages/MyLive/MyLiveApp.jsx
-// MyLive ana akış yöneticisi: hub → loading → stream → rating
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import MyLiveHub from "./MyLiveHub";
 import LoadingScreen from "./LoadingScreen";
@@ -11,7 +10,6 @@ import {
   joinQueue, leaveQueue, findMatch, getBlockedUsers,
 } from "../../services/myLiveService";
 
-// Basit nanoid benzeri yardımcı (utils.js yoksa inline)
 function genId() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
@@ -24,8 +22,12 @@ const SCREENS = {
   RATING: "rating",
 };
 
-export default function MyLiveApp({ user, onBack }) {
+export default function MyLiveApp({ user, onBack, onNavChange }) {
   const [screen, setScreen] = useState(SCREENS.HUB);
+  const [isDark, setIsDark] = useState(() => {
+    const saved = localStorage.getItem("myLiveTheme");
+    return saved !== null ? saved === "dark" : true;
+  });
   const [filters, setFilters] = useState({});
   const [partner, setPartner] = useState(null);
   const [roomId, setRoomId] = useState(null);
@@ -103,28 +105,31 @@ export default function MyLiveApp({ user, onBack }) {
     startSearch(f);
   }, [startSearch]);
 
-  useEffect(() => () => { stopSearch(); }, [stopSearch]);
-
-  // MyLive nav'dan başka bir sekmeye geçince App.js'e bildir
-  const handleNavChange = useCallback((tab) => {
+  // Nav tab değişimi - doğrudan App.js'in handleNavChange'ini çağır
+  const handleNavTab = useCallback((tab) => {
     if (tab === "mylive") return; // Zaten buradayız
-    // App.js'e custom event ile hangi tab'a geçileceğini bildir
-    try {
-      window.dispatchEvent(new CustomEvent("mylive-nav", { detail: { tab } }));
-    } catch {}
-    onBack?.();
-  }, [onBack]);
+    // Önce aramayı durdur
+    stopSearch();
+    // App.js'in handleNavChange'ini çağır
+    if (onNavChange) {
+      onNavChange(tab);
+    } else if (onBack) {
+      onBack();
+    }
+  }, [onNavChange, onBack, stopSearch]);
+
+  useEffect(() => () => { stopSearch(); }, [stopSearch]);
 
   switch (screen) {
     case SCREENS.FILTERS:
       return (
-        <div style={{ position: "relative", minHeight: "100dvh" }}>
+        <div style={{ position: "relative", minHeight: "100dvh", paddingBottom: "68px" }}>
           <PremiumFilters
             initialFilters={filters}
             onSave={handleFiltersSave}
             onBack={() => setScreen(SCREENS.HUB)}
           />
-          <MyLiveBottomNav activeTab="mylive" onTabChange={handleNavChange} />
+          <MyLiveBottomNav activeTab="mylive" onTabChange={handleNavTab} />
         </div>
       );
 
@@ -156,13 +161,14 @@ export default function MyLiveApp({ user, onBack }) {
 
     default:
       return (
-        <div style={{ position: "relative", minHeight: "100dvh" }}>
+        <div style={{ position: "relative", minHeight: "100dvh", paddingBottom: "68px" }}>
           <MyLiveHub
             user={user}
             onStart={() => startSearch(filters)}
             onFilters={handleFiltersOpen}
+            onThemeChange={setIsDark}
           />
-          <MyLiveBottomNav activeTab="mylive" onTabChange={handleNavChange} />
+          <MyLiveBottomNav activeTab="mylive" onTabChange={handleNavTab} isDark={isDark} />
         </div>
       );
   }

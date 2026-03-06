@@ -24,7 +24,7 @@ function RadioIcon({ size = 22, color = "#0a0b0f" }) {
   );
 }
 
-export default function MyLiveHub({ user, onStart, onFilters }) {
+export default function MyLiveHub({ user, onStart, onFilters, onThemeChange }) {
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem("myLiveTheme");
     return saved !== null ? saved === "dark" : true;
@@ -35,6 +35,7 @@ export default function MyLiveHub({ user, onStart, onFilters }) {
 
   useEffect(() => {
     localStorage.setItem("myLiveTheme", isDark ? "dark" : "light");
+    onThemeChange?.(isDark);
   }, [isDark]);
 
   useEffect(() => {

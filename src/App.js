@@ -847,6 +847,7 @@ function App() {
           <MyLiveApp
             user={user}
             onBack={() => setActivePage("home")}
+            onNavChange={handleNavChange}
           />
         );
       case "adminShareMetrics":
