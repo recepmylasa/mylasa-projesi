@@ -39,6 +39,7 @@ import RouteDetailMobile from "./pages/RouteDetailMobile";
 import RoutesExploreMobile from "./pages/RoutesExploreMobile";
 
 import AdminShareMetrics from "./pages/AdminShareMetrics";
+import MyLiveApp from "./pages/MyLive/MyLiveApp";
 
 import "./App.css";
 import "./premium.css"; /* Premium CSS - Cyan-Pink, Glassmorphism */
@@ -829,6 +830,13 @@ function App() {
             onPlaceClick={handleViewPlaceDetail}
           />
         );
+      case "mylive":
+        return (
+          <MyLiveApp
+            user={user}
+            onBack={() => setActivePage("home")}
+          />
+        );
       case "adminShareMetrics":
         return <AdminShareMetrics />;
       default:
@@ -873,7 +881,14 @@ function App() {
       pushedByAppRef.current = false;
     };
 
-    const handleCreateSelect = (creationType) => setModalContent(creationType);
+    const handleCreateSelect = (creationType) => {
+      if (creationType === "mylive") {
+        closeModal();
+        setActivePage("mylive");
+        return;
+      }
+      setModalContent(creationType);
+    };
 
     if (modalContent === "createMenu")
       return <CreateMenu onClose={closeModal} onSelect={handleCreateSelect} />;

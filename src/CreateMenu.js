@@ -138,9 +138,17 @@ function CreateMenu({ onClose, onSelect }) {
           </button>
           <button
             className="create-menu-item"
-            onClick={() => alert("Canlı yayın yakında eklenecek!")}
+            onClick={() => { onClose(); onSelect("mylive"); }}
+            style={{ borderTop: "1px solid rgba(0,242,255,0.12)", marginTop: 6, paddingTop: 14 }}
           >
-            <span className="create-menu-label">Canlı</span>
+            <span className="create-menu-label" style={{ color: "#00F2FF", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+              📡 MyLive
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "2px 7px",
+                borderRadius: 10, background: "linear-gradient(135deg,#00F2FF,#FF1493)",
+                color: "#0A0E27",
+              }}>YENİ</span>
+            </span>
             <LiveIcon />
           </button>
         </div>
