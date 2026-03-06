@@ -229,8 +229,55 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
       <div style={S.inner}>
         {/* Header */}
         <div style={S.header}>
-          <div>
-            <h1 style={S.title}>MyLive</h1>
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+            {/* MyLive SVG Logo */}
+            <svg width="140" height="44" viewBox="0 0 140 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="playGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#c832ff" />
+                  <stop offset="50%" stopColor="#ff1493" />
+                  <stop offset="100%" stopColor="#ff6060" />
+                </linearGradient>
+                <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#6060ff" />
+                  <stop offset="100%" stopColor="#c832ff" />
+                </linearGradient>
+                <filter id="glow">
+                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
+                  <feMerge>
+                    <feMergeNode in="coloredBlur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+
+              {/* Left wave arcs */}
+              <path d="M4 22 Q2 16 6 11" stroke="url(#waveGrad)" strokeWidth="2.2" strokeLinecap="round" fill="none" opacity="0.7" />
+              <path d="M8 22 Q5 13 10 7" stroke="url(#waveGrad)" strokeWidth="2.2" strokeLinecap="round" fill="none" opacity="0.5" />
+
+              {/* Play triangle */}
+              <path d="M14 8 L14 36 L38 22 Z" fill="url(#playGrad)" filter="url(#glow)" />
+
+              {/* Red live dot */}
+              <circle cx="36" cy="10" r="4" fill="#ff2222" filter="url(#glow)" />
+              <circle cx="36" cy="10" r="2.2" fill="#ff6060" />
+
+              {/* Right wave arcs */}
+              <path d="M42 22 Q44 16 40 11" stroke="url(#waveGrad)" strokeWidth="2.2" strokeLinecap="round" fill="none" opacity="0.7" />
+              <path d="M46 22 Q49 13 44 7" stroke="url(#waveGrad)" strokeWidth="2.2" strokeLinecap="round" fill="none" opacity="0.5" />
+
+              {/* My text */}
+              <text x="54" y="30" fontFamily="'Inter', Arial, sans-serif" fontWeight="900" fontSize="22" fill="white" letterSpacing="-0.5">My</text>
+
+              {/* Live text - red gradient */}
+              <defs>
+                <linearGradient id="liveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#ff1493" />
+                  <stop offset="100%" stopColor="#ff4444" />
+                </linearGradient>
+              </defs>
+              <text x="87" y="30" fontFamily="'Inter', Arial, sans-serif" fontWeight="900" fontSize="22" fill="url(#liveGrad)" fontStyle="italic" letterSpacing="-0.5">Live</text>
+            </svg>
             <p style={S.subtitle}>Merhaba, {displayName} 👋</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
