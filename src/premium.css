@@ -1,0 +1,545 @@
+/* ============================================================================
+   MYLASA PREMIUM CSS SISTEMI
+   Tasarım: Vitreous Refraction + Glassmorphism
+   Renkler: Cyan (#00F2FF) + Pink (#FF1493)
+   Background: Dark Navy (#0A0E27)
+   ============================================================================ */
+
+/* ============================================================================
+   1. CSS VARIABLES - RENK PALETİ
+   ============================================================================ */
+:root {
+  /* Primary Colors */
+  --cyan: #00F2FF;
+  --pink: #FF1493;
+  --purple: #9D4EDD;
+  --indigo: #5A189A;
+  
+  /* Background */
+  --bg-dark: #0A0E27;
+  --bg-darker: #050810;
+  --bg-card: #141829;
+  --bg-card-light: #1a1f3a;
+  
+  /* Text */
+  --text-primary: #FFFFFF;
+  --text-secondary: #B0B8D4;
+  --text-tertiary: #7A8299;
+  
+  /* Borders */
+  --border-light: rgba(0, 242, 255, 0.1);
+  --border-medium: rgba(0, 242, 255, 0.2);
+  --border-heavy: rgba(0, 242, 255, 0.3);
+  
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 242, 255, 0.05);
+  --shadow-md: 0 4px 16px rgba(0, 242, 255, 0.1);
+  --shadow-lg: 0 8px 32px rgba(0, 242, 255, 0.15);
+  --shadow-xl: 0 16px 48px rgba(0, 242, 255, 0.2);
+  
+  /* Gradients */
+  --gradient-cyan-pink: linear-gradient(135deg, #00F2FF 0%, #FF1493 100%);
+  --gradient-purple-pink: linear-gradient(135deg, #9D4EDD 0%, #FF1493 100%);
+  --gradient-dark: linear-gradient(135deg, #141829 0%, #0A0E27 100%);
+}
+
+/* ============================================================================
+   2. GLASSMORPHISM UTILITIES
+   ============================================================================ */
+.glass {
+  background: rgba(20, 24, 41, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-md);
+}
+
+.glass-heavy {
+  background: rgba(20, 24, 41, 0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--border-medium);
+  box-shadow: var(--shadow-lg);
+}
+
+.glass-light {
+  background: rgba(20, 24, 41, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================================
+   3. ANIMASYONLAR
+   ============================================================================ */
+
+/* Float Animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+/* Glow Animation */
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 242, 255, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(0, 242, 255, 0.6); }
+}
+
+/* Pulse Animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Slide In */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Fade In */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Scale In */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Bounce */
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* Spin */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   4. UTILITY CLASSES
+   ============================================================================ */
+
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-glow { animation: glow 2s ease-in-out infinite; }
+.animate-pulse { animation: pulse 2s ease-in-out infinite; }
+.animate-slideInUp { animation: slideInUp 0.5s ease-out; }
+.animate-slideInDown { animation: slideInDown 0.5s ease-out; }
+.animate-slideInLeft { animation: slideInLeft 0.5s ease-out; }
+.animate-slideInRight { animation: slideInRight 0.5s ease-out; }
+.animate-fadeIn { animation: fadeIn 0.5s ease-out; }
+.animate-scaleIn { animation: scaleIn 0.5s ease-out; }
+.animate-bounce { animation: bounce 2s ease-in-out infinite; }
+.animate-spin { animation: spin 1s linear infinite; }
+
+/* ============================================================================
+   5. GRADIENT UTILITIES
+   ============================================================================ */
+
+.gradient-cyan-pink {
+  background: var(--gradient-cyan-pink);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-bg-cyan-pink {
+  background: var(--gradient-cyan-pink);
+}
+
+.gradient-bg-purple-pink {
+  background: var(--gradient-purple-pink);
+}
+
+.gradient-border {
+  position: relative;
+  background: var(--bg-card);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: var(--gradient-cyan-pink);
+  border-radius: inherit;
+  z-index: -1;
+}
+
+/* ============================================================================
+   6. BUTTON STYLES
+   ============================================================================ */
+
+.btn-primary {
+  background: var(--gradient-cyan-pink);
+  color: var(--bg-dark);
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-medium);
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  border-color: var(--cyan);
+  background: rgba(0, 242, 255, 0.1);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border: none;
+  padding: 10px 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-ghost:hover {
+  color: var(--cyan);
+}
+
+/* ============================================================================
+   7. CARD STYLES
+   ============================================================================ */
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  border-color: var(--border-medium);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.card-glass {
+  background: rgba(20, 24, 41, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: var(--shadow-md);
+  transition: all 0.3s ease;
+}
+
+.card-glass:hover {
+  border-color: var(--border-medium);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ============================================================================
+   8. INPUT STYLES
+   ============================================================================ */
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+textarea,
+select {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-family: inherit;
+  transition: all 0.3s ease;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="search"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(0, 242, 255, 0.1);
+}
+
+/* ============================================================================
+   9. BADGE STYLES
+   ============================================================================ */
+
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(0, 242, 255, 0.1);
+  color: var(--cyan);
+  border: 1px solid var(--border-light);
+}
+
+.badge-pink {
+  background: rgba(255, 20, 147, 0.1);
+  color: var(--pink);
+  border-color: rgba(255, 20, 147, 0.2);
+}
+
+.badge-success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.badge-warning {
+  background: rgba(251, 146, 60, 0.1);
+  color: #fb923c;
+  border-color: rgba(251, 146, 60, 0.2);
+}
+
+.badge-danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+/* ============================================================================
+   10. MOBILE-FIRST RESPONSIVE
+   ============================================================================ */
+
+/* Mobile (default) */
+@media (max-width: 768px) {
+  :root {
+    --shadow-sm: 0 1px 4px rgba(0, 242, 255, 0.03);
+    --shadow-md: 0 2px 8px rgba(0, 242, 255, 0.05);
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
+
+  .card,
+  .card-glass {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  textarea,
+  select {
+    padding: 12px;
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+}
+
+/* Tablet */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .card,
+  .card-glass {
+    padding: 14px;
+  }
+}
+
+/* Desktop */
+@media (min-width: 1025px) {
+  .card,
+  .card-glass {
+    padding: 16px;
+  }
+}
+
+/* ============================================================================
+   11. ACCESSIBILITY
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: more) {
+  :root {
+    --border-light: rgba(0, 242, 255, 0.3);
+    --border-medium: rgba(0, 242, 255, 0.5);
+    --border-heavy: rgba(0, 242, 255, 0.7);
+  }
+}
+
+/* Dark mode (already dark, but ensure compatibility) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+
+/* ============================================================================
+   12. SCROLLBAR STYLING
+   ============================================================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-darker);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-heavy);
+}
+
+/* ============================================================================
+   13. FOCUS VISIBLE (Accessibility)
+   ============================================================================ */
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+   14. SELECTION STYLING
+   ============================================================================ */
+
+::selection {
+  background: var(--cyan);
+  color: var(--bg-dark);
+}
+
+::-moz-selection {
+  background: var(--cyan);
+  color: var(--bg-dark);
+}
+
+/* ============================================================================
+   15. PRINT STYLES
+   ============================================================================ */
+
+@media print {
+  * {
+    background: transparent !important;
+    color: black !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  a,
+  a:visited {
+    text-decoration: underline;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")";
+  }
+
+  img {
+    max-width: 100% !important;
+  }
+
+  @page {
+    margin: 0.5cm;
+  }
+}
