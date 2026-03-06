@@ -6,10 +6,10 @@ import LoadingScreen from "./LoadingScreen";
 import LiveStream from "./LiveStream";
 import RatingScreen from "./RatingScreen";
 import PremiumFilters from "./PremiumFilters";
+import MyLiveBottomNav from "./MyLiveBottomNav";
 import {
   joinQueue, leaveQueue, findMatch, getBlockedUsers,
 } from "../../services/myLiveService";
-import { nanoid } from "../../utils"; // basit id üretici
 
 // Basit nanoid benzeri yardımcı (utils.js yoksa inline)
 function genId() {
@@ -105,17 +105,32 @@ export default function MyLiveApp({ user, onBack }) {
 
   useEffect(() => () => { stopSearch(); }, [stopSearch]);
 
+  // MyLive nav'dan başka bir sekmeye geçince App.js'e bildir
+  const handleNavChange = useCallback((tab) => {
+    if (tab === "mylive") return; // Zaten buradayız
+    // App.js'e custom event ile hangi tab'a geçileceğini bildir
+    try {
+      window.dispatchEvent(new CustomEvent("mylive-nav", { detail: { tab } }));
+    } catch {}
+    onBack?.();
+  }, [onBack]);
+
   switch (screen) {
     case SCREENS.FILTERS:
       return (
-        <PremiumFilters
-          initialFilters={filters}
-          onSave={handleFiltersSave}
-          onBack={() => setScreen(SCREENS.HUB)}
-        />
+        <div style={{ position: "relative", minHeight: "100dvh" }}>
+          <PremiumFilters
+            initialFilters={filters}
+            onSave={handleFiltersSave}
+            onBack={() => setScreen(SCREENS.HUB)}
+          />
+          <MyLiveBottomNav activeTab="mylive" onTabChange={handleNavChange} />
+        </div>
       );
+
     case SCREENS.LOADING:
       return <LoadingScreen onCancel={handleCancel} user={user} />;
+
     case SCREENS.STREAM:
       return (
         <LiveStream
@@ -127,6 +142,7 @@ export default function MyLiveApp({ user, onBack }) {
           onSkip={handleSkip}
         />
       );
+
     case SCREENS.RATING:
       return (
         <RatingScreen
@@ -137,13 +153,17 @@ export default function MyLiveApp({ user, onBack }) {
           onDone={handleRatingDone}
         />
       );
+
     default:
       return (
-        <MyLiveHub
-          user={user}
-          onStart={() => startSearch(filters)}
-          onFilters={handleFiltersOpen}
-        />
+        <div style={{ position: "relative", minHeight: "100dvh" }}>
+          <MyLiveHub
+            user={user}
+            onStart={() => startSearch(filters)}
+            onFilters={handleFiltersOpen}
+          />
+          <MyLiveBottomNav activeTab="mylive" onTabChange={handleNavChange} />
+        </div>
       );
   }
 }

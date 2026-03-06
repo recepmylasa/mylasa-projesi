@@ -689,6 +689,18 @@ function App() {
     return () => window.removeEventListener("open-profile-modal", handler);
   }, []);
 
+  // MyLive içindeki nav'dan tab değişimi
+  useEffect(() => {
+    const handler = (e) => {
+      const tab = e?.detail?.tab;
+      if (!tab) return;
+      handleNavChange(tab);
+    };
+    window.addEventListener("mylive-nav", handler);
+    return () => window.removeEventListener("mylive-nav", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile, currentUserProfile]);
+
   const handleNavChange = (tab) => {
     modalReturnRef.current = null;
 
@@ -1126,25 +1138,27 @@ function App() {
 
   return (
     <div className={`app-container ${!isMobile ? "desktop-layout" : ""}`}>
-      {isMobile && (
+      {isMobile && activePage !== "mylive" && (
         <LogoBar
           onNotificationClick={() => handleNavChange("notifications")}
           onMessageClick={() => handleNavChange("messages")}
           onLocationClick={() => handleNavChange("map")}
         />
       )}
-      {isMobile ? (
-        <BottomNav
-          activeTab={activePage}
-          onTabChange={handleNavChange}
-          profilePic={currentUserProfile?.profilFoto}
-        />
-      ) : (
-        <SideNav
-          activeTab={activePage}
-          onTabChange={handleNavChange}
-          profilePic={currentUserProfile?.profilFoto}
-        />
+      {activePage !== "mylive" && (
+        isMobile ? (
+          <BottomNav
+            activeTab={activePage}
+            onTabChange={handleNavChange}
+            profilePic={currentUserProfile?.profilFoto}
+          />
+        ) : (
+          <SideNav
+            activeTab={activePage}
+            onTabChange={handleNavChange}
+            profilePic={currentUserProfile?.profilFoto}
+          />
+        )
       )}
       <main className={mainContentClass}>
         {activePage === "home" && (
