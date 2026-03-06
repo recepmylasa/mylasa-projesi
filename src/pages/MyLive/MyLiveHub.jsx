@@ -42,6 +42,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
   const [avgRating] = useState((Math.random() * 1.5 + 3.5).toFixed(1));
   const [selectedInterests, setSelectedInterests] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem("mylasa-theme") || "dark");
+  const [isStarting, setIsStarting] = useState(false);
 
   const isDark = theme === "dark";
 
@@ -290,18 +291,29 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
         {/* Action Buttons */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "24px" }}>
           <button
-            style={S.btnPrimary}
+            style={{ ...S.btnPrimary, opacity: isStarting ? 0.7 : 1 }}
+            disabled={isStarting}
             onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
             onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
             onTouchStart={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
             onTouchEnd={(e) => (e.currentTarget.style.transform = "scale(1)")}
             onClick={() => {
               if (!user) { alert("MyLive'ı kullanmak için giriş yapmalısınız."); return; }
-              onStart?.("random");
+              setIsStarting(true);
+              setTimeout(() => { onStart?.("stream"); setIsStarting(false); }, 300);
             }}
           >
-            <span style={{ fontSize: "20px" }}>📡</span>
-            Rastgele Bağlan
+            {isStarting ? (
+              <>
+                <div style={{ width: "16px", height: "16px", border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", animation: "ml-spin 0.8s linear infinite" }} />
+                Başlatılıyor...
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: "20px" }}>⚡</span>
+                Canlı Yayın Başlat
+              </>
+            )}
           </button>
 
           <button
@@ -312,18 +324,20 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
             onTouchEnd={(e) => (e.currentTarget.style.transform = "scale(1)")}
             onClick={() => {
               if (!user) { alert("MyLive'ı kullanmak için giriş yapmalısınız."); return; }
-              onFilters?.();
+              onStart?.("random");
             }}
           >
-            <span style={{ fontSize: "18px" }}>⚙️</span>
-            Premium Filtreler
-            <span style={S.proBadge}>PRO</span>
+            <span style={{ fontSize: "18px" }}>📡</span>
+            Rastgele Bağlan
           </button>
         </div>
 
         {/* Features */}
         <div style={{ marginBottom: "24px" }}>
-          <p style={S.sectionTitle}>MYLİVE ÖZELLİKLERİ</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <p style={{ ...S.sectionTitle, marginBottom: 0 }}>MYLİVE ÖZELLİKLERİ</p>
+            <button style={{ fontSize: "12px", color: "#00f2ff", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>Hepsini gör ›</button>
+          </div>
           {FEATURES.map((f, i) => (
             <div
               key={i}
@@ -438,7 +452,7 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
                 whiteSpace: "nowrap",
                 flexShrink: 0,
               }}
-              onClick={() => alert("Premium özelliği yakında!")}
+              onClick={() => onFilters?.()}
             >
               Yükselt
             </button>

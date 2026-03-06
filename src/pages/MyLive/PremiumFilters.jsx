@@ -1,148 +1,323 @@
-// FILE: src/pages/MyLive/PremiumFilters.jsx
 import React, { useState } from "react";
 import "../../styles/myLive.css";
 
 const INTERESTS = [
-  { emoji: "🎵", label: "Müzik" },
-  { emoji: "🎮", label: "Oyun" },
-  { emoji: "📚", label: "Kitap" },
-  { emoji: "🏋️", label: "Spor" },
-  { emoji: "🎨", label: "Sanat" },
-  { emoji: "🌍", label: "Seyahat" },
-  { emoji: "🍕", label: "Yemek" },
-  { emoji: "📸", label: "Fotoğraf" },
-  { emoji: "💻", label: "Teknoloji" },
-  { emoji: "🎬", label: "Film" },
-  { emoji: "🐾", label: "Hayvanlar" },
-  { emoji: "🌱", label: "Doğa" },
+  "🎵 Müzik", "⚽ Spor", "💻 Teknoloji", "🎨 Sanat", "🎮 Oyun",
+  "🎬 Film", "✈️ Seyahat", "🍕 Yemek", "👗 Moda", "📸 Fotoğraf",
+  "📚 Kitap", "🧘 Yoga", "🌿 Doğa", "🎭 Tiyatro", "🏋️ Fitness",
 ];
 
-const GENDERS = [
-  { value: "all", label: "Hepsi" },
-  { value: "male", label: "Erkek" },
-  { value: "female", label: "Kadın" },
-  { value: "other", label: "Diğer" },
+const COUNTRIES = [
+  "Türkiye", "Almanya", "İngiltere", "Amerika", "Fransa",
+  "İtalya", "İspanya", "Japonya", "Güney Kore", "Brezilya",
 ];
 
 export default function PremiumFilters({ initialFilters = {}, onSave, onBack }) {
-  const [gender, setGender] = useState(initialFilters.gender ?? "all");
-  const [ageMin, setAgeMin] = useState(initialFilters.ageMin ?? 18);
-  const [ageMax, setAgeMax] = useState(initialFilters.ageMax ?? 99);
-  const [interests, setInterests] = useState(initialFilters.interests ?? []);
-  const [country, setCountry] = useState(initialFilters.country ?? "");
+  const [isPremium] = useState(false);
+  const [filters, setFilters] = useState({
+    ageMin: initialFilters.ageMin ?? 18,
+    ageMax: initialFilters.ageMax ?? 50,
+    gender: initialFilters.gender ?? "all",
+    interests: initialFilters.interests ?? [],
+    country: initialFilters.country ?? "",
+  });
 
-  const toggleInterest = (label) => {
-    setInterests((prev) =>
-      prev.includes(label) ? prev.filter((i) => i !== label) : [...prev, label]
-    );
+  const toggleInterest = (interest) => {
+    if (!isPremium) {
+      alert("Bu özellik Premium üyelere özeldir.");
+      return;
+    }
+    setFilters((prev) => ({
+      ...prev,
+      interests: prev.interests.includes(interest)
+        ? prev.interests.filter((i) => i !== interest)
+        : [...prev.interests, interest],
+    }));
   };
 
   const handleSave = () => {
-    onSave?.({ gender, ageMin: Number(ageMin), ageMax: Number(ageMax), interests, country });
+    if (!isPremium) {
+      alert("Filtreleri kaydetmek için Premium üye olun.");
+      return;
+    }
+    localStorage.setItem("myLiveFilters", JSON.stringify(filters));
+    onSave?.(filters);
+    onBack?.();
+  };
+
+  const FilterLock = ({ locked }) => {
+    if (!locked) return null;
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", gap: "4px",
+        padding: "2px 8px", borderRadius: "20px", fontSize: "10px", fontWeight: 700,
+        background: "linear-gradient(135deg, rgba(200,50,255,0.2), rgba(100,50,255,0.2))",
+        border: "1px solid rgba(200,50,255,0.3)",
+        color: "rgba(200,50,255,1)",
+      }}>
+        🔒 Premium
+      </div>
+    );
   };
 
   return (
-    <div className="mylive-filters">
-      {/* Header */}
-      <div className="mylive-filters-header">
-        <button className="mylive-back-btn" onClick={onBack}>‹</button>
-        <div className="mylive-filters-title">Premium Filtreler</div>
-        <div className="mylive-premium-badge">👑 PRO</div>
-      </div>
+    <div style={{
+      minHeight: "100dvh",
+      background: "#0a0b0f",
+      color: "#f0f4ff",
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      paddingBottom: "calc(5rem + env(safe-area-inset-bottom, 0px))",
+      overflowY: "auto",
+      position: "relative",
+    }}>
+      {/* Background */}
+      <div style={{
+        position: "fixed", inset: 0, pointerEvents: "none",
+        background: "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(200,50,255,0.06) 0%, transparent 60%)",
+      }} />
 
-      {/* Cinsiyet */}
-      <div className="mylive-filter-section">
-        <div className="mylive-filter-label">Cinsiyet</div>
-        <div className="mylive-gender-options">
-          {GENDERS.map((g) => (
+      <div style={{ position: "relative", maxWidth: "480px", margin: "0 auto", padding: "24px 16px" }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
+          <button
+            onClick={onBack}
+            style={{
+              width: "36px", height: "36px", borderRadius: "12px",
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", fontSize: "18px", color: "#f0f4ff",
+            }}
+          >
+            ‹
+          </button>
+          <div style={{ flex: 1 }}>
+            <h1 style={{ fontSize: "20px", fontWeight: 800, color: "#f0f4ff", margin: 0 }}>Filtreler</h1>
+            <p style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)", margin: "2px 0 0" }}>Eşleşme tercihlerini ayarla</p>
+          </div>
+          <div style={{
+            display: "flex", alignItems: "center", gap: "6px",
+            padding: "6px 12px", borderRadius: "20px",
+            background: "linear-gradient(135deg, rgba(200,50,255,0.2), rgba(100,50,255,0.2))",
+            border: "1px solid rgba(200,50,255,0.3)",
+          }}>
+            <span style={{ fontSize: "14px" }}>👑</span>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "rgba(200,50,255,1)" }}>Premium</span>
+          </div>
+        </div>
+
+        {/* Premium Banner */}
+        {!isPremium && (
+          <div style={{
+            borderRadius: "16px", padding: "16px", marginBottom: "24px",
+            background: "linear-gradient(135deg, rgba(200,50,255,0.12), rgba(100,50,255,0.12))",
+            border: "1px solid rgba(200,50,255,0.25)",
+            display: "flex", alignItems: "center", gap: "12px",
+          }}>
+            <div style={{ fontSize: "32px" }}>👑</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff", marginBottom: "4px" }}>
+                Premium'a Yükselt
+              </div>
+              <div style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)" }}>
+                Gelişmiş filtreler ile ideal eşleşmeleri bul
+              </div>
+            </div>
             <button
-              key={g.value}
-              className={`mylive-gender-btn ${gender === g.value ? "selected" : ""}`}
-              onClick={() => setGender(g.value)}
+              onClick={() => alert("Premium özelliği yakında!")}
+              style={{
+                padding: "8px 16px", borderRadius: "12px", border: "none",
+                background: "linear-gradient(135deg, rgba(200,50,255,1), rgba(100,50,255,1))",
+                color: "#ffffff", fontSize: "13px", fontWeight: 700, cursor: "pointer",
+                flexShrink: 0,
+              }}
             >
-              {g.label}
+              Yükselt
             </button>
-          ))}
+          </div>
+        )}
+
+        {/* Age Range */}
+        <div style={{
+          background: "rgba(18,20,30,0.7)", border: "1px solid rgba(0,242,255,0.08)",
+          borderRadius: "16px", padding: "16px", marginBottom: "12px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "16px" }}>⚙️</span>
+              <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff" }}>Yaş Aralığı</span>
+            </div>
+            <FilterLock locked={!isPremium} />
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
+            <span style={{ fontSize: "18px", fontWeight: 800, color: "#00f2ff" }}>{filters.ageMin}</span>
+            <div style={{ flex: 1, textAlign: "center", fontSize: "12px", color: "rgba(180,190,220,0.5)" }}>—</div>
+            <span style={{ fontSize: "18px", fontWeight: 800, color: "#00f2ff" }}>{filters.ageMax}</span>
+          </div>
+
+          <div style={{ marginBottom: "8px" }}>
+            <label style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)", display: "block", marginBottom: "4px" }}>
+              Minimum yaş: {filters.ageMin}
+            </label>
+            <input
+              type="range" min={18} max={filters.ageMax - 1} value={filters.ageMin}
+              disabled={!isPremium}
+              onChange={(e) => setFilters(prev => ({ ...prev, ageMin: parseInt(e.target.value) }))}
+              style={{ width: "100%", accentColor: "#00f2ff", opacity: isPremium ? 1 : 0.4 }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: "12px", color: "rgba(180,190,220,0.6)", display: "block", marginBottom: "4px" }}>
+              Maksimum yaş: {filters.ageMax}
+            </label>
+            <input
+              type="range" min={filters.ageMin + 1} max={100} value={filters.ageMax}
+              disabled={!isPremium}
+              onChange={(e) => setFilters(prev => ({ ...prev, ageMax: parseInt(e.target.value) }))}
+              style={{ width: "100%", accentColor: "#00f2ff", opacity: isPremium ? 1 : 0.4 }}
+            />
+          </div>
         </div>
+
+        {/* Gender */}
+        <div style={{
+          background: "rgba(18,20,30,0.7)", border: "1px solid rgba(0,242,255,0.08)",
+          borderRadius: "16px", padding: "16px", marginBottom: "12px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff" }}>Cinsiyet</span>
+            <FilterLock locked={!isPremium} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+            {[
+              { value: "all", label: "Tümü", emoji: "👥" },
+              { value: "male", label: "Erkek", emoji: "👨" },
+              { value: "female", label: "Kadın", emoji: "👩" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => {
+                  if (!isPremium && option.value !== "all") {
+                    alert("Bu özellik Premium üyelere özeldir.");
+                    return;
+                  }
+                  setFilters(prev => ({ ...prev, gender: option.value }));
+                }}
+                style={{
+                  padding: "12px 8px", borderRadius: "12px", textAlign: "center",
+                  cursor: "pointer", border: "none",
+                  background: filters.gender === option.value
+                    ? "linear-gradient(135deg, rgba(0,242,255,0.2), rgba(255,20,147,0.2))"
+                    : "rgba(255,255,255,0.04)",
+                  outline: filters.gender === option.value ? "1px solid rgba(0,242,255,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                  opacity: !isPremium && option.value !== "all" ? 0.5 : 1,
+                  transition: "all 0.2s",
+                }}
+              >
+                <div style={{ fontSize: "20px", marginBottom: "4px" }}>{option.emoji}</div>
+                <div style={{
+                  fontSize: "12px", fontWeight: 600,
+                  color: filters.gender === option.value ? "#00f2ff" : "rgba(180,190,220,0.6)",
+                }}>
+                  {option.label}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Interests */}
+        <div style={{
+          background: "rgba(18,20,30,0.7)", border: "1px solid rgba(0,242,255,0.08)",
+          borderRadius: "16px", padding: "16px", marginBottom: "12px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff" }}>İlgi Alanları</span>
+            <FilterLock locked={!isPremium} />
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            {INTERESTS.map((interest) => {
+              const isSelected = filters.interests.includes(interest);
+              return (
+                <button
+                  key={interest}
+                  onClick={() => toggleInterest(interest)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "6px",
+                    padding: "6px 12px", borderRadius: "20px",
+                    fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                    background: isSelected
+                      ? "linear-gradient(135deg, rgba(0,242,255,0.2), rgba(255,20,147,0.2))"
+                      : "rgba(255,255,255,0.04)",
+                    border: isSelected ? "1px solid rgba(0,242,255,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                    color: isSelected ? "#00f2ff" : "rgba(180,190,220,0.6)",
+                    opacity: !isPremium ? 0.6 : 1,
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {isSelected && <span>✓</span>}
+                  {interest}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Country */}
+        <div style={{
+          background: "rgba(18,20,30,0.7)", border: "1px solid rgba(0,242,255,0.08)",
+          borderRadius: "16px", padding: "16px", marginBottom: "24px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0f4ff" }}>Konum</span>
+            <FilterLock locked={!isPremium} />
+          </div>
+          <select
+            value={filters.country}
+            disabled={!isPremium}
+            onChange={(e) => setFilters(prev => ({ ...prev, country: e.target.value }))}
+            style={{
+              width: "100%", background: "rgba(255,255,255,0.04)", color: "#f0f4ff",
+              border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px",
+              padding: "10px 12px", fontSize: "14px", opacity: isPremium ? 1 : 0.4,
+            }}
+          >
+            <option value="" style={{ background: "#0a0b0f" }}>Tüm ülkeler</option>
+            {COUNTRIES.map((c) => (
+              <option key={c} value={c} style={{ background: "#0a0b0f" }}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Save Button */}
+        <button
+          onClick={handleSave}
+          style={{
+            width: "100%", padding: "16px", borderRadius: "14px", border: "none",
+            cursor: "pointer", fontSize: "16px", fontWeight: 700,
+            background: isPremium
+              ? "linear-gradient(135deg, #00f2ff, #ff1493)"
+              : "rgba(255,255,255,0.08)",
+            color: isPremium ? "#0a0b0f" : "rgba(180,190,220,0.5)",
+            boxShadow: isPremium ? "0 4px 20px rgba(0,242,255,0.3)" : "none",
+            transition: "all 0.2s",
+          }}
+        >
+          {isPremium ? "Filtreleri Kaydet" : "Premium'a Yükselt"}
+        </button>
+
+        <button
+          onClick={() => setFilters({ ageMin: 18, ageMax: 50, gender: "all", interests: [], country: "" })}
+          style={{
+            display: "block", margin: "12px auto 0", background: "none", border: "none",
+            color: "rgba(180,190,220,0.4)", fontSize: "13px", cursor: "pointer",
+          }}
+        >
+          Filtreleri Sıfırla
+        </button>
+
       </div>
-
-      {/* Yaş Aralığı */}
-      <div className="mylive-filter-section" style={{ marginTop: 20 }}>
-        <div className="mylive-filter-label">Yaş Aralığı</div>
-        <div className="mylive-age-range">
-          <input
-            type="number"
-            className="mylive-age-input"
-            value={ageMin}
-            min={18}
-            max={99}
-            onChange={(e) => setAgeMin(e.target.value)}
-            placeholder="Min"
-          />
-          <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 18 }}>—</span>
-          <input
-            type="number"
-            className="mylive-age-input"
-            value={ageMax}
-            min={18}
-            max={99}
-            onChange={(e) => setAgeMax(e.target.value)}
-            placeholder="Max"
-          />
-        </div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 8 }}>
-          {ageMin} – {ageMax} yaş arası kullanıcılarla eşleş
-        </div>
-      </div>
-
-      {/* İlgi Alanları */}
-      <div className="mylive-filter-section" style={{ marginTop: 20 }}>
-        <div className="mylive-filter-label">
-          İlgi Alanları
-          {interests.length > 0 && (
-            <span style={{ marginLeft: 8, fontSize: 11, color: "#00F2FF", fontWeight: 700 }}>
-              {interests.length} seçili
-            </span>
-          )}
-        </div>
-        <div className="mylive-interests-grid">
-          {INTERESTS.map((item) => (
-            <button
-              key={item.label}
-              className={`mylive-interest-chip ${interests.includes(item.label) ? "selected" : ""}`}
-              onClick={() => toggleInterest(item.label)}
-            >
-              {item.emoji} {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Ülke */}
-      <div className="mylive-filter-section" style={{ marginTop: 20 }}>
-        <div className="mylive-filter-label">Ülke (İsteğe Bağlı)</div>
-        <input
-          type="text"
-          className="mylive-age-input"
-          style={{ width: "100%", textAlign: "left" }}
-          placeholder="Örn: Türkiye"
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-        />
-      </div>
-
-      {/* Kaydet */}
-      <button className="mylive-filter-save" onClick={handleSave}>
-        Filtreleri Kaydet & Başla
-      </button>
-
-      {/* Reset */}
-      <button
-        onClick={() => { setGender("all"); setAgeMin(18); setAgeMax(99); setInterests([]); setCountry(""); }}
-        style={{ display: "block", margin: "12px auto 0", background: "none", border: "none", color: "rgba(255,255,255,0.3)", fontSize: 13, cursor: "pointer" }}
-      >
-        Filtreleri Sıfırla
-      </button>
     </div>
   );
 }
