@@ -104,7 +104,7 @@ export default function MyLiveHub({ user, onStart, onFilters, onThemeChange }) {
                   boxShadow: `0 0 20px rgba(0,200,224,0.35), 0 0 60px rgba(0,200,224,0.15)`,
                   flexShrink: 0,
                 }}>
-                  <RadioIcon size={22} color="#0a0b0f" />
+                  <RadioIcon size={22} color="#ffffff" />
                 </div>
                 <div>
                   <div style={{
