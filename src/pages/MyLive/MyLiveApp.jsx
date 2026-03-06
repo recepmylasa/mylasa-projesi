@@ -1,6 +1,10 @@
 // FILE: src/pages/MyLive/MyLiveApp.jsx
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import MyLiveHub from "./MyLiveHub";
+import MyLiveHomeScreen from "./MyLiveHomeScreen";
+import MyLiveExploreScreen from "./MyLiveExploreScreen";
+import MyLiveNotificationsScreen from "./MyLiveNotificationsScreen";
+import MyLiveProfileScreen from "./MyLiveProfileScreen";
 import LoadingScreen from "./LoadingScreen";
 import LiveStream from "./LiveStream";
 import RatingScreen from "./RatingScreen";
@@ -14,16 +18,16 @@ function genId() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-const SCREENS = {
-  HUB: "hub",
-  FILTERS: "filters",
-  LOADING: "loading",
-  STREAM: "stream",
-  RATING: "rating",
-};
+// Canlı yayın akış ekranları (nav gizlenir)
+const STREAM_SCREENS = ["loading", "stream", "rating"];
 
-export default function MyLiveApp({ user, onBack, onNavChange }) {
-  const [screen, setScreen] = useState(SCREENS.HUB);
+export default function MyLiveApp({ user, onBack }) {
+  // Aktif MyLive sekmesi: "home" | "explore" | "mylive" | "notifications" | "profile"
+  const [activeTab, setActiveTab] = useState("mylive");
+
+  // Canlı yayın akış ekranı: null | "filters" | "loading" | "stream" | "rating"
+  const [streamScreen, setStreamScreen] = useState(null);
+
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem("myLiveTheme");
     return saved !== null ? saved === "dark" : true;
@@ -36,14 +40,6 @@ export default function MyLiveApp({ user, onBack, onNavChange }) {
   const matchTimerRef = useRef(null);
   const searchingRef = useRef(false);
 
-  // Her zaman güncel onNavChange ve onBack referanslarını tut
-  const onNavChangeRef = useRef(onNavChange);
-  const onBackRef = useRef(onBack);
-  useEffect(() => {
-    onNavChangeRef.current = onNavChange;
-    onBackRef.current = onBack;
-  }, [onNavChange, onBack]);
-
   const stopSearch = useCallback(async () => {
     searchingRef.current = false;
     clearInterval(matchTimerRef.current);
@@ -53,7 +49,7 @@ export default function MyLiveApp({ user, onBack, onNavChange }) {
   const startSearch = useCallback(async (activeFilters = {}) => {
     if (!user?.uid) return;
     searchingRef.current = true;
-    setScreen(SCREENS.LOADING);
+    setStreamScreen("loading");
 
     try {
       const blockedIds = await getBlockedUsers(user.uid).catch(() => []);
@@ -70,7 +66,7 @@ export default function MyLiveApp({ user, onBack, onNavChange }) {
           setPartner(match);
           setIsInitiator(true);
           await leaveQueue(user.uid).catch(() => {});
-          setScreen(SCREENS.STREAM);
+          setStreamScreen("stream");
         }
       };
 
@@ -79,18 +75,18 @@ export default function MyLiveApp({ user, onBack, onNavChange }) {
     } catch (err) {
       console.error("[MyLive] startSearch error:", err);
       await stopSearch();
-      setScreen(SCREENS.HUB);
+      setStreamScreen(null);
     }
   }, [user, stopSearch]);
 
   const handleCancel = useCallback(async () => {
     await stopSearch();
-    setScreen(SCREENS.HUB);
+    setStreamScreen(null);
   }, [stopSearch]);
 
   const handleEnd = useCallback((data) => {
     setSessionData(data);
-    setScreen(SCREENS.RATING);
+    setStreamScreen("rating");
   }, []);
 
   const handleSkip = useCallback(async () => {
@@ -103,80 +99,109 @@ export default function MyLiveApp({ user, onBack, onNavChange }) {
     setSessionData(null);
     setPartner(null);
     setRoomId(null);
-    setScreen(SCREENS.HUB);
+    setStreamScreen(null);
+    setActiveTab("mylive");
   }, []);
 
-  const handleFiltersOpen = useCallback(() => setScreen(SCREENS.FILTERS), []);
+  const handleFiltersOpen = useCallback(() => setStreamScreen("filters"), []);
 
   const handleFiltersSave = useCallback((f) => {
     setFilters(f);
     startSearch(f);
   }, [startSearch]);
 
-  // Nav tab değişimi - ref üzerinden her zaman güncel fonksiyonu çağır
+  // Nav tab değişimi - MyLive içinde gezin
   const handleNavTab = useCallback((tab) => {
-    if (tab === "mylive") return; // Zaten buradayız
-    stopSearch();
-    // Ref üzerinden çağır - stale closure sorunu olmaz
-    if (onNavChangeRef.current) {
-      onNavChangeRef.current(tab);
-    } else if (onBackRef.current) {
-      onBackRef.current();
+    if (STREAM_SCREENS.includes(streamScreen)) {
+      // Canlı yayın sırasında nav değişimine izin verme
+      return;
     }
-  }, [stopSearch]); // onNavChange/onBack dependency'ye gerek yok, ref kullanıyoruz
+    if (streamScreen === "filters") {
+      setStreamScreen(null);
+    }
+    setActiveTab(tab);
+  }, [streamScreen]);
 
   useEffect(() => () => { stopSearch(); }, [stopSearch]);
 
-  switch (screen) {
-    case SCREENS.FILTERS:
-      return (
-        <div style={{ position: "relative", minHeight: "100dvh", paddingBottom: "68px" }}>
-          <PremiumFilters
-            initialFilters={filters}
-            onSave={handleFiltersSave}
-            onBack={() => setScreen(SCREENS.HUB)}
+  // Canlı yayın akış ekranları - nav gizlenir
+  if (streamScreen === "loading") {
+    return <LoadingScreen onCancel={handleCancel} user={user} />;
+  }
+
+  if (streamScreen === "stream") {
+    return (
+      <LiveStream
+        roomId={roomId}
+        isInitiator={isInitiator}
+        partner={partner}
+        user={user}
+        onEnd={handleEnd}
+        onSkip={handleSkip}
+      />
+    );
+  }
+
+  if (streamScreen === "rating") {
+    return (
+      <RatingScreen
+        connectionId={sessionData?.connectionId}
+        partner={sessionData?.partner ?? partner}
+        user={user}
+        duration={sessionData?.duration}
+        onDone={handleRatingDone}
+      />
+    );
+  }
+
+  // Filtreler ekranı
+  if (streamScreen === "filters") {
+    return (
+      <div style={{ position: "relative", minHeight: "100dvh", paddingBottom: "68px" }}>
+        <PremiumFilters
+          initialFilters={filters}
+          onSave={handleFiltersSave}
+          onBack={() => setStreamScreen(null)}
+        />
+        <MyLiveBottomNav activeTab="mylive" onTabChange={handleNavTab} isDark={isDark} />
+      </div>
+    );
+  }
+
+  // Ana içerik - tab'a göre ekran göster
+  const renderContent = () => {
+    switch (activeTab) {
+      case "home":
+        return (
+          <MyLiveHomeScreen
+            user={user}
+            onStart={() => startSearch(filters)}
+            onFilters={handleFiltersOpen}
           />
-          <MyLiveBottomNav activeTab="mylive" onTabChange={handleNavTab} />
-        </div>
-      );
-
-    case SCREENS.LOADING:
-      return <LoadingScreen onCancel={handleCancel} user={user} />;
-
-    case SCREENS.STREAM:
-      return (
-        <LiveStream
-          roomId={roomId}
-          isInitiator={isInitiator}
-          partner={partner}
-          user={user}
-          onEnd={handleEnd}
-          onSkip={handleSkip}
-        />
-      );
-
-    case SCREENS.RATING:
-      return (
-        <RatingScreen
-          connectionId={sessionData?.connectionId}
-          partner={sessionData?.partner ?? partner}
-          user={user}
-          duration={sessionData?.duration}
-          onDone={handleRatingDone}
-        />
-      );
-
-    default:
-      return (
-        <div style={{ position: "relative", minHeight: "100dvh", paddingBottom: "68px" }}>
+        );
+      case "explore":
+        return <MyLiveExploreScreen />;
+      case "notifications":
+        return <MyLiveNotificationsScreen user={user} />;
+      case "profile":
+        return <MyLiveProfileScreen user={user} />;
+      case "mylive":
+      default:
+        return (
           <MyLiveHub
             user={user}
             onStart={() => startSearch(filters)}
             onFilters={handleFiltersOpen}
             onThemeChange={setIsDark}
           />
-          <MyLiveBottomNav activeTab="mylive" onTabChange={handleNavTab} isDark={isDark} />
-        </div>
-      );
-  }
+        );
+    }
+  };
+
+  return (
+    <div style={{ position: "relative", minHeight: "100dvh", paddingBottom: "68px" }}>
+      {renderContent()}
+      <MyLiveBottomNav activeTab={activeTab} onTabChange={handleNavTab} isDark={isDark} />
+    </div>
+  );
 }
