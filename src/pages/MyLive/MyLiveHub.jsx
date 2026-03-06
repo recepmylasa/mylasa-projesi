@@ -1,3 +1,5 @@
+// FILE: src/pages/MyLive/MyLiveHub.jsx
+// Manus önizlemesiyle birebir aynı tasarım - inline style versiyonu
 import React, { useState, useEffect } from "react";
 import "../../styles/myLive.css";
 
@@ -6,452 +8,276 @@ const INTERESTS = [
   "Seyahat", "Yemek", "Moda", "Fotoğraf",
 ];
 
-const FEATURES = [
-  {
-    icon: "⚡",
-    iconBg: "linear-gradient(135deg, rgba(0,242,255,0.2), rgba(0,242,255,0.05))",
-    iconBorder: "rgba(0,242,255,0.2)",
-    title: "Anında Bağlan",
-    desc: "Rastgele biri ile 2-5 saniyede video sohbet başlat",
-  },
-  {
-    icon: "🎯",
-    iconBg: "linear-gradient(135deg, rgba(255,20,147,0.2), rgba(255,20,147,0.05))",
-    iconBorder: "rgba(255,20,147,0.2)",
-    title: "Akıllı Eşleştirme",
-    desc: "İlgi alanlarına göre filtrelenmiş eşleştirme algoritması",
-  },
-  {
-    icon: "🔒",
-    iconBg: "linear-gradient(135deg, rgba(0,230,118,0.2), rgba(0,230,118,0.05))",
-    iconBorder: "rgba(0,230,118,0.2)",
-    title: "Güvenli & Şifreli",
-    desc: "WebRTC ile uçtan uca şifreli P2P bağlantı",
-  },
-  {
-    icon: "⭐",
-    iconBg: "linear-gradient(135deg, rgba(255,215,64,0.2), rgba(255,215,64,0.05))",
-    iconBorder: "rgba(255,215,64,0.2)",
-    title: "Puanlama Sistemi",
-    desc: "Her bağlantı sonrası 5 yıldızlı değerlendirme",
-  },
-];
+const CYAN = "#00c8e0";
+const MAGENTA = "#d946a8";
+const GOLD = "#c9a227";
+const GREEN = "#22c97a";
 
-export default function MyLiveHub({ onStart, onFilters, user }) {
-  const [activeCount, setActiveCount] = useState(Math.floor(Math.random() * 80) + 20);
-  const [avgRating] = useState((Math.random() * 1.5 + 3.5).toFixed(1));
+function RadioIcon({ size = 22, color = "#0a0b0f" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+      <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+      <circle cx="12" cy="20" r="1" fill={color} />
+    </svg>
+  );
+}
+
+export default function MyLiveHub({ user, onStart, onFilters }) {
+  const [isDark, setIsDark] = useState(() => {
+    const saved = localStorage.getItem("myLiveTheme");
+    return saved !== null ? saved === "dark" : true;
+  });
   const [selectedInterests, setSelectedInterests] = useState([]);
-  const [theme, setTheme] = useState(() => localStorage.getItem("mylasa-theme") || "dark");
+  const [activeStreams, setActiveStreams] = useState(null);
   const [isStarting, setIsStarting] = useState(false);
 
-  const isDark = theme === "dark";
+  useEffect(() => {
+    localStorage.setItem("myLiveTheme", isDark ? "dark" : "light");
+  }, [isDark]);
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("mylasa-theme", theme);
-  }, [theme]);
+    const base = Math.floor(Math.random() * 80) + 40;
+    setActiveStreams(base);
+    const interval = setInterval(() => {
+      setActiveStreams(prev => Math.max(10, prev + Math.floor(Math.random() * 5) - 2));
+    }, 8000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const toggleTheme = () => setTheme(t => t === "dark" ? "light" : "dark");
   const toggleInterest = (interest) => {
     setSelectedInterests(prev =>
       prev.includes(interest) ? prev.filter(i => i !== interest) : [...prev, interest]
     );
   };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveCount((prev) => Math.max(5, prev + Math.floor(Math.random() * 5) - 2));
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const displayName = user?.displayName?.split(" ")[0] || user?.name || "Kullanıcı";
-
-  const S = {
-    page: {
-      minHeight: "100dvh",
-      background: isDark ? "#0a0b0f" : "#f0f4ff",
-      color: isDark ? "#f0f4ff" : "#1a1a2e",
-      transition: "background 0.3s, color 0.3s",
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-      paddingBottom: "calc(5rem + env(safe-area-inset-bottom, 0px))",
-      overflowY: "auto",
-      position: "relative",
-    },
-    bgGlow: {
-      position: "fixed",
-      inset: 0,
-      pointerEvents: "none",
-      zIndex: 0,
-      background:
-        "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,242,255,0.07) 0%, transparent 60%), " +
-        "radial-gradient(ellipse 60% 40% at 80% 80%, rgba(255,20,147,0.05) 0%, transparent 50%)",
-    },
-    inner: {
-      position: "relative",
-      zIndex: 1,
-      maxWidth: "480px",
-      margin: "0 auto",
-      padding: "0 16px",
-    },
-    header: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "20px 0 12px",
-    },
-    title: {
-      fontSize: "26px",
-      fontWeight: 800,
-      background: "linear-gradient(135deg, #00f2ff, #ff1493)",
-      WebkitBackgroundClip: "text",
-      WebkitTextFillColor: "transparent",
-      backgroundClip: "text",
-      margin: 0,
-      letterSpacing: "-0.5px",
-    },
-    subtitle: {
-      fontSize: "13px",
-      color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)",
-      margin: "2px 0 0",
-    },
-    liveBadge: {
-      display: "flex",
-      alignItems: "center",
-      gap: "6px",
-      padding: "6px 12px",
-      borderRadius: "20px",
-      background: "rgba(0,242,255,0.1)",
-      border: "1px solid rgba(0,242,255,0.25)",
-      fontSize: "12px",
-      fontWeight: 600,
-      color: "#00f2ff",
-    },
-    liveDot: {
-      width: "7px",
-      height: "7px",
-      borderRadius: "50%",
-      background: "#00f2ff",
-      animation: "ml-live-pulse 1.5s ease-in-out infinite",
-    },
-    statsBanner: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-around",
-      padding: "16px",
-      borderRadius: "16px",
-      background: isDark
-        ? "linear-gradient(135deg, rgba(0,242,255,0.08), rgba(255,20,147,0.08))"
-        : "linear-gradient(135deg, rgba(0,200,255,0.12), rgba(200,20,147,0.08))",
-      border: isDark ? "1px solid rgba(0,242,255,0.15)" : "1px solid rgba(0,180,220,0.25)",
-      marginBottom: "16px",
-      boxShadow: isDark ? "none" : "0 2px 12px rgba(0,180,220,0.1)",
-    },
-    statDivider: {
-      width: "1px",
-      height: "36px",
-      background: "rgba(0,242,255,0.15)",
-    },
-    btnPrimary: {
-      width: "100%",
-      padding: "16px",
-      borderRadius: "14px",
-      border: "none",
-      cursor: "pointer",
-      fontSize: "16px",
-      fontWeight: 700,
-      color: "#0a0b0f",
-      background: "linear-gradient(135deg, #00f2ff 0%, #ff1493 100%)",
-      boxShadow: "0 4px 20px rgba(0,242,255,0.3)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "10px",
-      transition: "transform 0.15s",
-    },
-    btnSecondary: {
-      width: "100%",
-      padding: "14px",
-      borderRadius: "14px",
-      border: "1px solid rgba(0,242,255,0.3)",
-      cursor: "pointer",
-      fontSize: "15px",
-      fontWeight: 600,
-      color: "#00f2ff",
-      background: "rgba(0,242,255,0.06)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "10px",
-      transition: "background 0.2s, transform 0.15s",
-    },
-    proBadge: {
-      marginLeft: "auto",
-      padding: "2px 8px",
-      borderRadius: "10px",
-      background: "linear-gradient(135deg, rgba(255,20,147,0.2), rgba(255,20,147,0.1))",
-      border: "1px solid rgba(255,20,147,0.3)",
-      fontSize: "10px",
-      fontWeight: 700,
-      color: "#ff1493",
-    },
-    sectionTitle: {
-      fontSize: "12px",
-      fontWeight: 700,
-      color: isDark ? "rgba(180,190,220,0.5)" : "rgba(60,80,120,0.6)",
-      textTransform: "uppercase",
-      letterSpacing: "0.8px",
-      marginBottom: "12px",
-    },
-    featureCard: {
-      display: "flex",
-      alignItems: "center",
-      gap: "14px",
-      padding: "14px",
-      borderRadius: "14px",
-      background: isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.8)",
-      border: isDark ? "1px solid rgba(0,242,255,0.08)" : "1px solid rgba(0,180,200,0.15)",
-      marginBottom: "10px",
-      cursor: "pointer",
-      transition: "background 0.2s, border-color 0.2s",
-      boxShadow: isDark ? "none" : "0 2px 8px rgba(0,0,0,0.06)",
-    },
-    premiumBanner: {
-      padding: "20px",
-      borderRadius: "20px",
-      background: "linear-gradient(135deg, rgba(255,20,147,0.1), rgba(0,242,255,0.1))",
-      border: "1px solid rgba(255,20,147,0.2)",
-      marginBottom: "24px",
-      position: "relative",
-      overflow: "hidden",
-    },
+  const handleStart = () => {
+    setIsStarting(true);
+    setTimeout(() => { setIsStarting(false); onStart?.(); }, 300);
   };
 
+  const bg = isDark ? "#0a0b0f" : "#f0f4ff";
+  const textPrimary = isDark ? "#f0f4ff" : "#1a1a2e";
+  const textSecondary = isDark ? "rgba(176,184,212,0.8)" : "rgba(60,80,120,0.75)";
+  const glassBg = isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.85)";
+  const glassBorder = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.1)";
+  const cardBg = isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.9)";
+  const cardBorder = isDark ? "rgba(0,200,224,0.08)" : "rgba(0,160,200,0.15)";
+
+  const displayName = user?.displayName?.split(" ")[0] || user?.name?.split(" ")[0] || null;
+
   return (
-    <div style={S.page}>
-      <div style={S.bgGlow} />
-      <div style={S.inner}>
-        {/* Header */}
-        <div style={S.header}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            {/* MyLive Logo - Manus style */}
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              {/* Gradient circle icon */}
-              <div style={{
-                width: "42px",
-                height: "42px",
-                borderRadius: "14px",
-                background: "linear-gradient(135deg, #00c8ff, #9b40ff)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 0 16px rgba(0,200,255,0.4)",
-                flexShrink: 0,
-              }}>
-                {/* Radio/wave icon */}
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0b0f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12.55a11 11 0 0 1 14.08 0" />
-                  <path d="M1.42 9a16 16 0 0 1 21.16 0" />
-                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
-                  <circle cx="12" cy="20" r="1" fill="#0a0b0f" />
-                </svg>
-              </div>
-              {/* Text */}
-              <div>
+    <div style={{
+      minHeight: "100dvh",
+      background: bg,
+      color: textPrimary,
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      overflowY: "auto",
+      paddingBottom: "calc(4.5rem + env(safe-area-inset-bottom, 0px))",
+      position: "relative",
+      transition: "background 0.3s, color 0.3s",
+    }}>
+      {/* Background gradient */}
+      <div style={{
+        position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0,
+        background: isDark
+          ? "radial-gradient(ellipse 80% 60% at 50% -20%, rgba(0,200,224,0.10) 0%, transparent 70%), radial-gradient(ellipse 60% 40% at 80% 50%, rgba(217,70,168,0.07) 0%, transparent 60%)"
+          : "radial-gradient(ellipse 80% 60% at 50% -20%, rgba(0,180,210,0.08) 0%, transparent 70%)",
+      }} />
+
+      <div style={{ position: "relative", zIndex: 1 }}>
+
+        {/* ===== HERO SECTION ===== */}
+        <div style={{ position: "relative", overflow: "hidden" }}>
+          <div style={{ padding: "40px 16px 24px" }}>
+
+            {/* Brand + Controls */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "32px" }}>
+              {/* Logo */}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <div style={{
-                  fontSize: "18px",
-                  fontWeight: 800,
-                  background: "linear-gradient(90deg, #00c8ff, #9b40ff)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                  lineHeight: 1,
-                  fontFamily: "'Inter', sans-serif",
-                }}>MyLive</div>
-                <div style={{
-                  fontSize: "10px",
-                  color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.6)",
-                  marginTop: "2px",
-                  lineHeight: 1,
-                }}>Canlı Video Sohbet</div>
-              </div>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {/* Theme Toggle */}
-            <button
-              onClick={toggleTheme}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                padding: "6px 12px",
-                borderRadius: "20px",
-                border: isDark ? "1px solid rgba(0,242,255,0.3)" : "1px solid rgba(0,0,0,0.15)",
-                background: isDark ? "rgba(0,242,255,0.08)" : "rgba(0,0,0,0.06)",
-                cursor: "pointer",
-                fontSize: "12px",
-                fontWeight: 600,
-                color: isDark ? "#00f2ff" : "#6b21a8",
-              }}
-            >
-              {isDark ? "☀️ Aydınlık" : "🌙 Karanlık"}
-            </button>
-            <div style={S.liveBadge}>
-              <div style={S.liveDot} />
-              {activeCount} Canlı
-            </div>
-          </div>
-        </div>
-
-        {/* Greeting */}
-        <p style={{ ...S.subtitle, marginBottom: "16px", marginTop: "-4px" }}>Merhaba, {displayName} 👋</p>
-
-        {/* Stats */}
-        <div style={S.statsBanner}>
-          <div style={{ textAlign: "center", flex: 1 }}>
-            <div style={{ fontSize: "22px", fontWeight: 800, color: "#00f2ff", lineHeight: 1 }}>
-              {activeCount}
-            </div>
-            <div style={{ fontSize: "11px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)", marginTop: "4px" }}>
-              Aktif Kullanıcı
-            </div>
-          </div>
-          <div style={S.statDivider} />
-          <div style={{ textAlign: "center", flex: 1 }}>
-            <div style={{ fontSize: "22px", fontWeight: 800, color: "#ff1493", lineHeight: 1 }}>P2P</div>
-            <div style={{ fontSize: "11px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)", marginTop: "4px" }}>
-              Şifreli Bağlantı
-            </div>
-          </div>
-          <div style={S.statDivider} />
-          <div style={{ textAlign: "center", flex: 1 }}>
-            <div style={{ fontSize: "22px", fontWeight: 800, color: "#ffd740", lineHeight: 1 }}>
-              {avgRating}★
-            </div>
-            <div style={{ fontSize: "11px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)", marginTop: "4px" }}>
-              Puanlama
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "24px" }}>
-          <button
-            style={{ ...S.btnPrimary, opacity: isStarting ? 0.7 : 1 }}
-            disabled={isStarting}
-            onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
-            onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            onTouchStart={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
-            onTouchEnd={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            onClick={() => {
-              if (!user) { alert("MyLive'ı kullanmak için giriş yapmalısınız."); return; }
-              setIsStarting(true);
-              setTimeout(() => { onStart?.("stream"); setIsStarting(false); }, 300);
-            }}
-          >
-            {isStarting ? (
-              <>
-                <div style={{ width: "16px", height: "16px", border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", animation: "ml-spin 0.8s linear infinite" }} />
-                Başlatılıyor...
-              </>
-            ) : (
-              <>
-                <span style={{ fontSize: "20px" }}>⚡</span>
-                Canlı Yayın Başlat
-              </>
-            )}
-          </button>
-
-          <button
-            style={S.btnSecondary}
-            onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
-            onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            onTouchStart={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
-            onTouchEnd={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            onClick={() => {
-              if (!user) { alert("MyLive'ı kullanmak için giriş yapmalısınız."); return; }
-              onStart?.("random");
-            }}
-          >
-            <span style={{ fontSize: "18px" }}>📡</span>
-            Rastgele Bağlan
-          </button>
-        </div>
-
-        {/* Features */}
-        <div style={{ marginBottom: "24px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <p style={{ ...S.sectionTitle, marginBottom: 0 }}>MYLİVE ÖZELLİKLERİ</p>
-            <button style={{ fontSize: "12px", color: "#00f2ff", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>Hepsini gör ›</button>
-          </div>
-          {FEATURES.map((f, i) => (
-            <div
-              key={i}
-              style={S.featureCard}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(0,242,255,0.06)";
-                e.currentTarget.style.borderColor = "rgba(0,242,255,0.2)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.8)";
-                e.currentTarget.style.borderColor = "rgba(0,242,255,0.08)";
-              }}
-            >
-              <div
-                style={{
-                  width: "44px",
-                  height: "44px",
-                  borderRadius: "12px",
-                  background: f.iconBg,
-                  border: `1px solid ${f.iconBorder}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "20px",
+                  width: "42px", height: "42px", borderRadius: "14px",
+                  background: `linear-gradient(135deg, ${CYAN}, ${MAGENTA})`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: `0 0 20px rgba(0,200,224,0.35), 0 0 60px rgba(0,200,224,0.15)`,
                   flexShrink: 0,
+                }}>
+                  <RadioIcon size={22} color="#0a0b0f" />
+                </div>
+                <div>
+                  <div style={{
+                    fontSize: "20px", fontWeight: 800, lineHeight: 1,
+                    background: `linear-gradient(135deg, ${CYAN}, ${MAGENTA})`,
+                    WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+                  }}>MyLive</div>
+                  <div style={{ fontSize: "10px", color: textSecondary, marginTop: "2px", lineHeight: 1 }}>
+                    Canlı Video Sohbet
+                  </div>
+                </div>
+              </div>
+
+              {/* Right controls */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {/* Theme Toggle */}
+                <button
+                  onClick={() => setIsDark(d => !d)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "6px",
+                    padding: "6px 12px", borderRadius: "20px", border: "none", cursor: "pointer",
+                    background: isDark ? "rgba(18,20,30,0.8)" : "rgba(240,244,255,0.9)",
+                    outline: isDark ? "1px solid rgba(0,200,224,0.2)" : "1px solid rgba(0,160,200,0.2)",
+                    backdropFilter: "blur(12px)",
+                    fontSize: "12px", fontWeight: 600,
+                    color: isDark ? "rgba(176,184,212,0.9)" : "rgba(60,80,120,0.85)",
+                  }}
+                >
+                  <span style={{
+                    width: "20px", height: "20px", borderRadius: "50%",
+                    background: isDark ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : `linear-gradient(135deg, ${GOLD}, #f59e0b)`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "11px",
+                  }}>
+                    {isDark ? "🌙" : "☀️"}
+                  </span>
+                  {isDark ? "Karanlık" : "Aydınlık"}
+                </button>
+
+                {/* Live badge */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  padding: "6px 12px", borderRadius: "20px",
+                  background: glassBg, outline: `1px solid rgba(0,200,224,0.2)`,
+                  backdropFilter: "blur(12px)",
+                }}>
+                  <span style={{
+                    width: "6px", height: "6px", borderRadius: "50%", background: MAGENTA,
+                    animation: "mylive-pulse 2s ease-in-out infinite",
+                    display: "block",
+                  }} />
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: CYAN }}>
+                    {activeStreams ?? "—"} Canlı
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Merhaba */}
+            {displayName && (
+              <p style={{ fontSize: "14px", color: textSecondary, marginBottom: "16px", marginTop: "-16px" }}>
+                Merhaba, {displayName} 👋
+              </p>
+            )}
+
+            {/* Hero Text */}
+            <div style={{ marginBottom: "32px" }}>
+              <h2 style={{ fontSize: "32px", fontWeight: 800, lineHeight: 1.2, marginBottom: "8px", color: textPrimary, margin: "0 0 8px 0" }}>
+                Dünyayla<br />
+                <span style={{
+                  background: `linear-gradient(135deg, ${CYAN}, ${MAGENTA})`,
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+                }}>Bağlan.</span>
+              </h2>
+              <p style={{ fontSize: "14px", color: textSecondary, lineHeight: 1.6, maxWidth: "300px", margin: 0 }}>
+                Rastgele insanlarla gerçek zamanlı video sohbet yap. Yeni arkadaşlar edin, farklı kültürler keşfet.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "24px" }}>
+              <button
+                onClick={handleStart}
+                disabled={isStarting}
+                style={{
+                  width: "100%", padding: "16px", borderRadius: "16px", border: "none",
+                  background: `linear-gradient(135deg, ${CYAN}, ${MAGENTA})`,
+                  color: "#0a0b0f", fontSize: "16px", fontWeight: 700, cursor: "pointer",
+                  boxShadow: `0 8px 32px rgba(0,200,224,0.3)`,
+                  transition: "all 0.3s", opacity: isStarting ? 0.7 : 1,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
                 }}
               >
-                {f.icon}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "14px", fontWeight: 700, color: isDark ? "#f0f4ff" : "#1a1a2e", marginBottom: "3px" }}>
-                  {f.title}
-                </div>
-                <div style={{ fontSize: "12px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.6)" }}>{f.desc}</div>
-              </div>
-              <span style={{ color: "rgba(180,190,220,0.4)", fontSize: "16px" }}>›</span>
+                {isStarting ? (
+                  <>
+                    <div style={{
+                      width: "16px", height: "16px", borderRadius: "50%",
+                      border: "2px solid #0a0b0f", borderTopColor: "transparent",
+                      animation: "spin 0.8s linear infinite",
+                    }} />
+                    Başlatılıyor...
+                  </>
+                ) : (
+                  <>⚡ Canlı Yayın Başlat</>
+                )}
+              </button>
+
+              <button
+                onClick={() => onStart?.()}
+                style={{
+                  width: "100%", padding: "16px", borderRadius: "16px",
+                  background: glassBg, outline: `1px solid rgba(0,200,224,0.3)`,
+                  border: "none",
+                  color: CYAN, fontSize: "16px", fontWeight: 600, cursor: "pointer",
+                  backdropFilter: "blur(12px)", transition: "all 0.3s",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                }}
+              >
+                🎲 Rastgele Bağlan
+              </button>
             </div>
-          ))}
+
+            {/* Stats Row */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "8px" }}>
+              {[
+                { value: activeStreams ?? "—", label: "Aktif Yayın", color: CYAN },
+                { value: "P2P", label: "Şifreli Bağlantı", color: MAGENTA },
+                { value: "100%", label: "Güvenli", color: GREEN },
+              ].map((stat, i) => (
+                <div key={i} style={{
+                  background: glassBg, outline: `1px solid ${glassBorder}`,
+                  borderRadius: "14px", padding: "12px 8px", textAlign: "center",
+                  backdropFilter: "blur(12px)",
+                }}>
+                  <div style={{ fontSize: "18px", fontWeight: 800, color: stat.color }}>{stat.value}</div>
+                  <div style={{ fontSize: "10px", color: textSecondary, marginTop: "2px" }}>{stat.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* Interest Chips */}
-        <div style={{ marginBottom: "24px" }}>
+        {/* ===== İLGİ ALANLARI ===== */}
+        <div style={{ padding: "8px 16px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <p style={S.sectionTitle}>İLGİ ALANLARI</p>
+            <h3 style={{ fontSize: "11px", fontWeight: 700, color: textSecondary, textTransform: "uppercase", letterSpacing: "0.8px", margin: 0 }}>
+              İlgi Alanları
+            </h3>
             <button
               onClick={() => onFilters?.()}
-              style={{ fontSize: "12px", color: "#00f2ff", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: CYAN, fontSize: "12px", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: "4px",
+              }}
             >
-              ⚙️ Filtreler
+              🔧 Filtrele
             </button>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-            {INTERESTS.map(interest => {
-              const sel = selectedInterests.includes(interest);
+            {INTERESTS.map((interest) => {
+              const isSelected = selectedInterests.includes(interest);
               return (
                 <button
                   key={interest}
                   onClick={() => toggleInterest(interest)}
                   style={{
-                    padding: "6px 14px",
-                    borderRadius: "20px",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    border: sel ? "1px solid rgba(0,242,255,0.6)" : isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.12)",
-                    background: sel ? "linear-gradient(135deg, rgba(0,242,255,0.2), rgba(255,20,147,0.2))" : isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
-                    color: sel ? "#00f2ff" : isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)",
+                    padding: "7px 14px", borderRadius: "20px", border: "none", cursor: "pointer",
+                    background: isSelected
+                      ? "linear-gradient(135deg, rgba(0,200,224,0.2), rgba(217,70,168,0.2))"
+                      : (isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"),
+                    outline: isSelected ? `1px solid rgba(0,200,224,0.5)` : `1px solid ${glassBorder}`,
+                    color: isSelected ? CYAN : textSecondary,
+                    fontSize: "13px", fontWeight: 600,
                     transition: "all 0.2s",
                   }}
                 >
@@ -462,50 +288,96 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
           </div>
         </div>
 
-        {/* Premium Banner */}
-        <div style={S.premiumBanner}>
-          <div
-            style={{
-              position: "absolute",
-              top: "-20px",
-              right: "-20px",
-              width: "100px",
-              height: "100px",
-              borderRadius: "50%",
-              background: "rgba(255,20,147,0.08)",
-              filter: "blur(20px)",
-            }}
-          />
-          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-            <div style={{ fontSize: "32px" }}>👑</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "15px", fontWeight: 700, color: isDark ? "#f0f4ff" : "#1a1a2e", marginBottom: "4px" }}>
-                Premium'a Yükselt
-              </div>
-              <div style={{ fontSize: "12px", color: isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.6)" }}>
-                Gelişmiş filtreler, öncelikli eşleştirme ve daha fazlası
-              </div>
-            </div>
-            <button
-              style={{
-                padding: "10px 16px",
-                borderRadius: "12px",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "13px",
-                fontWeight: 700,
-                background: "linear-gradient(135deg, #ff1493, #00f2ff)",
-                color: "#0a0b0f",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-              onClick={() => onFilters?.()}
-            >
-              Yükselt
+        {/* ===== MYLİVE ÖZELLİKLERİ ===== */}
+        <div style={{ padding: "0 16px 24px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <h3 style={{ fontSize: "11px", fontWeight: 700, color: textSecondary, textTransform: "uppercase", letterSpacing: "0.8px", margin: 0 }}>
+              MyLive Özellikleri
+            </h3>
+            <button style={{ background: "none", border: "none", cursor: "pointer", color: CYAN, fontSize: "12px", fontWeight: 600 }}>
+              Hepsini gör ›
             </button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {[
+              { emoji: "⚡", title: "Anında Bağlan", desc: "Rastgele biri ile 2-5 saniyede video sohbet başlat", color: GOLD, bg: "rgba(201,162,39,0.12)", border: "rgba(201,162,39,0.2)" },
+              { emoji: "👥", title: "Rastgele Eşleştirme", desc: "İlgi alanlarına göre akıllı eşleştirme algoritması", color: MAGENTA, bg: "rgba(217,70,168,0.12)", border: "rgba(217,70,168,0.2)" },
+              { emoji: "🔒", title: "Güvenli & Şifreli", desc: "WebRTC ile uçtan uca şifreli P2P bağlantı", color: GREEN, bg: "rgba(34,201,122,0.12)", border: "rgba(34,201,122,0.2)" },
+              { emoji: "⭐", title: "Değerlendirme Sistemi", desc: "Her bağlantıdan sonra 5 yıldızlı puanlama", color: CYAN, bg: "rgba(0,200,224,0.12)", border: "rgba(0,200,224,0.2)" },
+            ].map((feature) => (
+              <div key={feature.title} style={{
+                display: "flex", alignItems: "center", gap: "12px",
+                padding: "14px 16px", borderRadius: "16px",
+                background: cardBg, outline: `1px solid ${cardBorder}`,
+                backdropFilter: "blur(12px)",
+                boxShadow: isDark ? "none" : "0 2px 8px rgba(0,0,0,0.06)",
+                cursor: "pointer",
+              }}>
+                <div style={{
+                  width: "40px", height: "40px", borderRadius: "12px", flexShrink: 0,
+                  background: feature.bg, outline: `1px solid ${feature.border}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "20px",
+                }}>
+                  {feature.emoji}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: textPrimary, marginBottom: "2px" }}>
+                    {feature.title}
+                  </div>
+                  <div style={{ fontSize: "12px", color: textSecondary, lineHeight: 1.4 }}>
+                    {feature.desc}
+                  </div>
+                </div>
+                <span style={{ color: textSecondary, fontSize: "16px" }}>›</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ===== PREMIUM CTA ===== */}
+        <div style={{ padding: "0 16px 32px" }}>
+          <div style={{
+            borderRadius: "16px", padding: "16px",
+            background: isDark
+              ? "linear-gradient(135deg, rgba(217,70,168,0.12), rgba(99,102,241,0.12))"
+              : "linear-gradient(135deg, rgba(217,70,168,0.08), rgba(99,102,241,0.08))",
+            outline: "1px solid rgba(217,70,168,0.25)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                  <span style={{ fontSize: "18px" }}>👑</span>
+                  <span style={{
+                    fontSize: "14px", fontWeight: 700,
+                    background: `linear-gradient(135deg, ${GOLD}, ${CYAN})`,
+                    WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+                  }}>Premium</span>
+                </div>
+                <p style={{ fontSize: "12px", color: textSecondary, margin: 0 }}>
+                  Gelişmiş filtreler ve öncelikli eşleştirme
+                </p>
+              </div>
+              <button
+                onClick={() => onFilters?.()}
+                style={{
+                  display: "flex", alignItems: "center", gap: "4px",
+                  padding: "8px 16px", borderRadius: "12px", border: "none", cursor: "pointer",
+                  background: `linear-gradient(135deg, ${MAGENTA}, #6366f1)`,
+                  color: "#fff", fontSize: "13px", fontWeight: 700, flexShrink: 0,
+                }}
+              >
+                Keşfet ›
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes mylive-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.1); } }
+      `}</style>
     </div>
   );
 }

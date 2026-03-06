@@ -1,3 +1,5 @@
+// FILE: src/pages/MyLive/PremiumFilters.jsx
+// Manus önizlemesiyle birebir aynı tasarım - inline style versiyonu
 import React, { useState } from "react";
 import "../../styles/myLive.css";
 
@@ -12,317 +14,248 @@ const COUNTRIES = [
   "İtalya", "İspanya", "Japonya", "Güney Kore", "Brezilya",
 ];
 
-export default function PremiumFilters({ initialFilters = {}, onSave, onBack, isDark = true }) {
-  const [isPremium] = useState(false);
+const CYAN = "#00c8e0";
+const MAGENTA = "#d946a8";
+
+export default function PremiumFilters({ onBack, onSave, isDark = true, isPremium = false }) {
   const [filters, setFilters] = useState({
-    ageMin: initialFilters.ageMin ?? 18,
-    ageMax: initialFilters.ageMax ?? 50,
-    gender: initialFilters.gender ?? "all",
-    interests: initialFilters.interests ?? [],
-    country: initialFilters.country ?? "",
+    ageMin: 18,
+    ageMax: 50,
+    gender: "all",
+    interests: [],
+    country: "",
   });
 
+  const bg = isDark ? "#0a0b0f" : "#f0f4ff";
+  const textPrimary = isDark ? "#f0f4ff" : "#1a1a2e";
+  const textSecondary = isDark ? "rgba(176,184,212,0.8)" : "rgba(60,80,120,0.75)";
+  const cardBg = isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.9)";
+  const cardBorder = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.1)";
+  const inputBg = isDark ? "rgba(18,20,30,0.8)" : "rgba(255,255,255,0.9)";
+  const inputBorder = isDark ? "rgba(0,200,224,0.2)" : "rgba(0,160,200,0.25)";
+
   const toggleInterest = (interest) => {
-    if (!isPremium) {
-      alert("Bu özellik Premium üyelere özeldir.");
-      return;
-    }
-    setFilters((prev) => ({
+    if (!isPremium) { alert("Bu özellik Premium üyelere özeldir."); return; }
+    setFilters(prev => ({
       ...prev,
       interests: prev.interests.includes(interest)
-        ? prev.interests.filter((i) => i !== interest)
+        ? prev.interests.filter(i => i !== interest)
         : [...prev.interests, interest],
     }));
   };
 
   const handleSave = () => {
-    if (!isPremium) {
-      alert("Filtreleri kaydetmek için Premium üye olun.");
-      return;
-    }
+    if (!isPremium) { alert("Filtreleri kaydetmek için Premium üye olun."); return; }
     localStorage.setItem("myLiveFilters", JSON.stringify(filters));
     onSave?.(filters);
     onBack?.();
   };
 
-  const FilterLock = ({ locked }) => {
-    if (!locked) return null;
-    return (
-      <div style={{
-        display: "flex", alignItems: "center", gap: "4px",
-        padding: "2px 8px", borderRadius: "20px", fontSize: "10px", fontWeight: 700,
-        background: "linear-gradient(135deg, rgba(200,50,255,0.2), rgba(100,50,255,0.2))",
-        border: "1px solid rgba(200,50,255,0.3)",
-        color: "rgba(200,50,255,1)",
-      }}>
-        🔒 Premium
-      </div>
-    );
-  };
-
-  const cardStyle = {
-    background: isDark ? "rgba(18,20,30,0.7)" : "rgba(255,255,255,0.85)",
-    border: isDark ? "1px solid rgba(0,242,255,0.08)" : "1px solid rgba(0,180,220,0.18)",
-    borderRadius: "16px",
-    padding: "16px",
-    marginBottom: "12px",
-    boxShadow: isDark ? "none" : "0 2px 10px rgba(0,0,0,0.07)",
-  };
-
-  const labelColor = isDark ? "rgba(180,190,220,0.6)" : "rgba(60,80,120,0.7)";
-  const titleColor = isDark ? "#f0f4ff" : "#1a1a2e";
+  const PremiumBadge = () => (
+    <span style={{
+      padding: "2px 8px", borderRadius: "10px", fontSize: "10px", fontWeight: 700,
+      background: "rgba(217,70,168,0.15)", border: "1px solid rgba(217,70,168,0.3)",
+      color: MAGENTA,
+    }}>🔒 Premium</span>
+  );
 
   return (
     <div style={{
-      minHeight: "100dvh",
-      background: isDark ? "#0a0b0f" : "#f0f4ff",
-      color: isDark ? "#f0f4ff" : "#1a1a2e",
+      minHeight: "100dvh", background: bg, color: textPrimary,
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-      paddingBottom: "calc(5rem + env(safe-area-inset-bottom, 0px))",
-      overflowY: "auto",
-      position: "relative",
+      overflowY: "auto", paddingBottom: "calc(4.5rem + env(safe-area-inset-bottom, 0px))",
+      position: "relative", transition: "background 0.3s, color 0.3s",
     }}>
-      {/* Background */}
       <div style={{
         position: "fixed", inset: 0, pointerEvents: "none",
-        background: "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(200,50,255,0.06) 0%, transparent 60%)",
+        background: isDark
+          ? "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(217,70,168,0.06) 0%, transparent 60%)"
+          : "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(217,70,168,0.04) 0%, transparent 60%)",
       }} />
 
-      <div style={{ position: "relative", maxWidth: "480px", margin: "0 auto", padding: "24px 16px" }}>
+      <div style={{ position: "relative", maxWidth: "480px", margin: "0 auto", padding: "0 16px" }}>
 
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
-          <button
-            onClick={onBack}
-            style={{
-              width: "36px", height: "36px", borderRadius: "12px",
-              background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
-              border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.12)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", fontSize: "18px", color: titleColor,
-            }}
-          >
-            ‹
-          </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "24px 0 20px" }}>
+          <button onClick={onBack} style={{
+            width: "36px", height: "36px", borderRadius: "12px",
+            background: cardBg, border: `1px solid ${cardBorder}`,
+            color: textPrimary, fontSize: "18px", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            backdropFilter: "blur(12px)",
+          }}>←</button>
           <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: "20px", fontWeight: 800, color: titleColor, margin: 0 }}>Filtreler</h1>
-            <p style={{ fontSize: "12px", color: labelColor, margin: "2px 0 0" }}>Eşleşme tercihlerini ayarla</p>
+            <h1 style={{ fontSize: "20px", fontWeight: 800, color: textPrimary, margin: 0 }}>Filtreler</h1>
+            <p style={{ fontSize: "12px", color: textSecondary, margin: 0 }}>Eşleşme tercihlerini ayarla</p>
           </div>
           <div style={{
             display: "flex", alignItems: "center", gap: "6px",
             padding: "6px 12px", borderRadius: "20px",
-            background: "linear-gradient(135deg, rgba(200,50,255,0.2), rgba(100,50,255,0.2))",
-            border: "1px solid rgba(200,50,255,0.3)",
+            background: "linear-gradient(135deg, rgba(217,70,168,0.2), rgba(99,102,241,0.2))",
+            border: "1px solid rgba(217,70,168,0.3)",
           }}>
-            <span style={{ fontSize: "14px" }}>👑</span>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "rgba(200,50,255,1)" }}>Premium</span>
+            <span style={{ fontSize: "12px" }}>👑</span>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: MAGENTA }}>Premium</span>
           </div>
         </div>
 
         {/* Premium Banner */}
         {!isPremium && (
           <div style={{
-            borderRadius: "16px", padding: "16px", marginBottom: "24px",
-            background: "linear-gradient(135deg, rgba(200,50,255,0.12), rgba(100,50,255,0.12))",
-            border: "1px solid rgba(200,50,255,0.25)",
-            display: "flex", alignItems: "center", gap: "12px",
+            borderRadius: "16px", padding: "16px", marginBottom: "20px",
+            background: "linear-gradient(135deg, rgba(217,70,168,0.12), rgba(99,102,241,0.12))",
+            border: "1px solid rgba(217,70,168,0.25)",
           }}>
-            <div style={{ fontSize: "32px" }}>👑</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "14px", fontWeight: 700, color: titleColor, marginBottom: "4px" }}>
-                Premium'a Yükselt
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <span style={{ fontSize: "28px" }}>👑</span>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ fontSize: "14px", fontWeight: 700, color: textPrimary, margin: "0 0 2px 0" }}>
+                  Premium'a Yükselt
+                </h3>
+                <p style={{ fontSize: "12px", color: textSecondary, margin: 0 }}>
+                  Gelişmiş filtreler ile ideal eşleşmeleri bul
+                </p>
               </div>
-              <div style={{ fontSize: "12px", color: labelColor }}>
-                Gelişmiş filtreler ile ideal eşleşmeleri bul
-              </div>
+              <button style={{
+                padding: "8px 14px", borderRadius: "12px", border: "none", cursor: "pointer",
+                background: `linear-gradient(135deg, ${MAGENTA}, #6366f1)`,
+                color: "#fff", fontSize: "12px", fontWeight: 700, flexShrink: 0,
+              }}>Yükselt</button>
             </div>
-            <button
-              onClick={() => alert("Premium özelliği yakında!")}
-              style={{
-                padding: "8px 16px", borderRadius: "12px", border: "none",
-                background: "linear-gradient(135deg, rgba(200,50,255,1), rgba(100,50,255,1))",
-                color: "#ffffff", fontSize: "13px", fontWeight: 700, cursor: "pointer",
-                flexShrink: 0,
-              }}
-            >
-              Yükselt
-            </button>
           </div>
         )}
 
         {/* Age Range */}
-        <div style={cardStyle}>
+        <div style={{ borderRadius: "16px", padding: "16px", marginBottom: "12px", background: cardBg, border: `1px solid ${cardBorder}`, backdropFilter: "blur(12px)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "16px" }}>⚙️</span>
-              <span style={{ fontSize: "14px", fontWeight: 700, color: titleColor }}>Yaş Aralığı</span>
+              <span style={{ fontSize: "14px", fontWeight: 700, color: textPrimary }}>Yaş Aralığı</span>
+              {!isPremium && <PremiumBadge />}
             </div>
-            <FilterLock locked={!isPremium} />
+            <span style={{ fontSize: "13px", fontWeight: 600, color: CYAN }}>{filters.ageMin} - {filters.ageMax}</span>
           </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-            <span style={{ fontSize: "18px", fontWeight: 800, color: "#00f2ff" }}>{filters.ageMin}</span>
-            <div style={{ flex: 1, textAlign: "center", fontSize: "12px", color: labelColor }}>—</div>
-            <span style={{ fontSize: "18px", fontWeight: 800, color: "#00f2ff" }}>{filters.ageMax}</span>
-          </div>
-
-          <div style={{ marginBottom: "8px" }}>
-            <label style={{ fontSize: "12px", color: labelColor, display: "block", marginBottom: "4px" }}>
-              Minimum yaş: {filters.ageMin}
-            </label>
-            <input
-              type="range" min={18} max={filters.ageMax - 1} value={filters.ageMin}
-              disabled={!isPremium}
-              onChange={(e) => setFilters(prev => ({ ...prev, ageMin: parseInt(e.target.value) }))}
-              style={{ width: "100%", accentColor: "#00f2ff", opacity: isPremium ? 1 : 0.4 }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: "12px", color: labelColor, display: "block", marginBottom: "4px" }}>
-              Maksimum yaş: {filters.ageMax}
-            </label>
-            <input
-              type="range" min={filters.ageMin + 1} max={100} value={filters.ageMax}
-              disabled={!isPremium}
-              onChange={(e) => setFilters(prev => ({ ...prev, ageMax: parseInt(e.target.value) }))}
-              style={{ width: "100%", accentColor: "#00f2ff", opacity: isPremium ? 1 : 0.4 }}
-            />
-          </div>
-        </div>
-
-        {/* Gender */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: titleColor }}>Cinsiyet</span>
-            <FilterLock locked={!isPremium} />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
-            {[
-              { value: "all", label: "Tümü", emoji: "👥" },
-              { value: "male", label: "Erkek", emoji: "👨" },
-              { value: "female", label: "Kadın", emoji: "👩" },
-            ].map((option) => (
-              <button
-                key={option.value}
-                onClick={() => {
-                  if (!isPremium && option.value !== "all") {
-                    alert("Bu özellik Premium üyelere özeldir.");
-                    return;
-                  }
-                  setFilters(prev => ({ ...prev, gender: option.value }));
-                }}
-                style={{
-                  padding: "12px 8px", borderRadius: "12px", textAlign: "center",
-                  cursor: "pointer", border: "none",
-                  background: filters.gender === option.value
-                    ? "linear-gradient(135deg, rgba(0,242,255,0.2), rgba(255,20,147,0.2))"
-                    : (isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"),
-                  outline: filters.gender === option.value
-                    ? "1px solid rgba(0,242,255,0.4)"
-                    : (isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.1)"),
-                  opacity: !isPremium && option.value !== "all" ? 0.5 : 1,
-                  transition: "all 0.2s",
-                }}
-              >
-                <div style={{ fontSize: "20px", marginBottom: "4px" }}>{option.emoji}</div>
-                <div style={{
-                  fontSize: "12px", fontWeight: 600,
-                  color: filters.gender === option.value ? "#00f2ff" : labelColor,
-                }}>
-                  {option.label}
-                </div>
-              </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            {["ageMin", "ageMax"].map((key, i) => (
+              <React.Fragment key={key}>
+                {i === 1 && <span style={{ color: textSecondary }}>—</span>}
+                <input type="number" min="18" max="99" value={filters[key]}
+                  disabled={!isPremium}
+                  onChange={e => setFilters(p => ({ ...p, [key]: parseInt(e.target.value) || (key === "ageMin" ? 18 : 50) }))}
+                  style={{
+                    flex: 1, padding: "10px 14px", borderRadius: "10px",
+                    border: `1px solid ${inputBorder}`, background: inputBg,
+                    color: textPrimary, fontSize: "14px", textAlign: "center",
+                    outline: "none", opacity: isPremium ? 1 : 0.5,
+                  }}
+                />
+              </React.Fragment>
             ))}
           </div>
         </div>
 
-        {/* Interests */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: titleColor }}>İlgi Alanları</span>
-            <FilterLock locked={!isPremium} />
+        {/* Gender */}
+        <div style={{ borderRadius: "16px", padding: "16px", marginBottom: "12px", background: cardBg, border: `1px solid ${cardBorder}`, backdropFilter: "blur(12px)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: textPrimary }}>Cinsiyet</span>
+            {!isPremium && <PremiumBadge />}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-            {INTERESTS.map((interest) => {
-              const isSelected = filters.interests.includes(interest);
+          <div style={{ display: "flex", gap: "10px" }}>
+            {[
+              { value: "all", label: "Hepsi", emoji: "👥" },
+              { value: "male", label: "Erkek", emoji: "👨" },
+              { value: "female", label: "Kadın", emoji: "👩" },
+            ].map(opt => {
+              const isSelected = filters.gender === opt.value;
               return (
-                <button
-                  key={interest}
-                  onClick={() => toggleInterest(interest)}
+                <button key={opt.value} disabled={!isPremium}
+                  onClick={() => setFilters(p => ({ ...p, gender: opt.value }))}
                   style={{
-                    display: "flex", alignItems: "center", gap: "6px",
-                    padding: "6px 12px", borderRadius: "20px",
-                    fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                    flex: 1, padding: "10px 8px", borderRadius: "12px", border: "none",
+                    cursor: isPremium ? "pointer" : "not-allowed",
                     background: isSelected
-                      ? "linear-gradient(135deg, rgba(0,242,255,0.2), rgba(255,20,147,0.2))"
+                      ? "linear-gradient(135deg, rgba(0,200,224,0.2), rgba(217,70,168,0.2))"
                       : (isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"),
-                    border: isSelected
-                      ? "1px solid rgba(0,242,255,0.4)"
-                      : (isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.1)"),
-                    color: isSelected ? "#00f2ff" : labelColor,
-                    opacity: !isPremium ? 0.6 : 1,
-                    transition: "all 0.2s",
+                    outline: isSelected ? `1px solid rgba(0,200,224,0.5)` : `1px solid ${cardBorder}`,
+                    color: isSelected ? CYAN : textSecondary,
+                    fontSize: "13px", fontWeight: 600,
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: "4px",
+                    opacity: isPremium ? 1 : 0.5,
                   }}
                 >
-                  {isSelected && <span>✓</span>}
-                  {interest}
+                  <span style={{ fontSize: "20px" }}>{opt.emoji}</span>
+                  {opt.label}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Country */}
-        <div style={{ ...cardStyle, marginBottom: "24px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: titleColor }}>Konum</span>
-            <FilterLock locked={!isPremium} />
+        {/* Interests */}
+        <div style={{ borderRadius: "16px", padding: "16px", marginBottom: "12px", background: cardBg, border: `1px solid ${cardBorder}`, backdropFilter: "blur(12px)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: textPrimary }}>İlgi Alanları</span>
+            {!isPremium && <PremiumBadge />}
           </div>
-          <select
-            value={filters.country}
-            disabled={!isPremium}
-            onChange={(e) => setFilters(prev => ({ ...prev, country: e.target.value }))}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            {INTERESTS.map(interest => {
+              const isSelected = filters.interests.includes(interest);
+              return (
+                <button key={interest} onClick={() => toggleInterest(interest)}
+                  style={{
+                    padding: "7px 12px", borderRadius: "20px", border: "none",
+                    cursor: isPremium ? "pointer" : "not-allowed",
+                    background: isSelected
+                      ? "linear-gradient(135deg, rgba(0,200,224,0.2), rgba(217,70,168,0.2))"
+                      : (isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"),
+                    outline: isSelected ? `1px solid rgba(0,200,224,0.5)` : `1px solid ${cardBorder}`,
+                    color: isSelected ? CYAN : textSecondary,
+                    fontSize: "13px", fontWeight: 600, opacity: isPremium ? 1 : 0.6,
+                  }}
+                >{interest}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Country */}
+        <div style={{ borderRadius: "16px", padding: "16px", marginBottom: "24px", background: cardBg, border: `1px solid ${cardBorder}`, backdropFilter: "blur(12px)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: textPrimary }}>Ülke</span>
+            {!isPremium && <PremiumBadge />}
+          </div>
+          <select disabled={!isPremium} value={filters.country}
+            onChange={e => setFilters(p => ({ ...p, country: e.target.value }))}
             style={{
-              width: "100%",
-              background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
-              color: isDark ? "#f0f4ff" : "#1a1a2e",
-              border: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.12)",
-              borderRadius: "12px",
-              padding: "10px 12px", fontSize: "14px", opacity: isPremium ? 1 : 0.4,
+              width: "100%", padding: "10px 14px", borderRadius: "10px",
+              border: `1px solid ${inputBorder}`, background: inputBg,
+              color: filters.country ? textPrimary : textSecondary,
+              fontSize: "14px", outline: "none",
+              opacity: isPremium ? 1 : 0.5, cursor: isPremium ? "pointer" : "not-allowed",
             }}
           >
-            <option value="" style={{ background: isDark ? "#0a0b0f" : "#ffffff" }}>Tüm ülkeler</option>
-            {COUNTRIES.map((c) => (
-              <option key={c} value={c} style={{ background: isDark ? "#0a0b0f" : "#ffffff" }}>{c}</option>
-            ))}
+            <option value="">Tüm ülkeler</option>
+            {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
 
-        {/* Save Button */}
-        <button
-          onClick={handleSave}
-          style={{
-            width: "100%", padding: "16px", borderRadius: "14px", border: "none",
-            cursor: "pointer", fontSize: "16px", fontWeight: 700,
-            background: isPremium
-              ? "linear-gradient(135deg, #00f2ff, #ff1493)"
-              : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"),
-            color: isPremium ? "#0a0b0f" : labelColor,
-            boxShadow: isPremium ? "0 4px 20px rgba(0,242,255,0.3)" : "none",
-            transition: "all 0.2s",
-          }}
-        >
-          {isPremium ? "Filtreleri Kaydet" : "Premium'a Yükselt"}
-        </button>
-        <button
-          onClick={() => setFilters({ ageMin: 18, ageMax: 50, gender: "all", interests: [], country: "" })}
-          style={{
-            display: "block", margin: "12px auto 0", background: "none", border: "none",
-            color: labelColor, fontSize: "13px", cursor: "pointer",
-          }}
-        >
-          Filtreleri Sıfırla
-        </button>
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: "12px", paddingBottom: "32px" }}>
+          <button
+            onClick={() => setFilters({ ageMin: 18, ageMax: 50, gender: "all", interests: [], country: "" })}
+            style={{
+              flex: 1, padding: "14px", borderRadius: "14px", border: "none", cursor: "pointer",
+              background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+              outline: `1px solid ${cardBorder}`,
+              color: textSecondary, fontSize: "14px", fontWeight: 600,
+            }}
+          >Sıfırla</button>
+          <button onClick={handleSave} style={{
+            flex: 2, padding: "14px", borderRadius: "14px", border: "none", cursor: "pointer",
+            background: `linear-gradient(135deg, ${CYAN}, ${MAGENTA})`,
+            color: "#0a0b0f", fontSize: "14px", fontWeight: 700,
+            boxShadow: `0 4px 20px rgba(0,200,224,0.25)`,
+          }}>Kaydet</button>
+        </div>
       </div>
     </div>
   );
