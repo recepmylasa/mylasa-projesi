@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from "react";
 import "../../styles/myLive.css";
 
+const INTERESTS = [
+  "Müzik", "Spor", "Teknoloji", "Sanat", "Oyun", "Film",
+  "Seyahat", "Yemek", "Moda", "Fotoğraf",
+];
+
 const FEATURES = [
   {
     icon: "⚡",
@@ -35,6 +40,22 @@ const FEATURES = [
 export default function MyLiveHub({ onStart, onFilters, user }) {
   const [activeCount, setActiveCount] = useState(Math.floor(Math.random() * 80) + 20);
   const [avgRating] = useState((Math.random() * 1.5 + 3.5).toFixed(1));
+  const [selectedInterests, setSelectedInterests] = useState([]);
+  const [theme, setTheme] = useState(() => localStorage.getItem("mylasa-theme") || "dark");
+
+  const isDark = theme === "dark";
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("mylasa-theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === "dark" ? "light" : "dark");
+  const toggleInterest = (interest) => {
+    setSelectedInterests(prev =>
+      prev.includes(interest) ? prev.filter(i => i !== interest) : [...prev, interest]
+    );
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -48,8 +69,9 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
   const S = {
     page: {
       minHeight: "100dvh",
-      background: "#0a0b0f",
-      color: "#f0f4ff",
+      background: isDark ? "#0a0b0f" : "#f0f4ff",
+      color: isDark ? "#f0f4ff" : "#1a1a2e",
+      transition: "background 0.3s, color 0.3s",
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
       paddingBottom: "calc(5rem + env(safe-area-inset-bottom, 0px))",
       overflowY: "auto",
@@ -210,9 +232,30 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
             <h1 style={S.title}>MyLive</h1>
             <p style={S.subtitle}>Merhaba, {displayName} 👋</p>
           </div>
-          <div style={S.liveBadge}>
-            <div style={S.liveDot} />
-            {activeCount} Canlı
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {/* Theme Toggle */}
+            <button
+              onClick={toggleTheme}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "6px 12px",
+                borderRadius: "20px",
+                border: isDark ? "1px solid rgba(0,242,255,0.3)" : "1px solid rgba(0,0,0,0.15)",
+                background: isDark ? "rgba(0,242,255,0.08)" : "rgba(0,0,0,0.06)",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: isDark ? "#00f2ff" : "#6b21a8",
+              }}
+            >
+              {isDark ? "☀️ Aydınlık" : "🌙 Karanlık"}
+            </button>
+            <div style={S.liveBadge}>
+              <div style={S.liveDot} />
+              {activeCount} Canlı
+            </div>
           </div>
         </div>
 
@@ -319,6 +362,43 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
               <span style={{ color: "rgba(180,190,220,0.4)", fontSize: "16px" }}>›</span>
             </div>
           ))}
+        </div>
+
+        {/* Interest Chips */}
+        <div style={{ marginBottom: "24px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <p style={S.sectionTitle}>İLGİ ALANLARI</p>
+            <button
+              onClick={() => onFilters?.()}
+              style={{ fontSize: "12px", color: "#00f2ff", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}
+            >
+              ⚙️ Filtreler
+            </button>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            {INTERESTS.map(interest => {
+              const sel = selectedInterests.includes(interest);
+              return (
+                <button
+                  key={interest}
+                  onClick={() => toggleInterest(interest)}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "20px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border: sel ? "1px solid rgba(0,242,255,0.6)" : isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.12)",
+                    background: sel ? "linear-gradient(135deg, rgba(0,242,255,0.2), rgba(255,20,147,0.2))" : isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+                    color: sel ? "#00f2ff" : isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {interest}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Premium Banner */}
