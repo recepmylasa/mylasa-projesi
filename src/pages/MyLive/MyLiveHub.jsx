@@ -229,14 +229,49 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
       <div style={S.inner}>
         {/* Header */}
         <div style={S.header}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-            {/* MyLive Logo */}
-            <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663382450486/SUiFT6JyBffzHXp5RrhB3r/mylive-logo_c94911d4.png"
-              alt="MyLive"
-              style={{ height: "40px", width: "auto", objectFit: "contain" }}
-            />
-            <p style={S.subtitle}>Merhaba, {displayName} 👋</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            {/* MyLive Logo - Manus style */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {/* Gradient circle icon */}
+              <div style={{
+                width: "42px",
+                height: "42px",
+                borderRadius: "14px",
+                background: "linear-gradient(135deg, #00c8ff, #9b40ff)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 0 16px rgba(0,200,255,0.4)",
+                flexShrink: 0,
+              }}>
+                {/* Radio/wave icon */}
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0b0f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                  <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                  <circle cx="12" cy="20" r="1" fill="#0a0b0f" />
+                </svg>
+              </div>
+              {/* Text */}
+              <div>
+                <div style={{
+                  fontSize: "18px",
+                  fontWeight: 800,
+                  background: "linear-gradient(90deg, #00c8ff, #9b40ff)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                  lineHeight: 1,
+                  fontFamily: "'Inter', sans-serif",
+                }}>MyLive</div>
+                <div style={{
+                  fontSize: "10px",
+                  color: "rgba(180,190,220,0.6)",
+                  marginTop: "2px",
+                  lineHeight: 1,
+                }}>Canlı Video Sohbet</div>
+              </div>
+            </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {/* Theme Toggle */}
@@ -264,6 +299,9 @@ export default function MyLiveHub({ onStart, onFilters, user }) {
             </div>
           </div>
         </div>
+
+        {/* Greeting */}
+        <p style={{ ...S.subtitle, marginBottom: "16px", marginTop: "-4px" }}>Merhaba, {displayName} 👋</p>
 
         {/* Stats */}
         <div style={S.statsBanner}>
