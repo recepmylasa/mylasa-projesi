@@ -1,11 +1,11 @@
 // FILE: src/pages/MyLive/LiveStream.jsx
-// Layout: 2 video tam ekran (üst+alt), tüm butonlar video üzerinde overlay
-// Siyah alt bant YOK — kamera hiç kesilmiyor
+// Layout: 2 video tam ekran, tüm butonlar overlay, sol altta 💬 chat paneli
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   createRoom, joinRoom, listenRoom, addIceCandidate as fsAddIce,
   listenIceCandidates, closeRoom, leaveQueue, saveConnection,
   sendEmojiReaction, listenEmojiReactions,
+  sendChatMessage, listenChatMessages,
 } from "../../services/myLiveService";
 
 // ─── Karıncalı TV efekti ─────────────────────────────────────────────────────
@@ -76,16 +76,12 @@ const MAGENTA = "#d946a8";
 
 function EmojiFan({ onSelect }) {
   const [open, setOpen] = useState(false);
-  const count  = EMOJIS.length; // 8
-  // Fan açılır: yarım daire, sağ taraftan sola doğru
-  // Açı aralığı: 180° → 360° (üst yarı daire, sola yayılır)
-  const radius = 68; // px
+  const count  = EMOJIS.length;
+  const radius = 68;
   return (
     <div style={{ position:"relative", width:48, height:48 }}>
-      {/* Fan emojileri */}
       {open && EMOJIS.map((e, i) => {
-        // 180° → 360° aralığında eşit dağıt (8 emoji → 180/7 ≈ 25.7° aralık)
-        const angle = 180 + (i / (count - 1)) * 180; // 180° → 360°
+        const angle = 180 + (i / (count - 1)) * 180;
         const rad   = (angle * Math.PI) / 180;
         const x     = Math.cos(rad) * radius;
         const y     = Math.sin(rad) * radius;
@@ -112,15 +108,12 @@ function EmojiFan({ onSelect }) {
           </button>
         );
       })}
-      {/* Ana emoji butonu */}
       <button
         onClick={() => setOpen(o => !o)}
         style={{
           width:48, height:48, borderRadius:"50%",
           border:`2px solid ${open ? CYAN : "rgba(255,255,255,.2)"}`,
-          background: open
-            ? `rgba(0,200,224,.2)`
-            : "rgba(15,15,25,.75)",
+          background: open ? `rgba(0,200,224,.2)` : "rgba(15,15,25,.75)",
           backdropFilter:"blur(16px)",
           fontSize:22, cursor:"pointer",
           display:"flex", alignItems:"center", justifyContent:"center",
@@ -136,6 +129,131 @@ function EmojiFan({ onSelect }) {
   );
 }
 
+// ─── Chat Paneli ──────────────────────────────────────────────────────────────
+function ChatPanel({ messages, myUid, onSend, onClose, inputRef }) {
+  const bottomRef = useRef(null);
+  const [text, setText] = useState("");
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior:"smooth" });
+  }, [messages]);
+
+  const submit = () => {
+    const t = text.trim();
+    if (!t) return;
+    onSend(t);
+    setText("");
+  };
+
+  return (
+    <div style={{
+      position:"absolute",
+      bottom:0, left:0, right:0,
+      height:"55%",
+      background:"rgba(8,8,18,.82)",
+      backdropFilter:"blur(24px)",
+      borderTop:`1px solid rgba(0,200,224,.25)`,
+      display:"flex", flexDirection:"column",
+      zIndex:70,
+      borderRadius:"16px 16px 0 0",
+      animation:"slideUp .22s ease-out",
+    }}>
+      {/* Başlık */}
+      <div style={{
+        display:"flex", alignItems:"center", justifyContent:"space-between",
+        padding:"10px 16px 8px",
+        borderBottom:"1px solid rgba(255,255,255,.07)",
+        flexShrink:0,
+      }}>
+        <span style={{ fontSize:13, fontWeight:700, color:CYAN, letterSpacing:.5 }}>💬 Mesajlar</span>
+        <button onClick={onClose} style={{
+          background:"none", border:"none", color:"rgba(255,255,255,.5)",
+          fontSize:18, cursor:"pointer", lineHeight:1,
+        }}>✕</button>
+      </div>
+
+      {/* Mesaj listesi */}
+      <div style={{
+        flex:1, overflowY:"auto", padding:"8px 12px",
+        display:"flex", flexDirection:"column", gap:6,
+      }}>
+        {messages.length === 0 && (
+          <div style={{ textAlign:"center", color:"rgba(255,255,255,.25)", fontSize:12, marginTop:20 }}>
+            Henüz mesaj yok. İlk mesajı sen gönder! 👋
+          </div>
+        )}
+        {messages.map((m, i) => {
+          const isMe = m.senderId === myUid;
+          return (
+            <div key={i} style={{
+              display:"flex", flexDirection:"column",
+              alignItems: isMe ? "flex-end" : "flex-start",
+            }}>
+              {!isMe && (
+                <span style={{ fontSize:10, color:"rgba(255,255,255,.35)", marginBottom:2, paddingLeft:4 }}>
+                  {m.senderName}
+                </span>
+              )}
+              <div style={{
+                maxWidth:"78%", padding:"7px 12px",
+                borderRadius: isMe ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                background: isMe
+                  ? `linear-gradient(135deg,${CYAN}cc,${MAGENTA}cc)`
+                  : "rgba(255,255,255,.1)",
+                backdropFilter:"blur(8px)",
+                fontSize:13, color:"#fff", lineHeight:1.4,
+                wordBreak:"break-word",
+                boxShadow: isMe ? `0 2px 12px rgba(0,200,224,.3)` : "none",
+              }}>
+                {m.text}
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{
+        display:"flex", gap:8, padding:"8px 12px 12px",
+        borderTop:"1px solid rgba(255,255,255,.07)",
+        flexShrink:0,
+      }}>
+        <input
+          ref={inputRef}
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
+          placeholder="Mesaj yaz..."
+          style={{
+            flex:1, background:"rgba(255,255,255,.08)",
+            border:"1px solid rgba(255,255,255,.12)",
+            borderRadius:24, padding:"9px 16px",
+            color:"#fff", fontSize:13, outline:"none",
+          }}
+        />
+        <button
+          onClick={submit}
+          disabled={!text.trim()}
+          style={{
+            width:40, height:40, borderRadius:"50%", border:"none",
+            background: text.trim()
+              ? `linear-gradient(135deg,${CYAN},${MAGENTA})`
+              : "rgba(255,255,255,.1)",
+            cursor: text.trim() ? "pointer" : "default",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            flexShrink:0, transition:"background .2s",
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const ICE_SERVERS = [
   { urls:"stun:stun.l.google.com:19302" },
   { urls:"stun:stun1.l.google.com:19302" },
@@ -145,13 +263,14 @@ const ICE_SERVERS = [
 
 // ─── Ana bileşen ─────────────────────────────────────────────────────────────
 export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, onSkip }) {
-  const localRef   = useRef(null);
-  const remoteRef  = useRef(null);
-  const peerRef    = useRef(null);
-  const streamRef  = useRef(null);
-  const unsubsRef  = useRef([]);
-  const startRef   = useRef(Date.now());
-  const connIdRef  = useRef("conn_" + Date.now() + "_" + Math.random().toString(36).slice(2));
+  const localRef    = useRef(null);
+  const remoteRef   = useRef(null);
+  const peerRef     = useRef(null);
+  const streamRef   = useRef(null);
+  const unsubsRef   = useRef([]);
+  const startRef    = useRef(Date.now());
+  const connIdRef   = useRef("conn_" + Date.now() + "_" + Math.random().toString(36).slice(2));
+  const chatInputRef = useRef(null);
 
   const [duration,    setDuration]    = useState(0);
   const [remoteReady, setRemoteReady] = useState(false);
@@ -160,6 +279,9 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
   const [emojis,      setEmojis]      = useState([]);
   const [showBanner,  setShowBanner]  = useState(false);
   const [quality,     setQuality]     = useState(null);
+  const [chatOpen,    setChatOpen]    = useState(false);
+  const [messages,    setMessages]    = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Timer
   useEffect(() => {
@@ -254,6 +376,33 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
     };
   }, []); // eslint-disable-line
 
+  // Chat dinle
+  useEffect(() => {
+    if (!roomId) return;
+    let initialized = false;
+    const unsub = listenChatMessages(roomId, (msg) => {
+      if (!initialized) return;
+      setMessages(p => [...p, msg]);
+      // Chat kapalıysa ve karşıdan mesaj geldiyse unread say
+      if (msg.senderId !== user?.uid) {
+        setChatOpen(prev => {
+          if (!prev) setUnreadCount(c => c + 1);
+          return prev;
+        });
+      }
+    });
+    const t = setTimeout(() => { initialized = true; }, 800);
+    return () => { unsub?.(); clearTimeout(t); };
+  }, [roomId, user?.uid]);
+
+  // Chat açılınca unread sıfırla ve input'a focus
+  useEffect(() => {
+    if (chatOpen) {
+      setUnreadCount(0);
+      setTimeout(() => chatInputRef.current?.focus(), 100);
+    }
+  }, [chatOpen]);
+
   // ─── Handlers ──────────────────────────────────────────────────────────────
   const handleEnd = useCallback(async () => {
     const dur = Math.floor((Date.now() - startRef.current) / 1000);
@@ -303,6 +452,14 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
   const removeEmoji = useCallback(id => {
     setEmojis(p => p.filter(e => e.id !== id));
   }, []);
+
+  const handleSendChat = useCallback(async (text) => {
+    const myName = user?.displayName || user?.adSoyad || user?.kullaniciAdi || user?.username || "Ben";
+    setMessages(p => [...p, { senderId: user?.uid, senderName: myName, text, ts: Date.now() }]);
+    try {
+      await sendChatMessage(roomId, user?.uid, myName, text);
+    } catch {}
+  }, [roomId, user]);
 
   const fmt = s => String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0");
   const qColor = quality === "good" ? "#22c97a" : quality === "medium" ? "#f59e0b" : "#ff4757";
@@ -408,7 +565,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
           </div>
         )}
 
-        {/* Uçan emojiler — üst yarıda göster */}
+        {/* Uçan emojiler */}
         {emojis.map(e => (
           <FloatingEmoji key={e.id} emoji={e.emoji} onDone={() => removeEmoji(e.id)} />
         ))}
@@ -460,10 +617,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
           position:"absolute", bottom:10, right:10, zIndex:50,
           display:"flex", flexDirection:"column", alignItems:"flex-end", gap:10,
         }}>
-          {/* Üst sıra: Emoji fan */}
           <EmojiFan onSelect={sendEmoji} />
-
-          {/* Alt sıra: Mikrofon, Kamera, Geç, Bitir */}
           <div style={{ display:"flex", gap:8, alignItems:"center" }}>
             {/* Mikrofon */}
             <button onClick={toggleMic} style={{
@@ -474,7 +628,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
               fontSize:18, cursor:"pointer",
               display:"flex", alignItems:"center", justifyContent:"center",
               boxShadow:"0 4px 16px rgba(0,0,0,.4)",
-            }} title={micOn?"Mikrofonu Kapat":"Mikrofonu Aç"}>
+            }}>
               {micOn ? "🎤" : "🔇"}
             </button>
 
@@ -487,7 +641,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
               fontSize:18, cursor:"pointer",
               display:"flex", alignItems:"center", justifyContent:"center",
               boxShadow:"0 4px 16px rgba(0,0,0,.4)",
-            }} title={camOn?"Kamerayı Kapat":"Kamerayı Aç"}>
+            }}>
               {camOn ? "📹" : "📷"}
             </button>
 
@@ -512,7 +666,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
               background:"linear-gradient(135deg,#ff4757,#c0392b)",
               boxShadow:"0 4px 20px rgba(255,71,87,.5)",
               display:"flex", alignItems:"center", justifyContent:"center",
-            }} title="Bağlantıyı Kes">
+            }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.26 9.11a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 3.17 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.15 7.91"/>
                 <line x1="23" y1="1" x2="1" y2="23"/>
@@ -520,6 +674,60 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
             </button>
           </div>
         </div>
+
+        {/* ── Sol alt: 💬 Chat butonu ── */}
+        <button
+          onClick={() => setChatOpen(o => !o)}
+          style={{
+            position:"absolute", bottom:10, left:12, zIndex:50,
+            width:48, height:48, borderRadius:"50%",
+            border:`2px solid ${chatOpen ? CYAN : unreadCount > 0 ? MAGENTA : "rgba(255,255,255,.2)"}`,
+            background: chatOpen
+              ? `rgba(0,200,224,.2)`
+              : unreadCount > 0
+                ? `rgba(217,70,168,.2)`
+                : "rgba(15,15,25,.75)",
+            backdropFilter:"blur(16px)",
+            cursor:"pointer",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            boxShadow: chatOpen
+              ? `0 0 20px rgba(0,200,224,.4)`
+              : unreadCount > 0
+                ? `0 0 20px rgba(217,70,168,.4)`
+                : "0 4px 16px rgba(0,0,0,.4)",
+            transition:"all .2s",
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke={chatOpen ? CYAN : unreadCount > 0 ? MAGENTA : "rgba(255,255,255,.7)"}
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          {/* Unread badge */}
+          {unreadCount > 0 && !chatOpen && (
+            <div style={{
+              position:"absolute", top:-2, right:-2,
+              width:18, height:18, borderRadius:"50%",
+              background:MAGENTA, color:"#fff",
+              fontSize:10, fontWeight:700,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              border:"2px solid #050505",
+            }}>
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </div>
+          )}
+        </button>
+
+        {/* ── Chat Paneli (alt yarının üzerinde açılır) ── */}
+        {chatOpen && (
+          <ChatPanel
+            messages={messages}
+            myUid={user?.uid}
+            onSend={handleSendChat}
+            onClose={() => setChatOpen(false)}
+            inputRef={chatInputRef}
+          />
+        )}
       </div>
 
       <style>{`
@@ -527,6 +735,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
         @keyframes spin    { to{transform:rotate(360deg)} }
         @keyframes floatUp { 0%{transform:translateY(0) scale(1);opacity:1} 100%{transform:translateY(-180px) scale(1.4);opacity:0} }
         @keyframes fanIn   { 0%{transform:scale(.4);opacity:0} 100%{transform:scale(1);opacity:1} }
+        @keyframes slideUp { 0%{transform:translateY(100%);opacity:0} 100%{transform:translateY(0);opacity:1} }
       `}</style>
     </div>
   );

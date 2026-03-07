@@ -15,6 +15,7 @@ import {
   serverTimestamp,
   onSnapshot,
   runTransaction,
+  orderBy,
 } from "firebase/firestore";
 
 // ---- Kuyruk ----
@@ -196,4 +197,26 @@ export async function getStats() {
     const snap = await getDocs(q);
     return { activeUsers: snap.size };
   } catch { return { activeUsers: 0 }; }
+}
+
+// ---- Anlık Chat ----
+export async function sendChatMessage(roomId, senderId, senderName, text) {
+  await addDoc(collection(db, "mylive_rooms", roomId, "chat"), {
+    senderId,
+    senderName,
+    text,
+    ts: Date.now(),
+  });
+}
+
+export function listenChatMessages(roomId, callback) {
+  const q = query(
+    collection(db, "mylive_rooms", roomId, "chat"),
+    orderBy("ts", "asc")
+  );
+  return onSnapshot(q, (snap) => {
+    snap.docChanges().forEach((change) => {
+      if (change.type === "added") callback(change.doc.data());
+    });
+  });
 }
