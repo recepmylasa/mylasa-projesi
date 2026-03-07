@@ -126,6 +126,21 @@ export function listenIceCandidates(roomId, role, callback) {
   });
 }
 
+// ---- Emoji / Tepki ----
+export async function sendEmojiReaction(roomId, emoji) {
+  await addDoc(collection(db, "mylive_rooms", roomId, "reactions"), {
+    emoji,
+    ts: serverTimestamp(),
+  });
+}
+export function listenEmojiReactions(roomId, callback) {
+  return onSnapshot(collection(db, "mylive_rooms", roomId, "reactions"), (snap) => {
+    snap.docChanges().forEach((change) => {
+      if (change.type === "added") callback(change.doc.data());
+    });
+  });
+}
+
 // ---- Baglanti gecmisi ----
 export async function saveConnection(data) {
   await addDoc(collection(db, "mylive_connections"), { ...data, createdAt: serverTimestamp() });

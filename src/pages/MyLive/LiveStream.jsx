@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   createRoom, joinRoom, listenRoom, addIceCandidate as fsAddIce,
   listenIceCandidates, closeRoom, leaveQueue, saveConnection,
+  sendEmojiReaction, listenEmojiReactions,
 } from "../../services/myLiveService";
 
 // ─── Karıncalı TV efekti ─────────────────────────────────────────────────────
@@ -217,9 +218,29 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
     if (t) { t.enabled = !t.enabled; setCamOn(t.enabled); }
   }, []);
 
-  const sendEmoji = useCallback(emoji => {
-    setEmojis(p => [...p, { id: Date.now() + Math.random(), emoji }]);
-  }, []);
+  // Emoji gönder: Firestore'a yaz (karşı taraf da görsün)
+  const sendEmoji = useCallback(async emoji => {
+    // Önce kendinde göster
+    setEmojis(p => [...p, { id: Date.now() + Math.random(), emoji, fromMe: true }]);
+    // Firestore'a yaz
+    if (roomId) {
+      try { await sendEmojiReaction(roomId, emoji); } catch {}
+    }
+  }, [roomId]);
+
+  // Karşı taraftan gelen emojileri dinle
+  useEffect(() => {
+    if (!roomId) return;
+    // Başlangıçta gelen eski emojileri yoksay - sadece yeni gelenleri al
+    let initialized = false;
+    const unsub = listenEmojiReactions(roomId, (data) => {
+      if (!initialized) return; // İlk snapshot'ı atla
+      setEmojis(p => [...p, { id: Date.now() + Math.random(), emoji: data.emoji, fromMe: false }]);
+    });
+    // Kısa gecikme sonrası initialized = true yap
+    const t = setTimeout(() => { initialized = true; }, 1000);
+    return () => { unsub?.(); clearTimeout(t); };
+  }, [roomId]);
 
   const removeEmoji = useCallback(id => {
     setEmojis(p => p.filter(e => e.id !== id));
@@ -350,6 +371,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
         <video ref={localRef} autoPlay playsInline muted style={{
           position:"absolute", inset:0, width:"100%", height:"100%",
           objectFit:"cover", opacity: camOn ? 1 : 0.15,
+        transform: "scaleX(-1)",
         }} />
 
         {!camOn && (
