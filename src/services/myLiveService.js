@@ -1,5 +1,4 @@
 // FILE: src/services/myLiveService.js
-// MyLive Firebase Servisi - Eşleştirme, Signaling, Engelleme
 import { db } from "../firebase";
 import {
   collection,
@@ -12,14 +11,13 @@ import {
   addDoc,
   query,
   where,
-  orderBy,
   limit,
   serverTimestamp,
   onSnapshot,
   runTransaction,
 } from "firebase/firestore";
 
-// ---- Kuyruk Yönetimi ----
+// ---- Kuyruk ----
 export async function joinQueue(userId, filters = {}) {
   const ref = doc(db, "mylive_queue", userId);
   await setDoc(ref, {
@@ -33,181 +31,104 @@ export async function joinQueue(userId, filters = {}) {
 }
 
 export async function leaveQueue(userId) {
-  try {
-    await deleteDoc(doc(db, "mylive_queue", userId));
-  } catch {}
+  try { await deleteDoc(doc(db, "mylive_queue", userId)); } catch {}
 }
 
-/**
- * Atomic matchmaking — DOĞRU YAKLAŞIM:
- * 1. Transaction DIŞINDA getDocs ile aday listesi al
- * 2. Transaction İÇİNDE sadece transaction.get() ile doğrula ve güncelle
- *
- * Başarılı olursa { roomId, isInitiator, partner } döner.
- * Başarısız olursa null döner.
- */
 export async function tryAtomicMatch(userId, filters = {}, blockedIds = []) {
   try {
-    // ADIM 1: Transaction DIŞINDA bekleyen kullanıcıları al
+    // ADIM 1 - transaction DISINDA getDocs
     const q = query(
       collection(db, "mylive_queue"),
       where("status", "==", "waiting"),
-      orderBy("joinedAt"),
-      limit(20)
+      limit(30)
     );
     const snap = await getDocs(q);
 
-    // Uygun adayları filtrele (transaction dışında)
-    const candidates = [];
-    for (const d of snap.docs) {
-      const data = d.data();
-      if (data.userId === userId) continue;
-      if (blockedIds.includes(data.userId)) continue;
-      // Cinsiyet filtresi
-      if (filters.gender && filters.gender !== "all" && data.filters?.gender) {
-        if (data.filters.gender !== filters.gender) continue;
-      }
-      candidates.push({ id: d.id, data });
-    }
+    const candidates = snap.docs
+      .map((d) => ({ id: d.id, data: d.data() }))
+      .filter((c) => c.id !== userId && !blockedIds.includes(c.id));
 
     if (candidates.length === 0) return null;
 
-    // ADIM 2: Her aday için transaction dene (birincisi başarılı olana kadar)
+    // ADIM 2 - her aday icin transaction dene
     for (const cand of candidates) {
       try {
-        const result = await runTransaction(db, async (transaction) => {
-          // Kendi kaydımı oku
+        const result = await runTransaction(db, async (tx) => {
           const myRef = doc(db, "mylive_queue", userId);
-          const mySnap = await transaction.get(myRef);
-          if (!mySnap.exists() || mySnap.data().status !== "waiting") {
-            return null; // Zaten eşleştirildik
-          }
-
-          // Adayın kaydını oku (transaction içinde)
-          const candidateRef = doc(db, "mylive_queue", cand.id);
-          const candidateSnap = await transaction.get(candidateRef);
-          if (!candidateSnap.exists() || candidateSnap.data().status !== "waiting") {
-            return null; // Aday artık uygun değil
-          }
-
-          // Oda oluştur
-          const roomId = `room_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-          // Atomik güncelleme
-          transaction.update(myRef, {
-            status: "matched",
-            matchedWith: cand.id,
-            roomId,
-            isInitiator: true,
-          });
-          transaction.update(candidateRef, {
-            status: "matched",
-            matchedWith: userId,
-            roomId,
-            isInitiator: false,
-          });
-
-          return {
-            roomId,
-            isInitiator: true,
-            partner: candidateSnap.data(),
-          };
+          const candRef = doc(db, "mylive_queue", cand.id);
+          const mySnap = await tx.get(myRef);
+          const candSnap = await tx.get(candRef);
+          if (!mySnap.exists() || mySnap.data().status !== "waiting") return null;
+          if (!candSnap.exists() || candSnap.data().status !== "waiting") return null;
+          const roomId = "room_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+          tx.update(myRef, { status: "matched", matchedWith: cand.id, roomId, isInitiator: true });
+          tx.update(candRef, { status: "matched", matchedWith: userId, roomId, isInitiator: false });
+          return { roomId, isInitiator: true, partner: { userId: cand.id, ...candSnap.data() } };
         });
-
-        if (result) return result; // Başarılı eşleşme
-      } catch (txErr) {
-        // Bu aday için transaction başarısız, sonrakini dene
-        console.warn("[myLiveService] transaction retry:", txErr?.message);
+        if (result) return result;
+      } catch (e) {
+        console.warn("[match] tx retry:", e && e.message);
       }
     }
-
-    return null; // Hiçbir aday için eşleşme sağlanamadı
+    return null;
   } catch (err) {
-    console.error("[myLiveService] tryAtomicMatch error:", err);
+    console.error("[match] error:", err);
     return null;
   }
 }
 
-/**
- * Kendi kuyruk kaydını dinle - başka biri bizi eşleştirdiyse bildir
- */
 export function listenMyQueue(userId, callback) {
-  const ref = doc(db, "mylive_queue", userId);
-  return onSnapshot(ref, (snap) => {
-    if (snap.exists()) {
-      callback(snap.data());
-    } else {
-      callback(null);
-    }
+  return onSnapshot(doc(db, "mylive_queue", userId), (snap) => {
+    callback(snap.exists() ? snap.data() : null);
   });
 }
 
-/**
- * Eşleştirilen partner'ın bilgilerini getir
- */
-export async function getQueueEntry(userId) {
-  const snap = await getDoc(doc(db, "mylive_queue", userId));
-  return snap.exists() ? snap.data() : null;
-}
+// ---- Signaling - alt koleksiyon kullan (rules: /mylive_rooms/{roomId}/{sub}/{doc}) ----
+const signalRef = (roomId) => doc(db, "mylive_rooms", roomId, "signal", "main");
 
-// ---- Oda / Signaling ----
 export async function createRoom(roomId, offer) {
-  await setDoc(doc(db, "mylive_rooms", roomId), {
+  await setDoc(signalRef(roomId), {
     offer,
-    createdAt: serverTimestamp(),
+    answer: null,
     status: "waiting",
+    createdAt: serverTimestamp(),
   });
 }
 
 export async function joinRoom(roomId, answer) {
-  await updateDoc(doc(db, "mylive_rooms", roomId), {
-    answer,
-    status: "connected",
-  });
-}
-
-export async function getRoom(roomId) {
-  const snap = await getDoc(doc(db, "mylive_rooms", roomId));
-  return snap.exists() ? snap.data() : null;
+  await updateDoc(signalRef(roomId), { answer, status: "connected" });
 }
 
 export function listenRoom(roomId, callback) {
-  return onSnapshot(doc(db, "mylive_rooms", roomId), (snap) => {
+  return onSnapshot(signalRef(roomId), (snap) => {
     if (snap.exists()) callback(snap.data());
   });
 }
 
+export async function closeRoom(roomId) {
+  try { await updateDoc(signalRef(roomId), { status: "closed" }); } catch {}
+}
+
 export async function addIceCandidate(roomId, role, candidate) {
-  const colRef = collection(db, "mylive_rooms", roomId, `${role}_candidates`);
-  await addDoc(colRef, {
-    sdpMid: candidate.sdpMid ?? null,
-    sdpMLineIndex: candidate.sdpMLineIndex ?? null,
+  await addDoc(collection(db, "mylive_rooms", roomId, role + "_candidates"), {
+    sdpMid: candidate.sdpMid || null,
+    sdpMLineIndex: candidate.sdpMLineIndex != null ? candidate.sdpMLineIndex : null,
     candidate: candidate.candidate,
-    createdAt: serverTimestamp(),
+    ts: serverTimestamp(),
   });
 }
 
 export function listenIceCandidates(roomId, role, callback) {
-  const colRef = collection(db, "mylive_rooms", roomId, `${role}_candidates`);
-  return onSnapshot(colRef, (snap) => {
+  return onSnapshot(collection(db, "mylive_rooms", roomId, role + "_candidates"), (snap) => {
     snap.docChanges().forEach((change) => {
       if (change.type === "added") callback(change.doc.data());
     });
   });
 }
 
-export async function closeRoom(roomId) {
-  try {
-    await updateDoc(doc(db, "mylive_rooms", roomId), { status: "closed" });
-  } catch {}
-}
-
-// ---- Bağlantı Geçmişi ----
+// ---- Baglanti gecmisi ----
 export async function saveConnection(data) {
-  await addDoc(collection(db, "mylive_connections"), {
-    ...data,
-    createdAt: serverTimestamp(),
-  });
+  await addDoc(collection(db, "mylive_connections"), { ...data, createdAt: serverTimestamp() });
 }
 
 export async function rateConnection(connectionId, userId, rating, review, blocked) {
@@ -224,54 +145,40 @@ export async function rateConnection(connectionId, userId, rating, review, block
 
 // ---- Engelleme ----
 export async function blockUser(blockerId, blockedId) {
-  const id = `${blockerId}_${blockedId}`;
-  await setDoc(doc(db, "mylive_blocked", id), {
-    blockerId,
-    blockedId,
-    createdAt: serverTimestamp(),
+  await setDoc(doc(db, "mylive_blocked", blockerId + "_" + blockedId), {
+    blockerId, blockedId, createdAt: serverTimestamp(),
   });
 }
 
 export async function getBlockedUsers(userId) {
-  const q = query(
-    collection(db, "mylive_blocked"),
-    where("blockerId", "==", userId)
-  );
+  const q = query(collection(db, "mylive_blocked"), where("blockerId", "==", userId));
   const snap = await getDocs(q);
   return snap.docs.map((d) => d.data().blockedId);
 }
 
-// ---- Şikayet ----
+// ---- Sikayet ----
 export async function reportUser(reporterId, reportedId, reason, connectionId) {
   await addDoc(collection(db, "mylive_reports"), {
-    reporterId,
-    reportedId,
-    reason,
-    connectionId: connectionId || null,
+    reporterId, reportedId, reason, connectionId: connectionId || null,
     createdAt: serverTimestamp(),
   });
 }
 
-// ---- İstatistikler ----
-export async function getStats() {
-  try {
-    const q = query(collection(db, "mylive_queue"), where("status", "==", "waiting"));
-    const snap = await getDocs(q);
-    return { activeUsers: snap.size };
-  } catch {
-    return { activeUsers: 0 };
-  }
-}
-
-// ---- Kullanıcı Profili (MyLive) ----
+// ---- Profil ----
 export async function getMyLiveProfile(userId) {
   const snap = await getDoc(doc(db, "mylive_profiles", userId));
   return snap.exists() ? snap.data() : null;
 }
 
 export async function saveMyLiveProfile(userId, data) {
-  await setDoc(doc(db, "mylive_profiles", userId), {
-    ...data,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  await setDoc(doc(db, "mylive_profiles", userId), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+// ---- Istatistik ----
+export async function getStats() {
+  try {
+    const q = query(collection(db, "mylive_queue"), where("status", "==", "waiting"));
+    const snap = await getDocs(q);
+    return { activeUsers: snap.size };
+  } catch { return { activeUsers: 0 }; }
 }

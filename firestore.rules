@@ -332,8 +332,11 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isOwner(userId);
     }
-    match /mylive_rooms/{roomId}/{subcollection}/{docId} {
+    match /mylive_rooms/{roomId} {
       allow read, write: if isSignedIn();
+      match /{subcollection}/{docId} {
+        allow read, write: if isSignedIn();
+      }
     }
     match /mylive_blocked/{docId} {
       allow read: if isSignedIn();

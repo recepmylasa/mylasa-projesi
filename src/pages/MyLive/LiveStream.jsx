@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import "../../styles/myLive.css";
 import { useWebRTC } from "../../hooks/useWebRTC";
 import {
-  createRoom, joinRoom, listenRoom, addIceCandidate,
+  createRoom, joinRoom, listenRoom, addIceCandidate as fsAddIce,
   listenIceCandidates, closeRoom, leaveQueue, saveConnection,
 } from "../../services/myLiveService";
 
@@ -11,16 +11,11 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const [duration, setDuration] = useState(0);
-  const [connectionState, setConnectionState] = useState("connecting");
-  const connectionIdRef = useRef(`conn_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+  const [connState, setConnState] = useState("connecting");
+  const connectionIdRef = useRef("conn_" + Date.now() + "_" + Math.random().toString(36).slice(2));
   const startTimeRef = useRef(Date.now());
-  const unsubscribersRef = useRef([]);
-
-  const { localStream, remoteStream, getLocalStream, createOffer, createAnswer,
-    setRemoteAnswer, addIceCandidate: addICE, onIceCandidate,
-    toggleVideo, toggleAudio, isVideoEnabled, isAudioEnabled, cleanup } = useWebRTC({
-    onConnectionStateChange: setConnectionState,
-  });
+  const unsubsRef = useRef([]);
+  const peerRef = useRef(null);
 
   // Timer
   useEffect(() => {
@@ -28,68 +23,132 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
     return () => clearInterval(t);
   }, []);
 
-  // Local video
-  useEffect(() => {
-    if (localStream && localVideoRef.current) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream]);
-
-  // WebRTC setup
+  // WebRTC setup - tüm mantık burada, hook sadece yardımcı
   useEffect(() => {
     let mounted = true;
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun.services.mozilla.com" },
+      ],
+    });
+    peerRef.current = pc;
+
+    pc.onconnectionstatechange = () => {
+      if (!mounted) return;
+      setConnState(pc.connectionState);
+    };
+
+    pc.ontrack = (event) => {
+      if (!mounted) return;
+      const remote = event.streams[0];
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remote;
+      }
+    };
+
     async function setup() {
       try {
-        const stream = await getLocalStream();
-        if (!mounted) return;
+        // Kamera/mikrofon al
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        if (!mounted) { stream.getTracks().forEach((t) => t.stop()); return; }
+
+        // Local video
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+
+        // Track ekle
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+        // ICE candidate handler - setLocalDescription'dan ÖNCE kur
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            fsAddIce(roomId, isInitiator ? "caller" : "callee", event.candidate).catch(() => {});
+          }
+        };
 
         if (isInitiator) {
-          // ICE callback'i createOffer'DAN ONCE kur - candidate kaybi onlenir
-          onIceCandidate((candidate) => addIceCandidate(roomId, "caller", candidate));
-          const { peer, offer } = await createOffer(stream);
-          await createRoom(roomId, offer);
+          // --- INITIATOR (caller) ---
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          await createRoom(roomId, { type: offer.type, sdp: offer.sdp });
 
+          // Answer dinle
           const unsub1 = listenRoom(roomId, async (data) => {
-            if (data.answer && peer.signalingState === "have-local-offer") {
-              try { await setRemoteAnswer(data.answer); } catch (e) { console.warn("[LiveStream] setRemoteAnswer:", e); }
+            if (data.answer && pc.signalingState === "have-local-offer") {
+              try {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+              } catch (e) {
+                console.warn("[LiveStream] setRemoteAnswer:", e);
+              }
             }
           });
 
-          const unsub2 = listenIceCandidates(roomId, "callee", (c) => addICE(c));
-          unsubscribersRef.current = [unsub1, unsub2];
-        } else {
-          // ICE callback'i createAnswer'DAN ONCE kur
-          onIceCandidate((candidate) => addIceCandidate(roomId, "callee", candidate));
-          const room = await new Promise((resolve) => {
-            const unsub = listenRoom(roomId, (data) => {
-              if (data.offer) { unsub(); resolve(data); }
-            });
+          // Callee ICE candidates dinle
+          const unsub2 = listenIceCandidates(roomId, "callee", async (c) => {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(c));
+            } catch (e) {
+              console.warn("[LiveStream] addIce callee:", e);
+            }
           });
 
-          const { answer } = await createAnswer(stream, room.offer);
-          await joinRoom(roomId, answer);
+          unsubsRef.current = [unsub1, unsub2];
+        } else {
+          // --- CALLEE ---
+          // Offer'ı bekle
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error("offer timeout")), 15000);
+            const unsub = listenRoom(roomId, async (data) => {
+              if (data && data.offer) {
+                clearTimeout(timeout);
+                unsub();
+                resolve(data);
+              }
+            });
+          }).then(async (data) => {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            await joinRoom(roomId, { type: answer.type, sdp: answer.sdp });
+          });
 
-          const unsub3 = listenIceCandidates(roomId, "caller", (c) => addICE(c));
-          unsubscribersRef.current = [unsub3];
+          // Caller ICE candidates dinle
+          const unsub3 = listenIceCandidates(roomId, "caller", async (c) => {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(c));
+            } catch (e) {
+              console.warn("[LiveStream] addIce caller:", e);
+            }
+          });
+
+          unsubsRef.current = [unsub3];
         }
       } catch (err) {
         console.error("[LiveStream] setup error:", err);
       }
     }
-    setup();
-    return () => { mounted = false; };
-  }, []); // eslint-disable-line
 
-  // Remote video - remoteStream geldiginde bagla
-  useEffect(() => {
-    if (remoteStream && remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [remoteStream]);
+    setup();
+
+    return () => {
+      mounted = false;
+      unsubsRef.current.forEach((u) => u && u());
+      if (peerRef.current) {
+        peerRef.current.close();
+        peerRef.current = null;
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleEnd = useCallback(async () => {
     const dur = Math.floor((Date.now() - startTimeRef.current) / 1000);
-    unsubscribersRef.current.forEach((u) => u?.());
+    unsubsRef.current.forEach((u) => u && u());
+    if (peerRef.current) { peerRef.current.close(); peerRef.current = null; }
     await closeRoom(roomId).catch(() => {});
     await leaveQueue(user?.uid).catch(() => {});
     await saveConnection({
@@ -99,18 +158,20 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
       roomId,
       duration: dur,
     }).catch(() => {});
-    cleanup();
     onEnd?.({ connectionId: connectionIdRef.current, partner, duration: dur });
-  }, [roomId, user, partner, cleanup, onEnd]);
+  }, [roomId, user, partner, onEnd]);
 
   const handleSkip = useCallback(async () => {
-    unsubscribersRef.current.forEach((u) => u?.());
+    unsubsRef.current.forEach((u) => u && u());
+    if (peerRef.current) { peerRef.current.close(); peerRef.current = null; }
     await closeRoom(roomId).catch(() => {});
-    cleanup();
     onSkip?.();
-  }, [roomId, cleanup, onSkip]);
+  }, [roomId, onSkip]);
 
-  const formatTime = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  const formatTime = (s) =>
+    String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+
+  const isConnected = connState === "connected";
 
   return (
     <div className="mylive-stream">
@@ -120,22 +181,26 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
         className="mylive-stream-remote"
         autoPlay
         playsInline
-        style={{ background: connectionState !== "connected" ? "#111" : "#000" }}
+        style={{ background: isConnected ? "#000" : "#111" }}
       />
 
       {/* Bağlanıyor overlay */}
-      {connectionState !== "connected" && (
+      {!isConnected && (
         <div style={{
           position: "absolute", inset: 0, display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center", zIndex: 15,
-          background: "rgba(0,0,0,0.7)",
+          background: "rgba(0,0,0,0.75)",
         }}>
-          <div style={{ fontSize: 40, marginBottom: 16 }}>📡</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
-            {connectionState === "connecting" ? "Bağlanıyor..." : "Bağlantı Kuruluyor..."}
+          <div style={{
+            width: 48, height: 48, borderRadius: "50%",
+            border: "3px solid #00c8e0", borderTopColor: "transparent",
+            animation: "spin 0.9s linear infinite", marginBottom: 16,
+          }} />
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+            Bağlantı Kuruluyor...
           </div>
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
-            Lütfen bekleyin
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>
+            {connState}
           </div>
         </div>
       )}
@@ -148,13 +213,6 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
         playsInline
         muted
       />
-
-      {/* Self name */}
-      <div className="mylive-self-info">
-        <div className="mylive-self-name">
-          {user?.displayName?.split(" ")[0] ?? "Sen"}
-        </div>
-      </div>
 
       {/* Timer */}
       <div className="mylive-timer">
@@ -172,40 +230,18 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
           </div>
           <div>
             <div className="mylive-partner-name">
-              {partner.displayName ?? partner.username ?? "Kullanıcı"}
+              {partner.displayName || partner.username || "Kullanıcı"}
             </div>
-            {partner.avgRating > 0 && (
-              <div className="mylive-partner-rating">
-                {"⭐".repeat(Math.round(partner.avgRating))} {partner.avgRating.toFixed(1)}
-              </div>
-            )}
           </div>
         </div>
       )}
 
       {/* Controls */}
       <div className="mylive-stream-controls">
-        <button
-          className={`mylive-ctrl-btn ${isAudioEnabled ? "active" : ""}`}
-          onClick={toggleAudio}
-          title={isAudioEnabled ? "Mikrofonu Kapat" : "Mikrofonu Aç"}
-        >
-          {isAudioEnabled ? "🎤" : "🔇"}
+        <button className="mylive-ctrl-btn" onClick={handleSkip} title="Geç">
+          ⏭
         </button>
-
-        <button
-          className={`mylive-ctrl-btn ${isVideoEnabled ? "active" : ""}`}
-          onClick={toggleVideo}
-          title={isVideoEnabled ? "Kamerayı Kapat" : "Kamerayı Aç"}
-        >
-          {isVideoEnabled ? "📹" : "📷"}
-        </button>
-
-        <button className="mylive-skip-btn" onClick={handleSkip}>
-          Geç ›
-        </button>
-
-        <button className="mylive-ctrl-btn danger" onClick={handleEnd} title="Bağlantıyı Kes">
+        <button className="mylive-ctrl-btn danger" onClick={handleEnd} title="Bitir">
           📵
         </button>
       </div>
