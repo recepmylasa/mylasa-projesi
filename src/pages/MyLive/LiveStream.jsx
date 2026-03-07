@@ -1,6 +1,6 @@
 // FILE: src/pages/MyLive/LiveStream.jsx
-// Layout: 3 katman — üst video (flex), alt video (flex), sabit alt bar
-// Butonlar ASLA overflow:hidden içinde değil — her zaman görünür
+// Layout: 2 video tam ekran (üst+alt), tüm butonlar video üzerinde overlay
+// Siyah alt bant YOK — kamera hiç kesilmiyor
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   createRoom, joinRoom, listenRoom, addIceCandidate as fsAddIce,
@@ -35,13 +35,10 @@ function StaticNoise() {
   return (
     <div style={{ position:"absolute", inset:0, pointerEvents:"none" }}>
       <canvas ref={canvasRef} style={{ width:"100%", height:"100%", display:"block", opacity:0.78 }} />
-      {/* scan lines */}
       <div style={{ position:"absolute", inset:0,
         background:"repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0px,rgba(0,0,0,.18) 1px,transparent 1px,transparent 3px)" }} />
-      {/* vignette */}
       <div style={{ position:"absolute", inset:0,
         background:"radial-gradient(ellipse at center,transparent 30%,rgba(0,0,0,.65) 100%)" }} />
-      {/* yazı */}
       <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column",
         alignItems:"center", justifyContent:"center", gap:6 }}>
         <span style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,.65)",
@@ -58,20 +55,87 @@ function StaticNoise() {
 
 // ─── Uçan emoji ──────────────────────────────────────────────────────────────
 function FloatingEmoji({ emoji, onDone }) {
-  const left = useRef(15 + Math.random() * 60).current;
-  useEffect(() => { const t = setTimeout(onDone, 2000); return () => clearTimeout(t); }, [onDone]);
+  const left = useRef(20 + Math.random() * 55).current;
+  useEffect(() => { const t = setTimeout(onDone, 2200); return () => clearTimeout(t); }, [onDone]);
   return (
-    <div style={{ position:"absolute", bottom:"8%", left:`${left}%`,
-      fontSize:28, animation:"floatUp 2s ease-out forwards", pointerEvents:"none", zIndex:20 }}>
+    <div style={{
+      position:"absolute", bottom:"15%", left:`${left}%`,
+      fontSize:32, animation:"floatUp 2.2s ease-out forwards",
+      pointerEvents:"none", zIndex:30,
+      filter:"drop-shadow(0 2px 8px rgba(0,0,0,.6))",
+    }}>
       {emoji}
     </div>
   );
 }
 
-// ─── Sabitler ────────────────────────────────────────────────────────────────
-const EMOJIS   = ["😂","❤️","😍","🔥","👏","😮","💯","💬"];
-const CYAN     = "#00c8e0";
-const MAGENTA  = "#d946a8";
+// ─── Emoji Fan Menü ───────────────────────────────────────────────────────────
+const EMOJIS = ["😂","❤️","😍","🔥","👏","😮","💯","🎉"];
+const CYAN    = "#00c8e0";
+const MAGENTA = "#d946a8";
+
+function EmojiFan({ onSelect }) {
+  const [open, setOpen] = useState(false);
+  const count  = EMOJIS.length; // 8
+  // Fan açılır: yarım daire, sağ taraftan sola doğru
+  // Açı aralığı: 180° → 360° (üst yarı daire, sola yayılır)
+  const radius = 68; // px
+  return (
+    <div style={{ position:"relative", width:48, height:48 }}>
+      {/* Fan emojileri */}
+      {open && EMOJIS.map((e, i) => {
+        // 180° → 360° aralığında eşit dağıt (8 emoji → 180/7 ≈ 25.7° aralık)
+        const angle = 180 + (i / (count - 1)) * 180; // 180° → 360°
+        const rad   = (angle * Math.PI) / 180;
+        const x     = Math.cos(rad) * radius;
+        const y     = Math.sin(rad) * radius;
+        return (
+          <button
+            key={e}
+            onClick={() => { onSelect(e); setOpen(false); }}
+            style={{
+              position:"absolute",
+              left: `calc(50% + ${x}px - 20px)`,
+              top:  `calc(50% + ${y}px - 20px)`,
+              width:40, height:40, borderRadius:"50%",
+              border:"1.5px solid rgba(255,255,255,.25)",
+              background:"rgba(15,15,25,.85)",
+              backdropFilter:"blur(12px)",
+              fontSize:20, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              animation:"fanIn .22s ease-out forwards",
+              boxShadow:"0 4px 16px rgba(0,0,0,.5)",
+              zIndex:60,
+            }}
+          >
+            {e}
+          </button>
+        );
+      })}
+      {/* Ana emoji butonu */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width:48, height:48, borderRadius:"50%",
+          border:`2px solid ${open ? CYAN : "rgba(255,255,255,.2)"}`,
+          background: open
+            ? `rgba(0,200,224,.2)`
+            : "rgba(15,15,25,.75)",
+          backdropFilter:"blur(16px)",
+          fontSize:22, cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          boxShadow: open ? `0 0 20px rgba(0,200,224,.4)` : "0 4px 16px rgba(0,0,0,.4)",
+          transition:"all .2s",
+          zIndex:61, position:"relative",
+        }}
+        title="Emoji Gönder"
+      >
+        {open ? "✕" : "😊"}
+      </button>
+    </div>
+  );
+}
+
 const ICE_SERVERS = [
   { urls:"stun:stun.l.google.com:19302" },
   { urls:"stun:stun1.l.google.com:19302" },
@@ -89,13 +153,13 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
   const startRef   = useRef(Date.now());
   const connIdRef  = useRef("conn_" + Date.now() + "_" + Math.random().toString(36).slice(2));
 
-  const [duration,     setDuration]     = useState(0);
-  const [remoteReady,  setRemoteReady]  = useState(false);
-  const [micOn,        setMicOn]        = useState(true);
-  const [camOn,        setCamOn]        = useState(true);
-  const [emojis,       setEmojis]       = useState([]);   // {id, emoji}
-  const [showBanner,   setShowBanner]   = useState(false); // "Bağlantı kuruldu" banner
-  const [quality,      setQuality]      = useState(null);  // "good"|"medium"|"poor"
+  const [duration,    setDuration]    = useState(0);
+  const [remoteReady, setRemoteReady] = useState(false);
+  const [micOn,       setMicOn]       = useState(true);
+  const [camOn,       setCamOn]       = useState(true);
+  const [emojis,      setEmojis]      = useState([]);
+  const [showBanner,  setShowBanner]  = useState(false);
+  const [quality,     setQuality]     = useState(null);
 
   // Timer
   useEffect(() => {
@@ -218,26 +282,20 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
     if (t) { t.enabled = !t.enabled; setCamOn(t.enabled); }
   }, []);
 
-  // Emoji gönder: Firestore'a yaz (karşı taraf da görsün)
   const sendEmoji = useCallback(async emoji => {
-    // Önce kendinde göster
     setEmojis(p => [...p, { id: Date.now() + Math.random(), emoji, fromMe: true }]);
-    // Firestore'a yaz
     if (roomId) {
       try { await sendEmojiReaction(roomId, emoji); } catch {}
     }
   }, [roomId]);
 
-  // Karşı taraftan gelen emojileri dinle
   useEffect(() => {
     if (!roomId) return;
-    // Başlangıçta gelen eski emojileri yoksay - sadece yeni gelenleri al
     let initialized = false;
     const unsub = listenEmojiReactions(roomId, (data) => {
-      if (!initialized) return; // İlk snapshot'ı atla
+      if (!initialized) return;
       setEmojis(p => [...p, { id: Date.now() + Math.random(), emoji: data.emoji, fromMe: false }]);
     });
-    // Kısa gecikme sonrası initialized = true yap
     const t = setTimeout(() => { initialized = true; }, 1000);
     return () => { unsub?.(); clearTimeout(t); };
   }, [roomId]);
@@ -246,11 +304,10 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
     setEmojis(p => p.filter(e => e.id !== id));
   }, []);
 
-  // ─── Yardımcılar ───────────────────────────────────────────────────────────
   const fmt = s => String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0");
   const qColor = quality === "good" ? "#22c97a" : quality === "medium" ? "#f59e0b" : "#ff4757";
-  const partnerName = partner?.displayName || partner?.username || "Kullanıcı";
-  const myName      = user?.adSoyad?.split(" ")[0] || user?.kullaniciAdi || user?.displayName?.split(" ")[0] || "Sen";
+  const partnerName = partner?.displayName || partner?.adSoyad || partner?.kullaniciAdi || partner?.username || "Kullanıcı";
+  const myName = user?.displayName || user?.adSoyad || user?.kullaniciAdi || user?.username || "Sen";
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
@@ -259,6 +316,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
       display:"flex", flexDirection:"column",
       background:"#000",
       fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",
+      overflow:"hidden",
     }}>
 
       {/* ══════════ ÜST YARI — Karşı kullanıcı ══════════ */}
@@ -270,11 +328,11 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
           objectFit:"cover", opacity: remoteReady ? 1 : 0, transition:"opacity .5s",
         }} />
 
-        {/* Timer */}
+        {/* Timer — sol üst */}
         <div style={{
           position:"absolute", top:12, left:12, zIndex:10,
           display:"flex", alignItems:"center", gap:6,
-          background:"rgba(0,0,0,.6)", backdropFilter:"blur(12px)",
+          background:"rgba(0,0,0,.55)", backdropFilter:"blur(12px)",
           border:"1px solid rgba(255,255,255,.12)", borderRadius:20, padding:"5px 12px",
         }}>
           <span style={{ width:7, height:7, borderRadius:"50%", background:MAGENTA, display:"block",
@@ -284,12 +342,12 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
           </span>
         </div>
 
-        {/* Bağlantı kalitesi */}
+        {/* Bağlantı kalitesi — sağ üst */}
         {remoteReady && quality && (
           <div style={{
             position:"absolute", top:12, right:12, zIndex:10,
             display:"flex", alignItems:"center", gap:5,
-            background:"rgba(0,0,0,.6)", backdropFilter:"blur(12px)",
+            background:"rgba(0,0,0,.55)", backdropFilter:"blur(12px)",
             border:`1px solid ${qColor}40`, borderRadius:20, padding:"5px 10px",
           }}>
             <div style={{ display:"flex", gap:2, alignItems:"flex-end" }}>
@@ -304,11 +362,11 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
           </div>
         )}
 
-        {/* Bağlanıyor spinner */}
+        {/* Bağlanıyor spinner — sağ üst */}
         {!remoteReady && (
           <div style={{
             position:"absolute", top:12, right:12, zIndex:10,
-            background:"rgba(0,0,0,.6)", backdropFilter:"blur(12px)",
+            background:"rgba(0,0,0,.55)", backdropFilter:"blur(12px)",
             border:`1px solid rgba(0,200,224,.3)`, borderRadius:20, padding:"5px 12px",
             display:"flex", alignItems:"center", gap:6,
           }}>
@@ -318,12 +376,12 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
           </div>
         )}
 
-        {/* Partner isim - sol alt */}
+        {/* Partner isim — sol alt */}
         {remoteReady && (
           <div style={{
             position:"absolute", bottom:12, left:12, zIndex:10,
             display:"flex", alignItems:"center", gap:8,
-            background:"rgba(0,0,0,.6)", backdropFilter:"blur(12px)",
+            background:"rgba(0,0,0,.55)", backdropFilter:"blur(12px)",
             border:"1px solid rgba(255,255,255,.12)", borderRadius:24, padding:"6px 14px 6px 8px",
           }}>
             <div style={{ width:28, height:28, borderRadius:"50%",
@@ -346,9 +404,6 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
             display:"flex", alignItems:"center", gap:8, whiteSpace:"nowrap",
           }}>
             <span style={{ fontSize:13, color:"#22c97a", fontWeight:600 }}>✓ Bağlantı kuruldu</span>
-            {partner?.photoURL
-              ? <img src={partner.photoURL} alt="" style={{ width:20, height:20, borderRadius:"50%", objectFit:"cover" }} />
-              : null}
             <span style={{ fontSize:13, color:"#fff" }}>{partnerName}</span>
           </div>
         )}
@@ -371,7 +426,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
         <video ref={localRef} autoPlay playsInline muted style={{
           position:"absolute", inset:0, width:"100%", height:"100%",
           objectFit:"cover", opacity: camOn ? 1 : 0.15,
-        transform: "scaleX(-1)",
+          transform:"scaleX(-1)",
         }} />
 
         {!camOn && (
@@ -381,11 +436,11 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
           </div>
         )}
 
-        {/* Kendi isim - sol alt */}
+        {/* Kendi isim — sol alt */}
         <div style={{
-          position:"absolute", bottom:12, left:12, zIndex:10,
+          position:"absolute", bottom:14, left:12, zIndex:10,
           display:"flex", alignItems:"center", gap:8,
-          background:"rgba(0,0,0,.6)", backdropFilter:"blur(12px)",
+          background:"rgba(0,0,0,.55)", backdropFilter:"blur(12px)",
           border:"1px solid rgba(255,255,255,.12)", borderRadius:24, padding:"6px 14px 6px 8px",
         }}>
           <div style={{ width:28, height:28, borderRadius:"50%",
@@ -400,90 +455,78 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
             background:"rgba(0,200,224,.15)", borderRadius:8, padding:"2px 6px" }}>SEN</span>
         </div>
 
-        {/* GEÇ butonu - sağ alt */}
-        <button onClick={handleSkip} style={{
-          position:"absolute", bottom:12, right:12, zIndex:10,
-          display:"flex", alignItems:"center", gap:7, padding:"9px 18px",
-          borderRadius:28, border:`1.5px solid rgba(0,200,224,.4)`,
-          background:"rgba(0,0,0,.65)", backdropFilter:"blur(16px)",
-          color:CYAN, fontSize:14, fontWeight:700, cursor:"pointer",
-          boxShadow:`0 4px 20px rgba(0,200,224,.2)`,
+        {/* ── Sağ alt overlay: Emoji fan + Mikrofon + Kamera + Geç + Bitir ── */}
+        <div style={{
+          position:"absolute", bottom:10, right:10, zIndex:50,
+          display:"flex", flexDirection:"column", alignItems:"flex-end", gap:10,
         }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={CYAN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
-          </svg>
-          Geç
-        </button>
-      </div>
+          {/* Üst sıra: Emoji fan */}
+          <EmojiFan onSelect={sendEmoji} />
 
-      {/* ══════════ SABİT ALT BAR — OmeTV stili ══════════ */}
-      <div style={{
-        flexShrink:0,
-        background:"rgba(0,0,0,.88)", backdropFilter:"blur(20px)",
-        borderTop:"1px solid rgba(255,255,255,.08)",
-        padding:"10px 16px 12px",
-        display:"flex", alignItems:"center", justifyContent:"space-between",
-        gap:8, zIndex:50,
-      }}>
-        {/* Sol: Yenile (geç) */}
-        <button onClick={handleSkip} style={{
-          width:44, height:44, borderRadius:"50%", border:"none", cursor:"pointer",
-          background:"rgba(255,255,255,.1)", display:"flex", alignItems:"center", justifyContent:"center",
-          fontSize:20, flexShrink:0,
-        }} title="Geç">
-          🔄
-        </button>
-
-        {/* Orta: Emoji bar */}
-        <div style={{ display:"flex", gap:6, flex:1, justifyContent:"center", flexWrap:"nowrap", overflow:"hidden" }}>
-          {EMOJIS.map(e => (
-            <button key={e} onClick={() => sendEmoji(e)} style={{
-              width:38, height:38, borderRadius:"50%", border:"none", cursor:"pointer",
-              background:"rgba(255,255,255,.08)", fontSize:18,
+          {/* Alt sıra: Mikrofon, Kamera, Geç, Bitir */}
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            {/* Mikrofon */}
+            <button onClick={toggleMic} style={{
+              width:42, height:42, borderRadius:"50%",
+              border:`1.5px solid ${micOn ? "rgba(255,255,255,.2)" : "rgba(255,71,87,.6)"}`,
+              background: micOn ? "rgba(15,15,25,.75)" : "rgba(255,71,87,.25)",
+              backdropFilter:"blur(16px)",
+              fontSize:18, cursor:"pointer",
               display:"flex", alignItems:"center", justifyContent:"center",
-              transition:"background .15s", flexShrink:0,
-            }}>
-              {e}
+              boxShadow:"0 4px 16px rgba(0,0,0,.4)",
+            }} title={micOn?"Mikrofonu Kapat":"Mikrofonu Aç"}>
+              {micOn ? "🎤" : "🔇"}
             </button>
-          ))}
-        </div>
 
-        {/* Sağ: Mikrofon + Kamera + Bitir */}
-        <div style={{ display:"flex", gap:8, alignItems:"center", flexShrink:0 }}>
-          <button onClick={toggleMic} style={{
-            width:38, height:38, borderRadius:"50%", border:"none", cursor:"pointer",
-            background: micOn ? "rgba(255,255,255,.1)" : "rgba(255,71,87,.8)",
-            fontSize:16, display:"flex", alignItems:"center", justifyContent:"center",
-          }} title={micOn?"Mikrofonu Kapat":"Mikrofonu Aç"}>
-            {micOn ? "🎤" : "🔇"}
-          </button>
+            {/* Kamera */}
+            <button onClick={toggleCam} style={{
+              width:42, height:42, borderRadius:"50%",
+              border:`1.5px solid ${camOn ? "rgba(255,255,255,.2)" : "rgba(255,71,87,.6)"}`,
+              background: camOn ? "rgba(15,15,25,.75)" : "rgba(255,71,87,.25)",
+              backdropFilter:"blur(16px)",
+              fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              boxShadow:"0 4px 16px rgba(0,0,0,.4)",
+            }} title={camOn?"Kamerayı Kapat":"Kamerayı Aç"}>
+              {camOn ? "📹" : "📷"}
+            </button>
 
-          <button onClick={toggleCam} style={{
-            width:38, height:38, borderRadius:"50%", border:"none", cursor:"pointer",
-            background: camOn ? "rgba(255,255,255,.1)" : "rgba(255,71,87,.8)",
-            fontSize:16, display:"flex", alignItems:"center", justifyContent:"center",
-          }} title={camOn?"Kamerayı Kapat":"Kamerayı Aç"}>
-            {camOn ? "📹" : "📷"}
-          </button>
+            {/* Geç */}
+            <button onClick={handleSkip} style={{
+              height:42, padding:"0 16px", borderRadius:24,
+              border:`1.5px solid rgba(0,200,224,.4)`,
+              background:"rgba(15,15,25,.75)", backdropFilter:"blur(16px)",
+              color:CYAN, fontSize:13, fontWeight:700, cursor:"pointer",
+              display:"flex", alignItems:"center", gap:6,
+              boxShadow:`0 4px 16px rgba(0,200,224,.2)`,
+            }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={CYAN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
+              </svg>
+              Geç
+            </button>
 
-          <button onClick={handleEnd} style={{
-            width:44, height:44, borderRadius:"50%", border:"none", cursor:"pointer",
-            background:"linear-gradient(135deg,#ff4757,#c0392b)",
-            boxShadow:"0 4px 16px rgba(255,71,87,.45)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-          }} title="Bağlantıyı Kes">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.26 9.11a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 3.17 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.15 7.91"/>
-              <line x1="23" y1="1" x2="1" y2="23"/>
-            </svg>
-          </button>
+            {/* Bitir */}
+            <button onClick={handleEnd} style={{
+              width:48, height:48, borderRadius:"50%", border:"none", cursor:"pointer",
+              background:"linear-gradient(135deg,#ff4757,#c0392b)",
+              boxShadow:"0 4px 20px rgba(255,71,87,.5)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+            }} title="Bağlantıyı Kes">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.26 9.11a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 3.17 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.15 7.91"/>
+                <line x1="23" y1="1" x2="1" y2="23"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
       <style>{`
         @keyframes blink   { 0%,100%{opacity:1} 50%{opacity:.3} }
         @keyframes spin    { to{transform:rotate(360deg)} }
-        @keyframes floatUp { 0%{transform:translateY(0) scale(1);opacity:1} 100%{transform:translateY(-160px) scale(1.3);opacity:0} }
+        @keyframes floatUp { 0%{transform:translateY(0) scale(1);opacity:1} 100%{transform:translateY(-180px) scale(1.4);opacity:0} }
+        @keyframes fanIn   { 0%{transform:scale(.4);opacity:0} 100%{transform:scale(1);opacity:1} }
       `}</style>
     </div>
   );
