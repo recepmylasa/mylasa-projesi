@@ -99,39 +99,50 @@ function OBtn({ onClick, children, active, activeColor, title, size = 44 }) {
   );
 }
 
-// ─── Emoji Fan (sol tarafta yukarı açılır, ekran içinde kalır) ───────────────
+// ─── Emoji Fan (sağa yatay açılır, 2 sıra 4'lü) ─────────────────────────────
 const EMOJIS = ["😂","❤️","😍","🔥","👏","😮","💯","🎉"];
 
 function EmojiFan({ onSelect }) {
   const [open, setOpen] = useState(false);
+  const row1 = EMOJIS.slice(0, 4);
+  const row2 = EMOJIS.slice(4, 8);
   return (
     <div style={{ position:"relative" }}>
-      {/* Fan emojiler - yukarı doğru dikey sıra, sol tarafta kalır */}
       {open && (
         <div style={{
           position:"absolute",
-          bottom:"110%", left:"50%", transform:"translateX(-50%)",
-          display:"flex", flexDirection:"column-reverse", gap:6,
-          alignItems:"center",
+          bottom:"50%", left:"110%",
+          display:"flex", flexDirection:"column", gap:5,
           zIndex:80,
+          background:"rgba(8,8,18,.82)",
+          backdropFilter:"blur(16px)",
+          border:"1px solid rgba(255,255,255,.1)",
+          borderRadius:14,
+          padding:"8px 8px",
+          boxShadow:"0 8px 28px rgba(0,0,0,.6)",
         }}>
-          {EMOJIS.map((e, i) => (
-            <button
-              key={e}
-              onClick={() => { onSelect(e); setOpen(false); }}
-              style={{
-                width:38, height:38, borderRadius:"50%",
-                border:"1.5px solid rgba(255,255,255,.2)",
-                background:"rgba(12,12,22,.88)",
-                backdropFilter:"blur(14px)",
-                fontSize:19, cursor:"pointer",
-                display:"flex", alignItems:"center", justifyContent:"center",
-                animation:`fanIn .15s ease-out ${i * 0.04}s both`,
-                boxShadow:"0 4px 14px rgba(0,0,0,.5)",
-              }}
-            >
-              {e}
-            </button>
+          {[row1, row2].map((row, ri) => (
+            <div key={ri} style={{ display:"flex", flexDirection:"row", gap:5 }}>
+              {row.map((e, i) => (
+                <button
+                  key={e}
+                  onClick={() => { onSelect(e); setOpen(false); }}
+                  style={{
+                    width:36, height:36, borderRadius:"50%",
+                    border:"1.5px solid rgba(255,255,255,.15)",
+                    background:"rgba(255,255,255,.06)",
+                    fontSize:18, cursor:"pointer",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    animation:`fanIn .1s ease-out ${(ri*4+i) * 0.025}s both`,
+                    transition:"transform .1s",
+                  }}
+                  onMouseEnter={ev => ev.currentTarget.style.transform="scale(1.18)"}
+                  onMouseLeave={ev => ev.currentTarget.style.transform="scale(1)"}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       )}
@@ -142,7 +153,7 @@ function EmojiFan({ onSelect }) {
   );
 }
 
-// ─── Kamera/Mikrofon açılır menü ─────────────────────────────────────────────
+// ─── Kamera/Mikrofon açılır menü (sağa açılır) ───────────────────────────────
 function MediaMenu({ micOn, camOn, onToggleMic, onToggleCam }) {
   const [open, setOpen] = useState(false);
   return (
@@ -150,10 +161,16 @@ function MediaMenu({ micOn, camOn, onToggleMic, onToggleCam }) {
       {open && (
         <div style={{
           position:"absolute",
-          bottom:"110%", left:"50%", transform:"translateX(-50%)",
-          display:"flex", flexDirection:"column-reverse", gap:6,
+          bottom:"50%", left:"110%",
+          display:"flex", flexDirection:"row", gap:6,
           alignItems:"center",
           zIndex:80,
+          background:"rgba(8,8,18,.82)",
+          backdropFilter:"blur(16px)",
+          border:"1px solid rgba(255,255,255,.1)",
+          borderRadius:14,
+          padding:"6px 8px",
+          boxShadow:"0 8px 28px rgba(0,0,0,.6)",
         }}>
           {/* Kamera */}
           <button
@@ -236,8 +253,9 @@ function ChatPanel({ messages, myUid, onSend, onClose, inputRef }) {
         )}
         {messages.map((m, i) => {
           const isMe = m.senderId === myUid;
+          const msgKey = m.id || (m.senderId + "_" + (m.ts || i));
           return (
-            <div key={i} style={{ display:"flex", flexDirection:"column", alignItems: isMe ? "flex-end" : "flex-start" }}>
+            <div key={msgKey} style={{ display:"flex", flexDirection:"column", alignItems: isMe ? "flex-end" : "flex-start" }}>
               {!isMe && <span style={{ fontSize:9, color:"rgba(255,255,255,.3)", marginBottom:2, paddingLeft:4 }}>{m.senderName}</span>}
               <div style={{
                 maxWidth:"80%", padding:"6px 11px",
@@ -764,7 +782,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
         {/* ── SAĞ SÜTUN — Geç (üst), Bitir (alt) ── */}
         <div style={{
           position:"absolute", bottom:14, right:10, zIndex:50,
-          display:"flex", flexDirection:"column", alignItems:"center", gap:9,
+          display:"flex", flexDirection:"column", alignItems:"center", gap:20,
         }}>
           {/* Geç — üstte */}
           <button onClick={handleSkip} style={{
@@ -795,25 +813,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
           </button>
         </div>
 
-        {/* ── Kendi isim — sol alt (butonların üstünde, yeterince yukarıda) ── */}
-        <div style={{
-          position:"absolute", bottom:72, left:64, zIndex:10,
-          display:"flex", alignItems:"center", gap:6,
-          background:"rgba(0,0,0,.5)", backdropFilter:"blur(10px)",
-          border:"1px solid rgba(255,255,255,.08)", borderRadius:20, padding:"4px 10px 4px 5px",
-          pointerEvents:"none",
-        }}>
-          <div style={{ width:22, height:22, borderRadius:"50%",
-            background:`linear-gradient(135deg,${MAGENTA},${CYAN})`,
-            overflow:"hidden", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-            {user?.photoURL
-              ? <img src={user.photoURL} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-              : <span style={{ fontSize:11 }}>👤</span>}
-          </div>
-          <span style={{ fontSize:11, fontWeight:600, color:"#fff" }}>{myName}</span>
-          <span style={{ fontSize:9, color:CYAN, fontWeight:700,
-            background:"rgba(0,200,224,.12)", borderRadius:6, padding:"1px 5px" }}>SEN</span>
-        </div>
+        {/* Kendi isim kaldırıldı — kullanıcının kendi adını görmesine gerek yok */}
 
         {/* ── Karşı taraf kayıt bildirimi toast ── */}
         {recordToast && <RecordingToast text={recordToast} />}
