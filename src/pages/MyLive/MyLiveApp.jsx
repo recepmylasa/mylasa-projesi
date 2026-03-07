@@ -10,6 +10,8 @@ import MyLiveHomeScreen from "./MyLiveHomeScreen";
 import MyLiveExploreScreen from "./MyLiveExploreScreen";
 import MyLiveNotificationsScreen from "./MyLiveNotificationsScreen";
 import MyLiveProfileScreen from "./MyLiveProfileScreen";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../firebase";
 import {
   joinQueue,
   leaveQueue,
@@ -17,6 +19,22 @@ import {
   listenMyQueue,
   getBlockedUsers,
 } from "../../services/myLiveService";
+
+async function fetchUserInfo(uid) {
+  try {
+    const snap = await getDoc(doc(db, "users", uid));
+    if (snap.exists()) {
+      const d = snap.data();
+      return {
+        userId: uid,
+        displayName: d.adSoyad || d.kullaniciAdi || d.displayName || "Kullanıcı",
+        username: d.kullaniciAdi || null,
+        photoURL: d.profilFoto || d.photoURL || null,
+      };
+    }
+  } catch {}
+  return { userId: uid, displayName: "Kullanıcı", photoURL: null };
+}
 
 const STREAM_SCREENS = ["loading", "stream", "rating"];
 
@@ -68,12 +86,8 @@ export default function MyLiveApp({ user, onNavChange, onBack }) {
             queueListenerRef.current();
             queueListenerRef.current = null;
           }
-          // Partner bilgisini al
-          const partnerData = {
-            userId: queueData.matchedWith,
-            displayName: null,
-            photoURL: null,
-          };
+          // Partner bilgisini Firestore'dan çek
+          const partnerData = await fetchUserInfo(queueData.matchedWith);
           setRoomId(queueData.roomId);
           setPartner(partnerData);
           setIsInitiator(false);
@@ -92,8 +106,10 @@ export default function MyLiveApp({ user, onNavChange, onBack }) {
             queueListenerRef.current();
             queueListenerRef.current = null;
           }
+          // Initiator tarafı: partner bilgisini Firestore'dan çek
+          const initiatorPartner = await fetchUserInfo(match.partner.userId || match.partner.matchedWith);
           setRoomId(match.roomId);
-          setPartner(match.partner);
+          setPartner(initiatorPartner);
           setIsInitiator(true);
           setStreamScreen("stream");
         }
