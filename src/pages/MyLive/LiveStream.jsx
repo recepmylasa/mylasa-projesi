@@ -16,7 +16,7 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
   const startTimeRef = useRef(Date.now());
   const unsubscribersRef = useRef([]);
 
-  const { localStream, getLocalStream, createOffer, createAnswer,
+  const { localStream, remoteStream, getLocalStream, createOffer, createAnswer,
     setRemoteAnswer, addIceCandidate: addICE, onIceCandidate,
     toggleVideo, toggleAudio, isVideoEnabled, isAudioEnabled, cleanup } = useWebRTC({
     onConnectionStateChange: setConnectionState,
@@ -44,30 +44,30 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
         if (!mounted) return;
 
         if (isInitiator) {
+          // ICE callback'i createOffer'DAN ONCE kur - candidate kaybi onlenir
+          onIceCandidate((candidate) => addIceCandidate(roomId, "caller", candidate));
           const { peer, offer } = await createOffer(stream);
           await createRoom(roomId, offer);
 
-          onIceCandidate((candidate) => addIceCandidate(roomId, "caller", candidate));
-
           const unsub1 = listenRoom(roomId, async (data) => {
             if (data.answer && peer.signalingState === "have-local-offer") {
-              await setRemoteAnswer(data.answer);
+              try { await setRemoteAnswer(data.answer); } catch (e) { console.warn("[LiveStream] setRemoteAnswer:", e); }
             }
           });
 
           const unsub2 = listenIceCandidates(roomId, "callee", (c) => addICE(c));
           unsubscribersRef.current = [unsub1, unsub2];
         } else {
+          // ICE callback'i createAnswer'DAN ONCE kur
+          onIceCandidate((candidate) => addIceCandidate(roomId, "callee", candidate));
           const room = await new Promise((resolve) => {
             const unsub = listenRoom(roomId, (data) => {
               if (data.offer) { unsub(); resolve(data); }
             });
           });
 
-          const { peer, answer } = await createAnswer(stream, room.offer);
+          const { answer } = await createAnswer(stream, room.offer);
           await joinRoom(roomId, answer);
-
-          onIceCandidate((candidate) => addIceCandidate(roomId, "callee", candidate));
 
           const unsub3 = listenIceCandidates(roomId, "caller", (c) => addICE(c));
           unsubscribersRef.current = [unsub3];
@@ -80,12 +80,12 @@ export default function LiveStream({ roomId, isInitiator, partner, user, onEnd, 
     return () => { mounted = false; };
   }, []); // eslint-disable-line
 
-  // Remote video
+  // Remote video - remoteStream geldiginde bagla
   useEffect(() => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null;
+    if (remoteStream && remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream;
     }
-  }, []);
+  }, [remoteStream]);
 
   const handleEnd = useCallback(async () => {
     const dur = Math.floor((Date.now() - startTimeRef.current) / 1000);

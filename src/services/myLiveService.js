@@ -16,10 +16,10 @@ import {
   limit,
   serverTimestamp,
   onSnapshot,
+  runTransaction,
 } from "firebase/firestore";
 
 // ---- Kuyruk Yönetimi ----
-
 export async function joinQueue(userId, filters = {}) {
   const ref = doc(db, "mylive_queue", userId);
   await setDoc(ref, {
@@ -27,6 +27,8 @@ export async function joinQueue(userId, filters = {}) {
     filters,
     joinedAt: serverTimestamp(),
     status: "waiting",
+    matchedWith: null,
+    roomId: null,
   });
 }
 
@@ -36,30 +38,106 @@ export async function leaveQueue(userId) {
   } catch {}
 }
 
-export async function findMatch(userId, filters = {}, blockedIds = []) {
-  const q = query(
-    collection(db, "mylive_queue"),
-    where("status", "==", "waiting"),
-    orderBy("joinedAt"),
-    limit(20)
-  );
-  const snap = await getDocs(q);
-  const candidates = snap.docs
-    .map((d) => d.data())
-    .filter((u) => {
-      if (u.userId === userId) return false;
-      if (blockedIds.includes(u.userId)) return false;
-      // Cinsiyet filtresi
-      if (filters.gender && filters.gender !== "all" && u.filters?.gender) {
-        if (u.filters.gender !== filters.gender) return false;
+/**
+ * Atomic matchmaking: Firestore transaction ile race condition önlenir.
+ * Başarılı olursa { roomId, isInitiator, partner } döner.
+ * Başarısız olursa null döner.
+ */
+export async function tryAtomicMatch(userId, filters = {}, blockedIds = []) {
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      // Kendi kuyruk kaydını oku
+      const myRef = doc(db, "mylive_queue", userId);
+      const mySnap = await transaction.get(myRef);
+
+      // Eğer zaten eşleştirildiyse (başka bir transaction tamamladıysa)
+      if (!mySnap.exists() || mySnap.data().status !== "waiting") {
+        return null;
       }
-      return true;
+
+      // Bekleyen kullanıcıları bul (en fazla 20 tane)
+      const q = query(
+        collection(db, "mylive_queue"),
+        where("status", "==", "waiting"),
+        orderBy("joinedAt"),
+        limit(20)
+      );
+      const snap = await getDocs(q);
+
+      // Uygun aday bul
+      let candidate = null;
+      for (const d of snap.docs) {
+        const data = d.data();
+        if (data.userId === userId) continue;
+        if (blockedIds.includes(data.userId)) continue;
+        // Cinsiyet filtresi
+        if (filters.gender && filters.gender !== "all" && data.filters?.gender) {
+          if (data.filters.gender !== filters.gender) continue;
+        }
+        // Adayın hâlâ "waiting" olduğunu doğrula
+        const candidateRef = doc(db, "mylive_queue", data.userId);
+        const candidateSnap = await transaction.get(candidateRef);
+        if (!candidateSnap.exists() || candidateSnap.data().status !== "waiting") continue;
+        candidate = { ref: candidateRef, data: candidateSnap.data() };
+        break;
+      }
+
+      if (!candidate) return null;
+
+      // Oda oluştur
+      const roomId = `room_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      // Her iki kullanıcıyı da "matched" olarak işaretle
+      transaction.update(myRef, {
+        status: "matched",
+        matchedWith: candidate.data.userId,
+        roomId,
+        isInitiator: true,
+      });
+      transaction.update(candidate.ref, {
+        status: "matched",
+        matchedWith: userId,
+        roomId,
+        isInitiator: false,
+      });
+
+      return {
+        roomId,
+        isInitiator: true,
+        partner: candidate.data,
+      };
     });
-  return candidates.length > 0 ? candidates[0] : null;
+
+    return result;
+  } catch (err) {
+    console.error("[myLiveService] tryAtomicMatch error:", err);
+    return null;
+  }
+}
+
+/**
+ * Kendi kuyruk kaydını dinle - başka biri bizi eşleştirdiyse bildir
+ */
+export function listenMyQueue(userId, callback) {
+  const ref = doc(db, "mylive_queue", userId);
+  return onSnapshot(ref, (snap) => {
+    if (snap.exists()) {
+      callback(snap.data());
+    } else {
+      callback(null);
+    }
+  });
+}
+
+/**
+ * Eşleştirilen partner'ın bilgilerini getir
+ */
+export async function getQueueEntry(userId) {
+  const snap = await getDoc(doc(db, "mylive_queue", userId));
+  return snap.exists() ? snap.data() : null;
 }
 
 // ---- Oda / Signaling ----
-
 export async function createRoom(roomId, offer) {
   await setDoc(doc(db, "mylive_rooms", roomId), {
     offer,
@@ -88,7 +166,12 @@ export function listenRoom(roomId, callback) {
 
 export async function addIceCandidate(roomId, role, candidate) {
   const colRef = collection(db, "mylive_rooms", roomId, `${role}_candidates`);
-  await addDoc(colRef, { ...candidate, createdAt: serverTimestamp() });
+  await addDoc(colRef, {
+    sdpMid: candidate.sdpMid ?? null,
+    sdpMLineIndex: candidate.sdpMLineIndex ?? null,
+    candidate: candidate.candidate,
+    createdAt: serverTimestamp(),
+  });
 }
 
 export function listenIceCandidates(roomId, role, callback) {
@@ -107,7 +190,6 @@ export async function closeRoom(roomId) {
 }
 
 // ---- Bağlantı Geçmişi ----
-
 export async function saveConnection(data) {
   await addDoc(collection(db, "mylive_connections"), {
     ...data,
@@ -128,7 +210,6 @@ export async function rateConnection(connectionId, userId, rating, review, block
 }
 
 // ---- Engelleme ----
-
 export async function blockUser(blockerId, blockedId) {
   const id = `${blockerId}_${blockedId}`;
   await setDoc(doc(db, "mylive_blocked", id), {
@@ -148,7 +229,6 @@ export async function getBlockedUsers(userId) {
 }
 
 // ---- Şikayet ----
-
 export async function reportUser(reporterId, reportedId, reason, connectionId) {
   await addDoc(collection(db, "mylive_reports"), {
     reporterId,
@@ -160,7 +240,6 @@ export async function reportUser(reporterId, reportedId, reason, connectionId) {
 }
 
 // ---- İstatistikler ----
-
 export async function getStats() {
   try {
     const q = query(collection(db, "mylive_queue"), where("status", "==", "waiting"));
@@ -172,7 +251,6 @@ export async function getStats() {
 }
 
 // ---- Kullanıcı Profili (MyLive) ----
-
 export async function getMyLiveProfile(userId) {
   const snap = await getDoc(doc(db, "mylive_profiles", userId));
   return snap.exists() ? snap.data() : null;

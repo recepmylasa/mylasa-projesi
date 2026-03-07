@@ -1,50 +1,49 @@
 // FILE: src/pages/MyLive/MyLiveApp.jsx
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import MyLiveHub from "./MyLiveHub";
-import MyLiveHomeScreen from "./MyLiveHomeScreen";
-import MyLiveExploreScreen from "./MyLiveExploreScreen";
-import MyLiveNotificationsScreen from "./MyLiveNotificationsScreen";
-import MyLiveProfileScreen from "./MyLiveProfileScreen";
+import MyLiveBottomNav from "./MyLiveBottomNav";
 import LoadingScreen from "./LoadingScreen";
 import LiveStream from "./LiveStream";
 import RatingScreen from "./RatingScreen";
 import PremiumFilters from "./PremiumFilters";
-import MyLiveBottomNav from "./MyLiveBottomNav";
+import MyLiveHomeScreen from "./MyLiveHomeScreen";
+import MyLiveExploreScreen from "./MyLiveExploreScreen";
+import MyLiveNotificationsScreen from "./MyLiveNotificationsScreen";
+import MyLiveProfileScreen from "./MyLiveProfileScreen";
 import {
-  joinQueue, leaveQueue, findMatch, getBlockedUsers,
+  joinQueue,
+  leaveQueue,
+  tryAtomicMatch,
+  listenMyQueue,
+  getBlockedUsers,
 } from "../../services/myLiveService";
 
-function genId() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
-// Canlı yayın akış ekranları (nav gizlenir)
 const STREAM_SCREENS = ["loading", "stream", "rating"];
 
-export default function MyLiveApp({ user, onBack }) {
-  // Aktif MyLive sekmesi: "home" | "explore" | "mylive" | "notifications" | "profile"
+export default function MyLiveApp({ user, onNavChange, onBack }) {
   const [activeTab, setActiveTab] = useState("mylive");
-
-  // Tema - MyLiveHub'dan senkronize edilir
-  const [isDark, setIsDark] = useState(() => {
-    const saved = localStorage.getItem("myLiveTheme");
-    return saved !== null ? saved === "dark" : true;
-  });
-
-  // Canlı yayın akış ekranı: null | "filters" | "loading" | "stream" | "rating"
   const [streamScreen, setStreamScreen] = useState(null);
-
-  const [filters, setFilters] = useState({});
   const [partner, setPartner] = useState(null);
   const [roomId, setRoomId] = useState(null);
   const [isInitiator, setIsInitiator] = useState(false);
   const [sessionData, setSessionData] = useState(null);
-  const matchTimerRef = useRef(null);
+  const [isDark, setIsDark] = useState(() => {
+    const saved = localStorage.getItem("myLiveTheme");
+    return saved !== null ? saved === "dark" : true;
+  });
+  const [filters, setFilters] = useState({});
+
   const searchingRef = useRef(false);
+  const matchTimerRef = useRef(null);
+  const queueListenerRef = useRef(null);
 
   const stopSearch = useCallback(async () => {
     searchingRef.current = false;
     clearInterval(matchTimerRef.current);
+    if (queueListenerRef.current) {
+      queueListenerRef.current();
+      queueListenerRef.current = null;
+    }
     if (user?.uid) await leaveQueue(user.uid).catch(() => {});
   }, [user]);
 
@@ -57,21 +56,50 @@ export default function MyLiveApp({ user, onBack }) {
       const blockedIds = await getBlockedUsers(user.uid).catch(() => []);
       await joinQueue(user.uid, activeFilters);
 
+      // Kendi kuyruk kaydını dinle — başka biri bizi eşleştirdiyse buradan öğreniriz
+      if (queueListenerRef.current) queueListenerRef.current();
+      queueListenerRef.current = listenMyQueue(user.uid, async (queueData) => {
+        if (!searchingRef.current) return;
+        if (queueData && queueData.status === "matched" && queueData.roomId) {
+          // Başka biri bizi eşleştirdi — biz callee'yiz
+          searchingRef.current = false;
+          clearInterval(matchTimerRef.current);
+          if (queueListenerRef.current) {
+            queueListenerRef.current();
+            queueListenerRef.current = null;
+          }
+          // Partner bilgisini al
+          const partnerData = {
+            userId: queueData.matchedWith,
+            displayName: null,
+            photoURL: null,
+          };
+          setRoomId(queueData.roomId);
+          setPartner(partnerData);
+          setIsInitiator(false);
+          setStreamScreen("stream");
+        }
+      });
+
+      // Biz de aktif olarak eşleştirmeye çalışalım (initiator tarafı)
       const tryMatch = async () => {
         if (!searchingRef.current) return;
-        const match = await findMatch(user.uid, activeFilters, blockedIds).catch(() => null);
+        const match = await tryAtomicMatch(user.uid, activeFilters, blockedIds).catch(() => null);
         if (match && searchingRef.current) {
           searchingRef.current = false;
           clearInterval(matchTimerRef.current);
-          const room = `room_${genId()}`;
-          setRoomId(room);
-          setPartner(match);
+          if (queueListenerRef.current) {
+            queueListenerRef.current();
+            queueListenerRef.current = null;
+          }
+          setRoomId(match.roomId);
+          setPartner(match.partner);
           setIsInitiator(true);
-          await leaveQueue(user.uid).catch(() => {});
           setStreamScreen("stream");
         }
       };
 
+      // İlk deneme hemen, sonra her 3 saniyede bir
       await tryMatch();
       matchTimerRef.current = setInterval(tryMatch, 3000);
     } catch (err) {
@@ -106,32 +134,24 @@ export default function MyLiveApp({ user, onBack }) {
   }, []);
 
   const handleFiltersOpen = useCallback(() => setStreamScreen("filters"), []);
-
   const handleFiltersSave = useCallback((f) => {
     setFilters(f);
     startSearch(f);
   }, [startSearch]);
 
-  // Tema değişikliğini MyLiveHub'dan al
   const handleThemeChange = useCallback((dark) => {
     setIsDark(dark);
   }, []);
 
-  // Nav tab değişimi - MyLive içinde gezin
   const handleNavTab = useCallback((tab) => {
-    if (STREAM_SCREENS.includes(streamScreen)) {
-      // Canlı yayın sırasında nav değişimine izin verme
-      return;
-    }
-    if (streamScreen === "filters") {
-      setStreamScreen(null);
-    }
+    if (STREAM_SCREENS.includes(streamScreen)) return;
+    if (streamScreen === "filters") setStreamScreen(null);
     setActiveTab(tab);
   }, [streamScreen]);
 
   useEffect(() => () => { stopSearch(); }, [stopSearch]);
 
-  // Canlı yayın akış ekranları - nav gizlenir
+  // Canlı yayın akış ekranları
   if (streamScreen === "loading") {
     return <LoadingScreen onCancel={handleCancel} user={user} />;
   }
@@ -161,7 +181,6 @@ export default function MyLiveApp({ user, onBack }) {
     );
   }
 
-  // Filtreler ekranı
   if (streamScreen === "filters") {
     return (
       <div style={{ position: "relative", minHeight: "100dvh", paddingBottom: "68px" }}>
@@ -175,7 +194,6 @@ export default function MyLiveApp({ user, onBack }) {
     );
   }
 
-  // Ana içerik - tab'a göre ekran göster
   const renderContent = () => {
     switch (activeTab) {
       case "home":
