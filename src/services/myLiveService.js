@@ -39,76 +39,89 @@ export async function leaveQueue(userId) {
 }
 
 /**
- * Atomic matchmaking: Firestore transaction ile race condition önlenir.
+ * Atomic matchmaking — DOĞRU YAKLAŞIM:
+ * 1. Transaction DIŞINDA getDocs ile aday listesi al
+ * 2. Transaction İÇİNDE sadece transaction.get() ile doğrula ve güncelle
+ *
  * Başarılı olursa { roomId, isInitiator, partner } döner.
  * Başarısız olursa null döner.
  */
 export async function tryAtomicMatch(userId, filters = {}, blockedIds = []) {
   try {
-    const result = await runTransaction(db, async (transaction) => {
-      // Kendi kuyruk kaydını oku
-      const myRef = doc(db, "mylive_queue", userId);
-      const mySnap = await transaction.get(myRef);
+    // ADIM 1: Transaction DIŞINDA bekleyen kullanıcıları al
+    const q = query(
+      collection(db, "mylive_queue"),
+      where("status", "==", "waiting"),
+      orderBy("joinedAt"),
+      limit(20)
+    );
+    const snap = await getDocs(q);
 
-      // Eğer zaten eşleştirildiyse (başka bir transaction tamamladıysa)
-      if (!mySnap.exists() || mySnap.data().status !== "waiting") {
-        return null;
+    // Uygun adayları filtrele (transaction dışında)
+    const candidates = [];
+    for (const d of snap.docs) {
+      const data = d.data();
+      if (data.userId === userId) continue;
+      if (blockedIds.includes(data.userId)) continue;
+      // Cinsiyet filtresi
+      if (filters.gender && filters.gender !== "all" && data.filters?.gender) {
+        if (data.filters.gender !== filters.gender) continue;
       }
+      candidates.push({ id: d.id, data });
+    }
 
-      // Bekleyen kullanıcıları bul (en fazla 20 tane)
-      const q = query(
-        collection(db, "mylive_queue"),
-        where("status", "==", "waiting"),
-        orderBy("joinedAt"),
-        limit(20)
-      );
-      const snap = await getDocs(q);
+    if (candidates.length === 0) return null;
 
-      // Uygun aday bul
-      let candidate = null;
-      for (const d of snap.docs) {
-        const data = d.data();
-        if (data.userId === userId) continue;
-        if (blockedIds.includes(data.userId)) continue;
-        // Cinsiyet filtresi
-        if (filters.gender && filters.gender !== "all" && data.filters?.gender) {
-          if (data.filters.gender !== filters.gender) continue;
-        }
-        // Adayın hâlâ "waiting" olduğunu doğrula
-        const candidateRef = doc(db, "mylive_queue", data.userId);
-        const candidateSnap = await transaction.get(candidateRef);
-        if (!candidateSnap.exists() || candidateSnap.data().status !== "waiting") continue;
-        candidate = { ref: candidateRef, data: candidateSnap.data() };
-        break;
+    // ADIM 2: Her aday için transaction dene (birincisi başarılı olana kadar)
+    for (const cand of candidates) {
+      try {
+        const result = await runTransaction(db, async (transaction) => {
+          // Kendi kaydımı oku
+          const myRef = doc(db, "mylive_queue", userId);
+          const mySnap = await transaction.get(myRef);
+          if (!mySnap.exists() || mySnap.data().status !== "waiting") {
+            return null; // Zaten eşleştirildik
+          }
+
+          // Adayın kaydını oku (transaction içinde)
+          const candidateRef = doc(db, "mylive_queue", cand.id);
+          const candidateSnap = await transaction.get(candidateRef);
+          if (!candidateSnap.exists() || candidateSnap.data().status !== "waiting") {
+            return null; // Aday artık uygun değil
+          }
+
+          // Oda oluştur
+          const roomId = `room_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+          // Atomik güncelleme
+          transaction.update(myRef, {
+            status: "matched",
+            matchedWith: cand.id,
+            roomId,
+            isInitiator: true,
+          });
+          transaction.update(candidateRef, {
+            status: "matched",
+            matchedWith: userId,
+            roomId,
+            isInitiator: false,
+          });
+
+          return {
+            roomId,
+            isInitiator: true,
+            partner: candidateSnap.data(),
+          };
+        });
+
+        if (result) return result; // Başarılı eşleşme
+      } catch (txErr) {
+        // Bu aday için transaction başarısız, sonrakini dene
+        console.warn("[myLiveService] transaction retry:", txErr?.message);
       }
+    }
 
-      if (!candidate) return null;
-
-      // Oda oluştur
-      const roomId = `room_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-      // Her iki kullanıcıyı da "matched" olarak işaretle
-      transaction.update(myRef, {
-        status: "matched",
-        matchedWith: candidate.data.userId,
-        roomId,
-        isInitiator: true,
-      });
-      transaction.update(candidate.ref, {
-        status: "matched",
-        matchedWith: userId,
-        roomId,
-        isInitiator: false,
-      });
-
-      return {
-        roomId,
-        isInitiator: true,
-        partner: candidate.data,
-      };
-    });
-
-    return result;
+    return null; // Hiçbir aday için eşleşme sağlanamadı
   } catch (err) {
     console.error("[myLiveService] tryAtomicMatch error:", err);
     return null;
